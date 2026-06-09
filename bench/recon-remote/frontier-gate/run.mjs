@@ -232,7 +232,7 @@ gates.push(pass(
   25,
   { artifact: selectedXhs?.path, latestArtifact: latestXhs?.path, selectedNonLatest: Boolean(selectedXhs?.path && latestXhs?.path && selectedXhs.path !== latestXhs.path), verdict: xhs?.verdict, status: xhsStatus || null, signedHeaders: xhsHeaders, signerEvents: xhsSignerEvents, bundleHints: xhsBundles, any2xx: xhsAny2xx, note2xx: xhsNote2xx, best2xx: xhs?.xhsReplay?.best2xxSignedReplay || xhs?.signatureTrace?.best2xxSignedReplay, bestTargetNote2xx: xhs?.xhsReplay?.bestTargetNote2xxSignedReplay || xhs?.signatureTrace?.bestTargetNote2xxSignedReplay || null, targetEndpointCoverage: xhs?.xhsReplay?.targetEndpointCoverage, challengeMatrix: (xhs?.xhsReplay?.challengeMatrix || []).slice(0, 12), replayDivergence: xhs?.signatureTrace?.replayDivergence || xhs?.xhsReplay?.replayDivergence, firstDivergence: xhs?.xhsReplay?.firstDivergence || xhs?.signatureTrace?.firstReplayDivergence },
   'x-s/x-t/x-s-common captured + signed replay returns structured 2xx note data + signer events >=20',
-  'RECON_BROWSER=1 RECON_TIMEOUT_MS=60000 RECON_QUIET_MS=5000 RECON_XHS_PROBE_WAIT_MS=15000 node bench/recon-remote/real-platform/run.mjs <tokenized-xhs-explore-url> xiaohongshu-note'
+  'RECON_BROWSER=1 RECON_XHS_AUTO_DISCOVER=1 RECON_XHS_DISCOVERY_LIMIT=2 RECON_TIMEOUT_MS=45000 RECON_QUIET_MS=5000 RECON_XHS_PROBE_WAIT_MS=15000 node bench/recon-remote/real-platform/run.mjs https://www.xhs-download.org/zh xiaohongshu-note'
 ));
 
 const dySignals = douyin?.signatureSurface?.signals?.length || 0;

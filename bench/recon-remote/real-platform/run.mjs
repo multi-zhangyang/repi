@@ -17,7 +17,7 @@ const chromeBin = process.env.RECON_CHROME_BIN || process.env.CHROME_BIN || '';
 const userAgent = process.env.RECON_USER_AGENT || 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36 Pi-RECON-real-platform';
 
 if (!selfTestOnly && (!target || target === '--help' || target === '-h')) {
-  console.log(`Pi-RECON real platform hard benchmark\n\nUsage:\n  node bench/recon-remote/real-platform/run.mjs <url> [auto|bilibili-video|xiaohongshu-note|generic-cdp]\n  node bench/recon-remote/real-platform/run.mjs --self-test\n\nExamples:\n  node bench/recon-remote/real-platform/run.mjs https://www.bilibili.com/video/BV1odL76QE6B bilibili-video\n  node bench/recon-remote/real-platform/run.mjs 'https://www.xiaohongshu.com/explore/66237c6e000000001c00893f' xiaohongshu-note\n\nEnvironment:\n  RECON_BROWSER=auto|1|0\n  RECON_PROBE_LIMIT=16\n  RECON_TIMEOUT_MS=35000\n  RECON_QUIET_MS=2500\n  RECON_MAX_BODY_BYTES=500000\n  RECON_CHROME_BIN=<path>\n\nOutput:\n  .pi/evidence/remote/real-platform/<profile>/<host>/<timestamp>/\n`);
+  console.log(`Pi-RECON real platform hard benchmark\n\nUsage:\n  node bench/recon-remote/real-platform/run.mjs <url> [auto|bilibili-video|xiaohongshu-note|generic-cdp]\n  node bench/recon-remote/real-platform/run.mjs --self-test\n\nExamples:\n  node bench/recon-remote/real-platform/run.mjs https://www.bilibili.com/video/BV1odL76QE6B bilibili-video\n  node bench/recon-remote/real-platform/run.mjs 'https://www.xiaohongshu.com/explore/66237c6e000000001c00893f' xiaohongshu-note\n  RECON_XHS_AUTO_DISCOVER=1 node bench/recon-remote/real-platform/run.mjs https://www.xhs-download.org/zh xiaohongshu-note\n\nEnvironment:\n  RECON_BROWSER=auto|1|0\n  RECON_PROBE_LIMIT=16\n  RECON_TIMEOUT_MS=35000\n  RECON_QUIET_MS=2500\n  RECON_MAX_BODY_BYTES=500000\n  RECON_CHROME_BIN=<path>\n  RECON_XHS_AUTO_DISCOVER=1\n  RECON_XHS_DISCOVERY_LIMIT=3\n\nOutput:\n  .pi/evidence/remote/real-platform/<profile>/<host>/<timestamp>/\n`);
   process.exit(target ? 0 : 2);
 }
 
@@ -1014,6 +1014,135 @@ function analyzeXhs(url, cdp) {
   return { verdict, noteIds, webApiHints: webApis.map(redactUrl).slice(0, 80), antiBotSignals: antiBot.slice(0, 40), imageHints: images, browser: { requests: cdp.requests.length, responses: cdp.responses.length, bodies: cdp.bodies.length, failures: cdp.failures.length, errors: cdp.errors } };
 }
 
+function xhsDecodeTextVariants(value = '') {
+  const out = [];
+  const push = (item) => {
+    const normalized = String(item || '').replace(/\\\//g, '/').replace(/\\u0026/gi, '&').replace(/&amp;/gi, '&');
+    if (normalized && !out.includes(normalized)) out.push(normalized);
+  };
+  push(value);
+  for (let i = 0; i < 2; i++) {
+    for (const item of [...out]) {
+      try {
+        const decoded = decodeURIComponent(item);
+        if (decoded !== item) push(decoded);
+      } catch {}
+    }
+  }
+  return out;
+}
+
+function normalizeXhsDiscoveryUrl(value, source = 'text', fallbackXsecSource = 'pc_search') {
+  for (const variant of xhsDecodeTextVariants(value)) {
+    const match = variant.match(/(?:https?:\/\/www\.xiaohongshu\.com)?\/explore\/([0-9a-f]{24})(?:\?([^\s"'<>\\]*))?/i);
+    if (!match) continue;
+    const noteId = match[1];
+    const query = String(match[2] || '').replace(/\\u0026/gi, '&').replace(/&amp;/gi, '&');
+    const params = new URLSearchParams(query);
+    let xsecToken = params.get('xsec_token') || '';
+    let xsecSource = params.get('xsec_source') || '';
+    if (!xsecToken) xsecToken = variant.match(/xsec_token(?:=|%3D)([^&\s"'<>\\]+)/i)?.[1] || '';
+    if (!xsecSource) xsecSource = variant.match(/xsec_source(?:=|%3D)([^&\s"'<>\\]+)/i)?.[1] || '';
+    try { if (/%[0-9a-f]{2}/i.test(xsecToken)) xsecToken = decodeURIComponent(xsecToken); } catch {}
+    try { if (/%[0-9a-f]{2}/i.test(xsecSource)) xsecSource = decodeURIComponent(xsecSource); } catch {}
+    const url = new URL(`/explore/${noteId}`, 'https://www.xiaohongshu.com');
+    if (xsecToken) url.searchParams.set('xsec_token', xsecToken);
+    if (xsecToken || xsecSource) url.searchParams.set('xsec_source', xsecSource || fallbackXsecSource);
+    return {
+      url: url.toString(),
+      redactedUrl: redactUrl(url.toString()),
+      noteId,
+      hasXsecToken: Boolean(xsecToken),
+      xsecSource: xsecSource || (xsecToken ? fallbackXsecSource : ''),
+      source,
+    };
+  }
+  return null;
+}
+
+function collectXhsObjectCandidates(value, out = [], source = 'json') {
+  if (!value || typeof value !== 'object') return out;
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, 2000)) collectXhsObjectCandidates(item, out, source);
+    return out;
+  }
+  const id = String(value.note_id || value.noteId || value.id || value.noteIdStr || value.source_note_id || value.note_card?.note_id || value.note_card?.id || '').match(/^[0-9a-f]{24}$/i)?.[0] || '';
+  const xsecToken = String(value.xsec_token || value.xsecToken || value.note_card?.xsec_token || value.noteCard?.xsec_token || value.user?.xsec_token || '');
+  const xsecSource = String(value.xsec_source || value.xsecSource || value.note_card?.xsec_source || value.noteCard?.xsec_source || value.source || 'pc_search');
+  if (id) {
+    const url = new URL(`/explore/${id}`, 'https://www.xiaohongshu.com');
+    if (xsecToken) url.searchParams.set('xsec_token', xsecToken);
+    if (xsecToken) url.searchParams.set('xsec_source', xsecSource || 'pc_search');
+    out.push({
+      url: url.toString(),
+      redactedUrl: redactUrl(url.toString()),
+      noteId: id,
+      hasXsecToken: Boolean(xsecToken),
+      xsecSource: xsecToken ? (xsecSource || 'pc_search') : '',
+      source,
+    });
+  }
+  for (const [key, inner] of Object.entries(value)) {
+    if (/html|text|content|body/i.test(key) && typeof inner === 'string') {
+      const candidate = normalizeXhsDiscoveryUrl(inner, `${source}.${key}`);
+      if (candidate) out.push(candidate);
+    } else if (inner && typeof inner === 'object') collectXhsObjectCandidates(inner, out, `${source}.${key}`);
+  }
+  return out;
+}
+
+function extractXhsDiscoveryCandidates(cdp, baseUrl) {
+  const baseNoteId = String(baseUrl).match(/explore\/([0-9a-f]{24})/i)?.[1] || '';
+  let baseHasXsecToken = false;
+  try { baseHasXsecToken = new URL(baseUrl.toString()).searchParams.has('xsec_token'); } catch {}
+  const raw = [];
+  const addText = (source, text) => {
+    if (!text) return;
+    const normalized = String(text).replace(/\\\//g, '/').replace(/\\u0026/gi, '&').replace(/&amp;/gi, '&');
+    for (const variant of xhsDecodeTextVariants(normalized)) {
+      const re = /(?:https?:\/\/www\.xiaohongshu\.com)?\/explore\/[0-9a-f]{24}(?:\?[^\s"'<>\\]*)?/ig;
+      for (const match of variant.matchAll(re)) {
+        const candidate = normalizeXhsDiscoveryUrl(match[0], source);
+        if (candidate) raw.push(candidate);
+      }
+      const pairRe = /(?:note_id|noteId|id)["']?\s*[:=]\s*["']?([0-9a-f]{24})[\s\S]{0,300}?xsec_token["']?\s*[:=]\s*["']?([^"',&\s<>\\]+)/ig;
+      for (const match of variant.matchAll(pairRe)) {
+        const url = new URL(`/explore/${match[1]}`, 'https://www.xiaohongshu.com');
+        url.searchParams.set('xsec_token', match[2]);
+        url.searchParams.set('xsec_source', 'pc_search');
+        raw.push({ url: url.toString(), redactedUrl: redactUrl(url.toString()), noteId: match[1], hasXsecToken: true, xsecSource: 'pc_search', source: `${source}:pair` });
+      }
+    }
+    const parsed = safeJsonParse(text, null);
+    if (parsed) collectXhsObjectCandidates(parsed, raw, source);
+  };
+  addText('storage.html', cdp.storage?.html || '');
+  addText('storage', JSON.stringify(cdp.storage || {}));
+  for (const body of cdp.bodies || []) addText(`body:${body.id || body.url || 'unknown'}`, body.text || '');
+  for (const request of cdp.requests || []) {
+    addText(`request:${request.id || ''}:url`, request.rawUrl || request.url || '');
+    addText(`request:${request.id || ''}:headers`, JSON.stringify(request.replayHeaders || request.headers || {}));
+    addText(`request:${request.id || ''}:post`, request.replayPostData || request.postDataHead || '');
+  }
+  const seen = new Set();
+  return raw
+    .filter((item) => item?.noteId && !(item.noteId === baseNoteId && (!item.hasXsecToken || baseHasXsecToken)))
+    .map((item) => {
+      const rank = (item.hasXsecToken ? 100 : 0)
+        + (/pc_user/i.test(item.xsecSource || '') ? 30 : /pc_feed|pc_search/i.test(item.xsecSource || '') ? 20 : 0)
+        + (/body|storage|json|pair/i.test(item.source || '') ? 10 : 0);
+      return { ...item, rank };
+    })
+    .sort((a, b) => b.rank - a.rank)
+    .filter((item) => {
+      const key = `${item.noteId}:${item.hasXsecToken}:${item.xsecSource || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 30);
+}
+
 function xhsRuntimeProbeExpressions(url) {
   const noteId = String(url).match(/explore\/([0-9a-f]{24})/i)?.[1] || '';
   const parsed = new URL(url.toString());
@@ -1046,16 +1175,26 @@ function xhsRuntimeProbeExpressions(url) {
       console.debug('[pi-xhs-probe]', item.kind, item);
     } catch {} };
     const timeout = (promise, ms, label) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve({ __timeout: label }), ms))]);
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const getWebpackRequire = () => {
       let req = null;
       try {
-        const chunk = window.webpackChunkxhs_pc_web = window.webpackChunkxhs_pc_web || [];
+        const root = window || self;
+        const chunk = root.webpackChunkxhs_pc_web = root.webpackChunkxhs_pc_web || [];
         chunk.push([[` + "`pi_recon_${Date.now()}`" + `], {}, (r) => { req = r; }]);
       } catch (error) { log({ kind: 'webpack-require-error', message: String(error && error.message || error).slice(0, 200) }); }
       return req;
     };
+    const waitForWebpackRequire = async () => {
+      for (let i = 0; i < 40; i += 1) {
+        const req = getWebpackRequire();
+        if (req && req.m && Object.keys(req.m || {}).length) return req;
+        await delay(250);
+      }
+      return getWebpackRequire();
+    };
     (async () => {
-      const req = getWebpackRequire();
+      const req = await waitForWebpackRequire();
       if (!req) { log({ kind: 'webpack-require-missing', noteId, keyword }); return; }
       const moduleIds = Object.keys(req.m || {}).filter((id) => {
         try {
@@ -1090,7 +1229,7 @@ function xhsRuntimeProbeExpressions(url) {
   })();`];
 }
 
-async function runXhs(url, outDir) {
+async function runXhsOnce(url, outDir) {
   const cdp = await captureCdp(url, outDir, { runtimeProbes: xhsRuntimeProbeExpressions(url), probeWaitMs: Number(process.env.RECON_XHS_PROBE_WAIT_MS || 9000) });
   const xhsReplay = await replayXhsReadOnly(cdp);
   const signatureTrace = analyzeSignatureTrace(cdp, 'xhs');
@@ -1111,7 +1250,77 @@ async function runXhs(url, outDir) {
     : xhsReplay.attempted && (replayStatus === 461 || xhsReplay.headers?.verifytype)
       ? 'xhs-signed-api-challenge-reproduced'
       : analysis.verdict;
-  return { ...analysis, verdict, xhsReplay, signatureTrace, browserArtifact: join(outDir, 'browser.json'), nextActions: ['classify /api/sns/web/* endpoints and required x-s/x-t/x-s-common headers', 'trace signer bundle snippets for x-s/x-t/x-s-common generation', 'compare captured response vs replay divergence before rebuilding signer'] };
+  const result = { ...analysis, verdict, xhsReplay, signatureTrace, browserArtifact: join(outDir, 'browser.json'), nextActions: ['classify /api/sns/web/* endpoints and required x-s/x-t/x-s-common headers', 'trace signer bundle snippets for x-s/x-t/x-s-common generation', 'compare captured response vs replay divergence before rebuilding signer'] };
+  return { result, cdp };
+}
+
+function summarizeXhsRun(result, artifactDir = '') {
+  const best = result?.xhsReplay?.bestTargetNote2xxSignedReplay || result?.xhsReplay?.bestNote2xxSignedReplay || null;
+  return {
+    artifactDir,
+    verdict: result?.verdict,
+    replayStatus: result?.xhsReplay?.status,
+    bestTargetNote2xx: Boolean(result?.xhsReplay?.bestTargetNote2xxSignedReplay),
+    endpointClass: best?.endpointClass || '',
+    method: best?.method || '',
+    status: best?.status || null,
+    noteItemCount: best?.structured?.noteItemCount || 0,
+    signedHeaderNames: best?.signedHeaderNames || [],
+    signerEvents: result?.signatureTrace?.signerLog?.length || 0,
+    bundleHints: result?.signatureTrace?.bundleHints?.length || 0,
+  };
+}
+
+async function runXhs(url, outDir) {
+  const initial = await runXhsOnce(url, outDir);
+  const autoDiscover = process.env.RECON_XHS_AUTO_DISCOVER === '1' || process.env.RECON_XHS_DISCOVER === '1';
+  const discovery = {
+    enabled: autoDiscover,
+    attempted: false,
+    candidateCount: 0,
+    candidates: [],
+    attempts: [],
+  };
+  if (!autoDiscover || initial.result.xhsReplay?.bestTargetNote2xxSignedReplay) {
+    return { ...initial.result, xhsDiscovery: discovery };
+  }
+
+  const candidates = extractXhsDiscoveryCandidates(initial.cdp, url);
+  const limit = Number(process.env.RECON_XHS_DISCOVERY_LIMIT || 3);
+  discovery.attempted = true;
+  discovery.candidateCount = candidates.length;
+  discovery.candidates = candidates.slice(0, Math.max(limit, 0)).map(({ url: rawUrl, ...item }) => ({ ...item, url: redactUrl(rawUrl) }));
+  for (const [index, candidate] of candidates.slice(0, limit).entries()) {
+    const childDir = join(outDir, 'discovery', `${String(index + 1).padStart(2, '0')}-${candidate.noteId}`);
+    await mkdir(childDir, { recursive: true });
+    const started = Date.now();
+    const child = await runXhsOnce(new URL(candidate.url), childDir);
+    const childRecord = {
+      target: redactUrl(candidate.url),
+      profile: 'xiaohongshu-note',
+      artifactDir: childDir,
+      elapsedMs: Date.now() - started,
+      discoveryParent: redactUrl(url.toString()),
+      discoveryCandidate: { ...candidate, url: redactUrl(candidate.url), redactedUrl: redactUrl(candidate.url) },
+      ...child.result,
+    };
+    await writeFile(join(childDir, 'result.json'), `${JSON.stringify(childRecord, null, 2)}\n`);
+    const summary = { candidate: { redactedUrl: redactUrl(candidate.url), noteId: candidate.noteId, hasXsecToken: candidate.hasXsecToken, xsecSource: candidate.xsecSource, source: candidate.source, rank: candidate.rank }, ...summarizeXhsRun(child.result, childDir) };
+    discovery.attempts.push(summary);
+    if (child.result.xhsReplay?.bestTargetNote2xxSignedReplay) {
+      return {
+        ...child.result,
+        verdict: 'xhs-auto-discovery-target-note-replay-confirmed',
+        primaryTarget: redactUrl(url.toString()),
+        effectiveTarget: redactUrl(candidate.url),
+        discoveredArtifact: join(childDir, 'result.json'),
+        initial: summarizeXhsRun(initial.result, outDir),
+        xhsDiscovery: discovery,
+        nextActions: ['promote discovered tokenized note URL into frontier-gate evidence', 'rerun frontier-gate --strict for release binding', 'track discovery hit rate across search/home/user landing pages'],
+      };
+    }
+  }
+  return { ...initial.result, xhsDiscovery: discovery };
 }
 
 async function runGeneric(url, outDir) {
@@ -1161,6 +1370,8 @@ const md = [
     `- web_api_hints=${result.webApiHints?.length || 0}`,
     `- anti_bot_signals=${result.antiBotSignals?.join(', ') || 'none'}`,
     `- browser=${JSON.stringify(result.browser)}`,
+    `- xhs_auto_discovery=${result.xhsDiscovery?.enabled ? `attempted=${result.xhsDiscovery.attempted} candidates=${result.xhsDiscovery.candidateCount || 0} attempts=${result.xhsDiscovery.attempts?.length || 0} effective=${result.effectiveTarget || 'none'}` : 'disabled'}`,
+    `- xhs_best_target=${result.xhsReplay?.bestTargetNote2xxSignedReplay ? `${result.xhsReplay.bestTargetNote2xxSignedReplay.endpointClass}:${result.xhsReplay.bestTargetNote2xxSignedReplay.method}:${result.xhsReplay.bestTargetNote2xxSignedReplay.status}:items=${result.xhsReplay.bestTargetNote2xxSignedReplay.structured?.noteItemCount || 0}` : 'none'}`,
     `- signed_replay=${result.xhsReplay?.attempted ? `${result.xhsReplay.status} code=${result.xhsReplay.jsonCode ?? 'none'} signed_headers=${(result.xhsReplay.signedHeaderNames || []).join(',')}` : 'not-attempted'}`,
     `- signature_trace signed_requests=${result.signatureTrace?.signedRequestCount || 0} bundles=${result.signatureTrace?.bundleHints?.length || 0} headers=${(result.signatureTrace?.observedHeaderNames || []).join(',') || 'none'}`,
   ] : [`- browser=${JSON.stringify(result.browser)}`]),
@@ -1176,6 +1387,8 @@ const md = [
     : profile === 'xiaohongshu-note'
       ? [
           ...(result.xhsReplay?.attempted ? [`- signed-replay status=${result.xhsReplay.status} jsonCode=${result.xhsReplay.jsonCode ?? 'none'} success=${result.xhsReplay.success ?? 'none'} signedHeaders=${(result.xhsReplay.signedHeaderNames || []).join(',')} url=${result.xhsReplay.url}`] : []),
+          ...(result.xhsDiscovery?.candidates || []).slice(0, 10).map((item) => `- discovery-candidate note=${item.noteId} token=${item.hasXsecToken} source=${item.source} xsecSource=${item.xsecSource || ''} rank=${item.rank} url=${item.url || item.redactedUrl}`),
+          ...(result.xhsDiscovery?.attempts || []).slice(0, 10).map((item) => `- discovery-attempt note=${item.candidate?.noteId || ''} verdict=${item.verdict} target2xx=${item.bestTargetNote2xx} endpoint=${item.endpointClass || ''} method=${item.method || ''} status=${item.status || item.replayStatus || ''} items=${item.noteItemCount || 0} artifact=${item.artifactDir}`),
           ...(result.signatureTrace?.bundleHints || []).slice(0, 12).map((hint) => `- signer-bundle hits=${hint.hits.join(',')} len=${hint.length || 0} sha=${hint.sha256 || ''} url=${hint.url}`),
           ...(result.signatureTrace?.apiTimeline || []).slice(0, 20).map((item) => `- api ${item.method || ''} status=${item.status ?? ''} signed=${(item.signatureHeaders || []).join(',')} url=${item.url}`),
           ...(result.webApiHints || []).slice(0, 30).map((u) => `- ${u}`),

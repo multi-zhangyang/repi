@@ -7,6 +7,7 @@ High-difficulty public-network reverse benchmark for real platforms. It focuses 
 ```bash
 node bench/recon-remote/real-platform/run.mjs https://www.bilibili.com/video/BV1odL76QE6B bilibili-video
 node bench/recon-remote/real-platform/run.mjs 'https://www.xiaohongshu.com/explore/66237c6e000000001c00893f' xiaohongshu-note
+RECON_XHS_AUTO_DISCOVER=1 node bench/recon-remote/real-platform/run.mjs https://www.xhs-download.org/zh xiaohongshu-note
 node bench/recon-remote/real-platform/run.mjs --self-test
 ```
 
@@ -15,7 +16,7 @@ Profiles:
 | Profile | Chain |
 |---|---|
 | `bilibili-video` | Extract BV/cid, call view/pagelist/playurl, rebuild WBI `w_rid` from `nav.wbi_img`, call signed `x/player/wbi/playurl`, classify DASH/durl candidates, probe CDN media URLs with HEAD/range, emit media probe matrix and deterministic WBI signer self-test. With `RECON_BROWSER=1` or `RECON_BILI_CDP=1`, also captures Chrome/CDP runtime, browser-emitted WBI signed requests, signer stack events, external JS bundle hints, and buvid/media URL runtime drift. |
-| `xiaohongshu-note` | Chrome/CDP runtime capture, extract note IDs, `/api/sns/web/*` hints, xsec/signature/anti-bot signals, rendered state/response bodies, signer bundle snippets, signed request timeline, runtime signer events, trigger bounded runtime probes for note/feed/search modules, replay a ranked ladder of captured signed GET/POST API requests with no-cookie and exact-cookie variants, classify generic signed 2xx web replay separately from eligible target note/feed/search-notes 2xx vs 461 verification/risk challenges, and emit first-divergence evidence. |
+| `xiaohongshu-note` | Chrome/CDP runtime capture, extract note IDs, `/api/sns/web/*` hints, xsec/signature/anti-bot signals, rendered state/response bodies, signer bundle snippets, signed request timeline, runtime signer events, trigger bounded runtime probes for note/feed/search modules, replay a ranked ladder of captured signed GET/POST API requests with no-cookie and exact-cookie variants, classify generic signed 2xx web replay separately from eligible target note/feed/search-notes 2xx vs 461 verification/risk challenges, and emit first-divergence evidence. With `RECON_XHS_AUTO_DISCOVER=1`, it can start from a public seed page, extract tokenized `xiaohongshu.com/explore/<note>` candidates from HTML/JSON/headers/POST bodies, then chain into XHS and replay the discovered target. |
 | `generic-cdp` | Chrome/CDP request/response/body/storage baseline and generic signature/header bundle trace for unknown platforms. |
 
 `--self-test` validates the embedded Bilibili WBI mixin table, signing normalizer, query ordering and deterministic `w_rid` hash without network access.
@@ -55,3 +56,13 @@ The output separates:
 - `seedInventory` / `dedupeCollisions`: selected and dropped seeds with method, body hash, endpoint class, and rank evidence.
 
 Search recommendation endpoints are treated as generic structured replay and cannot satisfy the note/feed frontier by themselves.
+
+## Xiaohongshu auto discovery
+
+Set `RECON_XHS_AUTO_DISCOVER=1` when the input is a landing/search/documentation page rather than a final note URL. The profile scans captured runtime state for tokenized `xiaohongshu.com/explore/<note_id>?xsec_token=...&xsec_source=...` candidates, ranks tokenized candidates above bare note IDs, and launches bounded child captures under:
+
+```text
+<artifact_dir>/discovery/<rank>-<note_id>/
+```
+
+The parent `result.json` records `xhsDiscovery.candidates`, `xhsDiscovery.attempts`, `effectiveTarget`, and `discoveredArtifact`. A successful chain returns `xhs-auto-discovery-target-note-replay-confirmed` while keeping raw `xsec_token`, cookies, and signed headers redacted in written artifacts.

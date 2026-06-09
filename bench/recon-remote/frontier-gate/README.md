@@ -46,3 +46,13 @@ result.json
 ## Current frontier interpretation
 
 A passing Bilibili gate means runtime WBI request/bundle evidence exists. Xiaohongshu can earn partial frontier credit for signed structured 2xx web API replay, but it does not pass until an eligible target endpoint (`h5-note-info`, `web-feed`, `web-api-note`, `web-note-or-feed`, or `web-search-notes`) returns structured note/feed 2xx. Search recommendation, `user/me`, system config, board, and other generic 2xx endpoints are explicitly excluded from the note/feed pass condition. Douyin can earn partial credit when the browser observes a signed 2xx aweme API body, but it does not pass until `runtimeApiReplay.bestReplayedStructuredApi` proves an independent structured 2xx replay. `frontier-incomplete` means the latest evidence is missing one or more gates; inspect each gate's evidence fields instead of assuming a fixed unresolved platform set.
+
+For Xiaohongshu regression, prefer an auto-discovery seed over a hand-maintained note URL:
+
+```bash
+RECON_BROWSER=1 RECON_XHS_AUTO_DISCOVER=1 RECON_XHS_DISCOVERY_LIMIT=2 \
+  RECON_TIMEOUT_MS=45000 RECON_QUIET_MS=5000 RECON_XHS_PROBE_WAIT_MS=15000 \
+  node bench/recon-remote/real-platform/run.mjs https://www.xhs-download.org/zh xiaohongshu-note
+```
+
+The gate accepts the resulting `xhs-auto-discovery-target-note-replay-confirmed` evidence only when the chained XHS child run still produces eligible target note/feed structured 2xx replay.
