@@ -5,7 +5,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 
-const target = process.env.RECON_TARGET_URL || process.argv[2];
+const selfTestOnly = process.argv.includes('--self-test') || process.env.RECON_SELF_TEST === '1';
+const target = selfTestOnly ? 'https://example.invalid/' : (process.env.RECON_TARGET_URL || process.argv[2]);
 const profileArg = String(process.env.RECON_PROFILE || process.argv[3] || 'auto').toLowerCase();
 const probeLimit = Number(process.env.RECON_PROBE_LIMIT || 16);
 const timeoutMs = Number(process.env.RECON_TIMEOUT_MS || 35000);
@@ -15,8 +16,8 @@ const browserMode = String(process.env.RECON_BROWSER || 'auto').toLowerCase();
 const chromeBin = process.env.RECON_CHROME_BIN || process.env.CHROME_BIN || '';
 const userAgent = process.env.RECON_USER_AGENT || 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36 Pi-RECON-real-platform';
 
-if (!target || target === '--help' || target === '-h') {
-  console.log(`Pi-RECON real platform hard benchmark\n\nUsage:\n  node bench/recon-remote/real-platform/run.mjs <url> [auto|bilibili-video|xiaohongshu-note|generic-cdp]\n\nExamples:\n  node bench/recon-remote/real-platform/run.mjs https://www.bilibili.com/video/BV1odL76QE6B bilibili-video\n  node bench/recon-remote/real-platform/run.mjs 'https://www.xiaohongshu.com/explore/66237c6e000000001c00893f' xiaohongshu-note\n\nEnvironment:\n  RECON_BROWSER=auto|1|0\n  RECON_PROBE_LIMIT=16\n  RECON_TIMEOUT_MS=35000\n  RECON_QUIET_MS=2500\n  RECON_MAX_BODY_BYTES=500000\n  RECON_CHROME_BIN=<path>\n\nOutput:\n  .pi/evidence/remote/real-platform/<profile>/<host>/<timestamp>/\n`);
+if (!selfTestOnly && (!target || target === '--help' || target === '-h')) {
+  console.log(`Pi-RECON real platform hard benchmark\n\nUsage:\n  node bench/recon-remote/real-platform/run.mjs <url> [auto|bilibili-video|xiaohongshu-note|generic-cdp]\n  node bench/recon-remote/real-platform/run.mjs --self-test\n\nExamples:\n  node bench/recon-remote/real-platform/run.mjs https://www.bilibili.com/video/BV1odL76QE6B bilibili-video\n  node bench/recon-remote/real-platform/run.mjs 'https://www.xiaohongshu.com/explore/66237c6e000000001c00893f' xiaohongshu-note\n\nEnvironment:\n  RECON_BROWSER=auto|1|0\n  RECON_PROBE_LIMIT=16\n  RECON_TIMEOUT_MS=35000\n  RECON_QUIET_MS=2500\n  RECON_MAX_BODY_BYTES=500000\n  RECON_CHROME_BIN=<path>\n\nOutput:\n  .pi/evidence/remote/real-platform/<profile>/<host>/<timestamp>/\n`);
   process.exit(target ? 0 : 2);
 }
 
@@ -70,6 +71,13 @@ function redactUrl(value) {
   } catch {
     return String(value || '').replace(/(token|w_rid|buvid|xsec_token|msToken|a_bogus)=([^&\s]+)/gi, '$1=<redacted>');
   }
+}
+
+function redactText(value) {
+  return String(value || '')
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '<redacted.jwt>')
+    .replace(/((?:authorization|cookie|token|session|csrf|xsrf|xsec_token|web_session|msToken|a_bogus|w_rid|upsig|trid|hdnts|deadline|a1|b1|x-s-common|x-s|x-t)[\"']?\s*[:=]\s*[\"']?)([^\"'&\s<>\\]+)/gi, '$1<redacted>')
+    .replace(/((?:token|xsec_token|web_session|msToken|a_bogus|w_rid|upsig|trid|hdnts|deadline|a1|b1)=)([^&\s<>\"']+)/gi, '$1<redacted>');
 }
 
 async function fetchText(url, options = {}) {
@@ -168,6 +176,40 @@ function signBiliWbi(params, mixinKey, wts = Math.floor(Date.now() / 1000)) {
   return { query: `${query}&w_rid=${wRid}`, wRid, wts };
 }
 
+function biliWbiSelfTest() {
+  const raw = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
+  const mixinKey = biliMixinKeyEncTab.map((index) => raw[index] || '').join('').slice(0, 32);
+  const signed = signBiliWbi({ bvid: 'BV1xx411c7mD', cid: 123456, qn: 80, fnval: 4048, fourk: 1 }, mixinKey, 1700000000);
+  const cases = [
+    { name: 'mixin-key-table', ok: mixinKey === 'UVsc1ixGpYkF6dTJBRfXHjQtDCoNmMPn', actualSha256: sha256(mixinKey).slice(0, 16) },
+    { name: 'wbi-normalize-and-md5', ok: signed.wRid === 'dd3a8198427ac661d88d3280c8f8355d', actualSha256: sha256(signed.wRid).slice(0, 16) },
+    { name: 'query-order', ok: signed.query.startsWith('bvid=BV1xx411c7mD&cid=123456&fnval=4048&fourk=1&qn=80&wts=1700000000&'), actualSha256: sha256(signed.query).slice(0, 16) },
+  ];
+  return { ok: cases.every((item) => item.ok), cases };
+}
+
+function summarizeMediaProbeMatrix(probes = []) {
+  const byKind = {};
+  const byStatus = {};
+  const hostClasses = {};
+  let reachableMedia = 0;
+  let range206 = 0;
+  for (const probe of probes || []) {
+    byKind[probe.kind || 'unknown'] = (byKind[probe.kind || 'unknown'] || 0) + 1;
+    if (probe.probe?.classification?.media && probe.probe?.classification?.reachable) reachableMedia += 1;
+    for (const attempt of probe.probe?.attempts || []) {
+      byStatus[String(attempt.status)] = (byStatus[String(attempt.status)] || 0) + 1;
+      if (Number(attempt.status) === 206 || /bytes/i.test(attempt.headers?.['content-range'] || '')) range206 += 1;
+    }
+    try {
+      const host = new URL(probe.probe?.originalUrl || probe.url || '').hostname;
+      const key = host.includes('bilivideo') ? 'bilivideo' : host.split('.').slice(-2).join('.') || 'unknown';
+      hostClasses[key] = (hostClasses[key] || 0) + 1;
+    } catch {}
+  }
+  return { total: probes.length, reachableMedia, range206, byKind, byStatus, hostClasses };
+}
+
 async function runBilibili(url, outDir) {
   const page = await fetchText(url.toString(), { headers: { referer: 'https://www.bilibili.com/' } });
   let finalUrl = url.toString();
@@ -202,6 +244,7 @@ async function runBilibili(url, outDir) {
   const strong = probes.filter((p) => p.probe.classification.media && p.probe.classification.reachable);
   const wbiOk = wbiPlayurl?.json?.code === 0;
   const verdict = view.json?.code === 0 && wbiOk && strong.length ? 'bilibili-wbi-media-api-confirmed' : view.json?.code === 0 && playurls.some((p) => p.json?.code === 0) && strong.length ? 'bilibili-media-api-confirmed' : media.length ? 'bilibili-media-candidates-needs-replay' : 'bilibili-no-media-candidate';
+  const selfTest = biliWbiSelfTest();
   return {
     verdict,
     bvid,
@@ -216,6 +259,8 @@ async function runBilibili(url, outDir) {
     playurls: playurls.map((p) => ({ fnval: p.fnval, signed: Boolean(p.signed), status: p.status, code: p.json?.code, quality: p.json?.data?.quality, accept_quality: p.json?.data?.accept_quality, accept_description: p.json?.data?.accept_description, hasDash: Boolean(p.json?.data?.dash), durlCount: p.json?.data?.durl?.length || 0, wts: p.wts, wRidSha256: p.wRidSha256 })),
     mediaCandidates: media.slice(0, 80).map((m) => ({ ...m, url: redactUrl(m.url) })),
     probes,
+    mediaProbeMatrix: summarizeMediaProbeMatrix(probes),
+    wbiRegression: { selfTest, signedEndpoint: Boolean(wbiPlayurl), signedParamNames: wbiPlayurl ? ['bvid', 'cid', 'fnval', 'fourk', 'qn', 'wts', 'w_rid'] : [] },
     nextActions: ['bind unsigned+WBI playurl API and media HEAD/range probes into re_replayer', 'diff fnval=4048/80/16/0 media capability', 'monitor nav wbi_img/mixin-key drift and w_rid rebuild'],
   };
 }
@@ -347,10 +392,93 @@ async function captureCdp(url, outDir) {
 }
 
 
+function compactSnippet(text, term, radius = 140) {
+  const source = String(text || '');
+  const index = source.toLowerCase().indexOf(String(term || '').toLowerCase());
+  if (index < 0) return '';
+  const start = Math.max(0, index - radius);
+  const end = Math.min(source.length, index + String(term).length + radius);
+  return redactText(source.slice(start, end)).replace(/\s+/g, ' ').slice(0, radius * 2 + 80);
+}
+
+function analyzeSignatureTrace(cdp, platform = 'generic') {
+  const terms = platform === 'xhs'
+    ? ['x-s-common', 'x-s', 'x-t', 'xsec_token', 'web_session', 'a1', 'b1', 'captcha', 'verify', 'webmsxyw', 'redmoons']
+    : ['x-s', 'x-t', 'token', 'signature', 'verify'];
+  const headerRe = platform === 'xhs' ? /^x-s$|^x-t$|^x-s-common$|^x-b3-traceid|^x-xray-traceid/i : /signature|token|x-/i;
+  const requests = cdp.requests || [];
+  const responses = cdp.responses || [];
+  const bodies = cdp.bodies || [];
+  const signedRequests = requests.filter((request) => Object.keys(request.headers || {}).some((name) => headerRe.test(name)));
+  const apiTimeline = requests
+    .filter((request) => platform === 'xhs' ? /\/api\/sns\/(?:web|h5)\//i.test(request.rawUrl || request.url || '') : /\/api\//i.test(request.rawUrl || request.url || ''))
+    .slice(0, 80)
+    .map((request, index) => {
+      const response = responses.find((item) => item.id === request.id);
+      return {
+        index,
+        id: request.id,
+        type: request.type,
+        method: request.method,
+        url: redactUrl(request.rawUrl || request.url),
+        status: response?.status,
+        mimeType: response?.mimeType,
+        signatureHeaders: Object.keys(request.headers || {}).filter((name) => headerRe.test(name)).sort(),
+      };
+    });
+  const bundleHints = bodies
+    .filter((body) => /javascript|ecmascript|text\/plain/i.test(body.mimeType || '') || /\.m?js(?:\?|$)/i.test(body.url || ''))
+    .map((body) => {
+      const bodyText = String(body.text || '');
+      const hits = unique(terms.filter((term) => bodyText.toLowerCase().includes(term.toLowerCase())));
+      if (!hits.length) return null;
+      return {
+        url: redactUrl(body.url),
+        length: body.length,
+        sha256: body.sha256,
+        hits,
+        snippets: hits.slice(0, 4).map((term) => ({ term, snippet: compactSnippet(bodyText, term) })),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 20);
+  const observedHeaderNames = unique(signedRequests.flatMap((request) => Object.keys(request.headers || {}).filter((name) => headerRe.test(name)))).sort();
+  const storageKeyHints = unique(Object.entries(cdp.storage || {})
+    .flatMap(([area, value]) => typeof value === 'object' && value ? Object.keys(value).map((key) => `${area}.${key}`) : [])
+    .filter((key) => terms.some((term) => key.toLowerCase().includes(term.toLowerCase()))))
+    .slice(0, 40);
+  return {
+    platform,
+    observedHeaderNames,
+    signedRequestCount: signedRequests.length,
+    signedRequests: signedRequests.slice(0, 40).map((request) => ({ id: request.id, type: request.type, method: request.method, url: redactUrl(request.rawUrl || request.url), headerNames: Object.keys(request.headers || {}).filter((name) => headerRe.test(name)).sort() })),
+    apiTimeline,
+    bundleHints,
+    storageKeyHints,
+  };
+}
+
+function stripStorage(storage = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(storage || {})) {
+    if (key === 'cookies') out[key] = value ? '<redacted>' : '';
+    else if (key === 'html') out[key] = redactText(value);
+    else if (typeof value === 'string') out[key] = redactText(value).slice(0, maxBodyBytes);
+    else if (value && typeof value === 'object') {
+      out[key] = {};
+      for (const [innerKey, innerValue] of Object.entries(value)) out[key][innerKey] = redactText(String(innerValue || '')).slice(0, 4000);
+    } else out[key] = value;
+  }
+  return out;
+}
+
 function stripRuntimeSecrets(cdp) {
   return {
     ...cdp,
-    requests: (cdp.requests || []).map(({ rawUrl, replayHeaders, ...request }) => request),
+    storage: stripStorage(cdp.storage || {}),
+    requests: (cdp.requests || []).map(({ rawUrl, replayHeaders, ...request }) => ({ ...request, url: redactUrl(request.url) })),
+    responses: (cdp.responses || []).map((response) => ({ ...response, url: redactUrl(response.url) })),
+    bodies: (cdp.bodies || []).map((body) => ({ ...body, url: redactUrl(body.url), text: redactText(body.text || '').slice(0, maxBodyBytes) })),
   };
 }
 
@@ -360,6 +488,8 @@ async function replayXhsReadOnly(cdp) {
   if (!seed) return { attempted: false, reason: 'no read-only XHS API GET seed captured' };
   const headers = { ...(seed.replayHeaders || {}) };
   for (const key of Object.keys(headers)) if (/^(host|content-length|accept-encoding|connection|sec-fetch-|cookie)$/i.test(key)) delete headers[key];
+  const observedResponse = (cdp.responses || []).find((response) => response.id === seed.id);
+  const observedBody = (cdp.bodies || []).find((body) => body.id === seed.id);
   try {
     const response = await fetch(seed.rawUrl || seed.url, { method: 'GET', redirect: 'manual', headers });
     const buffer = Buffer.from(await response.arrayBuffer());
@@ -375,9 +505,23 @@ async function replayXhsReadOnly(cdp) {
       sha256: sha256(buffer).slice(0, 24),
       jsonCode: parsed?.code,
       success: parsed?.success,
+      seed: {
+        id: seed.id,
+        endpointClass: /\/api\/sns\/h5\//i.test(seed.rawUrl || seed.url || '') ? 'h5-note-info' : 'web-api',
+        observedStatus: observedResponse?.status,
+        observedMimeType: observedResponse?.mimeType,
+        observedBodySha256: observedBody?.sha256,
+      },
+      replayDivergence: observedResponse ? {
+        statusChanged: Number(observedResponse.status) !== Number(response.status),
+        observedStatus: observedResponse.status,
+        replayStatus: response.status,
+        observedBodySha256: observedBody?.sha256,
+        replayBodySha256: sha256(buffer).slice(0, 24),
+      } : undefined,
       headerNames,
       signedHeaderNames: headerNames.filter((name) => /^x-s$|^x-t$|^x-s-common$|^x-b3-traceid|^x-xray-traceid/i.test(name)),
-      bodyHead: text.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '<redacted.jwt>'),
+      bodyHead: redactText(text),
     };
   } catch (error) {
     return { attempted: true, url: redactUrl(seed.rawUrl || seed.url), status: 'error', error: error instanceof Error ? error.message : String(error) };
@@ -398,6 +542,8 @@ function analyzeXhs(url, cdp) {
 async function runXhs(url, outDir) {
   const cdp = await captureCdp(url, outDir);
   const xhsReplay = await replayXhsReadOnly(cdp);
+  const signatureTrace = analyzeSignatureTrace(cdp, 'xhs');
+  if (xhsReplay.replayDivergence) signatureTrace.replayDivergence = xhsReplay.replayDivergence;
   const safeCdp = stripRuntimeSecrets(cdp);
   await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(safeCdp, null, 2)}\n`);
   if (safeCdp.storage?.html) await writeFile(join(outDir, 'browser.html'), safeCdp.storage.html);
@@ -408,13 +554,20 @@ async function runXhs(url, outDir) {
     : xhsReplay.attempted && (replayStatus === 461 || xhsReplay.headers?.verifytype)
       ? 'xhs-signed-api-challenge-reproduced'
       : analysis.verdict;
-  return { ...analysis, verdict, xhsReplay, browserArtifact: join(outDir, 'browser.json'), nextActions: ['classify /api/sns/web/* endpoints and required x-s/x-t/x-s-common headers', 'extract note id/xsec_token from rendered state', 'replay read-only endpoints with captured header shape if present'] };
+  return { ...analysis, verdict, xhsReplay, signatureTrace, browserArtifact: join(outDir, 'browser.json'), nextActions: ['classify /api/sns/web/* endpoints and required x-s/x-t/x-s-common headers', 'trace signer bundle snippets for x-s/x-t/x-s-common generation', 'compare captured response vs replay divergence before rebuilding signer'] };
 }
 
 async function runGeneric(url, outDir) {
   const cdp = await captureCdp(url, outDir);
+  const signatureTrace = analyzeSignatureTrace(cdp, 'generic');
   await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(stripRuntimeSecrets(cdp), null, 2)}\n`);
-  return { verdict: cdp.responses?.length ? 'generic-cdp-captured' : 'generic-cdp-no-response', browser: { requests: cdp.requests.length, responses: cdp.responses.length, bodies: cdp.bodies.length, failures: cdp.failures.length, errors: cdp.errors }, browserArtifact: join(outDir, 'browser.json'), nextActions: ['inspect browser.json for APIs, signatures, storage, websocket anchors'] };
+  return { verdict: cdp.responses?.length ? 'generic-cdp-captured' : 'generic-cdp-no-response', browser: { requests: cdp.requests.length, responses: cdp.responses.length, bodies: cdp.bodies.length, failures: cdp.failures.length, errors: cdp.errors }, signatureTrace, browserArtifact: join(outDir, 'browser.json'), nextActions: ['inspect browser.json for APIs, signatures, storage, websocket anchors'] };
+}
+
+if (selfTestOnly) {
+  const selfTest = biliWbiSelfTest();
+  console.log(JSON.stringify({ ok: selfTest.ok, profile: 'bilibili-video', component: 'wbi-signer', selfTest }, null, 2));
+  process.exit(selfTest.ok ? 0 : 1);
 }
 
 const url = assertHttpUrl(target);
@@ -444,12 +597,14 @@ const md = [
     `- view_code=${result.view?.code} nav_code=${result.nav?.code} wbi_img=${result.nav?.hasWbiImg} wbi_mixin_sha=${result.nav?.mixinKeySha256 || 'none'}`,
     `- playurl_profiles=${(result.playurls || []).map((p) => `${p.signed ? 'wbi-' : ''}${p.fnval}:${p.code}:q${p.quality}`).join(', ')}`,
     `- media_candidates=${result.mediaCandidates?.length || 0} reachable_media_probes=${(result.probes || []).filter((p) => p.probe.classification.media && p.probe.classification.reachable).length}`,
+    `- wbi_selftest=${result.wbiRegression?.selfTest?.ok} media_probe_matrix=${JSON.stringify(result.mediaProbeMatrix || {})}`,
   ] : profile === 'xiaohongshu-note' ? [
     `- note_ids=${result.noteIds?.join(', ') || 'none'}`,
     `- web_api_hints=${result.webApiHints?.length || 0}`,
     `- anti_bot_signals=${result.antiBotSignals?.join(', ') || 'none'}`,
     `- browser=${JSON.stringify(result.browser)}`,
     `- signed_replay=${result.xhsReplay?.attempted ? `${result.xhsReplay.status} code=${result.xhsReplay.jsonCode ?? 'none'} signed_headers=${(result.xhsReplay.signedHeaderNames || []).join(',')}` : 'not-attempted'}`,
+    `- signature_trace signed_requests=${result.signatureTrace?.signedRequestCount || 0} bundles=${result.signatureTrace?.bundleHints?.length || 0} headers=${(result.signatureTrace?.observedHeaderNames || []).join(',') || 'none'}`,
   ] : [`- browser=${JSON.stringify(result.browser)}`]),
   '',
   '## Probe / API Matrix',
@@ -461,6 +616,8 @@ const md = [
     : profile === 'xiaohongshu-note'
       ? [
           ...(result.xhsReplay?.attempted ? [`- signed-replay status=${result.xhsReplay.status} jsonCode=${result.xhsReplay.jsonCode ?? 'none'} success=${result.xhsReplay.success ?? 'none'} signedHeaders=${(result.xhsReplay.signedHeaderNames || []).join(',')} url=${result.xhsReplay.url}`] : []),
+          ...(result.signatureTrace?.bundleHints || []).slice(0, 12).map((hint) => `- signer-bundle hits=${hint.hits.join(',')} len=${hint.length || 0} sha=${hint.sha256 || ''} url=${hint.url}`),
+          ...(result.signatureTrace?.apiTimeline || []).slice(0, 20).map((item) => `- api ${item.method || ''} status=${item.status ?? ''} signed=${(item.signatureHeaders || []).join(',')} url=${item.url}`),
           ...(result.webApiHints || []).slice(0, 30).map((u) => `- ${u}`),
         ]
       : []),

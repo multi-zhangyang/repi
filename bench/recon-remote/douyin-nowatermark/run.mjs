@@ -608,6 +608,97 @@ function textSourcesFromBrowser(browser) {
   return sources;
 }
 
+function redactUrlParams(value) {
+  try {
+    const url = new URL(String(value || ''));
+    for (const key of [...url.searchParams.keys()]) {
+      if (/token|msToken|a_bogus|webid|web_id|device_id|user_cip|verifyFp|fp|ttwid|signature|x-bogus|sec_user|sec_uid|reflow_id|passport|session|csrf|xsrf/i.test(key)) url.searchParams.set(key, 'REDACTED');
+    }
+    return url.toString();
+  } catch {
+    return String(value || '').replace(/((?:msToken|a_bogus|webid|web_id|device_id|user_cip|verifyFp|fp|ttwid|_signature|X-Bogus|sec_uid|reflow_id)=)[^&\s"']+/gi, '$1REDACTED');
+  }
+}
+
+function redactSnippet(value) {
+  return String(value || '')
+    .replace(/((?:msToken|a_bogus|webid|verifyFp|fp|ttwid|_signature|X-Bogus|token|cookie)[\"']?\s*[:=]\s*[\"']?)([^\"'&\s<>\\]+)/gi, '$1<redacted>')
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '<redacted.jwt>');
+}
+
+function compactSnippet(text, term, radius = 120) {
+  const source = String(text || '');
+  const index = source.toLowerCase().indexOf(String(term || '').toLowerCase());
+  if (index < 0) return '';
+  return redactSnippet(source.slice(Math.max(0, index - radius), Math.min(source.length, index + String(term).length + radius))).replace(/\s+/g, ' ').slice(0, radius * 2 + 80);
+}
+
+function analyzeSignatureSurface(sources, urls, browserArtifact, apiHypotheses) {
+  const terms = ['a_bogus', 'msToken', 'webid', 'web_id', 'device_id', 'verifyFp', 'fp', 'ttwid', 's_v_web_id', 'X-Bogus', '_signature', 'sec_user_id', 'sec_uid', 'passport_csrf_token', 'odin_tt'];
+  const urlParamMatrix = [];
+  for (const candidate of urls || []) {
+    try {
+      const parsed = new URL(candidate);
+      const hits = [...parsed.searchParams.keys()].filter((key) => terms.some((term) => key.toLowerCase() === term.toLowerCase()));
+      if (hits.length) urlParamMatrix.push({ url: redactUrlParams(candidate), params: hits.sort() });
+    } catch {}
+  }
+  const joined = sources.map((source) => source.text || '').join('\n');
+  const signals = unique(terms.filter((term) => new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(joined) || urlParamMatrix.some((item) => item.params.some((p) => p.toLowerCase() === term.toLowerCase()))));
+  const runtimeFetchHits = unique((browserArtifact?.storage?.piReconFetchLog || [])
+    .map((item) => item.url)
+    .filter((url) => /msToken|a_bogus|webid|verifyFp|X-Bogus|aweme|detail|iteminfo|feed|post/i.test(url || ''))
+    .map(redactUrlParams))
+    .slice(0, 60);
+  const bundleHints = sources
+    .filter((source) => /browser\.body:.*(?:\.m?js|javascript|douyin|secsdk|webmssdk|slardar|security)/i.test(source.name))
+    .map((source) => {
+      const hits = unique(terms.filter((term) => source.text.toLowerCase().includes(term.toLowerCase())));
+      if (!hits.length) return null;
+      return {
+        source: redactUrlParams(source.name.replace(/^browser\.body:/, '')),
+        sha256: sha256(source.text).slice(0, 24),
+        length: source.text.length,
+        hits,
+        snippets: hits.slice(0, 5).map((term) => ({ term, snippet: compactSnippet(source.text, term) })),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 20);
+  const endpointParamMatrix = unique((apiHypotheses || []).map((item) => {
+    const parsed = new URL(item.url);
+    return JSON.stringify({ reason: item.reason, endpoint: `${parsed.origin}${parsed.pathname}`, params: [...parsed.searchParams.keys()].sort() });
+  })).map((item) => JSON.parse(item));
+  return {
+    signals,
+    antiBotSignals: signals.filter((signal) => /a_bogus|msToken|webid|verifyFp|fp|ttwid|X-Bogus|_signature|passport|odin/i.test(signal)),
+    urlParamMatrix: urlParamMatrix.slice(0, 80),
+    runtimeFetchHits,
+    bundleHints,
+    endpointParamMatrix,
+  };
+}
+
+function sanitizeBrowserArtifactForDisk(browser) {
+  if (!browser) return browser;
+  const redactObject = (value) => {
+    if (Array.isArray(value)) return value.map(redactObject);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, /cookie|token|session|csrf|passport|ttwid|msToken|a_bogus|webid|web_id|device_id|sec_uid|reflow_id|verifyFp/i.test(key) ? '<redacted>' : redactObject(inner)]));
+    return typeof value === 'string' ? redactSnippet(redactUrlParams(value)).slice(0, 200000) : value;
+  };
+  return {
+    ...browser,
+    target: redactUrlParams(browser.target),
+    finalUrl: redactUrlParams(browser.finalUrl),
+    requests: (browser.requests || []).map((request) => ({ ...request, url: redactUrlParams(request.url), documentURL: redactUrlParams(request.documentURL), headers: sanitizeHeaders(request.headers || {}) })),
+    responses: (browser.responses || []).map((response) => ({ ...response, url: redactUrlParams(response.url), headers: sanitizeHeaders(response.headers || {}) })),
+    websockets: (browser.websockets || []).map((ws) => ({ ...ws, url: redactUrlParams(ws.url) })),
+    bodies: (browser.bodies || []).map((body) => ({ ...body, url: redactUrlParams(body.url), text: redactSnippet(body.text || '').slice(0, 500000) })),
+    storage: redactObject(browser.storage || {}),
+    html: redactSnippet(browser.html || '').slice(0, maxBodyBytes),
+  };
+}
+
 function shouldRunBrowser(prelim) {
   if (browserMode === '0' || browserMode === 'false' || browserMode === 'off') return false;
   if (browserMode === '1' || browserMode === 'true' || browserMode === 'on') return true;
@@ -642,8 +733,9 @@ const prelim = buildPrelim(`${staticResult.body}\n${staticResult.finalUrl}`, uni
 let browserArtifact = null;
 if (shouldRunBrowser(prelim)) {
   browserArtifact = await captureChromeCdp(staticResult.finalUrl || targetUrl, outDir);
-  await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(browserArtifact, null, 2)}\n`);
-  if (browserArtifact?.html) await writeFile(join(outDir, 'browser.html'), browserArtifact.html);
+  const safeBrowserArtifact = sanitizeBrowserArtifactForDisk(browserArtifact);
+  await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(safeBrowserArtifact, null, 2)}\n`);
+  if (safeBrowserArtifact?.html) await writeFile(join(outDir, 'browser.html'), safeBrowserArtifact.html);
 }
 
 const sources = [
@@ -675,6 +767,7 @@ const mediaCandidates = urls
   .filter((item) => item.score > 0)
   .sort((a, b) => b.score - a.score || a.url.localeCompare(b.url));
 const hypotheses = buildTransformHypotheses(urls);
+const signatureSurface = analyzeSignatureSurface(sources, urls, browserArtifact, apiHypotheses);
 const primaryProbeBudget = Math.max(4, Math.ceil(probeLimit / 2));
 const probeTargets = unique([
   ...mediaCandidates.slice(0, primaryProbeBudget).map((x) => x.url),
@@ -723,6 +816,7 @@ const json = {
   stateHints: stateHints.slice(0, 80),
   apiHypotheses: apiHypotheses.slice(0, 20),
   apiProbeResults: apiProbeResults.map((item) => ({ ...item, bodyHead: item.bodyHead ? item.bodyHead.slice(0, 500) : item.bodyHead })),
+  signatureSurface,
   mediaCandidates: mediaCandidates.slice(0, 100),
   transformHypotheses: hypotheses.slice(0, 60),
   probes: classified,
@@ -762,6 +856,12 @@ const md = [
   '',
   '## API endpoint hypotheses',
   ...(apiHypotheses.slice(0, 10).map((item) => `- ${item.reason}: ${item.url}`) || ['- none']),
+  '',
+  '## Signature / anti-bot surface',
+  `signals: ${signatureSurface.signals.join(', ') || 'none'}`,
+  `runtime_fetch_hits: ${signatureSurface.runtimeFetchHits.length}`,
+  ...(signatureSurface.urlParamMatrix.slice(0, 15).map((item) => `- params=${item.params.join(',')} url=${item.url}`) || ['- no signed query params observed']),
+  ...(signatureSurface.bundleHints.slice(0, 10).map((hint) => `- bundle hits=${hint.hits.join(',')} len=${hint.length} sha=${hint.sha256} source=${hint.source}`) || ['- no signer bundle hints']),
   '',
   '## Top media candidates',
   ...(mediaCandidates.slice(0, 25).map((item) => `- score=${item.score} ${item.url}`) || ['- none']),

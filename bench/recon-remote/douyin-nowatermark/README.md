@@ -1,6 +1,6 @@
 # Douyin no-watermark live benchmark
 
-A live Pi-RECON benchmark for short-video media URL reverse analysis. Given a Douyin share/video URL, the harness records redirect behavior, captures browser/CDP runtime traffic when static extraction is weak, extracts `aweme_id` / media IDs / state JSON hints, ranks media URL candidates, builds `playwm -> play` style no-watermark hypotheses, and verifies candidates with `HEAD` or `Range: bytes=0-0` probes.
+A live Pi-RECON benchmark for short-video media URL reverse analysis. Given a Douyin share/video URL, the harness records redirect behavior, captures browser/CDP runtime traffic when static extraction is weak, extracts `aweme_id` / media IDs / state JSON hints, inventories `a_bogus` / `msToken` / webid / `X-Bogus` style anti-bot parameters, records signer-bundle hints, ranks media URL candidates, builds `playwm -> play` style no-watermark hypotheses, and verifies candidates with `HEAD` or `Range: bytes=0-0` probes.
 
 It writes evidence only under `.pi/evidence/remote/douyin-nowatermark/`; those runtime artifacts are git-ignored.
 
