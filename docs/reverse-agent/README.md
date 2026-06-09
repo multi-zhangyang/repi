@@ -279,7 +279,7 @@ agent-dogfood 以 `--plan-json --plan-only` 预览；runtime 层已经让 `re_sw
 当前状态：`re_swarm` 已写入 `planCoverage` / `releaseGateMetadata`，`re_supervisor`
 已把 `claimGatePolicy` / `claimGateResult` 变成硬门禁，`gate:claim-release` 已生成机器可读
 strict marker，failure/repair ledger 已接收 runtime failed|blocked rows 并回流 operator /
-proof-loop；agent-dogfood 已写 per-attempt subagent runtime manifest，compound/role retry 已输出 canonical failure/repair rows。通用 re_swarm 独立子会话 runtime、更多 cross-session/multi-compact 负例和 runtime claim ledger 属于可选继续硬化项，不影响当前专业组织 agent 使用。
+proof-loop；agent-dogfood 已写 per-attempt subagent runtime manifest 和 runtime claim-ledger hash chain，compound/role retry 已输出 canonical failure/repair rows。通用 re_swarm 独立子会话 runtime、更多 cross-session/multi-compact 负例和 compound runtime claim ledger 属于可选继续硬化项，不影响当前专业组织 agent 使用。
 
 ## Reflection/evolution 闭环
 

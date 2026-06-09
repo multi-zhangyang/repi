@@ -486,9 +486,9 @@ const REQUIREMENTS = [
 			},
 			{
 				id: "parallel_role_gate_matrix",
-				description: "并行 dogfood runner 已记录 roleGateMatrix、toolResultsCaptured、synthesizerReconciled 等运行级分工验证信号。",
+				description: "并行 dogfood runner 已记录 roleGateMatrix、runtime claim ledger、toolResultsCaptured、synthesizerReconciled 等运行级分工验证信号。",
 				files: ["bench/recon-remote/agent-dogfood/parallel-run.mjs"],
-				markers: ["roleGateMatrix", "synthesizerReconciled", "toolResultsCaptured", "antiSelfDelusion"],
+				markers: ["roleGateMatrix", "synthesizerReconciled", "toolResultsCaptured", "antiSelfDelusion", "ClaimLedgerEventV1", "claim-ledger.jsonl", "runtimeClaimLedgerCaptured"],
 			},
 			{
 				id: "supervisor_claim_gate_policy",
@@ -533,13 +533,13 @@ const REQUIREMENTS = [
 			},
 		],
 		hardeningNeeded: [
-			"把 role/compound runtime 的 claim ledger 写入从 hard-eval 离线链扩展到真实子会话执行态。",
+			"把 runtime claim ledger 从 agent-dogfood 扩展到通用 re_swarm/compound 子会话执行态。",
 			"每个 proven/final_pass claim 继续强制绑定 artifact sha256、JSON query、verifier pass、无 unresolved adversary challenge。",
 			"synthesizer 输出继续扩展 conflict table：claimIds、冲突主题、胜出证据、降级原因、未解决冲突。",
 		],
 		recommendedWork: [
 			"保持 hard-eval claim ledger 与 gate:claim-release marker 作为 release 级门禁。",
-			"继续把同一 ledger schema 扩展到独立 sub-agent/session runtime。",
+			"继续把同一 ledger schema 扩展到通用 re_swarm 独立 sub-agent/session runtime。",
 			"在 claim gap 修复后重新运行 gate:claim-release 生成 pass marker，再进入 re_compiler final。",
 		],
 	},
@@ -719,7 +719,7 @@ function buildManifest(root) {
 		auditSelf,
 		controlPlaneContractAudit,
 		topAutonomousDefinition: false,
-		topAutonomousDefinitionReason: "核心组织链路、agent-dogfood subagent runtime manifest、ContextPackV2 exact resume marker/negative fixtures/closure gate、strict failure/repair fixture、runtime failure/repair ledger hooks、compound/role retry failure-repair 输出、strict claim release marker 和 supervisor/compiler/complete final gate 已可用；通用 re_swarm 独立子会话 runtime 与 cross-session resume 负例仍可继续硬化。",
+		topAutonomousDefinitionReason: "核心组织链路、agent-dogfood subagent runtime manifest 与 runtime claim ledger、ContextPackV2 exact resume marker/negative fixtures/closure gate、strict failure/repair fixture、runtime failure/repair ledger hooks、compound/role retry failure-repair 输出、strict claim release marker 和 supervisor/compiler/complete final gate 已可用；通用 re_swarm 独立子会话 runtime 与 cross-session resume 负例仍可继续硬化。",
 		pillars,
 		notYetTopAutonomousDefinition: hardeningItems,
 		recommendedNonTestWorkOrder: [

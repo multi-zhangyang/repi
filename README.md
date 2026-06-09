@@ -59,7 +59,7 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - `memory/compaction-resume-ledger.jsonl`：append-only compact/resume ledger。
 - strict claim gate：`gate:claim-release` 使用严格 claim ledger validation，不把 orchestration 成功误报成平台 claim 成功；执行后会写 `.pi/evidence/claim-release/<timestamp>/result.json`，供 supervisor/compiler/complete 三段 runtime 读取。
 - failure/repair runtime ledger：`FailureLedgerEventV1`、`RepairQueueItemV1` strict schema、strict fixture、duplicate signature/attempt 去重检查、hard-eval 离线样例，`re_replayer` / `re_autofix` / `re_operator` / `re_proof_loop` failed|blocked row 到 `.pi/evidence/failures/ledger.jsonl`、`.pi/evidence/repairs/queue.jsonl` 的 append-only 写入 hooks，以及 compound-frontier、agent-dogfood role retry、plan-only invalid fixture 的 failure/repair 输出。
-- agent-dogfood subagent runtime manifest：每个 role / synthesizer attempt 会输出 `*.runtime-manifest.json`，记录 role、attempt、PID、exit code、stdout/stderr digest、session dir/files/tool result count 和 provider/model 摘要，供并行分工验证和后续 failure signature 关联。
+- agent-dogfood subagent runtime manifest / claim ledger：每个 role / synthesizer attempt 会输出 `*.runtime-manifest.json`，记录 role、attempt、PID、exit code、stdout/stderr digest、session dir/files/tool result count 和 provider/model 摘要；同时输出 `claim-ledger.jsonl`，用 `artifact_handoff → claim → validation → challenge → resolution` 哈希链绑定 role claim、platform gap 和最终降级/阻断原因。
 
 ## 环境要求
 
@@ -544,6 +544,7 @@ scripts/reverse-agent/
 .pi/evidence/proof-loops/*.md
 .pi/evidence/remote/agent-parallel-dogfood/*/*runtime-manifest.json
 .pi/evidence/remote/agent-parallel-dogfood/*/subagent-runtime-manifests.json
+.pi/evidence/remote/agent-parallel-dogfood/*/claim-ledger.jsonl
 memory/compaction-resume-ledger.jsonl
 memory/autonomous-budget-ledger.md
 memory/playbooks/*.md

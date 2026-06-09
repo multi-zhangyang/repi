@@ -309,6 +309,10 @@ function timestamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 function safeJson(text, fallback = null) { try { return JSON.parse(text); } catch { return fallback; } }
 function rel(path) { return String(path || '').replace(`${repoRoot}/`, ''); }
+function eventHash(event) {
+  const { eventHash: _eventHash, ...withoutHash } = event;
+  return sha256(JSON.stringify(withoutHash));
+}
 function redact(value) {
   return String(value || '')
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, 'sk-<redacted>')
@@ -1002,6 +1006,139 @@ const subagentRuntimeManifests = allRuns.map((role) => ({
   captured: subagentRuntimeManifestCaptured(role),
 }));
 const subagentRuntimeManifestIndexPath = rel(join(outDir, 'subagent-runtime-manifests.json'));
+function appendClaimLedgerEvent(events, event) {
+  const prevHash = events.at(-1)?.eventHash || '0'.repeat(64);
+  const row = { seq: events.length + 1, prevHash, ...event };
+  row.eventHash = eventHash(row);
+  events.push(row);
+  return row;
+}
+function buildRuntimeClaimLedgerEvents() {
+  // ClaimLedgerEventV1 runtime rows: artifact_handoff -> claim -> validation -> challenge -> resolution.
+  const events = [];
+  for (const role of allRuns) {
+    appendClaimLedgerEvent(events, {
+      type: 'artifact_handoff',
+      role: role.id,
+      scope: `agent-dogfood:${role.id}`,
+      artifactRefs: [
+        role.runtimeManifestFile,
+        role.stdoutFile,
+        role.stderrFile,
+        ...(role.session?.fileDigests || []).map((item) => item.path),
+      ].filter(Boolean),
+      artifactHashes: [
+        role.runtimeManifest?.stdout,
+        role.runtimeManifest?.stderr,
+        ...(role.session?.fileDigests || []),
+      ].filter((item) => item?.path && item?.sha256).map((item) => ({ path: item.path, sha256: item.sha256 })),
+      runtimeManifestFile: role.runtimeManifestFile || '',
+      sessionDir: role.runtimeManifest?.sessionDir || '',
+      toolResultCount: role.runtimeManifest?.toolResultCount ?? role.session?.toolResults ?? 0,
+      modelProvider: role.runtimeManifest?.modelProvider || { requestedProvider: provider, requestedModel: model },
+    });
+  }
+  for (const role of allRuns) {
+    const passed = strictRunPassed(role);
+    const failedGates = Object.entries(role.checks || {}).filter(([, ok]) => !ok).map(([name]) => name);
+    const claimId = `agent-dogfood.${role.id}.strict_run`;
+    appendClaimLedgerEvent(events, {
+      type: 'claim',
+      claimId,
+      role: role.id,
+      scope: `agent-dogfood:${role.id}`,
+      kind: passed ? 'proven' : 'gap',
+      statement: passed
+        ? `${role.id} satisfied its bounded role contract with model/tool/runtime evidence.`
+        : `${role.id} has unresolved role gate gaps: ${failedGates.join(',') || 'strictRunPassed=false'}.`,
+      evidenceRefs: [
+        role.runtimeManifestFile,
+        role.stdoutFile,
+        role.stderrFile,
+        ...(role.session?.fileDigests || []).map((item) => item.path),
+      ].filter(Boolean),
+      gate: 'role_strict_run_passed',
+    });
+    appendClaimLedgerEvent(events, {
+      type: 'validation',
+      claimId,
+      role: 'synthesizer',
+      result: passed ? 'pass' : 'fail',
+      checks: role.checks || {},
+      evidenceRefs: [role.runtimeManifestFile, role.stdoutFile, role.stderrFile].filter(Boolean),
+    });
+    if (!passed) {
+      appendClaimLedgerEvent(events, {
+        type: 'challenge',
+        claimId,
+        role: 'adversary',
+        scope: `agent-dogfood:${role.id}`,
+        challenge: `role gate failed: ${failedGates.join(',') || 'strictRunPassed=false'}`,
+        evidenceRefs: [role.runtimeManifestFile, role.stdoutFile, role.stderrFile].filter(Boolean),
+      });
+      appendClaimLedgerEvent(events, {
+        type: 'resolution',
+        claimId,
+        role: 'synthesizer',
+        result: 'downgraded',
+        resolution: 'role claim remains gap until repair queue and regression gates pass',
+        evidenceRefs: [role.runtimeManifestFile, 'failure-ledger.jsonl', 'repair-queue.jsonl'].filter(Boolean),
+      });
+    }
+  }
+  for (const claim of hardEvalRequiredPlatformGaps) {
+    const claimId = `platform.${claim.gate}`;
+    appendClaimLedgerEvent(events, {
+      type: 'challenge',
+      claimId,
+      role: 'hard-eval-control',
+      scope: claim.scope,
+      challenge: `required platform claim gap remains unresolved: ${claim.gate}`,
+      evidenceRefs: [
+        evidencePaths.hardScore,
+        evidencePaths.bestSameWindowLive || evidencePaths.latestSameWindowLive,
+        evidencePaths.latestAgentDogfood,
+      ].filter(Boolean),
+    });
+    appendClaimLedgerEvent(events, {
+      type: 'resolution',
+      claimId,
+      role: 'synthesizer',
+      result: 'blocked',
+      resolution: 'do not promote orchestration success to platform success until gate:claim-release passes',
+      evidenceRefs: ['hard-eval-control-plane', 'gate:claim-release'].filter(Boolean),
+    });
+  }
+  if (!events.some((event) => event.type === 'challenge')) {
+    appendClaimLedgerEvent(events, {
+      type: 'challenge',
+      claimId: 'agent-dogfood.no_unresolved_role_challenge',
+      role: 'adversary',
+      scope: 'agent-dogfood',
+      challenge: 'no unresolved role gate challenge in this run; retain adversary event for claim ledger completeness',
+      evidenceRefs: subagentRuntimeManifests.map((item) => item.file).filter(Boolean),
+    });
+    appendClaimLedgerEvent(events, {
+      type: 'resolution',
+      claimId: 'agent-dogfood.no_unresolved_role_challenge',
+      role: 'synthesizer',
+      result: 'accepted',
+      resolution: 'all role gate claims stayed artifact-backed',
+      evidenceRefs: subagentRuntimeManifests.map((item) => item.file).filter(Boolean),
+    });
+  }
+  return events;
+}
+function claimLedgerHashChainOk(events) {
+  let prevHash = '0'.repeat(64);
+  for (const row of events) {
+    if (row.prevHash !== prevHash || row.eventHash !== eventHash(row)) return false;
+    prevHash = row.eventHash;
+  }
+  return events.length > 0;
+}
+const claimLedgerEvents = buildRuntimeClaimLedgerEvents();
+const claimLedgerPath = rel(join(outDir, 'claim-ledger.jsonl'));
 const gates = {
   allRolesExited: allRuns.every((role) => role.checks.exitOk),
   allRolesModelCalled: allRuns.every((role) => role.checks.modelCalled),
@@ -1027,6 +1164,8 @@ const gates = {
   toolResultsCaptured: totals.toolCalls > 0 && totals.toolResults >= totals.toolCalls && allRuns.every((role) => role.session.toolCalls === 0 || role.session.toolResults >= role.session.toolCalls),
   sessionDigestsCaptured: allRuns.every((role) => (role.session.fileDigests || []).length > 0 && (role.session.fileDigests || []).every((item) => item.sha256 && item.bytes > 0)),
   subagentRuntimeManifestsCaptured: allRuns.every(subagentRuntimeManifestCaptured),
+  runtimeClaimLedgerCaptured: claimLedgerHashChainOk(claimLedgerEvents)
+    && ['artifact_handoff', 'claim', 'validation', 'challenge', 'resolution'].every((type) => claimLedgerEvents.some((event) => event.type === type)),
   nonMockRuntimeExpected: audit.nonMockRuntimeExpected,
   hardEvalControlRun: hardEvalRun.code === 0 && hardEvalJson?.kind === 'pi-recon-hard-eval-control-plane',
   orchestrationPlatformScoreSplit: Boolean(hardEvalJson?.antiSelfDelusion?.orchestrationPlatformSplit),
@@ -1139,6 +1278,10 @@ const result = {
   roleGateMatrix,
   subagentRuntimeManifestIndex: subagentRuntimeManifestIndexPath,
   subagentRuntimeManifests,
+  claimLedgerPath,
+  claimLedgerEventCount: claimLedgerEvents.length,
+  claimLedgerTipHash: claimLedgerEvents.at(-1)?.eventHash || '',
+  claimLedgerEvents,
   failureLedgerEvents,
   repairQueue,
   failureRepairWriteback: failureLedgerEvents[0]?.evidenceWriteback || {
@@ -1173,6 +1316,7 @@ await writeFile(join(outDir, 'subagent-runtime-manifests.json'), `${JSON.stringi
   manifestCount: subagentRuntimeManifests.length,
   manifests: subagentRuntimeManifests,
 }, null, 2)}\n`);
+await writeFile(join(outDir, 'claim-ledger.jsonl'), `${claimLedgerEvents.map((event) => JSON.stringify(event)).join('\n')}${claimLedgerEvents.length ? '\n' : ''}`);
 await writeFile(join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
 await writeFile(join(outDir, 'failure-ledger.jsonl'), `${failureLedgerEvents.map((event) => JSON.stringify(event)).join('\n')}${failureLedgerEvents.length ? '\n' : ''}`);
 await writeFile(join(outDir, 'repair-queue.jsonl'), `${repairQueue.map((item) => JSON.stringify(item)).join('\n')}${repairQueue.length ? '\n' : ''}`);
@@ -1196,6 +1340,7 @@ const md = [
   `- hard_eval_control verdict=${hardEvalJson?.verdict || 'missing'} code=${hardEvalRun.code} orchestration_score=${hardEvalJson?.scores?.orchestration?.score ?? 'n/a'} platform_required_score=${hardEvalJson?.scores?.platformRequired?.score ?? 'n/a'} required_gaps=${hardEvalRequiredPlatformGaps.map((claim) => claim.gate).join(',') || 'none'}`,
   `- parallel_plan source=${planPreview.source} plan_id=${planPreview.planId || 'builtin'} workers=${planPreview.workerCount} merge=${planPreview.merge?.strategy || 'none'} validation=${planPreview.validation?.valid}`,
   `- subagent_runtime_manifest_index=${subagentRuntimeManifestIndexPath} captured=${gates.subagentRuntimeManifestsCaptured}`,
+  `- runtime_claim_ledger=${claimLedgerPath} events=${claimLedgerEvents.length} hash_chain=${gates.runtimeClaimLedgerCaptured}`,
   `- same_window_live=${evidencePaths.bestSameWindowLive || evidencePaths.latestSameWindowLive || 'none'}`,
   `- best_bilibili=${evidencePaths.bestBilibili || 'none'}`,
   `- best_xiaohongshu=${evidencePaths.bestXiaohongshu || 'none'}`,
@@ -1228,6 +1373,9 @@ console.log(JSON.stringify({
   gates,
   subagentRuntimeManifestIndex: subagentRuntimeManifestIndexPath,
   subagentRuntimeManifestFiles: subagentRuntimeManifests.map((row) => row.file),
+  claimLedgerPath,
+  claimLedgerEventCount: claimLedgerEvents.length,
+  claimLedgerTipHash: claimLedgerEvents.at(-1)?.eventHash || '',
   hardEvalControl: {
     verdict: hardEvalJson?.verdict || 'missing',
     orchestrationScore: hardEvalJson?.scores?.orchestration?.score ?? null,

@@ -306,7 +306,11 @@ function validateDogfoodRuntimeManifestMarkers(root) {
 		"runtimeManifestFile",
 		"subagentRuntimeManifests",
 		"subagentRuntimeManifestsCaptured",
-	];
+		"buildRuntimeClaimLedgerEvents",
+		"claim-ledger.jsonl",
+		"ClaimLedgerEventV1",
+		"runtimeClaimLedgerCaptured",
+		];
 	const rows = markers.map((marker) => ({ marker, present: text.includes(marker) }));
 	const missing = rows.filter((row) => !row.present).map((row) => row.marker);
 	return status(missing.length === 0, {
@@ -350,6 +354,7 @@ function formatMarkdown(result) {
 		`- no_new_agent_dogfood_dir: ${result.checks.planOnlyNoEvidenceDir.noEvidenceDirCreated}`,
 		`- invalid_plan_failure_repair: ${result.checks.planOnlyFailureRepair.status}`,
 		`- subagent_runtime_manifest_static: ${result.checks.dogfoodRuntimeManifest.status}`,
+		`- runtime_claim_ledger_static: ${result.checks.dogfoodRuntimeManifest.status}`,
 		"",
 		"## Verification",
 		`- RECON_AGENT_MODEL/ANTHROPIC_MODEL were removed from the child environment.`,

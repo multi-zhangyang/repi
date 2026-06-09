@@ -151,7 +151,7 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 
 - `re_operation → re_delegate → re_swarm → re_supervisor` 已能把 operation queue 拆成 specialist worker packets，再组织 `worker_runtime_packets`、`parallel_groups`、`merge_protocol`、`collision_matrix` 和 `commander_next_actions`。
 - `frontier-orchestrator` 已有 case catalog、`agentLane`、`--shards=N` 分片计划，并能在 `--plan --json` 输出 `ReconParallelPlanV1`。
-- `agent-dogfood/parallel-run.mjs` 已有 mapper/verifier/adversary/planner/synthesizer 多角色并发 runner，并记录 PID、session digest、model/tool call digest、overlap/speedup 等运行证据；每个 role / synthesizer attempt 还会写 `pi-recon-subagent-runtime-manifest`，包含 attempt、PID、exit code、stdout/stderr digest、session dir/files/tool result count 和 provider/model 摘要。
+- `agent-dogfood/parallel-run.mjs` 已有 mapper/verifier/adversary/planner/synthesizer 多角色并发 runner，并记录 PID、session digest、model/tool call digest、overlap/speedup 等运行证据；每个 role / synthesizer attempt 还会写 `pi-recon-subagent-runtime-manifest`，包含 attempt、PID、exit code、stdout/stderr digest、session dir/files/tool result count 和 provider/model 摘要，并输出 runtime `claim-ledger.jsonl` 把 artifact_handoff、claim、validation、challenge、resolution 串成 hash chain。
 - `agent-dogfood/parallel-run.mjs --plan-json <path> --plan-only` 已能离线读取 `ReconParallelPlanV1`，归一化 workers/merge/evidence contract，并在不调用模型的情况下预览调度边界。
 
 仍需硬化：
@@ -245,7 +245,7 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 | 并行调度 | 能生成 `ReconParallelPlanV1`，能用 `--plan-json --plan-only` 离线预览 worker/merge/evidence contract，agent-dogfood 已有 subagent runtime manifest 运行证据字段。 | 还不是动态 autonomous scheduler；尚未完成跨入口统一调度、自动取消、工作窃取、实时重分片和 claim-aware merge 执行闭环。 |
 | 长期上下文压缩 | `re_context`、`session_before_compact`、`session_compact`、context audit 已覆盖 context pack、resume contract、branch mismatch/hash drift/missing pack 等负例、evidence summarization 和 bounded resume。 | 还不能宣称无限长期记忆；仍需多次 compact、预算 exhausted、跨 session contamination 等更多负例和状态回写。 |
 | 失败自修复 | 已有 bounded retry、repair queue、hard-eval gaps、autofix/proof-loop、strict failure/repair schema fixture、duplicate rejection 和 compound/role retry rows。 | 还不是自动修好所有失败；plan-only 不执行 repair，真实修复仍需把 strict validator 接入更多 runtime regression、rollback criteria 和 passed-gate regression。 |
-| 自动分工验证 | 已有 role contract、claim ledger、synthesizer reconciliation、score split、strict claim marker 和 runtime final path 阻断，能防止把 orchestration 成功写成平台 claim 成功。 | 独立子会话/compound runtime 仍需把 claim ledger 写入扩展到真实执行态；每个 proven/final claim 仍需 artifact sha256、JSON query、verifier pass、无 unresolved adversary challenge。 |
+| 自动分工验证 | 已有 role contract、hard-eval claim ledger、agent-dogfood runtime claim ledger、synthesizer reconciliation、score split、strict claim marker 和 runtime final path 阻断，能防止把 orchestration 成功写成平台 claim 成功。 | 通用 re_swarm/compound runtime 仍需把 claim ledger 写入扩展到真实执行态；每个 proven/final claim 仍需 artifact sha256、JSON query、verifier pass、无 unresolved adversary challenge。 |
 
 ## 当前不做的事
 
@@ -282,4 +282,4 @@ They validate these contract families without running live benchmarks or provide
 
 `hard-eval-control-plane.mjs` 的离线 failure/repair 输出也已补齐 `signature`、`artifactHashes`、`budget`、`rollback`、`expectedGates`、`rollbackCriteria`；role contract 已补齐 `ledgerPolicy`、`conflictPolicy`、`claimGatePolicy`、`handoffTargets`、`evidenceContract`。
 
-This means Pi-RECON now has a usable professional control plane with machine-readable schemas, validators, agent-dogfood subagent runtime manifests, exact-resume negative fixtures, strict failure/repair fixtures, failure/repair writeback hooks, strict claim release markers, and runtime final-path gates. Remaining work is limited to optional hardening such as generic re_swarm independent sub-agent runtime, cross-session/multi-compact fixtures, and runtime ledger regression wiring.
+This means Pi-RECON now has a usable professional control plane with machine-readable schemas, validators, agent-dogfood subagent runtime manifests and runtime claim ledger rows, exact-resume negative fixtures, strict failure/repair fixtures, failure/repair writeback hooks, strict claim release markers, and runtime final-path gates. Remaining work is limited to optional hardening such as generic re_swarm independent sub-agent runtime, cross-session/multi-compact fixtures, and runtime ledger regression wiring.
