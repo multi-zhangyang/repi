@@ -4,6 +4,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
+import { failureRepairFromGap } from '../../../scripts/reverse-agent/failure-repair-ledger.mjs';
 
 const repoRoot = resolve(process.env.RECON_REPO_ROOT || '.');
 const argv = process.argv.slice(2);
@@ -100,7 +101,30 @@ function validateParallelPlan(plan) {
 }
 const parallelPlanValidation = validateParallelPlan(loadedParallelPlan);
 if (planJsonPath && !parallelPlanValidation.valid) {
-  console.error(JSON.stringify({ error: 'invalid ReconParallelPlanV1', planJson: planJsonPath, validation: parallelPlanValidation }, null, 2));
+  const { failure, repair } = failureRepairFromGap({
+    root: repoRoot,
+    source: 'agent-dogfood-plan-only',
+    scope: `agent-dogfood-plan-only:${planJsonPath}`,
+    category: 'contract_gap',
+    status: 'blocked',
+    failedGates: ['recon_parallel_plan_valid'],
+    reason: 'invalid ReconParallelPlanV1 supplied to --plan-json',
+    attempt: 1,
+    maxAttempts: 1,
+    commands: [`node bench/recon-remote/agent-dogfood/parallel-run.mjs --plan-json ${planJsonPath} --plan-only --json`],
+    artifacts: [planJsonPath],
+    paused: true,
+    unblock: 'fix the ReconParallelPlanV1 required fields and rerun plan-only',
+    verificationCommand: 'npm run audit:parallel-plan',
+  });
+  console.error(JSON.stringify({
+    error: 'invalid ReconParallelPlanV1',
+    planJson: planJsonPath,
+    validation: parallelPlanValidation,
+    failureLedgerEvents: [failure],
+    repairQueue: [repair],
+    failureRepairWriteback: failure.evidenceWriteback,
+  }, null, 2));
   process.exit(2);
 }
 
@@ -666,6 +690,8 @@ async function withRetries(label, launcher) {
       monotonic: last.monotonic,
       stdoutBytes: last.stdoutBytes,
       stderrBytes: last.stderrBytes,
+      stdoutFile: last.attemptStdoutFile || last.stdoutFile,
+      stderrFile: last.attemptStderrFile || last.stderrFile,
       sessionFiles: last.session?.files || [],
       toolResults: last.session?.toolResults || 0,
       checks: last.checks,
@@ -697,6 +723,10 @@ async function launchRole(role, attempt = 0) {
   const session = await parseSessions(sessionFiles);
   const output = `${runResult.stdout}\n${runResult.stderr}`;
   const checks = outputChecks(role, output, session, runResult.code);
+  const attemptStdoutPath = join(outDir, `${role.id}.attempt-${attempt}.stdout.txt`);
+  const attemptStderrPath = join(outDir, `${role.id}.attempt-${attempt}.stderr.txt`);
+  await writeFile(attemptStdoutPath, redact(runResult.stdout));
+  await writeFile(attemptStderrPath, redact(runResult.stderr));
   await writeFile(join(outDir, `${role.id}.stdout.txt`), redact(runResult.stdout));
   await writeFile(join(outDir, `${role.id}.stderr.txt`), redact(runResult.stderr));
   return {
@@ -717,6 +747,10 @@ async function launchRole(role, attempt = 0) {
     stderrBytes: Buffer.byteLength(runResult.stderr),
     stdoutSha256: sha256(runResult.stdout).slice(0, 24),
     stderrSha256: sha256(runResult.stderr).slice(0, 24),
+    stdoutFile: `${rel(outDir)}/${role.id}.stdout.txt`,
+    stderrFile: `${rel(outDir)}/${role.id}.stderr.txt`,
+    attemptStdoutFile: rel(attemptStdoutPath),
+    attemptStderrFile: rel(attemptStderrPath),
     session,
     checks,
     stdoutTail: redact(runResult.stdout).slice(-5000),
@@ -755,6 +789,10 @@ async function launchSynthesizer(workerSummaryPath, workerRuns, attempt = 0) {
   const session = await parseSessions(sessionFiles);
   const output = `${runResult.stdout}\n${runResult.stderr}`;
   const checks = outputChecks(role, output, session, runResult.code);
+  const attemptStdoutPath = join(outDir, `${role.id}.attempt-${attempt}.stdout.txt`);
+  const attemptStderrPath = join(outDir, `${role.id}.attempt-${attempt}.stderr.txt`);
+  await writeFile(attemptStdoutPath, redact(runResult.stdout));
+  await writeFile(attemptStderrPath, redact(runResult.stderr));
   await writeFile(join(outDir, `${role.id}.stdout.txt`), redact(runResult.stdout));
   await writeFile(join(outDir, `${role.id}.stderr.txt`), redact(runResult.stderr));
   return {
@@ -775,6 +813,10 @@ async function launchSynthesizer(workerSummaryPath, workerRuns, attempt = 0) {
     stderrBytes: Buffer.byteLength(runResult.stderr),
     stdoutSha256: sha256(runResult.stdout).slice(0, 24),
     stderrSha256: sha256(runResult.stderr).slice(0, 24),
+    stdoutFile: `${rel(outDir)}/${role.id}.stdout.txt`,
+    stderrFile: `${rel(outDir)}/${role.id}.stderr.txt`,
+    attemptStdoutFile: rel(attemptStdoutPath),
+    attemptStderrFile: rel(attemptStderrPath),
     session,
     checks,
     stdoutTail: redact(runResult.stdout).slice(-5000),
@@ -871,6 +913,37 @@ const verdict = confirmed
   : partial
     ? 'agent-parallel-dogfood-partial'
     : 'agent-parallel-dogfood-failed';
+const roleFailureRepairRows = allRuns
+  .filter((role) => role.retryExhausted || !strictRunPassed(role))
+  .map((role) => {
+    const failedGates = Object.entries(role.checks || {}).filter(([, passed]) => !passed).map(([name]) => name);
+    const artifacts = [
+      role.stdoutFile,
+      role.stderrFile,
+      ...(role.attempts || []).flatMap((attempt) => [attempt.stdoutFile, attempt.stderrFile]),
+      ...(role.session?.fileDigests || []).map((item) => item.path),
+    ].filter(Boolean);
+    return failureRepairFromGap({
+      root: repoRoot,
+      source: 'agent-dogfood',
+      scope: `agent-dogfood:${role.id}`,
+      category: role.retryExhausted ? 'runtime_failed' : 'contract_gap',
+      status: role.retryExhausted ? 'exhausted' : 'repair_queued',
+      failedGates: failedGates.length ? failedGates : ['role_strict_run_passed'],
+      reason: `${role.id} failed role gate(s): ${failedGates.join(',') || 'strictRunPassed=false'}`,
+      attempt: (role.attempts || []).length || 1,
+      maxAttempts: roleRetries + 1,
+      commands: [`RECON_PARALLEL_ROLES=${role.id} node bench/recon-remote/agent-dogfood/parallel-run.mjs ${provider} ${model}`],
+      artifacts,
+      providerAllowed: true,
+      paused: false,
+      unblock: `rerun role ${role.id} with tighter prompt/tool evidence or inspect per-attempt artifacts`,
+      verificationCommand: 'npm run gate:agent-parallel',
+      regressionGates: gateNames,
+    });
+  });
+const failureLedgerEvents = roleFailureRepairRows.map((row) => row.failure);
+const repairQueue = roleFailureRepairRows.map((row) => row.repair);
 const result = {
   target: 'Pi-RECON multi-agent parallel dogfood against hardest real-platform evidence',
   profile: 'agent-parallel-dogfood',
@@ -935,6 +1008,14 @@ const result = {
   totals,
   gates,
   roleGateMatrix,
+  failureLedgerEvents,
+  repairQueue,
+  failureRepairWriteback: failureLedgerEvents[0]?.evidenceWriteback || {
+    failureLedgerPath: '.pi/evidence/failures/ledger.jsonl',
+    repairQueuePath: '.pi/evidence/repairs/queue.jsonl',
+    appendOnly: true,
+    mode: 'agent-dogfood',
+  },
   roleRuns,
   synthesizerRun,
   nextActions: confirmed
@@ -956,6 +1037,8 @@ const result = {
       ],
 };
 await writeFile(join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
+await writeFile(join(outDir, 'failure-ledger.jsonl'), `${failureLedgerEvents.map((event) => JSON.stringify(event)).join('\n')}${failureLedgerEvents.length ? '\n' : ''}`);
+await writeFile(join(outDir, 'repair-queue.jsonl'), `${repairQueue.map((item) => JSON.stringify(item)).join('\n')}${repairQueue.length ? '\n' : ''}`);
 const md = [
   '# Pi-RECON Parallel Agent Dogfood Artifact',
   '',

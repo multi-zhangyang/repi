@@ -354,6 +354,7 @@ function buildResult(root) {
 			planOnlyOutput: parallelPlanAudit?.checks?.planOnlyOutput?.status ?? "missing",
 			planOnlyNoProvider: parallelPlanAudit?.checks?.planOnlyNoProvider?.status ?? "missing",
 			planOnlyNoEvidenceDir: parallelPlanAudit?.checks?.planOnlyNoEvidenceDir?.status ?? "missing",
+			planOnlyFailureRepair: parallelPlanAudit?.checks?.planOnlyFailureRepair?.status ?? "missing",
 			stdoutSha256: parallelPlanAuditRun.stdoutSha256,
 		}),
 		resumeContractV2Schema: validateResumeContractSchema(),
@@ -364,6 +365,9 @@ function buildResult(root) {
 			markers: [
 				readMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", ["type FailureLedgerEventV1", "type RepairQueueItemV1", "function runtimeFailureSignature", "function failureToRepair", "function appendFailureRepairLedger", "appendRuntimeFailureRepairFromReplay", "appendRuntimeFailureRepairFromAutofix", "appendRuntimeFailureRepairFromOperator", "appendRuntimeFailureRepairFromProofLoop", "runtimeFailureLedgerPath", "runtimeRepairQueuePath"]),
 				readMarkers(root, ".pi/extensions/reverse-pentest-core.ts", ["type FailureLedgerEventV1", "type RepairQueueItemV1", "function runtimeFailureSignature", "function failureToRepair", "function appendFailureRepairLedger", "appendRuntimeFailureRepairFromReplay", "appendRuntimeFailureRepairFromAutofix", "appendRuntimeFailureRepairFromOperator", "appendRuntimeFailureRepairFromProofLoop", "runtimeFailureLedgerPath", "runtimeRepairQueuePath"]),
+				readMarkers(root, "scripts/reverse-agent/failure-repair-ledger.mjs", ["failureRepairFromGap", "failureRepairFromGaps", "appendFailureRepairWriteback", "FailureLedgerEventV1"]),
+				readMarkers(root, "bench/recon-remote/compound-frontier/run.mjs", ["failureRepairFromGaps", "failureLedgerEvents", "repairQueue", "failure-ledger.jsonl"]),
+				readMarkers(root, "bench/recon-remote/agent-dogfood/parallel-run.mjs", ["failureRepairFromGap", "retryExhausted", "attemptStdoutFile", "failureLedgerEvents", "repair-queue.jsonl"]),
 			],
 		}),
 		contextCompactAudit: passFail(Boolean(contextAudit?.ok), { summary: contextAudit?.summary ?? null }),
@@ -397,7 +401,7 @@ function buildResult(root) {
 		currentLevel: ok ? "professional reverse/pentest organization with machine-readable control contracts" : "contract gaps",
 		topAutonomousDefinition: false,
 		topAutonomousReason:
-			"Schemas, validators, ReconParallelPlanV1, exact context resume markers, runtime failure/repair ledger hooks, and strict claim final-path gates exist; full independent subagent runtime, negative-fixture resume gates, and compound/role retry outputs remain optional hardening.",
+			"Schemas, validators, ReconParallelPlanV1, exact context resume markers/negative fixtures, runtime failure/repair ledger hooks, compound/role retry failure-repair outputs, and strict claim final-path gates exist; full independent subagent runtime and cross-session resume fixtures remain optional hardening.",
 		schemas: SCHEMAS,
 		parallelPlan,
 		releaseGateMetadata,
@@ -425,8 +429,8 @@ function buildResult(root) {
 		},
 		nextNonTestWork: [
 			"Keep gate:claim-release marker consumption wired through supervisor/compiler/complete and promote pass markers only after required gaps close.",
-			"Harden ResumeContractV2 with negative fixtures, completion closure enforcement, and operator/proof-loop ledger state writeback.",
-			"Extend FailureLedgerEventV1 / RepairQueueItemV1 runtime hooks with strict schema fixtures and compound-frontier/agent role retry outputs.",
+			"Harden ResumeContractV2 with cross-session/multi-compact negative fixtures and operator/proof-loop ledger state writeback.",
+			"Add strict schema fixtures, signature de-dup windows, and regression gates for FailureLedgerEventV1 / RepairQueueItemV1 outputs.",
 			"Extend ClaimLedgerEventV1 from offline hard-eval into independent sub-agent/session runtime outputs.",
 		],
 	};

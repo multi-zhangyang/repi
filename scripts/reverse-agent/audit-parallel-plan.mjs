@@ -247,6 +247,40 @@ function validatePlanOnlyOutput(output, run, plan, beforeDirs, afterDirs) {
 	});
 }
 
+function validatePlanOnlyFailureRepair(run, beforeDirs, afterDirs) {
+	const stderrJson = parseJson(run.stderr || "");
+	const newDirs = afterDirs.filter((dir) => !beforeDirs.includes(dir));
+	const failures = stderrJson?.failureLedgerEvents || [];
+	const repairs = stderrJson?.repairQueue || [];
+	const failure = failures[0] || {};
+	const repair = repairs[0] || {};
+	const ok = run.code === 2
+		&& stderrJson?.error === "invalid ReconParallelPlanV1"
+		&& Array.isArray(failures)
+		&& failures.length >= 1
+		&& Array.isArray(repairs)
+		&& repairs.length >= 1
+		&& failure.source === "agent-dogfood-plan-only"
+		&& failure.evidenceWriteback?.appendOnly === true
+		&& repair.fromFailureId === failure.id
+		&& newDirs.length === 0;
+	return status(ok, {
+		runCode: run.code,
+		parseOk: Boolean(stderrJson),
+		error: stderrJson?.error || "",
+		failureCount: failures.length,
+		repairCount: repairs.length,
+		failureSource: failure.source || "",
+		failureStatus: failure.status || "",
+		repairAction: repair.action || "",
+		evidenceWriteback: failure.evidenceWriteback || null,
+		newDirs,
+		noEvidenceDirCreated: newDirs.length === 0,
+		stderrSha256: run.stderrSha256,
+		stderrTail: run.stderrTail,
+	});
+}
+
 function formatMarkdown(result) {
 	const lines = [
 		"# Pi-RECON Parallel Plan Audit",
@@ -277,6 +311,7 @@ function formatMarkdown(result) {
 		`- worker_count: ${result.planOnlyPreview.workerCount ?? "n/a"}`,
 		`- no_model_needed: ${result.checks.planOnlyNoProvider.noModelNeeded}`,
 		`- no_new_agent_dogfood_dir: ${result.checks.planOnlyNoEvidenceDir.noEvidenceDirCreated}`,
+		`- invalid_plan_failure_repair: ${result.checks.planOnlyFailureRepair.status}`,
 		"",
 		"## Verification",
 		`- RECON_AGENT_MODEL/ANTHROPIC_MODEL were removed from the child environment.`,
@@ -296,6 +331,7 @@ function buildResult(root) {
 
 	const tmpDir = mkdtempSync(join(tmpdir(), "pi-recon-parallel-plan-"));
 	const tmpPlanPath = join(tmpDir, "frontier-plan.json");
+	const invalidPlanPath = join(tmpDir, "invalid-plan.json");
 	let planOnlyRun = {
 		command: "not-run",
 		code: null,
@@ -310,10 +346,31 @@ function buildResult(root) {
 		stderrTail: "",
 		json: null,
 	};
+	let invalidPlanRun = { ...planOnlyRun };
 	let beforeDirs = listImmediateDirs(resolvedRoot, DOGFOOD_EVIDENCE_DIR);
 	let afterDirs = beforeDirs;
+	let invalidBeforeDirs = beforeDirs;
+	let invalidAfterDirs = beforeDirs;
 	try {
 		if (frontierPlan) writeFileSync(tmpPlanPath, `${JSON.stringify(frontierPlan, null, 2)}\n`);
+		writeFileSync(
+			invalidPlanPath,
+			`${JSON.stringify({ kind: "invalid-ReconParallelPlanV1", planId: "invalid-plan-only-fixture", workers: [] }, null, 2)}\n`,
+		);
+		invalidBeforeDirs = listImmediateDirs(resolvedRoot, DOGFOOD_EVIDENCE_DIR);
+		invalidPlanRun = runNode(
+			resolvedRoot,
+			["bench/recon-remote/agent-dogfood/parallel-run.mjs", "--plan-json", invalidPlanPath, "--plan-only", "--json"],
+			{
+				unsetEnv: PROVIDER_ENV_KEYS,
+				env: {
+					RECON_AGENT_CMD: "/__pi_recon_provider_must_not_launch__",
+					RECON_AGENT_PROVIDER: "audit-no-provider-launch",
+				},
+				timeoutMs: 60000,
+			},
+		);
+		invalidAfterDirs = listImmediateDirs(resolvedRoot, DOGFOOD_EVIDENCE_DIR);
 		if (frontierCheck.status === "pass") {
 			beforeDirs = listImmediateDirs(resolvedRoot, DOGFOOD_EVIDENCE_DIR);
 			planOnlyRun = runNode(
@@ -334,6 +391,7 @@ function buildResult(root) {
 		rmSync(tmpDir, { recursive: true, force: true });
 	}
 	const planOnlyCheck = validatePlanOnlyOutput(planOnlyRun.json, planOnlyRun, frontierPlan, beforeDirs, afterDirs);
+	const planOnlyFailureRepairCheck = validatePlanOnlyFailureRepair(invalidPlanRun, invalidBeforeDirs, invalidAfterDirs);
 	const checks = {
 		frontierPlan: frontierCheck,
 		reconParallelPlanV1: status(frontierCheck.status === "pass", {
@@ -361,6 +419,7 @@ function buildResult(root) {
 			noEvidenceDirCreated: planOnlyCheck.noEvidenceDirCreated,
 		}),
 		planOnlyOutput: planOnlyCheck,
+		planOnlyFailureRepair: planOnlyFailureRepairCheck,
 	};
 	const ok = Object.values(checks).every((check) => check.status === "pass");
 	return {
@@ -391,6 +450,16 @@ function buildResult(root) {
 				stdoutSha256: planOnlyRun.stdoutSha256,
 				stderrSha256: planOnlyRun.stderrSha256,
 				stderrTail: planOnlyRun.stderrTail,
+			},
+			planOnlyInvalid: {
+				command: "env -u RECON_AGENT_MODEL -u ANTHROPIC_MODEL RECON_AGENT_CMD=/__pi_recon_provider_must_not_launch__ node bench/recon-remote/agent-dogfood/parallel-run.mjs --plan-json <tmp-invalid-plan.json> --plan-only --json",
+				code: invalidPlanRun.code,
+				signal: invalidPlanRun.signal,
+				stdoutBytes: invalidPlanRun.stdoutBytes,
+				stderrBytes: invalidPlanRun.stderrBytes,
+				stdoutSha256: invalidPlanRun.stdoutSha256,
+				stderrSha256: invalidPlanRun.stderrSha256,
+				stderrTail: invalidPlanRun.stderrTail,
 			},
 		},
 		frontierPlan: frontierPlan

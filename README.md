@@ -58,7 +58,7 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - exact context resume：`re_context resume <contextPath>` / tool `contextPath` / `compactionEntryId` 精确加载指定 pack，并校验 hash、artifact drift、workspace/target scope。
 - `memory/compaction-resume-ledger.jsonl`：append-only compact/resume ledger。
 - strict claim gate：`gate:claim-release` 使用严格 claim ledger validation，不把 orchestration 成功误报成平台 claim 成功；执行后会写 `.pi/evidence/claim-release/<timestamp>/result.json`，供 supervisor/compiler/complete 三段 runtime 读取。
-- failure/repair runtime ledger：`FailureLedgerEventV1`、`RepairQueueItemV1` schema、hard-eval 离线样例，以及 `re_replayer` / `re_autofix` / `re_operator` / `re_proof_loop` failed|blocked row 到 `.pi/evidence/failures/ledger.jsonl`、`.pi/evidence/repairs/queue.jsonl` 的 append-only 写入 hooks。
+- failure/repair runtime ledger：`FailureLedgerEventV1`、`RepairQueueItemV1` schema、hard-eval 离线样例，`re_replayer` / `re_autofix` / `re_operator` / `re_proof_loop` failed|blocked row 到 `.pi/evidence/failures/ledger.jsonl`、`.pi/evidence/repairs/queue.jsonl` 的 append-only 写入 hooks，以及 compound-frontier、agent-dogfood role retry、plan-only invalid fixture 的 failure/repair 输出。
 
 ## 环境要求
 
@@ -519,6 +519,7 @@ scripts/reverse-agent/
   context-compact-audit.mjs
   autonomy-control-plane.mjs
   autonomous-contracts.mjs
+  failure-repair-ledger.mjs
   hard-eval-control-plane.mjs
   validate-claim-ledger.mjs
   audit-parallel-plan.mjs
@@ -611,7 +612,7 @@ claim_release_marker
 ## 可选后续增强项（不影响当前使用）
 
 - 独立 Pi sub-agent/session runtime：PID、session dir、stdout/stderr hash、tool-call digest。
-- FailureLedgerEventV1 / RepairQueueItemV1 继续扩展到 compound-frontier、agent role retry、plan-only runner，并补 strict schema fixtures。
+- FailureLedgerEventV1 / RepairQueueItemV1 strict schema fixture、重复 signature 去重窗口和回归 gate。
 - ClaimLedgerEventV1 继续扩展到更多 role retry / compound frontier 场景。
-- exact resume 负例 fixture：stale latest、hash drift、multi compact、target unresolved、cross-session contamination。
+- exact resume 继续扩展负例 fixture：multi compact、target unresolved、cross-session contamination。
 - 独立子会话 runtime 与 provider live benchmark 可在需要时另行接入；当前仓库默认以离线可复现 harness 为准。

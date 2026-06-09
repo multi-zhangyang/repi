@@ -391,6 +391,89 @@ describe("Pi-RECON kernel profile", () => {
 		);
 	});
 
+	it("blocks exact context resume negative fixtures and completion closure", async () => {
+		const tools = new Map<string, unknown>();
+		const fakePi = {
+			registerCommand() {},
+			registerTool(tool: { name: string }) {
+				tools.set(tool.name, tool);
+			},
+			on() {},
+			appendEntry() {},
+			getSessionName: () => undefined,
+			setSessionName() {},
+			sendMessage() {},
+			exec: async () => ({ code: 0, stdout: "", stderr: "", killed: false }),
+		} as unknown as ExtensionAPI;
+
+		createReconExtensionFactory()(fakePi);
+		const missionTool = tools.get("re_mission") as {
+			execute: (
+				toolCallId: string,
+				params: Record<string, unknown>,
+			) => Promise<{ content: Array<{ text: string }> }>;
+		};
+		const mapTool = tools.get("re_map") as {
+			execute: (
+				toolCallId: string,
+				params: Record<string, unknown>,
+			) => Promise<{ content: Array<{ text: string }> }>;
+		};
+		const contextTool = tools.get("re_context") as {
+			execute: (
+				toolCallId: string,
+				params: Record<string, unknown>,
+			) => Promise<{ content: Array<{ text: string }> }>;
+		};
+		const completeTool = tools.get("re_complete") as {
+			execute: (
+				toolCallId: string,
+				params: Record<string, unknown>,
+			) => Promise<{ content: Array<{ text: string }> }>;
+		};
+
+		await missionTool.execute("tool-call-id", { action: "new", task: "exact resume negative fixture target-a" });
+		await mapTool.execute("tool-call-id", { target: "target-a", depth: 1 });
+		const contextPack = await contextTool.execute("tool-call-id", { action: "pack", target: "target-a" });
+		const contextPath = /context_artifact: (.+)/.exec(contextPack.content[0]?.text ?? "")?.[1]?.trim();
+		const mapPath = /- map: (.+?) exists=true sha256=/.exec(contextPack.content[0]?.text ?? "")?.[1]?.trim();
+		expect(contextPath).toBeDefined();
+		expect(mapPath).toBeDefined();
+		expect(contextPack.content[0]?.text).toContain("closure:");
+		expect(contextPack.content[0]?.text).toContain("- status=open");
+
+		const mismatchResume = await contextTool.execute("tool-call-id", {
+			action: "resume",
+			target: "target-b",
+			contextPath,
+		});
+		expect(mismatchResume.content[0]?.text).toContain("resume_queue_status: blocked");
+		expect(mismatchResume.content[0]?.text).toContain("- status=blocked");
+		expect(mismatchResume.content[0]?.text).toContain("target mismatch");
+		const mismatchCompletion = await completeTool.execute("tool-call-id", { action: "audit" });
+		expect(mismatchCompletion.content[0]?.text).toContain("context resume closure blocks completion");
+		expect(mismatchCompletion.content[0]?.text).toContain("context resume queue not done");
+
+		writeFileSync(mapPath!, `${readFileSync(mapPath!, "utf-8")}\n# mutate map artifact for hash drift\n`, "utf-8");
+		const driftResume = await contextTool.execute("tool-call-id", {
+			action: "resume",
+			target: "target-a",
+			contextPath,
+		});
+		expect(driftResume.content[0]?.text).toContain("resume_queue_status: blocked");
+		expect(driftResume.content[0]?.text).toContain("artifact hash drift");
+		const driftCompletion = await completeTool.execute("tool-call-id", { action: "audit" });
+		expect(driftCompletion.content[0]?.text).toContain("context resume verification blocks completion");
+		expect(driftCompletion.content[0]?.text).toContain("artifact hash drift");
+
+		const missingResume = await contextTool.execute("tool-call-id", {
+			action: "resume",
+			contextPath: join(agentDir, "recon", "evidence", "contexts", "missing-pack.md"),
+		});
+		expect(missingResume.content[0]?.text).toContain("resume_queue_status: blocked");
+		expect(missingResume.content[0]?.text).toContain("context pack not found");
+	});
+
 	it("registers built-in commands and tools through an inline extension factory", async () => {
 		const commands = new Map<string, unknown>();
 		const tools = new Map<string, unknown>();

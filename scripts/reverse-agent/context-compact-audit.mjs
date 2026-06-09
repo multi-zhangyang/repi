@@ -75,6 +75,45 @@ export const CONTEXT_COMPACT_REQUIREMENTS = [
 		})),
 	},
 	{
+		id: "exact_resume_negative_fixtures",
+		description: "Exact resume blocks stale/latest fallback, missing packs, target mismatch, artifact hash drift, and unclosed resume closures.",
+		checks: [
+			{
+				file: "packages/coding-agent/src/core/recon-profile.ts",
+				markers: [
+					"return { loadedBy: \"missing\" }",
+					"context pack not found",
+					"target mismatch",
+					"artifact hash drift",
+					"context resume closure blocks completion",
+					"context resume verification blocks completion",
+				],
+			},
+			{
+				file: ".pi/extensions/reverse-pentest-core.ts",
+				markers: [
+					"return { loadedBy: \"missing\" }",
+					"context pack not found",
+					"target mismatch",
+					"artifact hash drift",
+					"context resume closure blocks completion",
+					"context resume verification blocks completion",
+				],
+			},
+			{
+				file: "packages/coding-agent/test/recon-profile.test.ts",
+				markers: [
+					"blocks exact context resume negative fixtures and completion closure",
+					"target mismatch",
+					"artifact hash drift",
+					"context pack not found",
+					"resume_queue_status: blocked",
+					"context resume closure blocks completion",
+				],
+			},
+		],
+	},
+	{
 		id: "evidence_summarization",
 		description: "Evidence summarization survives compaction through evidence digest, artifact index, compiler key evidence, and proof-loop evidence summary.",
 		checks: RUNTIME_MIRRORS.map((file) => ({

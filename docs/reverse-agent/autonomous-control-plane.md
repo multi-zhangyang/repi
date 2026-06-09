@@ -286,4 +286,4 @@ They validate these contract families without running live benchmarks or provide
 
 `hard-eval-control-plane.mjs` 的离线 failure/repair 输出也已补齐 `signature`、`artifactHashes`、`budget`、`rollback`、`expectedGates`、`rollbackCriteria`；role contract 已补齐 `ledgerPolicy`、`conflictPolicy`、`claimGatePolicy`、`handoffTargets`、`evidenceContract`。
 
-This means Pi-RECON now has a usable professional control plane with machine-readable schemas, validators, strict claim release markers, and runtime final-path gates. Remaining work is limited to optional hardening such as independent sub-agent runtime and negative fixtures.
+This means Pi-RECON now has a usable professional control plane with machine-readable schemas, validators, exact-resume negative fixtures, failure/repair writeback hooks, strict claim release markers, and runtime final-path gates. Remaining work is limited to optional hardening such as independent sub-agent runtime, cross-session/multi-compact fixtures, and strict ledger regression fixtures.

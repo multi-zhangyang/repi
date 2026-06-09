@@ -4,6 +4,7 @@ import { existsSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
+import { failureRepairFromGaps } from '../../../scripts/reverse-agent/failure-repair-ledger.mjs';
 
 const repoRoot = resolve(process.env.RECON_REPO_ROOT || '.');
 const strict = process.argv.includes('--strict') || process.env.RECON_COMPOUND_STRICT === '1';
@@ -218,6 +219,23 @@ const requiredGates = gates.filter((item) => item.severity !== 'supporting');
 const passedRequired = requiredGates.every((item) => item.passed);
 const failedGates = gates.filter((item) => !item.passed).map((item) => ({ name: item.name, severity: item.severity, required: item.required, evidence: item.evidence }));
 const verdict = passedRequired ? 'compound-frontier-passed' : gates.some((item) => item.passed) ? 'compound-frontier-gaps' : 'compound-frontier-failed';
+const failureRepair = failureRepairFromGaps({
+  root: repoRoot,
+  source: 'compound-frontier',
+  gaps: failedGates,
+  category: 'contract_gap',
+  status: passedRequired ? 'repaired' : 'repair_queued',
+  attempt: 1,
+  maxAttempts: live ? 2 : 1,
+  commands: ['node bench/recon-remote/compound-frontier/run.mjs --live --strict'],
+  artifacts: Object.values(artifacts).filter(Boolean),
+  expectedArtifacts: [rel(outDir), artifacts.sameWindow, artifacts.agentParallel].filter(Boolean),
+  liveAllowed: live,
+  providerAllowed: runAgent && live,
+  paused: !live,
+  unblock: 'rerun compound frontier with --live --strict after required evidence is allowed',
+  verificationCommand: 'npm run gate:compound-frontier',
+});
 const result = {
   target: 'Compound frontier live-swarm: same-window real platforms + parallel Pi-RECON dogfood + context compact',
   profile: 'compound-frontier',
@@ -234,6 +252,9 @@ const result = {
   ageRows,
   gates,
   failedGates,
+  failureLedgerEvents: failureRepair.failureLedgerEvents,
+  repairQueue: failureRepair.repairQueue,
+  failureRepairWriteback: failureRepair.failureRepairWriteback,
   platformEvidence: same.platformEvidence || {},
   agentEvidence: {
     verdict: agent.verdict,
@@ -251,6 +272,8 @@ const result = {
     : ['promote gate:compound-frontier as release frontier gate', 'rerun with --live before release tags', 'raise next frontier to cross-platform target discovery and compact-resume replay'],
 };
 await writeFile(join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
+await writeFile(join(outDir, 'failure-ledger.jsonl'), `${failureRepair.failureLedgerEvents.map((event) => JSON.stringify(event)).join('\n')}${failureRepair.failureLedgerEvents.length ? '\n' : ''}`);
+await writeFile(join(outDir, 'repair-queue.jsonl'), `${failureRepair.repairQueue.map((item) => JSON.stringify(item)).join('\n')}${failureRepair.repairQueue.length ? '\n' : ''}`);
 for (const [name, item] of Object.entries(runs)) {
   await writeFile(join(outDir, `${name}.stdout.txt`), redact(item?.stdout || ''));
   await writeFile(join(outDir, `${name}.stderr.txt`), redact(item?.stderr || ''));
