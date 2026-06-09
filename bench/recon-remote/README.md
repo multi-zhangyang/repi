@@ -8,6 +8,8 @@ Reproducible public-network benchmark harnesses for Pi-RECON. Runtime evidence i
 | `public-webapp/` | Public webapp surface mapping and replay-safe vulnerability confirmation for profiles such as OWASP Juice Shop and Altoro Mutual/TestFire. |
 | `real-platform/` | Hard-mode real-platform reverse benchmark for Bilibili WBI/media APIs/CDN probes/self-test/browser signer trace and Xiaohongshu CDP anti-bot/API signed replay, runtime signer hooks, signer-bundle trace, replay-divergence capture. |
 | `agent-dogfood/` | Runs the Pi-RECON agent itself through `./pi-test.sh --recon` against latest remote evidence, requiring a real provider/model call, tool execution, platform coverage, and reproducible dogfood artifacts. |
+| `same-window-live/` | Same freshness-window live gate for Bilibili, Xiaohongshu, and Douyin; blocks stale best-artifact self-delusion by requiring all platform proofs inside one time span. |
+| `compound-frontier/` | Hardest release-frontier binder/runner: same-window real platforms + parallel multi-agent dogfood + context/compact audit + hard-score recognition. |
 | `proof-gate/` | Cross-platform live proof gate: reruns Bilibili WBI, Xiaohongshu x-s, Douyin `a_bogus`/no-watermark, optional agent dogfood, then enforces hard-score gates. |
 | `frontier-gate/` | Stricter frontier tracker for Bili runtime WBI bundle trace, XHS 2xx signed replay, Douyin `a_bogus` structured API replay, and dogfood frontier reasoning. |
 | `frontier-matrix/` | Multi-scenario hardest frontier matrix: Bili runtime WBI/media/CDN/per-page-CID positives, XHS auto-discovery positive, XHS search permission negative control, Douyin structured API positive, Douyin cookie-boundary negative control, freshness, and aggregate frontier strict gate. |
@@ -76,3 +78,19 @@ npm run gate:context-compact
 ```
 
 Use `RECON_MATRIX_CASES=xhs_auto_discovery,xhs_search_negative` to iterate on a subset. The matrix intentionally includes negative controls and a strict freshness gate so generic 2xx, permission/login boundaries, and stale artifacts cannot be mistaken for current target success.
+
+## Compound frontier
+
+Bind latest elite evidence quickly:
+
+```bash
+node bench/recon-remote/compound-frontier/run.mjs --use-latest --strict
+```
+
+Full live release gate:
+
+```bash
+npm run gate:compound-frontier
+```
+
+This gate requires same-window real-platform success, agent-parallel model/tool/process proof, context/compact audit pass, and hard-score recognition before it reports `compound-frontier-passed`.

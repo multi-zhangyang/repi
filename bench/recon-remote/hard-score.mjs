@@ -222,6 +222,29 @@ function scoreArtifact(path, obj) {
     if (gates.hardScoreCovered && gates.sameWindowCovered && gates.allRolesCiteArtifacts && gates.roleSpecificPassed && gates.sessionDigestsCaptured && gates.nonMockRuntimeExpected && synthOk) dimensions.regression_readiness = 12;
     else if (obj.scoreRun?.artifactDir || evidencePaths.hardScore) dimensions.regression_readiness = 7;
     evidence.push(`parallel roles=${roleCount} synth=${synthOk} retries=${retryCount} model_calls=${modelCalls} tool_calls=${toolCalls} tool_results=${toolResults} tool_result_bytes=${toolResultBytes} overlap=${parallel.overlapPairs || 0}/${parallel.maxPairs || 0} speedup=${parallel.speedup || 0} same_window=${sameWindowPath || 'none'} process=${Boolean(gates.childPidsCaptured && gates.monotonicClockCaptured)} nonmock=${Boolean(gates.nonMockRuntimeExpected)} gates=${Object.entries(gates).filter(([, v]) => v).map(([k]) => k).join(',')}`);
+  } else if (family === 'compound-frontier') {
+    const gates = obj.gates || [];
+    const gateMap = Object.fromEntries(gates.map((item) => [item.name, item]));
+    const passed = (name) => Boolean(gateMap[name]?.passed);
+    const passedCount = gates.filter((item) => item.passed).length;
+    const failed = (obj.failedGates || []).map((item) => item.name || item);
+    const same = obj.hardScore?.sameWindow || null;
+    const agent = obj.hardScore?.agentParallel || null;
+    if (passed('same_window_live_passed') && passed('agent_parallel_confirmed')) dimensions.signature_rebuild = 20;
+    else if (passed('same_window_live_passed') || passed('agent_parallel_confirmed')) dimensions.signature_rebuild = 12;
+    if (passed('same_window_live_passed') && passed('same_window_no_frontier_gaps')) dimensions.signed_replay = 15;
+    else if (passed('same_window_live_passed')) dimensions.signed_replay = 10;
+    if (passed('same_window_negative_boundaries') && passed('agent_process_nonmock_proof')) dimensions.anti_bot_challenge = 15;
+    else if (passed('same_window_negative_boundaries')) dimensions.anti_bot_challenge = 10;
+    if (passed('same_window_media_byte_proofs')) dimensions.cdn_media_probe = 15;
+    if (passed('agent_model_tool_runtime') && passed('agent_process_nonmock_proof') && passed('context_compact_audit_passed')) dimensions.runtime_capture_depth = 15;
+    else if (passed('agent_model_tool_runtime')) dimensions.runtime_capture_depth = 10;
+    if (obj.verdict === 'compound-frontier-passed' && passed('agent_same_window_bound')) dimensions.exploit_chain = 15;
+    else if (passed('same_window_live_passed') && passed('agent_parallel_confirmed')) dimensions.exploit_chain = 10;
+    dimensions.bundle_trace = clamp((passed('agent_parallel_confirmed') ? 5 : 0) + (passed('context_compact_audit_passed') ? 3 : 0) + (passed('hard_score_recognizes_frontier') ? 2 : 0), 10);
+    if (passed('hard_score_recognizes_frontier') && passed('compound_artifacts_fresh') && passed('agent_same_window_bound')) dimensions.regression_readiness = 10;
+    else if (passed('hard_score_recognizes_frontier')) dimensions.regression_readiness = 6;
+    evidence.push(`compound mode=${obj.mode || 'unknown'} gates=${passedCount}/${gates.length} failed=${failed.join(',') || 'none'} same_window=${obj.artifacts?.sameWindow || 'none'} agent=${obj.artifacts?.agentParallel || 'none'} hard_same=${same?.score || 'none'} hard_agent=${agent?.score || 'none'}`);
   } else if (family === 'same-window-live') {
     const gates = obj.gates || [];
     const gateMap = Object.fromEntries(gates.map((item) => [item.name, item]));
@@ -303,6 +326,9 @@ function scoreArtifact(path, obj) {
   const rawScore = Object.values(dimensions).reduce((a, b) => a + b, 0);
   let score = clamp(rawScore, maxPossibleScore);
   if (family === 'same-window-live' && obj.verdict !== 'same-window-live-passed') {
+    score = Math.min(score, 89);
+  }
+  if (family === 'compound-frontier' && obj.verdict !== 'compound-frontier-passed') {
     score = Math.min(score, 89);
   }
   return {
