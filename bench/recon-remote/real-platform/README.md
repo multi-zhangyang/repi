@@ -14,7 +14,7 @@ Profiles:
 
 | Profile | Chain |
 |---|---|
-| `bilibili-video` | Extract BV/cid, call view/pagelist/playurl, rebuild WBI `w_rid` from `nav.wbi_img`, call signed `x/player/wbi/playurl`, classify DASH/durl candidates, probe CDN media URLs with HEAD/range, emit media probe matrix and deterministic WBI signer self-test. With `RECON_BROWSER=1` or `RECON_BILI_CDP=1`, also captures Chrome/CDP runtime, WBI/buvid signer events, and bundle hints. |
+| `bilibili-video` | Extract BV/cid, call view/pagelist/playurl, rebuild WBI `w_rid` from `nav.wbi_img`, call signed `x/player/wbi/playurl`, classify DASH/durl candidates, probe CDN media URLs with HEAD/range, emit media probe matrix and deterministic WBI signer self-test. With `RECON_BROWSER=1` or `RECON_BILI_CDP=1`, also captures Chrome/CDP runtime, browser-emitted WBI signed requests, signer stack events, external JS bundle hints, and buvid/media URL runtime drift. |
 | `xiaohongshu-note` | Chrome/CDP runtime capture, extract note IDs, `/api/sns/web/*` hints, xsec/signature/anti-bot signals, rendered state/response bodies, signer bundle snippets, signed request timeline, runtime signer events, replay one captured read-only signed API request and classify 2xx success vs 461 verification challenge plus replay divergence. |
 | `generic-cdp` | Chrome/CDP request/response/body/storage baseline and generic signature/header bundle trace for unknown platforms. |
 
@@ -36,3 +36,8 @@ result.json
 browser.json       # CDP profiles
 browser.html       # when rendered HTML is available
 ```
+
+
+## Bilibili runtime frontier evidence
+
+The Bilibili profile does not stop at offline `w_rid` reconstruction. In browser mode it injects fetch/XHR/header/storage/cookie/crypto hooks, observes real player WBI requests such as `x/player/wbi/playurl`, records signer stack anchors from loaded player bundles, and fetches referenced JS bundles for signer-term snippets. This is the evidence consumed by `frontier-gate` for `bilibili_runtime_wbi_bundle_trace`.

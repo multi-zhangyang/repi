@@ -41,3 +41,8 @@ node bench/recon-remote/frontier-gate/run.mjs --strict
 artifact.md
 result.json
 ```
+
+
+## Current frontier interpretation
+
+A passing Bilibili gate means runtime WBI request/bundle evidence exists. `frontier-incomplete` still remains until Xiaohongshu returns structured 2xx signed replay data and Douyin produces an independently replayed structured 2xx aweme API response with the observed anti-bot surface.

@@ -234,7 +234,7 @@ async function runBilibili(url, outDir) {
     if (wbiKeys.mixinKey) {
       const signed = signBiliWbi({ bvid, cid, qn: 80, fnval: 4048, fourk: 1 }, wbiKeys.mixinKey);
       const api = `https://api.bilibili.com/x/player/wbi/playurl?${signed.query}`;
-      wbiPlayurl = { fnval: 4048, signed: true, wts: signed.wts, wRidSha256: sha256(signed.wRid).slice(0, 16), ...(await fetchJson(api, { headers: { referer } })) };
+      wbiPlayurl = { fnval: 4048, signed: true, api, wts: signed.wts, wRidSha256: sha256(signed.wRid).slice(0, 16), ...(await fetchJson(api, { headers: { referer } })) };
       playurls.push(wbiPlayurl);
     }
   }
@@ -249,8 +249,21 @@ async function runBilibili(url, outDir) {
   let browser = null;
   let signatureTrace = { platform: 'bili', observedHeaderNames: [], signedRequestCount: 0, signedRequests: [], apiTimeline: [], bundleHints: [], storageKeyHints: [], signerLog: [], signerKinds: {} };
   if (['1', 'true', 'on'].includes(browserMode) || process.env.RECON_BILI_CDP === '1') {
-    const cdp = await captureCdp(new URL(referer), outDir);
+    const runtimeProbes = [];
+    if (wbiPlayurl?.api) {
+      const apiForRuntime = wbiPlayurl.api;
+      runtimeProbes.push(`(() => { const u = ${JSON.stringify(apiForRuntime)}; window.__PI_RECON_SIGNER_LOG__ = window.__PI_RECON_SIGNER_LOG__ || []; window.__PI_RECON_SIGNER_LOG__.push({kind:'bili-runtime-wbi-probe', at:Date.now(), url:u.replace(/([?&](?:w_rid|wts)=)[^&]+/g,'$1<redacted>')}); fetch(u, { credentials:'include', mode:'no-cors' }).catch(() => {}); return true; })()`);
+    }
+    const cdp = await captureCdp(new URL(referer), outDir, { runtimeProbes, probeWaitMs: 6000 });
     signatureTrace = analyzeSignatureTrace(cdp, 'bili');
+    const externalBundleHints = await collectExternalBundleHints(cdp, 'bili');
+    if (externalBundleHints.length) {
+      const seenBundles = new Set(signatureTrace.bundleHints.map((hint) => `${hint.url}:${hint.sha256}`));
+      for (const hint of externalBundleHints) {
+        const key = `${hint.url}:${hint.sha256}`;
+        if (!seenBundles.has(key)) { signatureTrace.bundleHints.push(hint); seenBundles.add(key); }
+      }
+    }
     const safeCdp = stripRuntimeSecrets(cdp);
     await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(safeCdp, null, 2)}\n`);
     if (safeCdp.storage?.html) await writeFile(join(outDir, 'browser.html'), safeCdp.storage.html);
@@ -439,7 +452,7 @@ function runtimeHookSource() {
   })();`;
 }
 
-async function captureCdp(url, outDir) {
+async function captureCdp(url, outDir, options = {}) {
   const chrome = await resolveChrome();
   const artifact = { mode: 'chrome-cdp', chrome: chrome || 'missing', target: url.toString(), capturedAt: new Date().toISOString(), requests: [], responses: [], failures: [], bodies: [], storage: {}, errors: [], skipped: false };
   if (!chrome || ['0', 'off', 'false'].includes(browserMode)) { artifact.skipped = true; artifact.skipReason = chrome ? 'browser disabled' : 'chrome missing'; return artifact; }
@@ -468,7 +481,25 @@ async function captureCdp(url, outDir) {
       if (Date.now() - lastChange > quietMs && artifact.responses.length) break;
       await sleep(250);
     }
-    for (const response of artifact.responses.filter((r) => /json|text|html|javascript/i.test(r.mimeType || '')).slice(-60)) {
+    for (const expression of options.runtimeProbes || []) {
+      try {
+        await client.send('Runtime.evaluate', { returnByValue: true, awaitPromise: false, expression });
+      } catch (error) {
+        artifact.errors.push({ type: 'runtime-probe', message: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    if ((options.runtimeProbes || []).length) {
+      lastCount = -1;
+      lastChange = Date.now();
+      const probeDeadline = Date.now() + Number(options.probeWaitMs || 5000);
+      while (Date.now() < probeDeadline) {
+        const count = artifact.requests.length + artifact.responses.length + artifact.failures.length;
+        if (count !== lastCount) { lastCount = count; lastChange = Date.now(); }
+        if (Date.now() - lastChange > 1000) break;
+        await sleep(250);
+      }
+    }
+    for (const response of artifact.responses.filter((r) => /json|text|html|javascript/i.test(r.mimeType || '')).slice(-80)) {
       try {
         const body = await client.send('Network.getResponseBody', { requestId: response.id });
         const text = body.base64Encoded ? Buffer.from(body.body || '', 'base64').toString('utf8') : String(body.body || '');
@@ -500,23 +531,68 @@ function compactSnippet(text, term, radius = 140) {
   return redactText(source.slice(start, end)).replace(/\s+/g, ' ').slice(0, radius * 2 + 80);
 }
 
-function analyzeSignatureTrace(cdp, platform = 'generic') {
-  const terms = platform === 'xhs'
+
+function signatureTerms(platform = 'generic') {
+  return platform === 'xhs'
     ? ['x-s-common', 'x-s', 'x-t', 'xsec_token', 'web_session', 'a1', 'b1', 'captcha', 'verify', 'webmsxyw', 'redmoons']
     : platform === 'bili'
       ? ['w_rid', 'wts', 'wbi', 'mixinKey', 'buvid', 'playurl', 'x/player/wbi', 'nav', 'fingerprint']
       : ['x-s', 'x-t', 'token', 'signature', 'verify'];
-  const headerRe = platform === 'xhs'
+}
+function signatureHeaderRe(platform = 'generic') {
+  return platform === 'xhs'
     ? /^x-s$|^x-t$|^x-s-common$|^x-b3-traceid|^x-xray-traceid/i
     : platform === 'bili'
       ? /w_rid|wts|buvid|fingerprint|bili|signature|token|x-/i
       : /signature|token|x-/i;
+}
+function signatureUrlRe(platform = 'generic') {
+  return platform === 'xhs'
+    ? /[?&](?:xsec_token|web_session|a1|b1)=|\/api\/sns\/(?:web|h5)\//i
+    : platform === 'bili'
+      ? /[?&](?:w_rid|wts|buvid)=|\/x\/player\/wbi\/|\/x\/web-interface\/nav|\/x\/player\/playurl/i
+      : /signature|token|sign/i;
+}
+async function collectExternalBundleHints(cdp, platform = 'generic') {
+  const terms = signatureTerms(platform);
+  const urls = unique((cdp.requests || [])
+    .map((request) => request.rawUrl || request.url || '')
+    .filter((url) => /\.m?js(?:[?#]|$)|\/static\/js\/|\/bfs\/static\//i.test(url))
+    .filter((url) => !/^data:/i.test(url)))
+    .slice(0, Number(process.env.RECON_BUNDLE_FETCH_LIMIT || 12));
+  const hints = [];
+  for (const url of urls) {
+    try {
+      const item = await fetchText(url, { headers: { referer: cdp.target || '', accept: '*/*' } });
+      const text = item.text || '';
+      const hits = unique(terms.filter((term) => text.toLowerCase().includes(term.toLowerCase())));
+      const highSignalHits = platform === 'bili' ? hits.filter((term) => /w_rid|wts|wbi|mixinkey|buvid|playurl|x\/player\/wbi/i.test(term)) : hits;
+      if (!hits.length || !highSignalHits.length) continue;
+      hints.push({
+        url: redactUrl(url),
+        length: text.length,
+        sha256: item.sha256,
+        source: 'external-js-fetch',
+        hits,
+        snippets: hits.slice(0, 4).map((term) => ({ term, snippet: compactSnippet(text, term) })),
+      });
+    } catch (error) {
+      hints.push({ url: redactUrl(url), source: 'external-js-fetch', error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return hints.filter((hint) => hint.hits?.length).slice(0, 20);
+}
+
+function analyzeSignatureTrace(cdp, platform = 'generic') {
+  const terms = signatureTerms(platform);
+  const headerRe = signatureHeaderRe(platform);
+  const urlRe = signatureUrlRe(platform);
   const requests = cdp.requests || [];
   const responses = cdp.responses || [];
   const bodies = cdp.bodies || [];
-  const signedRequests = requests.filter((request) => Object.keys(request.headers || {}).some((name) => headerRe.test(name)));
+  const signedRequests = requests.filter((request) => Object.keys(request.headers || {}).some((name) => headerRe.test(name)) || urlRe.test(request.rawUrl || request.url || ''));
   const apiTimeline = requests
-    .filter((request) => platform === 'xhs' ? /\/api\/sns\/(?:web|h5)\//i.test(request.rawUrl || request.url || '') : /\/api\//i.test(request.rawUrl || request.url || ''))
+    .filter((request) => platform === 'xhs' ? /\/api\/sns\/(?:web|h5)\//i.test(request.rawUrl || request.url || '') : platform === 'bili' ? /api\.bilibili\.com\/x\/|\/x\/player|\/x\/web-interface/i.test(request.rawUrl || request.url || '') : /\/api\//i.test(request.rawUrl || request.url || ''))
     .slice(0, 80)
     .map((request, index) => {
       const response = responses.find((item) => item.id === request.id);
@@ -564,7 +640,7 @@ function analyzeSignatureTrace(cdp, platform = 'generic') {
     platform,
     observedHeaderNames,
     signedRequestCount: signedRequests.length,
-    signedRequests: signedRequests.slice(0, 40).map((request) => ({ id: request.id, type: request.type, method: request.method, url: redactUrl(request.rawUrl || request.url), headerNames: Object.keys(request.headers || {}).filter((name) => headerRe.test(name)).sort() })),
+    signedRequests: signedRequests.slice(0, 40).map((request) => ({ id: request.id, type: request.type, method: request.method, url: redactUrl(request.rawUrl || request.url), signedUrl: urlRe.test(request.rawUrl || request.url || ''), headerNames: Object.keys(request.headers || {}).filter((name) => headerRe.test(name)).sort() })),
     apiTimeline,
     bundleHints,
     storageKeyHints,
