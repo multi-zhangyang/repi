@@ -26,6 +26,7 @@
 		"gate:compound-frontier": "node bench/recon-remote/compound-frontier/run.mjs --live --strict",
 		"gate:context-compact": "node scripts/reverse-agent/context-compact-audit.mjs .",
 		"gate:autonomy-control": "node scripts/reverse-agent/autonomy-control-plane.mjs . --strict",
+		"audit:hard-eval-control": "node scripts/reverse-agent/hard-eval-control-plane.mjs .",
 		"test": "npm run test --workspaces --if-present",
 		"version:patch": "npm version patch -ws --no-git-tag-version && node scripts/sync-versions.js && npm install --package-lock-only --ignore-scripts",
 		"version:minor": "npm version minor -ws --no-git-tag-version && node scripts/sync-versions.js && npm install --package-lock-only --ignore-scripts",
