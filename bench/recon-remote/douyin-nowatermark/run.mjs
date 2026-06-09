@@ -73,6 +73,10 @@ function decodeLoose(value) {
       .replace(/\\u003d/g, '=')
       .replace(/\\u002f/gi, '/')
       .replace(/\\\//g, '/')
+      .replace(/&quot;/g, '"')
+      .replace(/&#34;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#39;/g, "'")
       .replace(/&amp;/g, '&')
       .replace(/\u0026/g, '&')
       .replace(/\u003d/g, '=')
@@ -96,6 +100,7 @@ function normalizeUrlCandidate(value) {
   try {
     const url = new URL(decoded);
     if (!['http:', 'https:'].includes(url.protocol)) return '';
+    if (/[`"'{}]|\$\{/.test(decoded)) return '';
     return url.toString();
   } catch {
     return '';
@@ -209,9 +214,10 @@ function scoreCandidate(url, context = '') {
   let score = 0;
   if (/\.mp4(?:\?|$)|\.m3u8(?:\?|$)|mime_type=video|mime_type=video_mp4|video_id=|\/play\//i.test(url)) score += 5;
   if (/douyin|byte|bytedance|snssdk|pstatp|ixigua|toutiao|akamaized|byteimg|bytecdn|amemv/.test(lower)) score += 2;
-  if (/playaddr|play_addr|play_url|playapi|downloadaddr|download_addr|download|bit_rate|video/.test(lower)) score += 3;
+  if (/playaddr|play_addr|play_url|playapi|downloadaddr|download_addr|bit_rate|video_id=|mime_type=video|\/aweme\/v1\/play/i.test(lower)) score += 3;
   if (/aweme|iteminfo|detail|feed|post/.test(lower)) score += 1;
   if (/cover|avatar|image|jpeg|jpg|png|webp|music|audio|css|font|svg|favicon|captcha|verify/.test(lower)) score -= 4;
+  if (/\.(?:js|css|png|jpe?g|webp|svg|gif|woff2?)(?:\?|$)|\/static\/js\/|secsdk|security|monitor_browser|slardar|collect\//i.test(lower)) score -= 10;
   if (/douyin_pc_client|weboff|douyinstatic|bytednsdoc.*download|static-resource|app-download|download\/douyin/i.test(lower)) score -= 8;
   if (/watermark|playwm|wm=|watermarked/.test(lower)) score -= 2;
   if (/playwm/.test(lower)) score += 1; // useful transformation source even if watermarked
@@ -327,7 +333,15 @@ function classifyProbe(probe) {
     const headers = attempt.headers || {};
     return `${attempt.url || ''} ${headers.location || ''} ${headers['content-type'] || ''} ${headers['content-range'] || ''}`;
   }).join(' ').toLowerCase();
-  const video = /video|mp4|mpegurl|m3u8|octet-stream|\.mp4(?:\?|$)|\.m3u8(?:\?|$)/.test(text);
+  const typeText = attempts.map((attempt) => String(attempt.headers?.['content-type'] || '')).join(' ').toLowerCase();
+  const finalUrlText = attempts.map((attempt) => `${attempt.url || ''} ${attempt.headers?.location || ''}`).join(' ').toLowerCase();
+  const staticAsset = /javascript|text\/css|image\/|font\/|\.(?:js|css|png|jpe?g|webp|svg|gif|woff2?)(?:\?|$)/i.test(typeText + ' ' + finalUrlText);
+  const video = !staticAsset && (
+    /video\//.test(typeText) ||
+    /mpegurl|application\/vnd\.apple\.mpegurl/.test(typeText) ||
+    /\.mp4(?:\?|$)|\.m3u8(?:\?|$)|mime_type=video|mime_type=video_mp4/.test(finalUrlText) ||
+    /\/video\/tos\//.test(finalUrlText)
+  );
   const noWatermarkLikely = video && !/watermark|playwm|watermarked/.test(text);
   const reachable = attempts.some((attempt) => [200, 206, 301, 302, 303, 307, 308].includes(Number(attempt.status)));
   return { video, noWatermarkLikely, reachable };
@@ -661,9 +675,11 @@ const mediaCandidates = urls
   .filter((item) => item.score > 0)
   .sort((a, b) => b.score - a.score || a.url.localeCompare(b.url));
 const hypotheses = buildTransformHypotheses(urls);
+const primaryProbeBudget = Math.max(4, Math.ceil(probeLimit / 2));
 const probeTargets = unique([
-  ...mediaCandidates.slice(0, probeLimit).map((x) => x.url),
+  ...mediaCandidates.slice(0, primaryProbeBudget).map((x) => x.url),
   ...hypotheses.slice(0, Math.max(6, Math.floor(probeLimit / 2))).map((x) => x.hypothesis),
+  ...mediaCandidates.slice(primaryProbeBudget, probeLimit).map((x) => x.url),
 ]).slice(0, probeLimit);
 
 const probes = [];
