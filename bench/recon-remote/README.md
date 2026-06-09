@@ -6,7 +6,7 @@ Reproducible public-network benchmark harnesses for Pi-RECON. Runtime evidence i
 |---|---|
 | `douyin-nowatermark/` | Short-video media URL reverse analysis: redirect/CDP/state extraction, `playwm -> play` no-watermark candidate transform, `a_bogus`/`msToken`/webid anti-bot surface inventory, signer-bundle hints, HEAD/range verification. |
 | `public-webapp/` | Public webapp surface mapping and replay-safe vulnerability confirmation for profiles such as OWASP Juice Shop and Altoro Mutual/TestFire. |
-| `real-platform/` | Hard-mode real-platform reverse benchmark for Bilibili WBI/media APIs/CDN probes/self-test regression and Xiaohongshu CDP anti-bot/API signed replay, signer-bundle trace, replay-divergence capture. |
+| `real-platform/` | Hard-mode real-platform reverse benchmark for Bilibili WBI/media APIs/CDN probes/self-test/browser signer trace and Xiaohongshu CDP anti-bot/API signed replay, runtime signer hooks, signer-bundle trace, replay-divergence capture. |
 
 Run each benchmark with `node <benchmark>/run.mjs --help` for usage.
 

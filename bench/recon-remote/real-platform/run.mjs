@@ -245,6 +245,18 @@ async function runBilibili(url, outDir) {
   const wbiOk = wbiPlayurl?.json?.code === 0;
   const verdict = view.json?.code === 0 && wbiOk && strong.length ? 'bilibili-wbi-media-api-confirmed' : view.json?.code === 0 && playurls.some((p) => p.json?.code === 0) && strong.length ? 'bilibili-media-api-confirmed' : media.length ? 'bilibili-media-candidates-needs-replay' : 'bilibili-no-media-candidate';
   const selfTest = biliWbiSelfTest();
+  let browserArtifact = null;
+  let browser = null;
+  let signatureTrace = { platform: 'bili', observedHeaderNames: [], signedRequestCount: 0, signedRequests: [], apiTimeline: [], bundleHints: [], storageKeyHints: [], signerLog: [], signerKinds: {} };
+  if (['1', 'true', 'on'].includes(browserMode) || process.env.RECON_BILI_CDP === '1') {
+    const cdp = await captureCdp(new URL(referer), outDir);
+    signatureTrace = analyzeSignatureTrace(cdp, 'bili');
+    const safeCdp = stripRuntimeSecrets(cdp);
+    await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(safeCdp, null, 2)}\n`);
+    if (safeCdp.storage?.html) await writeFile(join(outDir, 'browser.html'), safeCdp.storage.html);
+    browserArtifact = join(outDir, 'browser.json');
+    browser = { requests: cdp.requests.length, responses: cdp.responses.length, bodies: cdp.bodies.length, failures: cdp.failures.length, errors: cdp.errors, skipped: Boolean(cdp.skipped), skipReason: cdp.skipReason };
+  }
   return {
     verdict,
     bvid,
@@ -261,7 +273,10 @@ async function runBilibili(url, outDir) {
     probes,
     mediaProbeMatrix: summarizeMediaProbeMatrix(probes),
     wbiRegression: { selfTest, signedEndpoint: Boolean(wbiPlayurl), signedParamNames: wbiPlayurl ? ['bvid', 'cid', 'fnval', 'fourk', 'qn', 'wts', 'w_rid'] : [] },
-    nextActions: ['bind unsigned+WBI playurl API and media HEAD/range probes into re_replayer', 'diff fnval=4048/80/16/0 media capability', 'monitor nav wbi_img/mixin-key drift and w_rid rebuild'],
+    browser,
+    signatureTrace,
+    browserArtifact,
+    nextActions: ['bind unsigned+WBI playurl API and media HEAD/range probes into re_replayer', 'diff fnval=4048/80/16/0 media capability', 'rerun with RECON_BROWSER=1 to capture browser WBI/buvid runtime drift if browser is absent', 'monitor nav wbi_img/mixin-key drift and w_rid rebuild'],
   };
 }
 
@@ -341,6 +356,89 @@ function cdpClient(wsUrl, artifact) {
   return { open, send, close };
 }
 
+function runtimeHookSource() {
+  return `(() => {
+    window.__PI_RECON_FETCH_LOG__ = [];
+    window.__PI_RECON_SIGNER_LOG__ = [];
+    const sigRe = /w_rid|wts|buvid|x-s-common|x-s|x-t|xsec_token|web_session|a1|b1|captcha|verify|a_bogus|msToken|webid|X-Bogus|_signature|token|sign/i;
+    const clean = (value) => String(value || '')
+      .replace(/([?&](?:w_rid|wts|buvid|xsec_token|web_session|a1|b1|msToken|a_bogus|webid|web_id|device_id|_signature|X-Bogus|token|sign)=)[^&\\s"']+/ig, '$1<redacted>')
+      .slice(0, 900);
+    const stack = () => { try { return String(new Error().stack || '').split('\\n').slice(2, 8).join('\\n'); } catch { return ''; } };
+    const logSigner = (kind, data = {}) => {
+      try {
+        const blob = JSON.stringify(data);
+        if (!sigRe.test(blob) && !/cookie|headers|urlsearchparams|localstorage|crypto/i.test(kind)) return;
+        if (window.__PI_RECON_SIGNER_LOG__.length < 600) window.__PI_RECON_SIGNER_LOG__.push({ kind, at: Date.now(), ...data, stack: clean(stack()) });
+      } catch {}
+    };
+    const oldFetch = window.fetch;
+    window.fetch = function(input, init) {
+      try {
+        const url = String(input && input.url || input);
+        window.__PI_RECON_FETCH_LOG__.push({ kind: 'fetch', url: clean(url), method: init && init.method || 'GET', at: Date.now() });
+        if (sigRe.test(url) || sigRe.test(JSON.stringify(init && init.headers || {}))) logSigner('fetch', { url: clean(url), method: init && init.method || 'GET' });
+      } catch {}
+      return oldFetch.apply(this, arguments);
+    };
+    const oldOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url) {
+      try {
+        this.__PI_RECON_XHR_URL__ = String(url);
+        window.__PI_RECON_FETCH_LOG__.push({ kind: 'xhr', method, url: clean(url), at: Date.now() });
+        if (sigRe.test(String(url))) logSigner('xhr-open', { method, url: clean(url) });
+      } catch {}
+      return oldOpen.apply(this, arguments);
+    };
+    const oldSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+      try { if (sigRe.test(String(name)) || sigRe.test(String(value))) logSigner('xhr-header', { url: clean(this.__PI_RECON_XHR_URL__), name: String(name) }); } catch {}
+      return oldSetRequestHeader.apply(this, arguments);
+    };
+    for (const method of ['set', 'append']) {
+      const old = URLSearchParams.prototype[method];
+      URLSearchParams.prototype[method] = function(key, value) {
+        try { if (sigRe.test(String(key)) || sigRe.test(String(value))) logSigner('urlsearchparams-' + method, { key: String(key), valueLength: String(value || '').length }); } catch {}
+        return old.apply(this, arguments);
+      };
+    }
+    if (window.Headers) {
+      for (const method of ['set', 'append']) {
+        const old = Headers.prototype[method];
+        Headers.prototype[method] = function(key, value) {
+          try { if (sigRe.test(String(key)) || sigRe.test(String(value))) logSigner('headers-' + method, { key: String(key), valueLength: String(value || '').length }); } catch {}
+          return old.apply(this, arguments);
+        };
+      }
+    }
+    try {
+      const oldSetItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key, value) {
+        try { if (sigRe.test(String(key)) || sigRe.test(String(value))) logSigner('localstorage-set', { key: String(key), valueLength: String(value || '').length }); } catch {}
+        return oldSetItem.apply(this, arguments);
+      };
+    } catch {}
+    try {
+      const desc = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie') || Object.getOwnPropertyDescriptor(HTMLDocument.prototype, 'cookie');
+      if (desc && desc.set && desc.get) Object.defineProperty(document, 'cookie', {
+        configurable: true,
+        get() { return desc.get.call(document); },
+        set(value) {
+          try { if (sigRe.test(String(value))) logSigner('cookie-set', { name: String(value).split('=')[0] || '', valueLength: String(value || '').length }); } catch {}
+          return desc.set.call(document, value);
+        },
+      });
+    } catch {}
+    try {
+      const oldDigest = crypto && crypto.subtle && crypto.subtle.digest;
+      if (oldDigest) crypto.subtle.digest = function(algorithm, data) {
+        try { logSigner('crypto-digest', { algorithm: String(algorithm), bytes: data && (data.byteLength || data.length) || 0 }); } catch {}
+        return oldDigest.apply(this, arguments);
+      };
+    } catch {}
+  })();`;
+}
+
 async function captureCdp(url, outDir) {
   const chrome = await resolveChrome();
   const artifact = { mode: 'chrome-cdp', chrome: chrome || 'missing', target: url.toString(), capturedAt: new Date().toISOString(), requests: [], responses: [], failures: [], bodies: [], storage: {}, errors: [], skipped: false };
@@ -359,6 +457,7 @@ async function captureCdp(url, outDir) {
     await client.send('Runtime.enable');
     await client.send('Network.enable', { maxTotalBufferSize: 50000000, maxResourceBufferSize: 5000000 });
     await client.send('Network.setUserAgentOverride', { userAgent });
+    await client.send('Page.addScriptToEvaluateOnNewDocument', { source: runtimeHookSource() });
     await client.send('Page.navigate', { url: url.toString() });
     let lastCount = -1;
     let lastChange = Date.now();
@@ -376,7 +475,7 @@ async function captureCdp(url, outDir) {
         artifact.bodies.push({ id: response.id, url: response.url, mimeType: response.mimeType, length: text.length, sha256: sha256(text).slice(0, 24), text: text.slice(0, maxBodyBytes) });
       } catch (error) { artifact.bodies.push({ id: response.id, url: response.url, error: error instanceof Error ? error.message : String(error) }); }
     }
-    const evalResult = await client.send('Runtime.evaluate', { returnByValue: true, awaitPromise: true, expression: `JSON.stringify({href:location.href,title:document.title,html:document.documentElement.outerHTML.slice(0, ${maxBodyBytes}),localStorage:{...localStorage},sessionStorage:{...sessionStorage},cookies:document.cookie})` });
+    const evalResult = await client.send('Runtime.evaluate', { returnByValue: true, awaitPromise: true, expression: `JSON.stringify({href:location.href,title:document.title,html:document.documentElement.outerHTML.slice(0, ${maxBodyBytes}),localStorage:{...localStorage},sessionStorage:{...sessionStorage},cookies:document.cookie,piReconFetchLog:window.__PI_RECON_FETCH_LOG__||[],piReconSignerLog:window.__PI_RECON_SIGNER_LOG__||[]})` });
     artifact.storage = safeJsonParse(evalResult.result?.value || '{}', {});
     artifact.storage.cookies = artifact.storage.cookies ? '<redacted>' : '';
     await client.close();
@@ -404,8 +503,14 @@ function compactSnippet(text, term, radius = 140) {
 function analyzeSignatureTrace(cdp, platform = 'generic') {
   const terms = platform === 'xhs'
     ? ['x-s-common', 'x-s', 'x-t', 'xsec_token', 'web_session', 'a1', 'b1', 'captcha', 'verify', 'webmsxyw', 'redmoons']
-    : ['x-s', 'x-t', 'token', 'signature', 'verify'];
-  const headerRe = platform === 'xhs' ? /^x-s$|^x-t$|^x-s-common$|^x-b3-traceid|^x-xray-traceid/i : /signature|token|x-/i;
+    : platform === 'bili'
+      ? ['w_rid', 'wts', 'wbi', 'mixinKey', 'buvid', 'playurl', 'x/player/wbi', 'nav', 'fingerprint']
+      : ['x-s', 'x-t', 'token', 'signature', 'verify'];
+  const headerRe = platform === 'xhs'
+    ? /^x-s$|^x-t$|^x-s-common$|^x-b3-traceid|^x-xray-traceid/i
+    : platform === 'bili'
+      ? /w_rid|wts|buvid|fingerprint|bili|signature|token|x-/i
+      : /signature|token|x-/i;
   const requests = cdp.requests || [];
   const responses = cdp.responses || [];
   const bodies = cdp.bodies || [];
@@ -447,6 +552,14 @@ function analyzeSignatureTrace(cdp, platform = 'generic') {
     .flatMap(([area, value]) => typeof value === 'object' && value ? Object.keys(value).map((key) => `${area}.${key}`) : [])
     .filter((key) => terms.some((term) => key.toLowerCase().includes(term.toLowerCase()))))
     .slice(0, 40);
+  const signerLog = (cdp.storage?.piReconSignerLog || [])
+    .filter((entry) => terms.some((term) => JSON.stringify(entry).toLowerCase().includes(term.toLowerCase())))
+    .slice(0, 80)
+    .map((entry) => ({ ...entry, url: entry.url ? redactUrl(entry.url) : undefined, stack: redactText(entry.stack || '').slice(0, 900) }));
+  const signerKinds = Object.fromEntries(Object.entries(signerLog.reduce((acc, entry) => {
+    acc[entry.kind || 'unknown'] = (acc[entry.kind || 'unknown'] || 0) + 1;
+    return acc;
+  }, {})).sort());
   return {
     platform,
     observedHeaderNames,
@@ -455,19 +568,29 @@ function analyzeSignatureTrace(cdp, platform = 'generic') {
     apiTimeline,
     bundleHints,
     storageKeyHints,
+    signerLog,
+    signerKinds,
   };
 }
 
 function stripStorage(storage = {}) {
+  const sanitizeValue = (value) => {
+    if (Array.isArray(value)) return value.slice(0, 600).map(sanitizeValue);
+    if (typeof value === 'string') return redactText(redactUrl(value)).slice(0, 4000);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([key, inner]) => [
+        key,
+        /cookie|authorization|token|session|csrf|xsrf|a1|b1|x-s|x-t|xsec|buvid|w_rid/i.test(key) ? '<redacted>' : sanitizeValue(inner),
+      ]));
+    }
+    return value;
+  };
   const out = {};
   for (const [key, value] of Object.entries(storage || {})) {
     if (key === 'cookies') out[key] = value ? '<redacted>' : '';
     else if (key === 'html') out[key] = redactText(value);
     else if (typeof value === 'string') out[key] = redactText(value).slice(0, maxBodyBytes);
-    else if (value && typeof value === 'object') {
-      out[key] = {};
-      for (const [innerKey, innerValue] of Object.entries(value)) out[key][innerKey] = redactText(String(innerValue || '')).slice(0, 4000);
-    } else out[key] = value;
+    else out[key] = sanitizeValue(value);
   }
   return out;
 }
@@ -598,6 +721,7 @@ const md = [
     `- playurl_profiles=${(result.playurls || []).map((p) => `${p.signed ? 'wbi-' : ''}${p.fnval}:${p.code}:q${p.quality}`).join(', ')}`,
     `- media_candidates=${result.mediaCandidates?.length || 0} reachable_media_probes=${(result.probes || []).filter((p) => p.probe.classification.media && p.probe.classification.reachable).length}`,
     `- wbi_selftest=${result.wbiRegression?.selfTest?.ok} media_probe_matrix=${JSON.stringify(result.mediaProbeMatrix || {})}`,
+    `- browser=${result.browser ? JSON.stringify(result.browser) : 'not-run'} signature_trace bundles=${result.signatureTrace?.bundleHints?.length || 0} signer_events=${result.signatureTrace?.signerLog?.length || 0}`,
   ] : profile === 'xiaohongshu-note' ? [
     `- note_ids=${result.noteIds?.join(', ') || 'none'}`,
     `- web_api_hints=${result.webApiHints?.length || 0}`,
@@ -611,6 +735,8 @@ const md = [
   ...(profile === 'bilibili-video'
     ? [
         ...(result.playurls || []).map((p) => `- playurl${p.signed ? '-wbi' : ''} fnval=${p.fnval} status=${p.status} code=${p.code} quality=${p.quality} dash=${p.hasDash} durl=${p.durlCount} wts=${p.wts || ''} wRidSha256=${p.wRidSha256 || ''}`),
+        ...(result.signatureTrace?.bundleHints || []).slice(0, 12).map((hint) => `- signer-bundle hits=${hint.hits.join(',')} len=${hint.length || 0} sha=${hint.sha256 || ''} url=${hint.url}`),
+        ...(result.signatureTrace?.signerLog || []).slice(0, 20).map((item) => `- signer-event kind=${item.kind} key=${item.key || ''} url=${item.url || ''}`),
         ...(result.probes || []).slice(0, 20).map((p) => `- media ${p.kind} id=${p.id || ''} reachable=${p.probe.classification.reachable} media=${p.probe.classification.media} url=${redactUrl(p.url)}`),
       ]
     : profile === 'xiaohongshu-note'

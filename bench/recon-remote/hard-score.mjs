@@ -95,6 +95,8 @@ function scoreArtifact(path, obj) {
     const signedOk = (obj.playurls || []).some((p) => p.signed && p.code === 0 && p.hasDash);
     const unsignedOk = (obj.playurls || []).some((p) => !p.signed && p.code === 0);
     const reachable = countReachableMedia(obj);
+    const bundleHints = obj.signatureTrace?.bundleHints?.length || 0;
+    const signerEvents = obj.signatureTrace?.signerLog?.length || 0;
     if (obj.nav?.hasWbiImg && signedOk) dimensions.signature_rebuild = 20;
     else if (obj.nav?.hasWbiImg) dimensions.signature_rebuild = 12;
     if (signedOk) dimensions.signed_replay = 15;
@@ -102,15 +104,17 @@ function scoreArtifact(path, obj) {
     dimensions.cdn_media_probe = clamp(reachable * 4, 15);
     dimensions.exploit_chain = signedOk && reachable ? 10 : unsignedOk ? 6 : 0;
     if (obj.nav?.code === -101) dimensions.anti_bot_challenge = 4;
+    dimensions.bundle_trace = clamp(bundleHints * 2 + signerEvents, 10);
     if (obj.mediaProbeMatrix?.reachableMedia) dimensions.regression_readiness = 6;
     if (obj.wbiRegression?.selfTest?.ok) dimensions.regression_readiness = Math.max(dimensions.regression_readiness, 8);
-    evidence.push(`bili wbi=${Boolean(signedOk)} reachable_media=${reachable} selftest=${Boolean(obj.wbiRegression?.selfTest?.ok)}`);
+    evidence.push(`bili wbi=${Boolean(signedOk)} reachable_media=${reachable} selftest=${Boolean(obj.wbiRegression?.selfTest?.ok)} bundles=${bundleHints} signer_events=${signerEvents}`);
   } else if (family === 'xiaohongshu-note') {
     const signedHeaders = obj.xhsReplay?.signedHeaderNames?.length || 0;
     const antiSignals = new Set(obj.antiBotSignals || []);
     const bundleHints = obj.signatureTrace?.bundleHints?.length || 0;
     const signedReqs = obj.signatureTrace?.signedRequestCount || 0;
-    if (signedHeaders >= 4 || signedReqs >= 2) dimensions.signature_rebuild = 16;
+    const signerEvents = obj.signatureTrace?.signerLog?.length || 0;
+    if (signedHeaders >= 4 || signedReqs >= 2 || signerEvents >= 10) dimensions.signature_rebuild = 16;
     else if (signedHeaders >= 3) dimensions.signature_rebuild = 14;
     else if (antiSignals.size >= 4) dimensions.signature_rebuild = 8;
     if (obj.xhsReplay?.attempted && safeNum(obj.xhsReplay.status) >= 200 && safeNum(obj.xhsReplay.status) < 300) dimensions.signed_replay = 15;
@@ -118,10 +122,11 @@ function scoreArtifact(path, obj) {
     if (safeNum(obj.xhsReplay?.status) === 461 || obj.xhsReplay?.headers?.verifytype) dimensions.anti_bot_challenge = 15;
     else if (antiSignals.size >= 5) dimensions.anti_bot_challenge = 11;
     else if (antiSignals.size) dimensions.anti_bot_challenge = 5;
-    dimensions.bundle_trace = clamp(bundleHints * 3, 10);
+    dimensions.bundle_trace = clamp(bundleHints * 3 + Math.ceil(signerEvents / 12), 10);
     dimensions.exploit_chain = obj.xhsReplay?.attempted ? 8 : 4;
     if (obj.signatureTrace?.replayDivergence) dimensions.regression_readiness = 6;
-    evidence.push(`xhs signed_headers=${signedHeaders} signed_reqs=${signedReqs} replay=${obj.xhsReplay?.status || 'none'} bundles=${bundleHints}`);
+    if (signerEvents >= 10) dimensions.regression_readiness = Math.max(dimensions.regression_readiness, 8);
+    evidence.push(`xhs signed_headers=${signedHeaders} signed_reqs=${signedReqs} replay=${obj.xhsReplay?.status || 'none'} bundles=${bundleHints} signer_events=${signerEvents}`);
   } else if (family === 'douyin-nowatermark') {
     const strong = countStrongDouyin(obj);
     const transform = (obj.transformHypotheses || []).some((h) => /playwm|watermark/i.test(`${h.source} ${h.hypothesis} ${h.reason}`));

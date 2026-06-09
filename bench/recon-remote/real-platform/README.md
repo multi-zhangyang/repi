@@ -14,11 +14,18 @@ Profiles:
 
 | Profile | Chain |
 |---|---|
-| `bilibili-video` | Extract BV/cid, call view/pagelist/playurl, rebuild WBI `w_rid` from `nav.wbi_img`, call signed `x/player/wbi/playurl`, classify DASH/durl candidates, probe CDN media URLs with HEAD/range, emit media probe matrix and deterministic WBI signer self-test. |
-| `xiaohongshu-note` | Chrome/CDP runtime capture, extract note IDs, `/api/sns/web/*` hints, xsec/signature/anti-bot signals, rendered state/response bodies, signer bundle snippets, signed request timeline, replay one captured read-only signed API request and classify 2xx success vs 461 verification challenge plus replay divergence. |
+| `bilibili-video` | Extract BV/cid, call view/pagelist/playurl, rebuild WBI `w_rid` from `nav.wbi_img`, call signed `x/player/wbi/playurl`, classify DASH/durl candidates, probe CDN media URLs with HEAD/range, emit media probe matrix and deterministic WBI signer self-test. With `RECON_BROWSER=1` or `RECON_BILI_CDP=1`, also captures Chrome/CDP runtime, WBI/buvid signer events, and bundle hints. |
+| `xiaohongshu-note` | Chrome/CDP runtime capture, extract note IDs, `/api/sns/web/*` hints, xsec/signature/anti-bot signals, rendered state/response bodies, signer bundle snippets, signed request timeline, runtime signer events, replay one captured read-only signed API request and classify 2xx success vs 461 verification challenge plus replay divergence. |
 | `generic-cdp` | Chrome/CDP request/response/body/storage baseline and generic signature/header bundle trace for unknown platforms. |
 
 `--self-test` validates the embedded Bilibili WBI mixin table, signing normalizer, query ordering and deterministic `w_rid` hash without network access.
+
+Bilibili browser trace example:
+
+```bash
+RECON_BROWSER=1 RECON_PROBE_LIMIT=4 \
+  node bench/recon-remote/real-platform/run.mjs https://www.bilibili.com/video/BV1odL76QE6B bilibili-video
+```
 
 ## Output
 
