@@ -9,7 +9,11 @@
     "failureKey": ["source", "scope", "signature", "attempt"],
     "repairKey": ["repairId"],
     "budgetKey": ["signature", "retryBudget.retryKey", "budget.retryKey"],
-    "rejects": ["duplicate_failure_signature_attempt", "duplicate_repair_id", "failure_repair_signature_mismatch"]
+    "rejects": ["duplicate_failure_signature_attempt", "duplicate_repair_id", "failure_repair_signature_mismatch", "exhausted_unpaused_retry"]
+  },
+  "x-piReconTerminalRules": {
+    "exhaustedFailureBudget": "status=exhausted requires remainingAttempts=0 or attempt>=maxAttempts",
+    "exhaustedRepairRetry": "linked exhausted failures must not continue with unpaused rerun/retry repairs"
   },
   "x-piReconInvariants": [
     "strict_additional_properties_false_for_failure_and_repair",
@@ -17,6 +21,8 @@
     "deterministic_duplicate_signature_attempt_rejected",
     "same_signature_shares_retry_budget",
     "exhausted_status_stops_blind_retry",
+    "exhausted_failure_requires_remaining_zero_or_attempt_gte_maxAttempts",
+    "linked_exhausted_failure_cannot_unpause_rerun_or_retry",
     "failedGates_map_to_repair_queue_item",
     "per_attempt_stdout_stderr_or_artifact_hashes_preserved",
     "autofix_requires_baseline_allowlist_regression_gate_and_rollback_criteria"
@@ -164,6 +170,7 @@
         "strict_additional_properties_false_for_failure_and_repair",
         "same_signature_shares_retry_budget",
         "exhausted_status_stops_blind_retry",
+        "exhausted_failure_requires_remaining_zero_or_attempt_gte_maxAttempts",
         "failedGates_map_to_repair_queue_item",
         "per_attempt_stdout_stderr_or_artifact_hashes_preserved",
         "autofix_requires_baseline_allowlist_regression_gate_and_rollback_criteria"
@@ -216,6 +223,7 @@
         "commands_are_not_executed_by_static_gate",
         "expectedGates_must_bind_to_failedGates",
         "repair_completion_requires_regressionGates_pass",
+        "linked_exhausted_failure_cannot_unpause_rerun_or_retry",
         "deterministic_duplicate_signature_attempt_rejected"
       ]
     }

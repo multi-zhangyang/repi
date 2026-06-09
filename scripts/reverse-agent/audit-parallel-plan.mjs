@@ -315,6 +315,40 @@ function validateDogfoodRuntimeManifestMarkers(root) {
 		markerCount: markers.length,
 		missing,
 		rows,
+		});
+}
+
+function validateReSwarmRuntimeManifestMarkers(root) {
+	const file = readStaticMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", [
+		"SubagentRuntimeManifestV1",
+		"SwarmSubagentRuntimeManifestV1",
+		"writeSwarmSubagentRuntimeManifest",
+		"subagentRuntimeManifestPath",
+		"subagentRuntimeManifests",
+		"subagentRuntimeManifestCount",
+		"subagentRuntimeManifestsCaptured",
+		"runtimeManifestFile",
+		"pid",
+		"parentPid",
+		"sessionDir",
+		"stdoutPath",
+		"stderrPath",
+		"stdoutSha256",
+		"stderrSha256",
+		"startedAt",
+		"endedAt",
+		"elapsedMs",
+		"model",
+		"toolCallDigest",
+		"retryBudget",
+		"resourceLimits",
+	]);
+	return status(file.exists && file.missing.length === 0, {
+		staticOnly: true,
+		file: file.path,
+		markerCount: file.rows.length,
+		missing: file.missing,
+		rows: file.rows,
 	});
 }
 
@@ -411,6 +445,7 @@ function formatMarkdown(result) {
 		`- no_new_agent_dogfood_dir: ${result.checks.planOnlyNoEvidenceDir.noEvidenceDirCreated}`,
 		`- invalid_plan_failure_repair: ${result.checks.planOnlyFailureRepair.status}`,
 		`- subagent_runtime_manifest_static: ${result.checks.dogfoodRuntimeManifest.status}`,
+		`- re_swarm_subagent_runtime_manifest_static: ${result.checks.reSwarmRuntimeManifest.status}`,
 		`- runtime_claim_ledger_static: ${result.checks.runtimeClaimLedger.status}`,
 		`- runtime_claim_ledger_sources: ${result.checks.runtimeClaimLedger.sourceList || "missing"}`,
 		"",
@@ -494,6 +529,7 @@ function buildResult(root) {
 	const planOnlyCheck = validatePlanOnlyOutput(planOnlyRun.json, planOnlyRun, frontierPlan, beforeDirs, afterDirs);
 	const planOnlyFailureRepairCheck = validatePlanOnlyFailureRepair(invalidPlanRun, invalidBeforeDirs, invalidAfterDirs);
 	const dogfoodRuntimeManifestCheck = validateDogfoodRuntimeManifestMarkers(resolvedRoot);
+	const reSwarmRuntimeManifestCheck = validateReSwarmRuntimeManifestMarkers(resolvedRoot);
 	const runtimeClaimLedgerCheck = validateRuntimeClaimLedgerMarkers(resolvedRoot);
 	const checks = {
 		frontierPlan: frontierCheck,
@@ -524,6 +560,7 @@ function buildResult(root) {
 		planOnlyOutput: planOnlyCheck,
 		planOnlyFailureRepair: planOnlyFailureRepairCheck,
 		dogfoodRuntimeManifest: dogfoodRuntimeManifestCheck,
+		reSwarmRuntimeManifest: reSwarmRuntimeManifestCheck,
 		runtimeClaimLedger: runtimeClaimLedgerCheck,
 	};
 	const ok = Object.values(checks).every((check) => check.status === "pass");

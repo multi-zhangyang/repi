@@ -206,13 +206,13 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 - `re_operator`、`re_delegate`、`re_swarm`、`re_supervisor` 已有失败预算、score decay、demotion、retry queue、evidence recapture queue 等局部闭环。
 - parallel dogfood runner 已有 role/synthesizer bounded retry。
 - `hard-eval-control-plane --write` 同时写 per-run failure/repair artifact，并追加 canonical `.pi/evidence/failures/ledger.jsonl` 与 `.pi/evidence/repairs/queue.jsonl`；failure event 带 `retryBudget/evidenceWriteback/blockedConditions`，repair item 带 `repairAction/evidenceWriteback/blockedConditions`。
-- `schemas/reverse-agent/failure-repair-contract.schema.json` 已开启 strict additionalProperties=false，并绑定 `fixtures/reverse-agent/failure-repair-strict.fixture.json`；`gate:autonomous-contracts` 会验证 valid fixture 通过、duplicate signature/attempt 被拒绝、loose extra field 被拒绝。
+- `schemas/reverse-agent/failure-repair-contract.schema.json` 已开启 strict additionalProperties=false，并绑定 `fixtures/reverse-agent/failure-repair-strict.fixture.json`；`gate:autonomous-contracts` 会验证 valid fixture 通过、duplicate signature/attempt、loose extra field、exhausted 后继续 unpaused rerun/retry 都被拒绝。
 - compound-frontier failed gates、agent-dogfood role retry 和 plan-only invalid fixture 已输出 canonical failure/repair rows。
 
 仍需硬化：
 
 - 把 strict failure/repair validator 接入独立 sub-agent/session runtime regression gates。
-- 所有 runtime retry 使用同一失败签名和预算，达到 exhausted 后停止盲 retry。
+- 继续把所有 runtime retry 接入同一失败签名和预算；strict validator 已阻断 exhausted 后未闭合 budget 或 unpaused rerun/retry 的盲重试。
 - 为 autofix/operator/compound 类动作加入 baseline、allowlist、passed gate regression 和 rollback criteria。
 
 推荐非测试顺序：
@@ -233,7 +233,7 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 
 仍需硬化：
 
-- 把 re_swarm/compound runtime claim ledger 接入 strict validator、runtime regression gates 和最终 claim promotion 阻断链。
+- 补齐 agent-dogfood/re_swarm live runtime artifact，让 `gate:runtime-claim-ledger` 从 partial coverage 变成 complete coverage。
 - 每个 `proven/final_pass` claim 继续强制绑定 artifact sha256 和 JSON query，并有 verifier pass 且无 unresolved adversary challenge。
 - synthesizer 输出 conflict table：claim IDs、冲突主题、胜出证据、降级原因、未解决冲突。
 
@@ -248,10 +248,10 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 
 | 方向 | 现在能保证 | 不能夸大的部分 |
 |---|---|---|
-| 并行调度 | 能生成 `ReconParallelPlanV1`，能用 `--plan-json --plan-only` 离线预览 worker/merge/evidence contract，agent-dogfood 已有 subagent runtime manifest 运行证据字段。 | 还不是动态 autonomous scheduler；尚未完成跨入口统一调度、自动取消、工作窃取、实时重分片和 claim-aware merge 执行闭环。 |
+| 并行调度 | 能生成 `ReconParallelPlanV1`，能用 `--plan-json --plan-only` 离线预览 worker/merge/evidence contract，agent-dogfood 已有 subagent runtime manifest，re_swarm run 也会写 command-level `SubagentRuntimeManifestV1`、stdout/stderr、sessionDir 和 toolCallDigest。 | 还不是动态 autonomous scheduler；尚未完成跨入口统一调度、自动取消、工作窃取、实时重分片和 claim-aware merge 执行闭环，也还未把 re_swarm worker 升级成独立 Pi child session/provider runtime。 |
 | 长期上下文压缩 | `re_context`、`session_before_compact`、`session_compact`、context audit 已覆盖 context pack、resume contract、branch mismatch/hash drift/missing pack 等负例、evidence summarization 和 bounded resume。 | 还不能宣称无限长期记忆；仍需多次 compact、预算 exhausted、跨 session contamination 等更多负例和状态回写。 |
 | 失败自修复 | 已有 bounded retry、repair queue、hard-eval gaps、autofix/proof-loop、strict failure/repair schema fixture、duplicate rejection 和 compound/role retry rows。 | 还不是自动修好所有失败；plan-only 不执行 repair，真实修复仍需把 strict validator 接入更多 runtime regression、rollback criteria 和 passed-gate regression。 |
-| 自动分工验证 | 已有 role contract、hard-eval claim ledger、agent-dogfood / re_swarm / compound runtime claim ledger、synthesizer reconciliation、score split、strict claim marker 和 runtime final path 阻断，能防止把 orchestration 成功写成平台 claim 成功。 | 剩余缺口是 strict validator regression、unresolved challenge 自动回流、claim-aware merge 和最终 claim promotion 阻断覆盖；每个 proven/final claim 仍需 artifact sha256、JSON query、verifier pass、无 unresolved adversary challenge。 |
+| 自动分工验证 | 已有 role contract、hard-eval claim ledger、agent-dogfood / re_swarm / compound runtime claim ledger、runtime-claim-ledger adapter/gate、synthesizer reconciliation、score split、strict claim marker 和 runtime final path 阻断，能防止把 orchestration 成功写成平台 claim 成功。 | 仍需补齐 agent-dogfood/re_swarm live runtime artifacts、unresolved challenge 自动回流、claim-aware merge 和最终 claim promotion 全覆盖；每个 proven/final claim 仍需 artifact sha256、JSON query、verifier pass、无 unresolved adversary challenge。 |
 
 ## 当前不做的事
 

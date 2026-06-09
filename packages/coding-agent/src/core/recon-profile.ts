@@ -910,7 +910,76 @@ type SwarmWorkerExecution = {
 	command: string;
 	status: OperationStepStatus;
 	output: string;
+	stdout?: string;
+	stderr?: string;
+	stdoutSha256?: string;
+	stderrSha256?: string;
+	startedAt?: string;
+	endedAt?: string;
+	elapsedMs?: number;
+	pid?: number | null;
+	parentPid?: number | null;
+	exitCode?: number | null;
+	signal?: string | null;
 	sourceArtifacts: string[];
+};
+
+type SwarmRuntimeState = "queued" | "done" | "blocked" | "cancelled";
+
+type SwarmRuntimeModelSummary = {
+	provider: string;
+	modelId: string;
+	modelCalls: number;
+	toolCalls: number;
+	toolResults: number;
+};
+
+type SwarmRuntimeRetryBudget = {
+	signature: string;
+	attempt: number;
+	maxAttempts: number;
+	remaining: number;
+	exhausted: boolean;
+};
+
+type SwarmSubagentRuntimeManifestV1 = {
+	kind: "SubagentRuntimeManifestV1";
+	schemaVersion: 1;
+	runId: string;
+	roleId: DelegateWorker;
+	workerId: string;
+	attempt: number;
+	status: SwarmRuntimeState;
+	pid: number | null;
+	parentPid: number | null;
+	sessionDir: string;
+	stdoutPath: string;
+	stderrPath: string;
+	stdoutSha256: string;
+	stderrSha256: string;
+	startedAt: string;
+	endedAt: string;
+	elapsedMs: number;
+	exitCode: number | null;
+	signal: string | null;
+	model: SwarmRuntimeModelSummary;
+	toolCallDigest: string;
+	claimLedgerPath: string;
+	failureLedgerPath: string;
+	repairQueuePath: string;
+	resourceLimits: {
+		timeoutMs: number;
+		maxCommands: number;
+		maxOutputBytes: number;
+		cancelOnTimeout: boolean;
+	};
+	retryBudget: SwarmRuntimeRetryBudget;
+	mergeKeys: string[];
+	evidenceRefs: string[];
+};
+
+type SwarmSubagentRuntimeManifestRow = SwarmSubagentRuntimeManifestV1 & {
+	runtimeManifestFile: string;
 };
 
 type ReconParallelPlanWorkerV1 = {
@@ -994,6 +1063,10 @@ type SwarmArtifact = {
 	claimLedgerEventCount: number;
 	claimLedgerTipHash?: string;
 	runtimeClaimLedgerCaptured: boolean;
+	subagentRuntimeManifestPath?: string;
+	subagentRuntimeManifests: SwarmSubagentRuntimeManifestRow[];
+	subagentRuntimeManifestCount: number;
+	subagentRuntimeManifestsCaptured: boolean;
 	sourceArtifacts: string[];
 };
 
@@ -2488,7 +2561,7 @@ function failureRepairEvidenceWriteback(): FailureRepairEvidenceWriteback {
 
 function runtimeArtifactHashes(paths: Array<string | undefined>): FailureRepairArtifactHash[] {
 	return Array.from(new Set(paths.filter((path): path is string => Boolean(path))))
-		.filter((path) => existsSync(path))
+		.filter((path) => existsSync(path) && statSync(path).isFile())
 		.slice(0, 24)
 		.map((path) => ({
 			path,
@@ -13443,6 +13516,25 @@ function latestSwarmArtifactPath(): string | undefined {
 	return recentMarkdownArtifacts(evidenceSwarmsDir(), 1)[0];
 }
 
+function swarmArtifactPath(swarm: Pick<SwarmArtifact, "timestamp" | "route" | "mode">): string {
+	return join(
+		evidenceSwarmsDir(),
+		`${swarm.timestamp.replace(/[:.]/g, "-")}-${slug(swarm.route ?? "swarm")}-${swarm.mode}.md`,
+	);
+}
+
+function swarmClaimLedgerPath(swarm: Pick<SwarmArtifact, "timestamp" | "route" | "mode">): string {
+	return swarmArtifactPath(swarm).replace(/\.md$/i, "-claim-ledger.jsonl");
+}
+
+function swarmSubagentRuntimeManifestIndexPath(swarm: Pick<SwarmArtifact, "timestamp" | "route" | "mode">): string {
+	return swarmArtifactPath(swarm).replace(/\.md$/i, "-subagent-runtime-manifests.json");
+}
+
+function swarmSubagentSessionRoot(swarm: Pick<SwarmArtifact, "timestamp" | "route" | "mode">): string {
+	return swarmArtifactPath(swarm).replace(/\.md$/i, "-sessions");
+}
+
 function parseSwarmArtifact(path: string): SwarmArtifact | undefined {
 	const match = /```json\s*([\s\S]*?)\s*```/m.exec(readText(path));
 	if (!match?.[1]) return undefined;
@@ -13684,15 +13776,32 @@ function buildSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmClaimLedgerEve
 			statement: "re_swarm emitted ReconParallelPlanV1-bound worker runtime packets and merge contract.",
 			evidenceRefs: [
 				swarm.delegationArtifact,
+				swarm.subagentRuntimeManifestPath,
 				...(swarm.parallelPlan?.merge.expectedArtifacts ?? []),
+				...(swarm.subagentRuntimeManifests ?? []).flatMap((manifest) => [
+					manifest.runtimeManifestFile,
+					manifest.stdoutPath,
+					manifest.stderrPath,
+				]),
 				...swarm.sourceArtifacts,
 			].filter((item): item is string => Boolean(item)),
-			artifactHashes: runtimeArtifactHashes([swarm.delegationArtifact, ...swarm.sourceArtifacts]),
+			artifactHashes: runtimeArtifactHashes([
+				swarm.delegationArtifact,
+				swarm.subagentRuntimeManifestPath,
+				...(swarm.subagentRuntimeManifests ?? []).flatMap((manifest) => [
+					manifest.runtimeManifestFile,
+					manifest.stdoutPath,
+					manifest.stderrPath,
+				]),
+				...swarm.sourceArtifacts,
+			]),
 			metadata: {
 				mode: swarm.mode,
 				planId,
 				workerCount: swarm.workers.length,
 				executionCount: swarm.executions.length,
+				subagentRuntimeManifestCount: swarm.subagentRuntimeManifestCount,
+				subagentRuntimeManifestsCaptured: swarm.subagentRuntimeManifestsCaptured,
 				mergeStrategy: swarm.parallelPlan?.merge.strategy ?? "missing",
 			},
 		},
@@ -13700,6 +13809,12 @@ function buildSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmClaimLedgerEve
 	);
 	for (const worker of swarm.workers) {
 		const executions = swarm.executions.filter((execution) => execution.workerId === worker.id);
+		const runtimeManifests = (swarm.subagentRuntimeManifests ?? []).filter((manifest) => manifest.workerId === worker.id);
+		const runtimeManifestRefs = runtimeManifests.flatMap((manifest) => [
+			manifest.runtimeManifestFile,
+			manifest.stdoutPath,
+			manifest.stderrPath,
+		]);
 		const blocked = executions.filter((execution) => execution.status === "blocked");
 		const coverageRows = swarm.coverageMatrix.filter((row) => row.includes(`worker=${worker.id}`));
 		const missingCoverageRows = coverageRows.filter((row) => /status=missing/i.test(row));
@@ -13715,14 +13830,15 @@ function buildSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmClaimLedgerEve
 				role: worker.worker,
 				scope,
 				statement: "worker packet handoff binds commands, dependencies, merge keys, and evidence contract before execution.",
-				evidenceRefs: [swarm.delegationArtifact, ...worker.sourceArtifacts].filter((item): item is string => Boolean(item)),
-				artifactHashes: runtimeArtifactHashes([swarm.delegationArtifact, ...worker.sourceArtifacts]),
+				evidenceRefs: [swarm.delegationArtifact, ...worker.sourceArtifacts, ...runtimeManifestRefs].filter((item): item is string => Boolean(item)),
+				artifactHashes: runtimeArtifactHashes([swarm.delegationArtifact, ...worker.sourceArtifacts, ...runtimeManifestRefs]),
 				metadata: {
 					objective: worker.objective,
 					commands: worker.commands,
 					dependencies: worker.dependencies,
 					mergeKeys: worker.mergeKeys,
 					evidenceContract: worker.evidenceContract,
+					runtimeManifestFiles: runtimeManifests.map((manifest) => manifest.runtimeManifestFile),
 				},
 			},
 			timestamp,
@@ -13743,15 +13859,18 @@ function buildSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmClaimLedgerEve
 					swarm.delegationArtifact,
 					...worker.sourceArtifacts,
 					...executions.flatMap((execution) => execution.sourceArtifacts),
+					...runtimeManifestRefs,
 				].filter((item): item is string => Boolean(item)),
 				artifactHashes: runtimeArtifactHashes([
 					swarm.delegationArtifact,
 					...worker.sourceArtifacts,
 					...executions.flatMap((execution) => execution.sourceArtifacts),
+					...runtimeManifestRefs,
 				]),
 				metadata: {
 					workerStatus: worker.status,
 					executions: executions.length,
+					runtimeManifests: runtimeManifests.length,
 					blocked: blocked.length,
 					coverageRows: coverageRows.length,
 					missingCoverageRows: missingCoverageRows.length,
@@ -13769,11 +13888,12 @@ function buildSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmClaimLedgerEve
 				scope,
 				status: claimPassed ? "pass" : "fail",
 				statement: "runtime coverage validation checks execution status, blocked rows, and evidence-contract coverage.",
-				evidenceRefs: [swarm.delegationArtifact, ...worker.sourceArtifacts].filter((item): item is string => Boolean(item)),
+				evidenceRefs: [swarm.delegationArtifact, ...worker.sourceArtifacts, ...runtimeManifestRefs].filter((item): item is string => Boolean(item)),
 				metadata: {
 					auditRows,
 					coverageRows,
 					missingCoverageRows,
+					runtimeManifestFiles: runtimeManifests.map((manifest) => manifest.runtimeManifestFile),
 					blockedCommands: blocked.map((execution) => execution.command),
 				},
 			},
@@ -13796,7 +13916,7 @@ function buildSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmClaimLedgerEve
 					scope,
 					status: "blocked",
 					challenge: `worker claim challenged: ${reason}`,
-					evidenceRefs: [swarm.delegationArtifact, ...worker.sourceArtifacts].filter((item): item is string => Boolean(item)),
+					evidenceRefs: [swarm.delegationArtifact, ...worker.sourceArtifacts, ...runtimeManifestRefs].filter((item): item is string => Boolean(item)),
 					metadata: {
 						reason,
 						blockedRows: blocked.map((execution) => truncateMiddle(execution.output.replace(/\s+/g, " "), 240)),
@@ -13903,8 +14023,17 @@ function refreshSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmArtifact {
 		claimLedgerTipHash: claimLedger.at(-1)?.eventHash,
 		runtimeClaimLedgerCaptured,
 		sourceArtifacts: Array.from(
-			new Set([...swarm.sourceArtifacts, swarm.claimLedgerPath].filter((item): item is string => Boolean(item))),
-		).slice(0, 48),
+			new Set([
+				...swarm.sourceArtifacts,
+				swarm.claimLedgerPath,
+				swarm.subagentRuntimeManifestPath,
+				...(swarm.subagentRuntimeManifests ?? []).flatMap((manifest) => [
+					manifest.runtimeManifestFile,
+					manifest.stdoutPath,
+					manifest.stderrPath,
+				]),
+			].filter((item): item is string => Boolean(item))),
+		).slice(0, 64),
 	};
 }
 
@@ -14012,6 +14141,9 @@ function buildSwarm(options: { target?: string; task?: string; mode?: "plan" | "
 		claimLedger: [],
 		claimLedgerEventCount: 0,
 		runtimeClaimLedgerCaptured: false,
+		subagentRuntimeManifests: [],
+		subagentRuntimeManifestCount: 0,
+		subagentRuntimeManifestsCaptured: false,
 		sourceArtifacts: Array.from(
 			new Set([
 				delegationArtifact,
@@ -14033,6 +14165,24 @@ function sanitizeSwarmCommand(command: string): string {
 	return command.trim().replace(/\s+#.*$/g, "");
 }
 
+function swarmExecutionDigest(value: string): string {
+	return createHash("sha256").update(value).digest("hex");
+}
+
+function stripSwarmPidMarker(stderr: string): {
+	stderr: string;
+	pid: number | null;
+	parentPid: number | null;
+} {
+	const match = /^__pi_recon_swarm_pid=(\d+)\s+ppid=(\d+)\s*\n?/m.exec(stderr);
+	if (!match) return { stderr, pid: null, parentPid: null };
+	return {
+		stderr: stderr.replace(match[0], ""),
+		pid: Number(match[1]),
+		parentPid: Number(match[2]),
+	};
+}
+
 async function executeSwarmWorkerCommand(
 	pi: ExtensionAPI,
 	worker: SwarmWorkerRuntime,
@@ -14040,14 +14190,40 @@ async function executeSwarmWorkerCommand(
 	target?: string,
 ): Promise<SwarmWorkerExecution> {
 	const command = sanitizeSwarmCommand(rawCommand);
-	const blocked = (output: string): SwarmWorkerExecution => ({
-		workerId: worker.id,
-		worker: worker.worker,
-		command: command || rawCommand,
-		status: "blocked",
-		output,
-		sourceArtifacts: worker.sourceArtifacts,
-	});
+	const startedMs = Date.now();
+	const startedAt = new Date(startedMs).toISOString();
+	const finalize = (execution: Omit<SwarmWorkerExecution, "startedAt" | "endedAt" | "elapsedMs">): SwarmWorkerExecution => {
+		const endedMs = Date.now();
+		const stdout = execution.stdout ?? execution.output;
+		const stderr = execution.stderr ?? "";
+		return {
+			...execution,
+			stdout,
+			stderr,
+			stdoutSha256: execution.stdoutSha256 ?? swarmExecutionDigest(stdout),
+			stderrSha256: execution.stderrSha256 ?? swarmExecutionDigest(stderr),
+			startedAt,
+			endedAt: new Date(endedMs).toISOString(),
+			elapsedMs: Math.max(0, endedMs - startedMs),
+			exitCode: execution.exitCode ?? (execution.status === "done" ? 0 : 1),
+			signal: execution.signal ?? null,
+		};
+	};
+	const blocked = (output: string): SwarmWorkerExecution =>
+		finalize({
+			workerId: worker.id,
+			worker: worker.worker,
+			command: command || rawCommand,
+			status: "blocked",
+			output,
+			stdout: output,
+			stderr: "",
+			pid: process.pid,
+			parentPid: process.ppid,
+			exitCode: 1,
+			signal: null,
+			sourceArtifacts: worker.sourceArtifacts,
+		});
 	if (!command) return blocked("empty swarm worker command");
 	if (/^re[-_]swarm\s+run\b/i.test(command)) return blocked("recursive swarm run command is not allowed");
 	if (/^re[-_]/i.test(command)) {
@@ -14062,31 +14238,53 @@ async function executeSwarmWorkerCommand(
 			},
 			target,
 		);
-		return {
+		return finalize({
 			workerId: worker.id,
 			worker: worker.worker,
 			command: result.command,
 			status: result.status,
 			output: result.output,
+			stdout: result.output,
+			stderr: "",
+			pid: process.pid,
+			parentPid: process.ppid,
+			exitCode: result.status === "done" ? 0 : 1,
+			signal: null,
 			sourceArtifacts: worker.sourceArtifacts,
-		};
+		});
 	}
-	const result = await pi.exec("bash", ["-lc", `set -o pipefail\n${command}`], { timeout: 60000 });
+	const result = await pi.exec(
+		"bash",
+		["-lc", `printf '__pi_recon_swarm_pid=%s ppid=%s\\n' "$$" "$PPID" >&2\nset -o pipefail\n${command}`],
+		{ timeout: 60000 },
+	);
+	const marker = stripSwarmPidMarker(result.stderr);
+	const stdout = result.stdout;
+	const stderr = marker.stderr;
 	const output = [
 		`exit=${result.code}${result.killed ? " killed=true" : ""}`,
-		`stdout_sha256=${createHash("sha256").update(result.stdout).digest("hex")}`,
-		`stderr_sha256=${createHash("sha256").update(result.stderr).digest("hex")}`,
-		`stdout=${truncateMiddle(result.stdout.trim(), 1200)}`,
-		`stderr=${truncateMiddle(result.stderr.trim(), 1200)}`,
+		`pid=${marker.pid ?? "unknown"} parent_pid=${marker.parentPid ?? "unknown"}`,
+		`stdout_sha256=${swarmExecutionDigest(stdout)}`,
+		`stderr_sha256=${swarmExecutionDigest(stderr)}`,
+		`stdout=${truncateMiddle(stdout.trim(), 1200)}`,
+		`stderr=${truncateMiddle(stderr.trim(), 1200)}`,
 	].join("\n");
-	return {
+	return finalize({
 		workerId: worker.id,
 		worker: worker.worker,
 		command,
 		status: result.code === 0 && !result.killed ? "done" : "blocked",
 		output,
+		stdout,
+		stderr,
+		stdoutSha256: swarmExecutionDigest(stdout),
+		stderrSha256: swarmExecutionDigest(stderr),
+		pid: marker.pid,
+		parentPid: marker.parentPid,
+		exitCode: result.code,
+		signal: result.killed ? "SIGTERM" : null,
 		sourceArtifacts: worker.sourceArtifacts,
-	};
+	});
 }
 
 function swarmWorkerGroups(swarm: SwarmArtifact, selected: Set<string>): SwarmWorkerRuntime[][] {
@@ -14119,6 +14317,7 @@ function swarmContractCovered(text: string, contract: string): boolean {
 }
 
 function swarmWorkerEvidenceText(swarm: SwarmArtifact, worker: SwarmWorkerRuntime): string {
+	const manifestRows = (swarm.subagentRuntimeManifests ?? []).filter((manifest) => manifest.workerId === worker.id);
 	return [
 		worker.worker,
 		worker.objective,
@@ -14131,6 +14330,15 @@ function swarmWorkerEvidenceText(swarm: SwarmArtifact, worker: SwarmWorkerRuntim
 			(result) => result.includes(worker.id) || result.includes(`worker=${worker.worker}`),
 		),
 		...swarm.mergeDigest.filter((item) => item.includes(worker.id) || item.includes(`worker=${worker.worker}`)),
+		...manifestRows.flatMap((manifest) => [
+			manifest.runtimeManifestFile,
+			manifest.sessionDir,
+			manifest.stdoutPath,
+			manifest.stderrPath,
+			manifest.stdoutSha256,
+			manifest.stderrSha256,
+			manifest.toolCallDigest,
+		]),
 	].join("\n");
 }
 
@@ -14283,11 +14491,211 @@ function refreshSwarmRunDerivedFields(swarm: SwarmArtifact): SwarmArtifact {
 		...auditFields,
 		planCoverage,
 		releaseGateMetadata,
-		commanderNextActions,
+			commanderNextActions,
+			sourceArtifacts: Array.from(
+				new Set([
+					...swarm.sourceArtifacts,
+					...swarm.executions.flatMap((execution) => execution.sourceArtifacts),
+				...(swarm.subagentRuntimeManifests ?? []).flatMap((manifest) => [
+					manifest.runtimeManifestFile,
+					manifest.stdoutPath,
+					manifest.stderrPath,
+				]),
+					swarm.subagentRuntimeManifestPath,
+				].filter((item): item is string => Boolean(item))),
+			).slice(0, 64),
+		});
+}
+
+function swarmRuntimeStatus(executions: SwarmWorkerExecution[]): SwarmRuntimeState {
+	if (executions.length === 0) return "queued";
+	if (executions.some((execution) => execution.status === "blocked")) return "blocked";
+	if (executions.some((execution) => execution.status === "skipped")) return "cancelled";
+	return "done";
+}
+
+function swarmRuntimeTimeWindow(
+	executions: SwarmWorkerExecution[],
+	fallback = new Date().toISOString(),
+): { startedAt: string; endedAt: string; elapsedMs: number } {
+	const startedAt = executions.map((execution) => execution.startedAt).filter((item): item is string => Boolean(item)).sort()[0] ?? fallback;
+	const endedAt =
+		executions
+			.map((execution) => execution.endedAt)
+			.filter((item): item is string => Boolean(item))
+			.sort()
+			.at(-1) ?? startedAt;
+	const parsedStarted = Date.parse(startedAt);
+	const parsedEnded = Date.parse(endedAt);
+	const elapsedMs =
+		Number.isFinite(parsedStarted) && Number.isFinite(parsedEnded)
+			? Math.max(0, parsedEnded - parsedStarted)
+			: executions.reduce((sum, execution) => sum + Math.max(0, execution.elapsedMs ?? 0), 0);
+	return { startedAt, endedAt, elapsedMs };
+}
+
+function swarmRuntimeModel(executions: SwarmWorkerExecution[]): SwarmRuntimeModelSummary {
+	return {
+		provider: "re_swarm",
+		modelId: "command-level-worker",
+		modelCalls: 0,
+		toolCalls: executions.length,
+		toolResults: executions.length,
+	};
+}
+
+function swarmRuntimeRetryBudget(worker: SwarmWorkerRuntime, attempt: number): SwarmRuntimeRetryBudget {
+	return {
+		signature: `re_swarm:${slug(worker.id)}:${createHash("sha256").update(worker.commands.join("\n")).digest("hex").slice(0, 16)}`,
+		attempt,
+		maxAttempts: 3,
+		remaining: Math.max(0, 3 - attempt),
+		exhausted: attempt >= 3,
+	};
+}
+
+function writeSwarmSubagentRuntimeManifest(params: {
+	swarm: SwarmArtifact;
+	worker: SwarmWorkerRuntime;
+	executions: SwarmWorkerExecution[];
+	attempt: number;
+	maxCommands: number;
+}): SwarmSubagentRuntimeManifestRow {
+	const { swarm, worker, executions, attempt, maxCommands } = params;
+	const sessionDir = join(swarmSubagentSessionRoot(swarm), slug(worker.id));
+	mkdirSync(sessionDir, { recursive: true });
+	const stdoutPath = join(sessionDir, "stdout.txt");
+	const stderrPath = join(sessionDir, "stderr.txt");
+	const runtimeManifestFile = join(sessionDir, "runtime-manifest.json");
+	const stdout = executions.length
+		? executions
+				.map((execution, index) =>
+					[`## command ${index + 1}: ${execution.command}`, execution.stdout ?? execution.output ?? ""].join("\n"),
+				)
+				.join("\n\n")
+		: `worker=${worker.id} status=queued no command selected for this bounded re_swarm run\n`;
+	const stderr = executions.length
+		? executions
+				.map((execution, index) => [`## command ${index + 1}: ${execution.command}`, execution.stderr ?? ""].join("\n"))
+				.join("\n\n")
+		: "";
+	writeFileSync(stdoutPath, stdout, "utf-8");
+	writeFileSync(stderrPath, stderr, "utf-8");
+	const stdoutSha256 = swarmExecutionDigest(stdout);
+	const stderrSha256 = swarmExecutionDigest(stderr);
+	const status = swarmRuntimeStatus(executions);
+	const timing = swarmRuntimeTimeWindow(executions, swarm.timestamp);
+	const pid = executions.find((execution) => Number.isInteger(execution.pid))?.pid ?? process.pid;
+	const parentPid = executions.find((execution) => Number.isInteger(execution.parentPid))?.parentPid ?? process.ppid;
+	const exitCode =
+		status === "queued"
+			? null
+			: status === "done"
+				? 0
+				: executions.find((execution) => execution.status === "blocked")?.exitCode ?? 1;
+	const signal = executions.find((execution) => execution.signal)?.signal ?? null;
+	const model = swarmRuntimeModel(executions);
+	const evidenceRefs = Array.from(
+		new Set([
+			swarm.delegationArtifact,
+			...worker.sourceArtifacts,
+			...executions.flatMap((execution) => execution.sourceArtifacts),
+			stdoutPath,
+			stderrPath,
+		].filter((item): item is string => Boolean(item))),
+	).slice(0, 32);
+	const toolCallDigest = createHash("sha256")
+		.update(
+			JSON.stringify({
+				workerId: worker.id,
+				attempt,
+				commands: executions.map((execution) => execution.command),
+				statuses: executions.map((execution) => execution.status),
+				stdoutSha256,
+				stderrSha256,
+				model,
+			}),
+		)
+		.digest("hex");
+	const manifest: SwarmSubagentRuntimeManifestV1 = {
+		kind: "SubagentRuntimeManifestV1",
+		schemaVersion: 1,
+		runId: swarm.parallelPlan?.planId ?? `re_swarm/${swarm.timestamp}`,
+		roleId: worker.worker,
+		workerId: worker.id,
+		attempt,
+		status,
+		pid,
+		parentPid,
+		sessionDir,
+		stdoutPath,
+		stderrPath,
+		stdoutSha256,
+		stderrSha256,
+		startedAt: timing.startedAt,
+		endedAt: timing.endedAt,
+		elapsedMs: timing.elapsedMs,
+		exitCode,
+		signal,
+		model,
+		toolCallDigest,
+		claimLedgerPath: swarm.claimLedgerPath ?? swarmClaimLedgerPath(swarm),
+		failureLedgerPath: runtimeFailureLedgerPath(),
+		repairQueuePath: runtimeRepairQueuePath(),
+		resourceLimits: {
+			timeoutMs: 60000,
+			maxCommands,
+			maxOutputBytes: Buffer.byteLength(stdout) + Buffer.byteLength(stderr),
+			cancelOnTimeout: true,
+		},
+		retryBudget: swarmRuntimeRetryBudget(worker, attempt),
+		mergeKeys: worker.mergeKeys,
+		evidenceRefs,
+	};
+	writeFileSync(runtimeManifestFile, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
+	return {
+		...manifest,
+		runtimeManifestFile,
+	};
+}
+
+function refreshSwarmSubagentRuntimeManifestCapture(swarm: SwarmArtifact): SwarmArtifact {
+	const manifests = swarm.subagentRuntimeManifests ?? [];
+	const subagentRuntimeManifestCount = manifests.length;
+	const expectedWorkers = swarm.workers.length;
+	const subagentRuntimeManifestsCaptured =
+		expectedWorkers > 0 &&
+		subagentRuntimeManifestCount >= expectedWorkers &&
+		manifests.every(
+			(manifest) =>
+				manifest.kind === "SubagentRuntimeManifestV1" &&
+				manifest.schemaVersion === 1 &&
+				Boolean(manifest.runtimeManifestFile && existsSync(manifest.runtimeManifestFile)) &&
+				Boolean(manifest.sessionDir && existsSync(manifest.sessionDir)) &&
+				Boolean(manifest.stdoutPath && existsSync(manifest.stdoutPath)) &&
+				Boolean(manifest.stderrPath && existsSync(manifest.stderrPath)) &&
+				Boolean(manifest.stdoutSha256 && manifest.stderrSha256 && manifest.toolCallDigest) &&
+				Number.isInteger(manifest.pid) &&
+				Number.isInteger(manifest.parentPid) &&
+				Boolean(manifest.model?.provider && manifest.model?.modelId),
+		);
+	return {
+		...swarm,
+		subagentRuntimeManifests: manifests,
+		subagentRuntimeManifestCount,
+		subagentRuntimeManifestsCaptured,
 		sourceArtifacts: Array.from(
-			new Set([...swarm.sourceArtifacts, ...swarm.executions.flatMap((execution) => execution.sourceArtifacts)]),
-		).slice(0, 48),
-	});
+			new Set([
+				...swarm.sourceArtifacts,
+				swarm.subagentRuntimeManifestPath,
+				...manifests.flatMap((manifest) => [
+					manifest.runtimeManifestFile,
+					manifest.stdoutPath,
+					manifest.stderrPath,
+				]),
+			].filter((item): item is string => Boolean(item))),
+		).slice(0, 64),
+	};
 }
 
 async function runSwarm(
@@ -14295,6 +14703,8 @@ async function runSwarm(
 	options: { target?: string; task?: string; maxWorkers?: number; maxCommands?: number } = {},
 ): Promise<string> {
 	let swarm = buildSwarm({ target: options.target, task: options.task, mode: "run" });
+	swarm.claimLedgerPath = swarmClaimLedgerPath(swarm);
+	swarm.subagentRuntimeManifestPath = swarmSubagentRuntimeManifestIndexPath(swarm);
 	const maxWorkers = Math.max(1, Math.min(8, Math.floor(options.maxWorkers ?? 3)));
 	const maxCommands = Math.max(1, Math.min(5, Math.floor(options.maxCommands ?? 1)));
 	const selected = new Set(
@@ -14304,16 +14714,41 @@ async function runSwarm(
 			.map((worker) => worker.id),
 	);
 	for (const group of swarmWorkerGroups(swarm, selected)) {
-		const groupExecutions = await Promise.all(
+		const groupRuns = await Promise.all(
 			group.map(async (worker) => {
 				const executions: SwarmWorkerExecution[] = [];
 				for (const command of worker.commands.slice(0, maxCommands))
 					executions.push(await executeSwarmWorkerCommand(pi, worker, command, swarm.target));
-				return executions;
+				const manifest = writeSwarmSubagentRuntimeManifest({
+					swarm,
+					worker,
+					executions,
+					attempt: 1,
+					maxCommands,
+				});
+				return { executions, manifest };
 			}),
 		);
-		swarm.executions.push(...groupExecutions.flat());
+		swarm.executions.push(...groupRuns.flatMap((run) => run.executions));
+		swarm.subagentRuntimeManifests.push(...groupRuns.map((run) => run.manifest));
+		swarm = refreshSwarmSubagentRuntimeManifestCapture(swarm);
 		swarm = refreshSwarmRunDerivedFields(swarm);
+	}
+	const manifestedWorkers = new Set(swarm.subagentRuntimeManifests.map((manifest) => manifest.workerId));
+	const queuedManifests = swarm.workers
+		.filter((worker) => !manifestedWorkers.has(worker.id))
+		.map((worker) =>
+			writeSwarmSubagentRuntimeManifest({
+				swarm,
+				worker,
+				executions: [],
+				attempt: 1,
+				maxCommands,
+			}),
+		);
+	if (queuedManifests.length) {
+		swarm.subagentRuntimeManifests.push(...queuedManifests);
+		swarm = refreshSwarmSubagentRuntimeManifestCapture(swarm);
 	}
 	swarm = refreshSwarmRunDerivedFields(swarm);
 	const path = writeSwarmArtifact(swarm);
@@ -14401,6 +14836,18 @@ function formatSwarm(swarm: SwarmArtifact, path?: string): string {
 							`- seq=${event.seq} type=${event.type} claim=${event.claimId ?? "none"} status=${event.status ?? "n/a"} hash=${event.eventHash.slice(0, 16)}`,
 					)
 			: ["- none"]),
+		"subagent_runtime_manifests:",
+		`- path=${swarm.subagentRuntimeManifestPath ?? "pending"}`,
+		`- count=${swarm.subagentRuntimeManifestCount ?? 0}`,
+		`- captured=${swarm.subagentRuntimeManifestsCaptured ? "pass" : "fail"}`,
+		...((swarm.subagentRuntimeManifests ?? []).length
+			? (swarm.subagentRuntimeManifests ?? [])
+					.slice(0, 12)
+					.map(
+						(manifest) =>
+							`- worker=${manifest.workerId} role=${manifest.roleId} status=${manifest.status} pid=${manifest.pid ?? "null"} sessionDir=${manifest.sessionDir} runtimeManifestFile=${manifest.runtimeManifestFile} stdoutSha256=${manifest.stdoutSha256.slice(0, 16)} stderrSha256=${manifest.stderrSha256.slice(0, 16)} toolCallDigest=${manifest.toolCallDigest.slice(0, 16)}`,
+					)
+			: ["- none"]),
 		`next_swarm_command: ${
 			swarm.mode === "merge"
 				? "re_supervisor review"
@@ -14417,15 +14864,31 @@ function formatSwarm(swarm: SwarmArtifact, path?: string): string {
 
 function writeSwarmArtifact(swarm: SwarmArtifact): string {
 	ensureReconStorage();
-	const path = join(
-		evidenceSwarmsDir(),
-		`${swarm.timestamp.replace(/[:.]/g, "-")}-${slug(swarm.route ?? "swarm")}-${swarm.mode}.md`,
-	);
-	swarm.claimLedgerPath = path.replace(/\.md$/i, "-claim-ledger.jsonl");
+	const path = swarmArtifactPath(swarm);
+	swarm.claimLedgerPath = swarmClaimLedgerPath(swarm);
+	swarm.subagentRuntimeManifestPath = swarmSubagentRuntimeManifestIndexPath(swarm);
+	Object.assign(swarm, refreshSwarmSubagentRuntimeManifestCapture(swarm));
 	Object.assign(swarm, refreshSwarmRuntimeClaimLedger(swarm));
 	writeFileSync(
 		swarm.claimLedgerPath,
 		`${swarm.claimLedger.map((event) => JSON.stringify(event)).join("\n")}${swarm.claimLedger.length ? "\n" : ""}`,
+		"utf-8",
+	);
+	writeFileSync(
+		swarm.subagentRuntimeManifestPath,
+		`${JSON.stringify(
+			{
+				kind: "pi-recon-swarm-subagent-runtime-manifest-index",
+				schemaVersion: 1,
+				planId: swarm.parallelPlan?.planId ?? "missing",
+				swarmArtifact: path,
+				manifestCount: swarm.subagentRuntimeManifestCount,
+				captured: swarm.subagentRuntimeManifestsCaptured,
+				manifests: swarm.subagentRuntimeManifests,
+			},
+			null,
+			2,
+		)}\n`,
 		"utf-8",
 	);
 	writeFileSync(
@@ -14494,7 +14957,7 @@ function writeSwarmArtifact(swarm: SwarmArtifact): string {
 	appendEvidence({
 		kind: swarm.mode === "run" ? "runtime" : "artifact",
 		title: `swarm-${swarm.mode} ${swarm.missionId ?? "no-mission"}`,
-		fact: `Built swarm ${swarm.mode} with ${swarm.workers.length} worker runtime packet(s), ${swarm.executions.length} execution(s), ${swarm.parallelGroups.length} parallel group(s), ${swarm.collisionMatrix.length} collision(s), ${swarm.blocked.length} blocked, audit=${swarm.executionAudit.length}, retries=${swarm.retryQueue.length}, parallel_plan=${swarm.parallelPlan?.planId ?? "missing"}, plan_coverage=${swarm.planCoverage.length}, release_gate_metadata=${swarm.releaseGateMetadata.length}, runtime_claim_ledger=${swarm.claimLedgerEventCount} hash_chain=${swarm.runtimeClaimLedgerCaptured ? "pass" : "fail"}`,
+		fact: `Built swarm ${swarm.mode} with ${swarm.workers.length} worker runtime packet(s), ${swarm.executions.length} execution(s), ${swarm.parallelGroups.length} parallel group(s), ${swarm.collisionMatrix.length} collision(s), ${swarm.blocked.length} blocked, audit=${swarm.executionAudit.length}, retries=${swarm.retryQueue.length}, parallel_plan=${swarm.parallelPlan?.planId ?? "missing"}, plan_coverage=${swarm.planCoverage.length}, release_gate_metadata=${swarm.releaseGateMetadata.length}, subagent_runtime_manifests=${swarm.subagentRuntimeManifestCount} captured=${swarm.subagentRuntimeManifestsCaptured ? "pass" : "fail"}, runtime_claim_ledger=${swarm.claimLedgerEventCount} hash_chain=${swarm.runtimeClaimLedgerCaptured ? "pass" : "fail"}`,
 		command: `re_swarm ${swarm.mode}`,
 		path,
 		verify: `cat ${path}`,

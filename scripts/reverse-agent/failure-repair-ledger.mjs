@@ -17,7 +17,7 @@ export const FAILURE_REPAIR_DEDUP_WINDOW = {
 	failureKey: ["source", "scope", "signature", "attempt"],
 	repairKey: ["repairId"],
 	budgetKey: ["signature", "retryBudget.retryKey", "budget.retryKey"],
-	rejects: ["duplicate_failure_signature_attempt", "duplicate_repair_id", "failure_repair_signature_mismatch"],
+	rejects: ["duplicate_failure_signature_attempt", "duplicate_repair_id", "failure_repair_signature_mismatch", "exhausted_unpaused_retry"],
 };
 
 const HEX_8_64 = /^[a-f0-9]{8,64}$/;
@@ -27,6 +27,7 @@ const FAILURE_STATUS = new Set(["failed", "retrying", "repair_queued", "repaired
 const FAILURE_CATEGORY = new Set(["artifact_stale", "runtime_failed", "tool_missing", "contract_gap", "same_window_gap", "same_window_xhs_gap", "same_window_douyin_gap", "same_window_bilibili_gap", "platform_claim_gap"]);
 const REPAIR_ACTION = new Set(["rerun", "replace-command", "recapture-evidence", "refresh-context", "escalate", "rollback"]);
 const ARTIFACT_TIERS = new Set(["same_window_live", "runtime_artifact", "network", "served_asset", "process_config", "persisted_state"]);
+const RETRY_LIKE_REPAIR_ACTIONS = new Set(["rerun"]);
 const FAILURE_KEYS = new Set([
 	"id",
 	"ts",
@@ -170,6 +171,24 @@ function validateRetryBudget(value, path, errors) {
 	requireString(value.exhaustedAction, `${path}.exhaustedAction`, errors);
 }
 
+function exhaustedFailureBudgetClosed(failure) {
+	const remainingAttempts = [failure?.budget?.remainingAttempts, failure?.retryBudget?.remainingAttempts];
+	const remainingClosed = remainingAttempts.every((value) => value === 0);
+	const attemptClosed =
+		Number.isInteger(failure?.attempt) && Number.isInteger(failure?.maxAttempts) && failure.attempt >= failure.maxAttempts;
+	return remainingClosed || attemptClosed;
+}
+
+function repairLooksLikeRetry(repair) {
+	const actionRetry =
+		RETRY_LIKE_REPAIR_ACTIONS.has(repair?.action) ||
+		RETRY_LIKE_REPAIR_ACTIONS.has(repair?.repairAction) ||
+		/\bretry\b/i.test(String(repair?.action ?? "")) ||
+		/\bretry\b/i.test(String(repair?.repairAction ?? ""));
+	const commandRetry = (repair?.commands ?? []).some((command) => /\b(?:rerun|retry)\b/i.test(String(command)));
+	return Boolean(actionRetry || commandRetry);
+}
+
 function validateRollback(value, path, errors) {
 	if (!requireRecord(value, path, errors)) return;
 	const allowed = new Set(["required", "baseline", "allowlist", "criteria", "restored"]);
@@ -223,6 +242,9 @@ export function validateFailureLedgerEventV1(failure, options = {}) {
 	validateRetryBudget(failure.retryBudget, "$.retryBudget", errors);
 	if (failure.signature && failure.budget?.retryKey && failure.signature !== failure.budget.retryKey) pushError(errors, "$.budget.retryKey", "const", "budget retryKey must equal signature");
 	if (failure.signature && failure.retryBudget?.retryKey && failure.signature !== failure.retryBudget.retryKey) pushError(errors, "$.retryBudget.retryKey", "const", "retryBudget retryKey must equal signature");
+	if (failure.status === "exhausted" && !exhaustedFailureBudgetClosed(failure)) {
+		pushError(errors, "$.status", "exhausted_retry_budget", "exhausted status requires remainingAttempts=0 or attempt>=maxAttempts");
+	}
 	validateEvidenceWriteback(failure.evidenceWriteback, "$.evidenceWriteback", errors);
 	requireArray(failure.blockedConditions, "$.blockedConditions", errors, { minItems: 1, item: validateBlockedCondition });
 	validateRollback(failure.rollback, "$.rollback", errors);
@@ -289,6 +311,7 @@ export function validateFailureRepairDedup(failures = [], repairs = [], options 
 	const repairById = new Map(repairs.map((repair) => [repair.repairId, repair]));
 	const failureRepairMismatches = [];
 	const retryBudgetMismatches = [];
+	const exhaustedRetryViolations = [];
 	for (const failure of failures) {
 		const repair = repairById.get(failure.repairId);
 		if (!repair) continue;
@@ -303,14 +326,31 @@ export function validateFailureRepairDedup(failures = [], repairs = [], options 
 		if (failure.budget?.retryKey !== failure.signature || failure.retryBudget?.retryKey !== failure.signature) {
 			retryBudgetMismatches.push({ failureId: failure.id, signature: failure.signature, budgetRetryKey: failure.budget?.retryKey, retryBudgetRetryKey: failure.retryBudget?.retryKey });
 		}
+		if (failure.status === "exhausted" && repair.paused !== true && repairLooksLikeRetry(repair)) {
+			exhaustedRetryViolations.push({
+				failureId: failure.id,
+				repairId: repair.repairId,
+				status: failure.status,
+				paused: repair.paused,
+				action: repair.action,
+				repairAction: repair.repairAction,
+				message: "exhausted failure cannot continue with unpaused rerun/retry repair",
+			});
+		}
 	}
 	return {
-		ok: duplicateFailures.length === 0 && duplicateRepairs.length === 0 && failureRepairMismatches.length === 0 && retryBudgetMismatches.length === 0,
+		ok:
+			duplicateFailures.length === 0 &&
+			duplicateRepairs.length === 0 &&
+			failureRepairMismatches.length === 0 &&
+			retryBudgetMismatches.length === 0 &&
+			exhaustedRetryViolations.length === 0,
 		window,
 		duplicateFailures,
 		duplicateRepairs,
 		failureRepairMismatches,
 		retryBudgetMismatches,
+		exhaustedRetryViolations,
 	};
 }
 
@@ -337,13 +377,20 @@ export function validateFailureRepairStrictFixture(fixture, options = {}) {
 	const validBatch = validateFailureRepairBatch(fixture?.valid, options);
 	const duplicateBatch = validateFailureRepairBatch(fixture?.invalidDuplicate, options);
 	const looseBatch = validateFailureRepairBatch(fixture?.invalidLoose, options);
+	const exhaustedRetryBatch = validateFailureRepairBatch(fixture?.invalidExhaustedRetry, options);
+	const exhaustedRetryRejected =
+		!exhaustedRetryBatch.ok &&
+		(exhaustedRetryBatch.failures.some((row) => row.errors.some((error) => error.code === "exhausted_retry_budget")) ||
+			exhaustedRetryBatch.dedup.exhaustedRetryViolations.length > 0);
 	return {
-		ok: validBatch.ok && !duplicateBatch.ok && !looseBatch.ok,
+		ok: validBatch.ok && !duplicateBatch.ok && !looseBatch.ok && exhaustedRetryRejected,
 		validBatch,
 		duplicateBatch,
 		looseBatch,
+		exhaustedRetryBatch,
 		duplicateRejected: !duplicateBatch.ok && duplicateBatch.dedup.duplicateFailures.length > 0,
 		looseRejected: !looseBatch.ok && looseBatch.failures.some((row) => row.errors.some((error) => error.code === "additionalProperties")),
+		exhaustedRetryRejected,
 	};
 }
 
@@ -377,7 +424,8 @@ export function failureRepairFromGap(params) {
 	const reason = params.reason || `failed gates: ${failedGates.join(",") || scope}`;
 	const attempt = Math.max(0, Number(params.attempt ?? 1));
 	const maxAttempts = Math.max(attempt, Number(params.maxAttempts ?? attempt));
-	const remainingAttempts = Math.max(0, maxAttempts - attempt);
+	const requestedStatus = params.status;
+	const remainingAttempts = requestedStatus === "exhausted" ? 0 : Math.max(0, maxAttempts - attempt);
 	const signature = sha256Bytes(`${source}:${scope}:${failedGates.join(",")}:${reason}`).slice(0, 24);
 	const failureId = `fail:${source}:${signature}`;
 	const repairId = `repair:${source}:${signature}`;
@@ -412,7 +460,7 @@ export function failureRepairFromGap(params) {
 		signature,
 		attempt,
 		maxAttempts,
-		status: params.status || (remainingAttempts > 0 ? "repair_queued" : "exhausted"),
+		status: requestedStatus || (remainingAttempts > 0 ? "repair_queued" : "exhausted"),
 		failedGates,
 		artifacts: artifactRows,
 		artifactHashes: artifactRows.map(({ path, sha256 }) => ({ path, sha256 })),
@@ -423,7 +471,7 @@ export function failureRepairFromGap(params) {
 		blockedConditions,
 		rollback,
 	};
-	const action = params.action || "rerun";
+	const action = params.action || (failure.status === "exhausted" ? "escalate" : "rerun");
 	const repair = {
 		repairId,
 		fromFailureId: failureId,

@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { validateAutonomousRuntimeContracts } from "./autonomous-runtime-contracts.mjs";
 import { FAILURE_REPAIR_CONTRACT_SCHEMA_PATH, FAILURE_REPAIR_DEDUP_WINDOW, FAILURE_REPAIR_STRICT_FIXTURE_PATH, validateFailureRepairBatch, validateFailureRepairStrictFixture } from "./failure-repair-ledger.mjs";
+import { buildResult as buildRuntimeClaimLedgerGate } from "./gate-runtime-claim-ledger.mjs";
 
 const CONTRACT_VERSION = 1;
 const EVIDENCE_ORDER = ["same_window_live", "runtime_artifact", "network", "served_asset", "process_config", "persisted_state"];
@@ -292,6 +293,7 @@ function buildReleaseGateMetadata({ checks, hardEval, contextAudit, parallelPlan
 			? "pass"
 			: "blocked";
 	const runtimeClaimSources = checks.runtimeClaimLedgerMarkers?.sources ?? {};
+	const runtimeStrictSources = checks.runtimeClaimLedgerStrictGate?.sources ?? {};
 	const releaseBlockingGaps = [
 		...failedChecks.map((name) => `check:${name}`),
 		...requiredPlatformGaps.map((name) => `required_platform_gap:${name}`),
@@ -313,9 +315,14 @@ function buildReleaseGateMetadata({ checks, hardEval, contextAudit, parallelPlan
 		`release_gate.role_contract=${checks.roleContract?.status ?? "missing"}`,
 		`release_gate.claim_ledger=${checks.claimLedger?.status ?? "missing"}`,
 		`release_gate.runtime_claim_ledger=${checks.runtimeClaimLedgerMarkers?.status ?? "missing"}`,
+		`release_gate.runtime_claim_ledger_strict=${checks.runtimeClaimLedgerStrictGate?.status ?? "missing"}`,
+		`release_gate.runtime_claim_ledger_strict_complete=${checks.runtimeClaimLedgerStrictGate?.complete ? "true" : "false"}`,
 		"release_gate.runtime_claim_ledger_sources=agent-dogfood,re_swarm,compound-frontier",
 		`release_gate.runtime_claim_ledger_re_swarm=${runtimeClaimSources.reSwarm === "pass" ? "pass" : "fail"}`,
 		`release_gate.runtime_claim_ledger_compound=${runtimeClaimSources.compoundFrontier === "pass" ? "pass" : "fail"}`,
+		`release_gate.runtime_claim_ledger_strict_agent_dogfood=${runtimeStrictSources["agent-dogfood"]?.status ?? "missing"}`,
+		`release_gate.runtime_claim_ledger_strict_re_swarm=${runtimeStrictSources.re_swarm?.status ?? "missing"}`,
+		`release_gate.runtime_claim_ledger_strict_compound=${runtimeStrictSources["compound-frontier"]?.status ?? "missing"}`,
 		`release_gate.runtime_parallel_plan_markers=${checks.runtimeParallelPlanMarkers?.status ?? "missing"}`,
 		`release_gate.score_separation=orchestration:${hardEval?.scores?.orchestration?.score ?? "missing"}/platform_required:${hardEval?.scores?.platformRequired?.score ?? "missing"}/platform_all:${hardEval?.scores?.platformAll?.score ?? "missing"}`,
 		`release_gate.claim_gate_verdict=${claimGateVerdict}`,
@@ -342,6 +349,7 @@ function validateReleaseGateMetadata(rows) {
 		"release_gate.failure_repair_fixture=",
 		"release_gate.autonomous_runtime_contract=",
 		"release_gate.runtime_claim_ledger=",
+		"release_gate.runtime_claim_ledger_strict=",
 		"release_gate.runtime_claim_ledger_sources=",
 		"release_gate.runtime_claim_ledger_re_swarm=",
 		"release_gate.runtime_claim_ledger_compound=",
@@ -408,6 +416,7 @@ function buildResult(root) {
 	const hardEval = hardEvalRun.json;
 	const contextAudit = contextAuditRun.json;
 	const parallelPlanAudit = parallelPlanAuditRun.json;
+	const runtimeClaimLedgerGate = buildRuntimeClaimLedgerGate(root);
 	const parallelPlan = buildParallelPlan(hardEval);
 	const checks = {
 		parallelPlan: validateParallelPlan(parallelPlan),
@@ -429,6 +438,29 @@ function buildResult(root) {
 		failureRepairSchemaFile: validateFailureRepairSchemaFile(root),
 		failureRepairStrictFixture: validateFailureRepairStrictFixtureFile(root),
 		autonomousRuntimeContract: validateAutonomousRuntimeContractGate(root),
+		runtimeClaimLedgerStrictGate: passFail(Boolean(runtimeClaimLedgerGate?.ok), {
+			complete: Boolean(runtimeClaimLedgerGate?.complete),
+			coverage: runtimeClaimLedgerGate?.coverage ?? "missing",
+			artifactDir: runtimeClaimLedgerGate?.artifactDir ?? null,
+			missingRuntimeArtifacts: runtimeClaimLedgerGate?.missingRuntimeArtifacts ?? [],
+			structuralFailures: runtimeClaimLedgerGate?.structuralFailures ?? [],
+			sources: Object.fromEntries(
+				Object.entries(runtimeClaimLedgerGate?.sources ?? {})
+					.filter(([source]) => source !== "adapter-fixture")
+					.map(([source, row]) => [
+						source,
+						{
+							status: row.status,
+							loadedStatus: row.loadedStatus,
+							allowPlatformGapsOk: Boolean(row.strictValidator?.allowPlatformGaps?.ok),
+							strictClaimsOk: Boolean(row.strictValidator?.strictClaims?.ok),
+							promotionBlocked: Boolean(row.strictValidator?.promotionBlocked),
+							reason: row.reason ?? null,
+						},
+					]),
+			),
+			adapterFixture: runtimeClaimLedgerGate?.sources?.["adapter-fixture"]?.status ?? "missing",
+		}),
 		runtimeFailureRepairMarkers: passFail(true, {
 			markers: [
 				readMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", ["type FailureLedgerEventV1", "type RepairQueueItemV1", "function runtimeFailureSignature", "function failureToRepair", "function appendFailureRepairLedger", "appendRuntimeFailureRepairFromReplay", "appendRuntimeFailureRepairFromAutofix", "appendRuntimeFailureRepairFromOperator", "appendRuntimeFailureRepairFromProofLoop", "runtimeFailureLedgerPath", "runtimeRepairQueuePath"]),
@@ -515,10 +547,17 @@ function buildResult(root) {
 			planOnlyPreview: parallelPlanAudit?.planOnlyPreview ?? null,
 			stdoutSha256: parallelPlanAuditRun.stdoutSha256,
 		},
+		runtimeClaimLedgerGate: {
+			ok: Boolean(runtimeClaimLedgerGate?.ok),
+			complete: Boolean(runtimeClaimLedgerGate?.complete),
+			coverage: runtimeClaimLedgerGate?.coverage ?? "missing",
+			artifactDir: runtimeClaimLedgerGate?.artifactDir ?? null,
+			missingRuntimeArtifacts: runtimeClaimLedgerGate?.missingRuntimeArtifacts ?? [],
+		},
 		nextNonTestWork: [
 			"Keep gate:claim-release marker consumption wired through supervisor/compiler/complete and promote pass markers only after required gaps close.",
 			"Keep AutonomousRuntimeBatchV1 as the strict regression gate for sub-agent manifests, shard state, compact resume transitions, repair budgets, and runtime claim promotion.",
-			"Wire re_swarm/compound runtime ClaimLedgerEventV1 rows into strict validator regression gates and supervisor/compiler/complete claim-promotion coverage.",
+			"Close missing live runtime artifacts for agent-dogfood/re_swarm so runtime-claim-ledger strict coverage moves from partial to complete.",
 			"Promote optional re_swarm independent sub-agent/session runtime from contract fixture to live runtime mode when provider budget is available.",
 		],
 	};

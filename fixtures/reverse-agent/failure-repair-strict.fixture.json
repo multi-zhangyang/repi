@@ -316,5 +316,91 @@
         "regressionGates": ["strict_schema_fixture_gate"]
       }
     ]
+  },
+  "invalidExhaustedRetry": {
+    "failures": [
+      {
+        "id": "fail:fixture:deadbeefcafebabe",
+        "ts": "2026-06-09T00:00:00.000Z",
+        "source": "fixture",
+        "scope": "strict.schema.exhausted",
+        "category": "runtime_failed",
+        "signature": "deadbeefcafebabe",
+        "attempt": 1,
+        "maxAttempts": 3,
+        "status": "exhausted",
+        "failedGates": ["strict_exhausted_retry_terminal_gate"],
+        "artifacts": [],
+        "artifactHashes": [],
+        "repairId": "repair:fixture:deadbeefcafebabe",
+        "budget": {
+          "retryKey": "deadbeefcafebabe",
+          "remainingAttempts": 2,
+          "exhaustedAction": "escalate and block blind retry"
+        },
+        "retryBudget": {
+          "retryKey": "deadbeefcafebabe",
+          "remainingAttempts": 2,
+          "exhaustedAction": "escalate and block blind retry"
+        },
+        "evidenceWriteback": {
+          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "appendOnly": true,
+          "mode": "strict-fixture"
+        },
+        "blockedConditions": [
+          {
+            "reason": "exhausted failure must not carry open retry budget",
+            "unblock": "mark remainingAttempts=0 or record attempt>=maxAttempts before terminal state"
+          }
+        ],
+        "rollback": {
+          "required": false,
+          "baseline": "git status --short",
+          "allowlist": [],
+          "criteria": [],
+          "restored": false
+        }
+      }
+    ],
+    "repairs": [
+      {
+        "repairId": "repair:fixture:deadbeefcafebabe",
+        "fromFailureId": "fail:fixture:deadbeefcafebabe",
+        "signature": "deadbeefcafebabe",
+        "scope": "strict.schema.exhausted",
+        "action": "rerun",
+        "repairAction": "rerun",
+        "commands": ["retry exhausted failure without operator escalation"],
+        "expectedArtifacts": [],
+        "expectedGates": ["strict_exhausted_retry_terminal_gate"],
+        "preconditions": {
+          "liveAllowed": true,
+          "providerAllowed": false,
+          "requiredSecrets": []
+        },
+        "paused": false,
+        "allowlist": [],
+        "rollbackCriteria": {
+          "baseline": "git status --short",
+          "mustRestore": [],
+          "verificationCommand": "node scripts/reverse-agent/autonomous-contracts.mjs . --strict"
+        },
+        "blockedConditions": [
+          {
+            "reason": "unpaused rerun on exhausted failure must be rejected",
+            "unblock": "pause repair and escalate or close retry budget"
+          }
+        ],
+        "evidenceWriteback": {
+          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "appendOnly": true,
+          "mode": "strict-fixture"
+        },
+        "regressionGates": ["strict_exhausted_retry_terminal_gate"]
+      }
+    ]
   }
 }

@@ -315,7 +315,7 @@ pi
 
 ## Swarm multi-agent orchestration
 
-`/re-swarm plan|show|run|merge [target] [max-workers] [max-commands]` / `re_swarm` 是 specialist delegation 之上的多专家运行组织层：读取 `delegation_artifact`，生成 `swarm_plan` 与 `swarm_artifact`，输出 `worker_runtime_packets`、run-mode `worker_executions`、`worker_results`、`blocked`、`merge_digest`、`parallel_groups`、`merge_protocol`、`collision_matrix`、`evidence_contract`、`commander_next_actions`、`handoff_digest`、`claimLedger`、`claimLedgerPath`、`claimLedgerEventCount`、`claimLedgerTipHash`、`runtimeClaimLedgerCaptured`、`next_swarm_command`，artifact 写入 `.pi/evidence/swarms/*.md`，runtime claim ledger 写入 `.pi/evidence/swarms/*claim-ledger.jsonl`，`run` 模式写入 `memory/swarm-run-board.md`，`merge` 模式优先读取最近 run artifact 并保留 runtime `workerResults` / `blocked` / `mergeDigest` 到 `memory/swarm-board.md`，并更新 `swarm_plan_ready` gate。
+`/re-swarm plan|show|run|merge [target] [max-workers] [max-commands]` / `re_swarm` 是 specialist delegation 之上的多专家运行组织层：读取 `delegation_artifact`，生成 `swarm_plan` 与 `swarm_artifact`，输出 `worker_runtime_packets`、run-mode `worker_executions`、`worker_results`、`blocked`、`merge_digest`、`parallel_groups`、`merge_protocol`、`collision_matrix`、`evidence_contract`、`commander_next_actions`、`handoff_digest`、`claimLedger`、`claimLedgerPath`、`claimLedgerEventCount`、`claimLedgerTipHash`、`runtimeClaimLedgerCaptured`、`subagentRuntimeManifests`、`subagentRuntimeManifestPath`、`subagentRuntimeManifestCount`、`subagentRuntimeManifestsCaptured`、`next_swarm_command`，artifact 写入 `.pi/evidence/swarms/*.md`，runtime claim ledger 写入 `.pi/evidence/swarms/*claim-ledger.jsonl`，每个 worker 的 stdout/stderr/runtime-manifest 写入 `.pi/evidence/swarms/*-sessions/<worker>/` 并汇总到 `*-subagent-runtime-manifests.json`，`run` 模式写入 `memory/swarm-run-board.md`，`merge` 模式优先读取最近 run artifact 并保留 runtime `workerResults` / `blocked` / `mergeDigest` 到 `memory/swarm-board.md`，并更新 `swarm_plan_ready` gate。
 
 ## Supervisor critic
 
@@ -385,7 +385,7 @@ proof-loop；agent-dogfood 已写 per-attempt subagent runtime manifest 和 runt
 
 ## Runtime failure/repair ledger 闭环
 
-`re_replayer`、`re_autofix`、`re_operator` 和 `re_proof_loop` 的 runtime writer 会把 failed / blocked rows 归一化为 `FailureLedgerEventV1` 与 `RepairQueueItemV1`，append 到 `.pi/evidence/failures/ledger.jsonl` 和 `.pi/evidence/repairs/queue.jsonl`。每条 failure 复用 `runtimeFailureSignature`、`budget/retryBudget`、artifact sha256、`blockedConditions`、`rollback` 与 `evidenceWriteback` 字段；`failureToRepair` 把失败映射为 `rerun`、`replace-command`、`recapture-evidence`、`refresh-context` 或 `escalate` repair action。该层让 proof-loop、operator、replayer 和 autofix 不再只在各自 artifact 中描述失败，而是写入同一 canonical failure/repair ledger；compound-frontier failed gates、agent-dogfood role retry 和 plan-only invalid fixture 也会生成同类 rows。schema 层通过 `fixtures/reverse-agent/failure-repair-strict.fixture.json` 验证 strict fixture、duplicate signature/attempt rejection 和 loose extra field rejection。
+`re_replayer`、`re_autofix`、`re_operator` 和 `re_proof_loop` 的 runtime writer 会把 failed / blocked rows 归一化为 `FailureLedgerEventV1` 与 `RepairQueueItemV1`，append 到 `.pi/evidence/failures/ledger.jsonl` 和 `.pi/evidence/repairs/queue.jsonl`。每条 failure 复用 `runtimeFailureSignature`、`budget/retryBudget`、artifact sha256、`blockedConditions`、`rollback` 与 `evidenceWriteback` 字段；`failureToRepair` 把失败映射为 `rerun`、`replace-command`、`recapture-evidence`、`refresh-context` 或 `escalate` repair action。该层让 proof-loop、operator、replayer 和 autofix 不再只在各自 artifact 中描述失败，而是写入同一 canonical failure/repair ledger；compound-frontier failed gates、agent-dogfood role retry 和 plan-only invalid fixture 也会生成同类 rows。schema 层通过 `fixtures/reverse-agent/failure-repair-strict.fixture.json` 验证 strict fixture、duplicate signature/attempt rejection、loose extra field rejection，以及 `status=exhausted` 后 remaining budget 未闭合或 unpaused rerun/retry repair 的终态拒绝。
 
 ## Execution kernel 底层执行内核
 
@@ -526,6 +526,14 @@ npm run gate:claim-release
 marker 会被 `re_supervisor`、`re_compiler final` 和 `re_complete audit` 读取。只要
 marker 缺失、blocked，或者存在 required platform gaps，最终报告 gate 必须 blocked。
 
+runtime 分工验证还有专门 adapter/gate：
+
+```bash
+npm run gate:runtime-claim-ledger
+```
+
+它会发现最新 `agent-parallel-dogfood`、`re_swarm`、`compound-frontier` runtime claim ledger，把 runtime `ClaimLedgerEventV1` 适配成 `validate-claim-ledger.mjs` strict input，并同时跑 `--allow-platform-gaps` 与 `--strict-claims`。缺失的 live runtime artifact 会以 `missing_runtime_artifact` 输出，不会伪装成 pass；已存在的 runtime ledger 必须通过 strict validator。
+
 `scripts/reverse-agent/autonomous-runtime-contracts.mjs . --strict` 验证 autonomous runtime strict fixture：subagent manifest、parallel shard state、compact resume transition、repair budget 与 runtime claim promotion gate。`scripts/reverse-agent/autonomous-contracts.mjs . --strict` 会把该 gate 纳入总控制合同，并继续聚合 `ReconParallelPlanV1`、`ResumeContractV2`、`FailureLedgerEventV1/RepairQueueItemV1`、`RoleContractV1/ClaimLedgerEventV1`。常用入口：
 
 ```bash
@@ -541,7 +549,7 @@ Failure/repair 合同现在同时保留机器字段和人类可读别名：
   `.pi/evidence/failures/ledger.jsonl` 与 `.pi/evidence/repairs/queue.jsonl`。
 - `gate:repi-isolation` 会用临时 HOME 构造旧 `~/.pi/agent` 污染样本，验证 `repi` 默认只用 `~/.repi/agent`，不会触发 2go model scope、API key、collision 或 Global tools 报错，也不会改写普通 `pi` profile。
 - `gate:autonomous-runtime` 会读取 autonomous runtime strict fixture，验证 valid batch 通过、duplicate subagent attempt、非法 resume transition、loose claim-gate field 都被拒绝。
-- `gate:autonomous-contracts` 会读取 failure/repair strict fixture 与 autonomous runtime gate，验证 valid batch 通过、duplicate signature/attempt 被拒绝、loose extra field 被拒绝。
+- `gate:autonomous-contracts` 会读取 failure/repair strict fixture 与 autonomous runtime gate，验证 valid batch 通过、duplicate signature/attempt、loose extra field、exhausted 后继续 unpaused rerun/retry 都被拒绝。
 - release 级 claim 不走 `audit:claim-ledger --allow-platform-gaps`，而走 `gate:claim-release`；当前 required platform gaps 存在时它应该阻断，并把 blocked marker 写给 runtime final path 使用。
 
 ## Harness 自检层
