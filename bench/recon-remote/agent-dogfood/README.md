@@ -15,6 +15,24 @@ or:
 node bench/recon-remote/agent-dogfood/run.mjs openai gpt-4.1
 ```
 
+For the harder multi-agent gate:
+
+```bash
+RECON_AGENT_PROVIDER=openai RECON_AGENT_MODEL=gpt-4.1 \
+  node bench/recon-remote/agent-dogfood/parallel-run.mjs
+```
+
+`parallel-run.mjs` launches four real `./pi-test.sh --recon` workers at the same time:
+
+| Role | Purpose |
+|---|---|
+| `mapper` | Map decisive Bilibili/Xiaohongshu/Douyin evidence and separate strong proof from weak inference. |
+| `verifier` | Execute `node bench/recon-remote/hard-score.mjs` and verify concrete artifact fields. |
+| `adversary` | Attack the benchmark for stale verdicts, indirect proof, and self-delusion. |
+| `planner` | Design the next hardest benchmark with commands, gates, invariants, compact/context needs, and rollback criteria. |
+
+The parallel gate is intentionally stricter than the single-agent run: every role must call the model, use tools, cite `.pi/evidence/remote/...` artifacts, cover Bilibili WBI, Xiaohongshu `x-s`, and Douyin `a_bogus`, emit the standard report sections, and overlap in wall-clock time.
+
 ## Environment
 
 | Variable | Default | Purpose |
@@ -27,6 +45,9 @@ node bench/recon-remote/agent-dogfood/run.mjs openai gpt-4.1
 | `RECON_AGENT_CMD` | `./pi-test.sh` | Agent command to execute. |
 | `RECON_AGENT_EXTRA_ARGS` | unset | Extra Pi CLI args. |
 | `RECON_AGENT_PROMPT` | built-in | Override dogfood prompt. |
+| `RECON_PARALLEL_ROLES` | all roles | Optional comma-separated subset for `parallel-run.mjs`, e.g. `mapper,verifier`. |
+| `RECON_PARALLEL_MAX_TOOL_CALLS` | `4` | Prompt-level per-worker cap to keep parallel roles bounded. |
+| `RECON_PARALLEL_MAX_WORDS` | `500` | Prompt-level per-worker output cap. |
 
 ## Output
 
@@ -39,6 +60,19 @@ stderr.txt
 sessions/*.jsonl
 ```
 
+Parallel artifacts are written to:
+
+```text
+.pi/evidence/remote/agent-parallel-dogfood/<timestamp>/
+artifact.md
+result.json
+mapper.stdout.txt / mapper.stderr.txt
+verifier.stdout.txt / verifier.stderr.txt
+adversary.stdout.txt / adversary.stderr.txt
+planner.stdout.txt / planner.stderr.txt
+sessions/<role>/*.jsonl
+```
+
 The result classifies the run as:
 
 | Verdict | Meaning |
@@ -46,3 +80,6 @@ The result classifies the run as:
 | `agent-dogfood-confirmed` | Agent exited successfully, model output was captured, hard-score was referenced, and all three real-platform tracks were covered with the required report sections. |
 | `agent-dogfood-partial` | Agent produced model output but missed one or more gates. |
 | `agent-dogfood-failed` | Agent/model run failed or produced no usable model evidence. |
+| `agent-parallel-dogfood-confirmed` | All parallel roles exited, called the model, used tools, overlapped, cited artifacts, covered all three platforms, and passed their role-specific gates. |
+| `agent-parallel-dogfood-partial` | At least one parallel role called the model and used tools, but one or more strict gates failed. |
+| `agent-parallel-dogfood-failed` | The parallel run produced no usable model/tool evidence. |
