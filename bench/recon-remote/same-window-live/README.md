@@ -18,7 +18,7 @@ The gate is intentionally harder than `hard-score`:
 Outputs:
 
 ```text
-.pi/evidence/remote/same-window-live/<timestamp>/
+.repi-harness/evidence/remote/same-window-live/<timestamp>/
 artifact.md
 result.json
 bilibili.stdout.txt / bilibili.stderr.txt

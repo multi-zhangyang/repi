@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const RUNTIME_MIRRORS = ["packages/coding-agent/src/core/recon-profile.ts", ".pi/extensions/reverse-pentest-core.ts"];
+const RUNTIME_MIRRORS = ["packages/coding-agent/src/core/recon-profile.ts", "repi-profile/extensions/reverse-pentest-core.ts"];
 
 const TEST_COMMANDS_PAUSED = [
 	"npm run gate:same-window-live",
@@ -534,7 +534,7 @@ const REQUIREMENTS = [
 			"为 autofix/operator/compound 类动作加入 baseline、allowlist、passed gate regression 和 rollback criteria。",
 		],
 		recommendedWork: [
-			"保持 .pi/evidence/failures/ledger.jsonl 和 .pi/evidence/repairs/queue.jsonl schema，把 retryBudget/evidenceWriteback/blockedConditions 保持为必填。",
+			"保持 .repi-harness/evidence/failures/ledger.jsonl 和 .repi-harness/evidence/repairs/queue.jsonl schema，把 retryBudget/evidenceWriteback/blockedConditions 保持为必填。",
 			"把 agent-dogfood 独立 sub-agent runtime manifest 继续接入 failure signature / retry budget 去重。",
 			"让 proof-loop/knowledge graph 查询 failure signature，自动优先处理 exhausted 与重复失败。",
 		],
@@ -943,7 +943,7 @@ function formatMarkdown(manifest) {
 
 function writeManifest(root, manifest) {
 	const stamp = manifest.generatedAt.replace(/[:.]/g, "-");
-	const dir = join(root, ".pi", "evidence", "autonomy-control-plane", stamp);
+	const dir = join(root, ".repi-harness", "evidence", "autonomy-control-plane", stamp);
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "result.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 	writeFileSync(join(dir, "report.md"), formatMarkdown(manifest));

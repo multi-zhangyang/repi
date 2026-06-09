@@ -13,6 +13,12 @@ import { extractSegments, normalizeTerminalOutput, sliceByColumn, sliceWithWidth
 
 const KITTY_SEQUENCE_PREFIX = "\x1b_G";
 
+function getRepiTuiLogPath(fileName: string): string {
+	const agentDir =
+		process.env.REPI_CODING_AGENT_DIR || process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".repi", "agent");
+	return path.join(agentDir, fileName);
+}
+
 function extractKittyImageIds(line: string): number[] {
 	const sequenceStart = line.indexOf(KITTY_SEQUENCE_PREFIX);
 	if (sequenceStart === -1) return [];
@@ -1184,10 +1190,11 @@ export class TUI extends Container {
 			this.previousHeight = height;
 		};
 
-		const debugRedraw = process.env.PI_DEBUG_REDRAW === "1";
+		const debugRedraw = process.env.REPI_DEBUG_REDRAW === "1" || process.env.PI_DEBUG_REDRAW === "1";
 		const logRedraw = (reason: string): void => {
 			if (!debugRedraw) return;
-			const logPath = path.join(os.homedir(), ".pi", "agent", "pi-debug.log");
+			const logPath = getRepiTuiLogPath("repi-debug.log");
+			fs.mkdirSync(path.dirname(logPath), { recursive: true });
 			const msg = `[${new Date().toISOString()}] fullRender: ${reason} (prev=${this.previousLines.length}, new=${newLines.length}, height=${height})\n`;
 			fs.appendFileSync(logPath, msg);
 		};
@@ -1353,7 +1360,7 @@ export class TUI extends Container {
 			const isImage = isImageLine(line);
 			if (!isImage && visibleWidth(line) > width) {
 				// Log all lines to crash file for debugging
-				const crashLogPath = path.join(os.homedir(), ".pi", "agent", "pi-crash.log");
+				const crashLogPath = getRepiTuiLogPath("repi-crash.log");
 				const crashData = [
 					`Crash at ${new Date().toISOString()}`,
 					`Terminal width: ${width}`,

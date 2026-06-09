@@ -1,6 +1,6 @@
 # Remote live benchmarks
 
-Reproducible public-network benchmark harnesses for Pi-RECON. Runtime evidence is written under `.pi/evidence/remote/` and is git-ignored.
+Reproducible public-network benchmark harnesses for Pi-RECON. Runtime evidence is written under `.repi-harness/evidence/remote/` and is git-ignored.
 
 | Benchmark | Purpose |
 |---|---|
@@ -28,7 +28,7 @@ node bench/recon-remote/hard-score.mjs
 The evaluator scores latest artifacts across `signature_rebuild`, `signed_replay`, `anti_bot_challenge`, `cdn_media_probe`, `runtime_capture_depth`, `exploit_chain`, `bundle_trace`, and `regression_readiness`, writing:
 
 ```text
-.pi/evidence/remote/hard-score/<timestamp>/scoreboard.{json,md}
+.repi-harness/evidence/remote/hard-score/<timestamp>/scoreboard.{json,md}
 ```
 
 ## Agent dogfood

@@ -69,7 +69,7 @@ pass.
 ## Output
 
 ```text
-.pi/evidence/remote/frontier-matrix/<timestamp>/
+.repi-harness/evidence/remote/frontier-matrix/<timestamp>/
 artifact.md
 result.json
 <scenario>.stdout.txt

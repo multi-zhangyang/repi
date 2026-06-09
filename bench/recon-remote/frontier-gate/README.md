@@ -46,7 +46,7 @@ node bench/recon-remote/frontier-gate/run.mjs --strict --fresh
 ## Output
 
 ```text
-.pi/evidence/remote/frontier-gate/<timestamp>/
+.repi-harness/evidence/remote/frontier-gate/<timestamp>/
 artifact.md
 result.json
 ```

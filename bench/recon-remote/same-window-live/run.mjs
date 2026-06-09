@@ -19,7 +19,7 @@ const targets = {
 };
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`Pi-RECON same-window live frontier gate\n\nUsage:\n  node bench/recon-remote/same-window-live/run.mjs\n  node bench/recon-remote/same-window-live/run.mjs --strict\n  node bench/recon-remote/same-window-live/run.mjs --use-latest\n\nPurpose:\n  Reruns or binds Bilibili, Xiaohongshu, and Douyin evidence inside one freshness window,\n  then separates proven live facts from frontier gaps. This gate is intentionally harder than\n  hard-score: Bilibili must prove per-page WBI plus CDN range/body evidence, Xiaohongshu\n  must prove target note/feed x-s 2xx, and Douyin must prove structured replay plus media-byte\n  no-watermark evidence. Partial/failure verdicts are expected and useful.\n\nEnvironment:\n  RECON_SAME_WINDOW_BILI_URL=<url>\n  RECON_SAME_WINDOW_XHS_URL=<url>\n  RECON_SAME_WINDOW_XHS_AUTO_DISCOVER=1\n  RECON_SAME_WINDOW_XHS_DISCOVERY_LIMIT=1\n  RECON_SAME_WINDOW_DOUYIN_URL=<url>\n  RECON_SAME_WINDOW_PARALLEL=1\n  RECON_SAME_WINDOW_TIMEOUT_MS=900000\n  RECON_SAME_WINDOW_MAX_SPAN_MS=900000\n  RECON_SAME_WINDOW_MAX_AGE_MS=1800000\n  RECON_SAME_WINDOW_STRICT=1\n  RECON_SAME_WINDOW_USE_LATEST=1\n\nOutput:\n  .pi/evidence/remote/same-window-live/<timestamp>/\n`);
+  console.log(`Pi-RECON same-window live frontier gate\n\nUsage:\n  node bench/recon-remote/same-window-live/run.mjs\n  node bench/recon-remote/same-window-live/run.mjs --strict\n  node bench/recon-remote/same-window-live/run.mjs --use-latest\n\nPurpose:\n  Reruns or binds Bilibili, Xiaohongshu, and Douyin evidence inside one freshness window,\n  then separates proven live facts from frontier gaps. This gate is intentionally harder than\n  hard-score: Bilibili must prove per-page WBI plus CDN range/body evidence, Xiaohongshu\n  must prove target note/feed x-s 2xx, and Douyin must prove structured replay plus media-byte\n  no-watermark evidence. Partial/failure verdicts are expected and useful.\n\nEnvironment:\n  RECON_SAME_WINDOW_BILI_URL=<url>\n  RECON_SAME_WINDOW_XHS_URL=<url>\n  RECON_SAME_WINDOW_XHS_AUTO_DISCOVER=1\n  RECON_SAME_WINDOW_XHS_DISCOVERY_LIMIT=1\n  RECON_SAME_WINDOW_DOUYIN_URL=<url>\n  RECON_SAME_WINDOW_PARALLEL=1\n  RECON_SAME_WINDOW_TIMEOUT_MS=900000\n  RECON_SAME_WINDOW_MAX_SPAN_MS=900000\n  RECON_SAME_WINDOW_MAX_AGE_MS=1800000\n  RECON_SAME_WINDOW_STRICT=1\n  RECON_SAME_WINDOW_USE_LATEST=1\n\nOutput:\n  .repi-harness/evidence/remote/same-window-live/<timestamp>/\n`);
   process.exit(0);
 }
 
@@ -91,7 +91,7 @@ async function latestResult(globPart) {
     return out;
   }
   const candidates = [];
-  for (const path of (await walk(join(repoRoot, '.pi', 'evidence', 'remote'))).filter((p) => p.includes(globPart))) {
+  for (const path of (await walk(join(repoRoot, '.repi-harness', 'evidence', 'remote'))).filter((p) => p.includes(globPart))) {
     const obj = await readJson(path);
     candidates.push({ path, timeMs: artifactTimeMs(path, obj || {}) || 0 });
   }
@@ -179,7 +179,7 @@ function summarizeRun(item) {
   };
 }
 
-const outDir = join(repoRoot, '.pi', 'evidence', 'remote', 'same-window-live', timestamp());
+const outDir = join(repoRoot, '.repi-harness', 'evidence', 'remote', 'same-window-live', timestamp());
 await mkdir(outDir, { recursive: true });
 const startedAt = new Date().toISOString();
 const runs = [];

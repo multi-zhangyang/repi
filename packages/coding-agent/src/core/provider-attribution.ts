@@ -1,4 +1,4 @@
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@pi-recon/repi-ai";
 import { APP_NAME, IS_REPI_PRODUCT } from "../config.ts";
 import type { SettingsManager } from "./settings-manager.ts";
 import { isInstallTelemetryEnabled } from "./telemetry.ts";
@@ -64,7 +64,7 @@ function getDefaultAttributionHeaders(
 
 	if (isCloudflareModel(model)) {
 		return {
-			"User-Agent": IS_REPI_PRODUCT ? "repi-coding-agent" : "pi-coding-agent",
+			"User-Agent": IS_REPI_PRODUCT ? "repi-coding-agent" : "repi-coding-agent",
 		};
 	}
 

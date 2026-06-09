@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 
 const repoRoot = resolve(process.env.RECON_REPO_ROOT || '.');
-const evidenceRoot = join(repoRoot, '.pi', 'evidence', 'remote');
+const evidenceRoot = join(repoRoot, '.repi-harness', 'evidence', 'remote');
 function argValue(name, fallback = '') {
   const prefix = `--${name}=`;
   const inline = process.argv.find((arg) => arg.startsWith(prefix));
@@ -26,7 +26,7 @@ const maxArtifactAgeMs = Number(argValue('max-artifact-age-ms', process.env.RECO
 const maxClockSkewMs = Number(argValue('max-clock-skew-ms', process.env.RECON_FRONTIER_MAX_CLOCK_SKEW_MS || process.env.RECON_EVIDENCE_MAX_CLOCK_SKEW_MS || 300000));
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`Pi-RECON frontier gate\n\nUsage:\n  node bench/recon-remote/frontier-gate/run.mjs\n  node bench/recon-remote/frontier-gate/run.mjs --live\n  node bench/recon-remote/frontier-gate/run.mjs --strict\n\nPurpose:\n  Measures the next frontier beyond proof-gate: Douyin a_bogus rebuild/structured 2xx API,\n  Xiaohongshu x-s 2xx signed replay, Bilibili runtime WBI signer bundle trace, and agent\n  frontier planning. Non-strict mode exits 0 with verdict frontier-incomplete so it can track\n  hard gaps without pretending they are solved.\n\nEnvironment:\n  RECON_FRONTIER_LIVE=1          Rerun live proof-gate before assessment\n  RECON_FRONTIER_STRICT=1        Exit nonzero unless all frontier gates pass\n  RECON_FRONTIER_TIMEOUT_MS=900000\n\nOutput:\n  .pi/evidence/remote/frontier-gate/<timestamp>/\n`);
+  console.log(`Pi-RECON frontier gate\n\nUsage:\n  node bench/recon-remote/frontier-gate/run.mjs\n  node bench/recon-remote/frontier-gate/run.mjs --live\n  node bench/recon-remote/frontier-gate/run.mjs --strict\n\nPurpose:\n  Measures the next frontier beyond proof-gate: Douyin a_bogus rebuild/structured 2xx API,\n  Xiaohongshu x-s 2xx signed replay, Bilibili runtime WBI signer bundle trace, and agent\n  frontier planning. Non-strict mode exits 0 with verdict frontier-incomplete so it can track\n  hard gaps without pretending they are solved.\n\nEnvironment:\n  RECON_FRONTIER_LIVE=1          Rerun live proof-gate before assessment\n  RECON_FRONTIER_STRICT=1        Exit nonzero unless all frontier gates pass\n  RECON_FRONTIER_TIMEOUT_MS=900000\n\nOutput:\n  .repi-harness/evidence/remote/frontier-gate/<timestamp>/\n`);
   process.exit(0);
 }
 

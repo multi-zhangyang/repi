@@ -11,7 +11,7 @@ import {
 	routeReconTask,
 } from "../src/core/recon-profile.ts";
 
-const ENV_AGENT_DIR = "PI_CODING_AGENT_DIR";
+const ENV_AGENT_DIR = "REPI_CODING_AGENT_DIR";
 const ENV_BRANCH_ID = "PI_RECON_BRANCH_ID";
 
 describe("Pi-RECON kernel profile", () => {
@@ -51,7 +51,7 @@ describe("Pi-RECON kernel profile", () => {
 		expect(routeReconTask("autopwn exploit reliability poc replay matrix").domain).toBe("Exploit reliability");
 	});
 
-	it("injects built-in skills and prompts without project .pi files", () => {
+	it("injects built-in skills and prompts without project .repi files", () => {
 		const options = createReconResourceLoaderOptions();
 		const skillsResult = options.skillsOverride!({ skills: [], diagnostics: [] });
 		const promptsResult = options.promptsOverride!({ prompts: [], diagnostics: [] });
@@ -170,13 +170,17 @@ describe("Pi-RECON kernel profile", () => {
 		const options = createReconResourceLoaderOptions();
 		const result = options.extensionsOverride!({
 			extensions: [
-				{ path: "/root/.pi/agent/extensions/reverse-pentest-core.ts", tools: reconTools, commands: reconCommands },
+				{
+					path: "/root/.repi/agent/extensions/reverse-pentest-core.ts",
+					tools: reconTools,
+					commands: reconCommands,
+				},
 				{ path: "<inline:1>", tools: reconTools, commands: reconCommands },
 			],
 			errors: [
 				{
 					path: "<inline:1>",
-					error: 'Tool "re_route" conflicts with /root/.pi/agent/extensions/reverse-pentest-core.ts',
+					error: 'Tool "re_route" conflicts with /root/.repi/agent/extensions/reverse-pentest-core.ts',
 				},
 			],
 			runtime: {},
@@ -2878,8 +2882,8 @@ describe("Pi-RECON kernel profile", () => {
 							"[agent-prompt-risk] prompts/system.md:3: prompt injection ignore previous",
 							"[agent-tool] file=src/tools.ts hits=tool-reg,exec,schema",
 							"[agent-tool-risk] file=src/unsafe.ts reason=exec_without_visible_schema_guard",
-							"[agent-memory] file=.pi/memory/field-journal.md bytes=120 sha256=abc",
-							"[agent-memory-risk] file=.pi/memory/field-journal.md line=4 text=ignore previous developer message",
+							"[agent-memory] file=recon/memory/field-journal.md bytes=120 sha256=abc",
+							"[agent-memory-risk] file=recon/memory/field-journal.md line=4 text=ignore previous developer message",
 							"[agent-injection-replay] corpus=/tmp/pi-recon-agent-injection-corpus.jsonl cases=4 target=.",
 							"[agent-injection-case] name=tool-json-smuggle channel=tool_output bytes=66",
 							"[agent-delegation] file=src/mcp.ts hits=2",

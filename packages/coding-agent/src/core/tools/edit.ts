@@ -1,7 +1,7 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
+import type { AgentTool } from "@pi-recon/repi-agent-core";
+import { Box, Container, Spacer, Text } from "@pi-recon/repi-tui";
 import { constants } from "fs";
-import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } from "fs/promises";
+import { access as fsAccess, readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "fs/promises";
 import { type Static, Type } from "typebox";
 import { renderDiff } from "../../modes/interactive/components/diff.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
@@ -83,7 +83,15 @@ export interface EditOperations {
 const defaultEditOperations: EditOperations = {
 	readFile: (path) => fsReadFile(path),
 	writeFile: (path, content) => fsWriteFile(path, content, "utf-8"),
-	access: (path) => fsAccess(path, constants.R_OK | constants.W_OK),
+	access: async (path) => {
+		await fsAccess(path, constants.R_OK | constants.W_OK);
+		const mode = (await fsStat(path)).mode;
+		if ((mode & 0o444) === 0 || (mode & 0o222) === 0) {
+			const error = new Error("Permission denied") as NodeJS.ErrnoException;
+			error.code = "EACCES";
+			throw error;
+		}
+	},
 };
 
 export interface EditToolOptions {

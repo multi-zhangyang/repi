@@ -16,7 +16,7 @@ const targets = {
 };
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`Pi-RECON remote proof gate\n\nUsage:\n  node bench/recon-remote/proof-gate/run.mjs\n  node bench/recon-remote/proof-gate/run.mjs --use-latest\n\nLive default tracks:\n  - Bilibili WBI + optional CDP signer trace\n  - Xiaohongshu x-s runtime signer/replay challenge\n  - Douyin a_bogus/no-watermark/CDP/API probe\n  - Agent dogfood rerun when RECON_AGENT_MODEL or ANTHROPIC_MODEL is configured; RECON_GATE_AGENT=0 scores latest dogfood evidence only\n\nEnvironment:\n  RECON_GATE_TIMEOUT_MS=600000\n  RECON_GATE_AGENT=auto|1|0     1 forces dogfood rerun; 0 skips rerun but can score latest evidence\n  RECON_GATE_LATEST=1          Score latest artifacts without rerunning live targets\n  RECON_GATE_BILI_URL=<url>\n  RECON_GATE_XHS_URL=<url>\n  RECON_GATE_DOUYIN_URL=<url>\n\nOutput:\n  .pi/evidence/remote/proof-gate/<timestamp>/\n`);
+  console.log(`Pi-RECON remote proof gate\n\nUsage:\n  node bench/recon-remote/proof-gate/run.mjs\n  node bench/recon-remote/proof-gate/run.mjs --use-latest\n\nLive default tracks:\n  - Bilibili WBI + optional CDP signer trace\n  - Xiaohongshu x-s runtime signer/replay challenge\n  - Douyin a_bogus/no-watermark/CDP/API probe\n  - Agent dogfood rerun when RECON_AGENT_MODEL or ANTHROPIC_MODEL is configured; RECON_GATE_AGENT=0 scores latest dogfood evidence only\n\nEnvironment:\n  RECON_GATE_TIMEOUT_MS=600000\n  RECON_GATE_AGENT=auto|1|0     1 forces dogfood rerun; 0 skips rerun but can score latest evidence\n  RECON_GATE_LATEST=1          Score latest artifacts without rerunning live targets\n  RECON_GATE_BILI_URL=<url>\n  RECON_GATE_XHS_URL=<url>\n  RECON_GATE_DOUYIN_URL=<url>\n\nOutput:\n  .repi-harness/evidence/remote/proof-gate/<timestamp>/\n`);
   process.exit(0);
 }
 
@@ -96,7 +96,7 @@ function summarizeRun(item) {
   };
 }
 
-const outDir = join(repoRoot, '.pi', 'evidence', 'remote', 'proof-gate', timestamp());
+const outDir = join(repoRoot, '.repi-harness', 'evidence', 'remote', 'proof-gate', timestamp());
 await mkdir(outDir, { recursive: true });
 const started = Date.now();
 const runs = [];

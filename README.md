@@ -2,10 +2,11 @@
 
 Pi-RECON Agent 是基于 Pi agent harness 魔改的逆向 / 渗透任务组织型 agent profile。它把一次安全研究任务拆成可追踪的执行内核、证据账本、分工计划、上下文恢复包、验证矩阵、复现矩阵和 proof loop，目标是让 agent 不只是“会回复”，而是能把复杂逆向/渗透工程按阶段推进、留证、恢复和审计。
 
-当前仓库包含两个层次，但默认只走独立 `repi`：
+当前仓库包含三个层次，但默认只走独立 `repi`：
 
+- `packages/coding-agent/src/cli/repi-bootstrap.ts`：REPI 产品级 bootstrap。无论是源码 wrapper 还是 npm/bin 直接启动，只要命令身份是 `repi`，都会默认启用 `--recon`、隔离资源、初始化 `~/.repi/agent`，不会依赖外层 shell hack。
 - `packages/coding-agent/src/core/recon-profile.ts`：内置 Pi-RECON profile，实现 slash command、tool、prompt、storage、compaction hook 和控制面 gate。`repi` 默认直接启用这个内置 kernel。
-- `.pi/extensions/reverse-pentest-core.ts`：保留给兼容/迁移的文件型 profile 镜像，不再默认写入或启用到普通 `pi` 的 `~/.pi/agent`。
+- `repi-profile/extensions/reverse-pentest-core.ts`：保留给兼容/迁移的文件型 profile 镜像，不再默认写入或启用到普通 `pi` 的 `~/.pi/agent`。
 
 > 当前收口状态：Pi-RECON 已能正常作为专业逆向/渗透任务组织 agent 使用；并行计划、agent-dogfood subagent runtime manifest、AutonomousRuntimeBatchV1 strict gate、agent-dogfood / re_swarm / compound-frontier runtime ClaimLedgerEventV1、上下文 pack/resume、supervisor 分工验证、strict claim release gate、strict failure/repair schema fixture、runtime failure/repair ledger hooks、离线控制面 gates 已接入。最终输出不会只靠叙述放行：`re_supervisor`、`re_compiler final`、`re_complete audit` 都会读取 strict claim marker，并在 required claim gap 未闭合时阻断最终发布。
 
@@ -57,8 +58,8 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - `ContextPackV2`：上下文 pack 带 `schemaVersion: 2`、`contextSha256`、artifact sha256、scope、closure、idempotency key。
 - exact context resume：`re_context resume <contextPath>` / tool `contextPath` / `compactionEntryId` 精确加载指定 pack，并校验 hash、artifact drift、workspace/target/branch scope。
 - `memory/compaction-resume-ledger.jsonl`：append-only compact/resume ledger。
-- strict claim gate：`gate:claim-release` 使用严格 claim ledger validation，不把 orchestration 成功误报成平台 claim 成功；执行后会写 `.pi/evidence/claim-release/<timestamp>/result.json`，供 supervisor/compiler/complete 三段 runtime 读取。
-- failure/repair runtime ledger：`FailureLedgerEventV1`、`RepairQueueItemV1` strict schema、strict fixture、duplicate signature/attempt 去重检查、hard-eval 离线样例，`re_replayer` / `re_autofix` / `re_operator` / `re_proof_loop` failed|blocked row 到 `.pi/evidence/failures/ledger.jsonl`、`.pi/evidence/repairs/queue.jsonl` 的 append-only 写入 hooks，以及 compound-frontier、agent-dogfood role retry、plan-only invalid fixture 的 failure/repair 输出。
+- strict claim gate：`gate:claim-release` 使用严格 claim ledger validation，不把 orchestration 成功误报成平台 claim 成功；执行后会写 `~/.repi/agent/recon/evidence/claim-release/<timestamp>/result.json`，供 supervisor/compiler/complete 三段 runtime 读取。
+- failure/repair runtime ledger：`FailureLedgerEventV1`、`RepairQueueItemV1` strict schema、strict fixture、duplicate signature/attempt 去重检查、hard-eval 离线样例，`re_replayer` / `re_autofix` / `re_operator` / `re_proof_loop` failed|blocked row 到 `~/.repi/agent/recon/evidence/failures/ledger.jsonl`、`~/.repi/agent/recon/evidence/repairs/queue.jsonl` 的 append-only 写入 hooks，以及 compound-frontier、agent-dogfood role retry、plan-only invalid fixture 的 failure/repair 输出。
 - AutonomousRuntimeBatchV1 strict gate：`schemas/reverse-agent/autonomous-runtime-contract.schema.json` 与 `fixtures/reverse-agent/autonomous-runtime-contract.fixture.json` 覆盖 subagent runtime manifest、parallel shard state、compact resume transition、repair budget 和 runtime claim promotion；`npm run gate:autonomous-runtime` 会拒绝 duplicate subagent attempt、非法 resume transition 和 loose claim-gate 字段。
 - runtime ClaimLedgerEventV1：agent-dogfood、re_swarm 与 compound-frontier 统一输出 `artifact_handoff → claim → validation → challenge → resolution` 哈希链；agent-dogfood 每个 role / synthesizer attempt 会输出 `*.runtime-manifest.json`，re_swarm run 为每个 worker 写 `SubagentRuntimeManifestV1`、stdout/stderr sha256、sessionDir、toolCallDigest 与 `*-subagent-runtime-manifests.json`，compound-frontier 同步写 `claim-ledger.jsonl`；`npm run gate:runtime-claim-ledger` 会把最新 runtime ledger 适配进 `validate-claim-ledger.mjs` 的 strict validator，缺失 live runtime artifact 明确标为 `missing_runtime_artifact`，防止 role/worker/compound claim 只停留在叙述层。
 
@@ -110,7 +111,7 @@ repi  -> Pi-RECON reverse/pentest agent
 pi    -> 你本机安装的原版 Pi；本仓库不再安装、删除或覆盖它
 ```
 
-`install-repi.sh` 只写入 `repi` 启动器，并初始化 `~/.repi/agent`。它不会删除 `@earendil-works/pi-coding-agent`，不会覆盖 PATH 里的 `pi`，也不会写入或删除 `~/.pi/agent`。如果机器上残留旧版 takeover 安装留下的 `pi -> /root/pi-diy/pi/pi` symlink，安装脚本只会移除这种旧 symlink，让 PATH 回到原版 `pi` 或“未安装 pi”的状态。
+`install-repi.sh` 只写入 `repi` 启动器，并初始化 `~/.repi/agent`。它不会删除 `@pi-recon/repi-coding-agent`，不会覆盖 PATH 里的 `pi`，也不会写入或删除 `~/.pi/agent`。如果机器上残留旧版 takeover 安装留下的 `pi -> /root/pi-diy/pi/pi` symlink，安装脚本只会移除这种旧 symlink，让 PATH 回到原版 `pi` 或“未安装 pi”的状态。
 
 ## 启动 Pi-RECON：使用 `repi`
 
@@ -133,19 +134,19 @@ repi
 repi -p "分析当前目录的逆向入口，先做被动 mapping"
 ```
 
-默认情况下 `repi` 会自动追加：
+默认情况下 `repi` 会在 CLI 内部自动追加：
 
 ```text
 --recon --no-extensions --no-skills --no-prompt-templates --no-approve --no-context-files
 ```
 
-这样做是为了防止项目 `.pi/`、全局 `~/.pi/agent/`、旧 prompts/extensions 再次和 Pi-RECON 内置 kernel 冲突。需要读取项目 AGENTS/CLAUDE 或项目 `.pi/settings.json` 时再显式打开：
+这不是外层 wrapper 的临时拼参数；`packages/coding-agent/src/cli/repi-bootstrap.ts` 已把它做成 REPI 产品默认行为，所以源码启动、`/usr/local/bin/repi` symlink、npm/bin 直接启动都会进入同一套逆向/渗透 kernel。这样做是为了防止项目 `.repi/`、全局 `~/.repi/agent/` 以及旧 `.pi/` prompts/extensions 再次和 Pi-RECON 内置 kernel 冲突。需要读取项目 AGENTS/CLAUDE 或项目 `.repi/settings.json` 时再显式打开：
 
 ```bash
 repi --project-context
 ```
 
-需要完全按普通 Pi 的资源发现机制加载项目/全局扩展时：
+需要完全按 REPI 的资源发现机制加载项目/全局扩展时：
 
 ```bash
 repi --with-project-resources
@@ -237,6 +238,8 @@ npm run gate:repi-harness
 npm run gate:repi-product
 npm run gate:repi-isolation
 ```
+
+`gate:repi-harness` 还会模拟不经过源码 wrapper 的 package/bin 直启路径，确认 `packages/coding-agent/src/cli.ts` 自己就会进入 REPI kernel，而不是退回普通 Pi 行为。
 
 进入 `repi` 后：
 
@@ -335,7 +338,7 @@ regression_guards:
 它会写入：
 
 ```text
-.pi/evidence/contexts/<timestamp>-<target>-pack.md
+~/.repi/agent/recon/evidence/contexts/<timestamp>-<target>-pack.md
 memory/compaction-resume-ledger.jsonl
 ```
 
@@ -355,7 +358,7 @@ pack 中包含：
 恢复时可以直接指定原始 pack：
 
 ```text
-/re-context resume .pi/evidence/contexts/<timestamp>-<target>-pack.md
+/re-context resume ~/.repi/agent/recon/evidence/contexts/<timestamp>-<target>-pack.md
 ```
 
 工具调用也支持显式参数：
@@ -364,7 +367,7 @@ pack 中包含：
 {
   "action": "resume",
   "target": "<target>",
-  "contextPath": ".pi/evidence/contexts/<timestamp>-<target>-pack.md"
+  "contextPath": "~/.repi/agent/recon/evidence/contexts/<timestamp>-<target>-pack.md"
 }
 ```
 
@@ -539,7 +542,7 @@ git diff --exit-code
 
 ```bash
 node --check packages/coding-agent/src/core/recon-profile.ts
-node --check .pi/extensions/reverse-pentest-core.ts
+node --check repi-profile/extensions/reverse-pentest-core.ts  # legacy mirror; repi 默认不加载
 node --check scripts/reverse-agent/context-compact-audit.mjs
 git diff --check
 
@@ -567,7 +570,7 @@ npm run gate:claim-release
 当前若 evidence 中仍存在 required platform gaps，它会失败，这是 strict release gate 的预期行为。即使失败，它也会写入最新 marker：
 
 ```text
-.pi/evidence/claim-release/<timestamp>/result.json
+~/.repi/agent/recon/evidence/claim-release/<timestamp>/result.json
 ```
 
 runtime 会读取这个 marker：
@@ -585,7 +588,7 @@ runtime 会读取这个 marker：
 ```bash
 node --check scripts/reverse-agent/validate-claim-ledger.mjs
 node --check packages/coding-agent/src/core/recon-profile.ts
-node --check .pi/extensions/reverse-pentest-core.ts
+node --check repi-profile/extensions/reverse-pentest-core.ts  # legacy mirror; repi 默认不加载
 git diff --check
 
 env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY -u OPENAI_API_KEY \
@@ -611,7 +614,7 @@ npm run audit:hard-eval-control
 ## 关键文件结构
 
 ```text
-.pi/
+repi-profile/                # legacy compatibility mirror; repi 默认不加载，也不会被 upstream pi 自动读取
   SYSTEM.md
   APPEND_SYSTEM.md
   extensions/reverse-pentest-core.ts
@@ -623,7 +626,11 @@ docs/reverse-agent/
   autonomous-control-plane.md
   model-provider-formats.md
 
+packages/coding-agent/src/cli/
+  repi-bootstrap.ts
+
 packages/coding-agent/src/core/
+  repi-profile-init.ts
   recon-profile.ts
 
 schemas/reverse-agent/
@@ -644,7 +651,7 @@ scripts/reverse-agent/
   autonomous-runtime-contracts.mjs
   audit-parallel-plan.mjs
   install-repi.sh
-  init-repi-profile.mjs
+  init-repi-profile.mjs       # legacy script entry; CLI has built-in initializer too
   clean-global-pi-recon.sh
   install-global-profile.sh   # legacy compatibility; defaults to ~/.repi/agent
   refresh-tool-index.sh
@@ -654,18 +661,18 @@ scripts/reverse-agent/
 运行后常见产物：
 
 ```text
-.pi/evidence/contexts/*.md
-.pi/evidence/operators/*.md
-.pi/evidence/verifiers/*.md
-.pi/evidence/compilers/*.md
-.pi/evidence/replayers/*.md
-.pi/evidence/claim-release/*/result.json
-.pi/evidence/proof-loops/*.md
-.pi/evidence/swarms/*claim-ledger.jsonl
-.pi/evidence/remote/agent-parallel-dogfood/*/*runtime-manifest.json
-.pi/evidence/remote/agent-parallel-dogfood/*/subagent-runtime-manifests.json
-.pi/evidence/remote/agent-parallel-dogfood/*/claim-ledger.jsonl
-.pi/evidence/remote/compound-frontier/*/claim-ledger.jsonl
+~/.repi/agent/recon/evidence/contexts/*.md
+~/.repi/agent/recon/evidence/operators/*.md
+~/.repi/agent/recon/evidence/verifiers/*.md
+~/.repi/agent/recon/evidence/compilers/*.md
+~/.repi/agent/recon/evidence/replayers/*.md
+~/.repi/agent/recon/evidence/claim-release/*/result.json
+~/.repi/agent/recon/evidence/proof-loops/*.md
+~/.repi/agent/recon/evidence/swarms/*claim-ledger.jsonl
+~/.repi/agent/recon/evidence/remote/agent-parallel-dogfood/*/*runtime-manifest.json
+~/.repi/agent/recon/evidence/remote/agent-parallel-dogfood/*/subagent-runtime-manifests.json
+~/.repi/agent/recon/evidence/remote/agent-parallel-dogfood/*/claim-ledger.jsonl
+~/.repi/agent/recon/evidence/remote/compound-frontier/*/claim-ledger.jsonl
 memory/compaction-resume-ledger.jsonl
 memory/autonomous-budget-ledger.md
 memory/playbooks/*.md
@@ -686,7 +693,7 @@ repi --offline --list-models
 
 ```bash
 node --check packages/coding-agent/src/core/recon-profile.ts
-node --check .pi/extensions/reverse-pentest-core.ts
+node --check repi-profile/extensions/reverse-pentest-core.ts  # legacy mirror; repi 默认不加载
 ./node_modules/.bin/tsgo --noEmit --pretty false
 ```
 
@@ -704,7 +711,7 @@ repi --offline --list-models
 如果 `pi` 和 `repi` 输出混在一起，检查这两个目录是否分离：
 
 ```bash
-echo "pi   : ${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+echo "pi   : ${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}  # upstream Pi only"
 echo "repi : ${REPI_CODING_AGENT_DIR:-$HOME/.repi/agent}"
 ```
 

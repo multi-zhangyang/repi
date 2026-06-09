@@ -45,7 +45,7 @@ In live mode, Bilibili/Xiaohongshu/Douyin gates are bound to the artifact paths 
 ## Output
 
 ```text
-.pi/evidence/remote/proof-gate/<timestamp>/
+.repi-harness/evidence/remote/proof-gate/<timestamp>/
 artifact.md
 result.json
 *.stdout.txt

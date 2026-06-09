@@ -6,7 +6,7 @@ import {
 	createAssistantMessageEventStream,
 	fauxAssistantMessage,
 	type Model,
-} from "@earendil-works/pi-ai";
+} from "@pi-recon/repi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createReconExtensionFactory } from "../../src/core/recon-profile.ts";
 import type { CustomEntry } from "../../src/core/session-manager.ts";
@@ -17,7 +17,7 @@ type SessionWithCompactionInternals = {
 	_runAutoCompaction: (reason: "overflow" | "threshold", willRetry: boolean) => Promise<boolean>;
 };
 
-const ENV_AGENT_DIR = "PI_CODING_AGENT_DIR";
+const ENV_AGENT_DIR = "REPI_CODING_AGENT_DIR";
 
 function createUsage(totalTokens: number) {
 	return {

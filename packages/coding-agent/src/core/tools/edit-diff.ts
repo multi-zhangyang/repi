@@ -5,7 +5,7 @@
 
 import * as Diff from "diff";
 import { constants } from "fs";
-import { access, readFile } from "fs/promises";
+import { access, readFile, stat } from "fs/promises";
 import { resolveToCwd } from "./path-utils.ts";
 
 export function detectLineEnding(content: string): "\r\n" | "\n" {
@@ -420,6 +420,11 @@ export async function computeEditsDiff(
 		// Check if file exists and is readable
 		try {
 			await access(absolutePath, constants.R_OK);
+			if (((await stat(absolutePath)).mode & 0o444) === 0) {
+				const error = new Error("Permission denied") as NodeJS.ErrnoException;
+				error.code = "EACCES";
+				throw error;
+			}
 		} catch (error: unknown) {
 			const errorMessage = error instanceof Error && "code" in error ? `Error code: ${error.code}` : String(error);
 			return { error: `Could not edit file: ${path}. ${errorMessage}.` };

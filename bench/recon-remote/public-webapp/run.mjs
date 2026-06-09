@@ -11,7 +11,7 @@ const sampleBytes = Number(process.env.RECON_SAMPLE_BYTES || 20000);
 const userAgent = process.env.RECON_USER_AGENT || 'Mozilla/5.0 Pi-RECON-public-webapp-benchmark';
 
 if (!target || target === '--help' || target === '-h') {
-  console.log(`Pi-RECON public webapp live benchmark\n\nUsage:\n  node bench/recon-remote/public-webapp/run.mjs <url> [auto|juice-shop|juice-shop-hard|testfire|generic]\n\nExamples:\n  node bench/recon-remote/public-webapp/run.mjs https://preview.owasp-juice.shop juice-shop\n  node bench/recon-remote/public-webapp/run.mjs https://preview.owasp-juice.shop juice-shop-hard\n  node bench/recon-remote/public-webapp/run.mjs https://demo.testfire.net testfire\n\nEnvironment:\n  RECON_TIMEOUT_MS=15000\n  RECON_MAX_BODY_BYTES=300000\n  RECON_SAMPLE_BYTES=20000\n  RECON_USER_AGENT=<ua>\n\nOutput:\n  .pi/evidence/remote/public-webapp/<host>/<timestamp>/\n`);
+  console.log(`Pi-RECON public webapp live benchmark\n\nUsage:\n  node bench/recon-remote/public-webapp/run.mjs <url> [auto|juice-shop|juice-shop-hard|testfire|generic]\n\nExamples:\n  node bench/recon-remote/public-webapp/run.mjs https://preview.owasp-juice.shop juice-shop\n  node bench/recon-remote/public-webapp/run.mjs https://preview.owasp-juice.shop juice-shop-hard\n  node bench/recon-remote/public-webapp/run.mjs https://demo.testfire.net testfire\n\nEnvironment:\n  RECON_TIMEOUT_MS=15000\n  RECON_MAX_BODY_BYTES=300000\n  RECON_SAMPLE_BYTES=20000\n  RECON_USER_AGENT=<ua>\n\nOutput:\n  .repi-harness/evidence/remote/public-webapp/<host>/<timestamp>/\n`);
   process.exit(target ? 0 : 2);
 }
 
@@ -267,7 +267,7 @@ function analyze(profile, baseUrl, probes) {
 
 const baseUrl = assertHttpUrl(target);
 const profile = resolveProfile(baseUrl);
-const outDir = join('.pi', 'evidence', 'remote', 'public-webapp', slug(baseUrl.hostname), timestamp());
+const outDir = join('.repi-harness', 'evidence', 'remote', 'public-webapp', slug(baseUrl.hostname), timestamp());
 await mkdir(outDir, { recursive: true });
 
 const started = Date.now();

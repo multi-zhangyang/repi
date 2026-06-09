@@ -7,7 +7,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@pi-recon/repi-agent-core";
 import {
 	type AssistantMessage,
 	getProviders,
@@ -16,7 +16,7 @@ import {
 	type Model,
 	type OAuthProviderId,
 	type OAuthSelectPrompt,
-} from "@earendil-works/pi-ai";
+} from "@pi-recon/repi-ai";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -27,7 +27,7 @@ import type {
 	OverlayHandle,
 	OverlayOptions,
 	SlashCommand,
-} from "@earendil-works/pi-tui";
+} from "@pi-recon/repi-tui";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -46,12 +46,13 @@ import {
 	TruncatedText,
 	TUI,
 	visibleWidth,
-} from "@earendil-works/pi-tui";
+} from "@pi-recon/repi-tui";
 import chalk from "chalk";
 import { spawn, spawnSync } from "child_process";
 import {
 	APP_NAME,
 	APP_TITLE,
+	CONFIG_DIR_NAME,
 	getAgentDir,
 	getAuthPath,
 	getDebugLogPath,
@@ -3264,7 +3265,7 @@ export class InteractiveMode {
 			new Text(
 				theme.fg(
 					"warning",
-					"This project is not trusted. Project instructions (AGENTS.md/CLAUDE.md), .pi resources, and project packages are ignored. Use /trust to save a trust decision, then restart pi.",
+					`This project is not trusted. Project instructions (AGENTS.md/CLAUDE.md), ${CONFIG_DIR_NAME} resources, and project packages are ignored. Use /trust to save a trust decision, then restart ${APP_NAME}.`,
 				),
 				1,
 				0,
@@ -3389,7 +3390,7 @@ export class InteractiveMode {
 		try {
 			this.ui.stop();
 		} catch {}
-		console.error("pi exiting due to uncaughtException:");
+		console.error(`${APP_NAME} exiting due to uncaughtException:`);
 		console.error(error);
 		process.exit(1);
 	}
@@ -3612,7 +3613,7 @@ export class InteractiveMode {
 		}
 
 		const currentText = this.editor.getExpandedText?.() ?? this.editor.getText();
-		const tmpFile = path.join(os.tmpdir(), `pi-editor-${Date.now()}.pi.md`);
+		const tmpFile = path.join(os.tmpdir(), `${APP_NAME}-editor-${Date.now()}.${APP_NAME}.md`);
 
 		try {
 			// Write current content to temp file
@@ -4186,7 +4187,7 @@ export class InteractiveMode {
 					trustStore.set(cwd, trusted);
 					done();
 					this.showStatus(
-						`Saved trust decision: ${trusted ? "trusted" : "untrusted"}. Restart pi for this to take effect.`,
+						`Saved trust decision: ${trusted ? "trusted" : "untrusted"}. Restart ${APP_NAME} for this to take effect.`,
 					);
 				},
 				onCancel: () => {

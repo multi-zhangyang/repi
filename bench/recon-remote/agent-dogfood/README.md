@@ -32,7 +32,7 @@ RECON_AGENT_PROVIDER=openai RECON_AGENT_MODEL=gpt-4.1 \
 | `planner` | Design the next hardest benchmark with commands, gates, invariants, compact/context needs, and rollback criteria. |
 | `synthesizer` | Read worker outputs, resolve mapper/verifier/adversary/planner conflicts, and downgrade unsupported claims. |
 
-The parallel gate is intentionally stricter than the single-agent run: every role must call the model, use tools, cite `.pi/evidence/remote/...` artifacts, cover `same-window-live`, Bilibili WBI, Xiaohongshu `x-s`, and Douyin `a_bogus`, emit the standard report sections, overlap in wall-clock time for the worker phase, and pass synthesizer conflict reconciliation.
+The parallel gate is intentionally stricter than the single-agent run: every role must call the model, use tools, cite `.repi-harness/evidence/remote/...` artifacts, cover `same-window-live`, Bilibili WBI, Xiaohongshu `x-s`, and Douyin `a_bogus`, emit the standard report sections, overlap in wall-clock time for the worker phase, and pass synthesizer conflict reconciliation.
 
 ## Offline plan ingestion: `--plan-json` and `--plan-only`
 
@@ -61,7 +61,7 @@ orchestrator JSON root containing `parallelPlan`. In plan-only mode the runner:
   `artifactGlobs`, `dependencies`, and `limits`;
 - does not require `RECON_AGENT_MODEL`, provider credentials, or provider base
   URLs;
-- does not create `.pi/evidence/remote/agent-parallel-dogfood/<timestamp>/`;
+- does not create `.repi-harness/evidence/remote/agent-parallel-dogfood/<timestamp>/`;
 - does not run hard-score, hard-eval, worker agents, synthesizer agents, browser
   automation, or real-platform checks;
 - prints a `pi-recon-parallel-plan-preview` object on stdout for CI/static review.
@@ -123,7 +123,7 @@ The parallel result also records a runtime audit so the dogfood proof is not jus
 ## Output
 
 ```text
-.pi/evidence/remote/agent-dogfood/<timestamp>/
+.repi-harness/evidence/remote/agent-dogfood/<timestamp>/
 artifact.md
 result.json
 stdout.txt
@@ -134,7 +134,7 @@ sessions/*.jsonl
 Parallel artifacts are written to:
 
 ```text
-.pi/evidence/remote/agent-parallel-dogfood/<timestamp>/
+.repi-harness/evidence/remote/agent-parallel-dogfood/<timestamp>/
 artifact.md
 result.json
 mapper.stdout.txt / mapper.stderr.txt

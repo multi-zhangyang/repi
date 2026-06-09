@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, join, resolve } from "node:path";
 
 export const FAILURE_REPAIR_WRITEBACK = {
-	failureLedgerPath: ".pi/evidence/failures/ledger.jsonl",
-	repairQueuePath: ".pi/evidence/repairs/queue.jsonl",
+	failureLedgerPath: ".repi-harness/evidence/failures/ledger.jsonl",
+	repairQueuePath: ".repi-harness/evidence/repairs/queue.jsonl",
 	appendOnly: true,
 	mode: "offline-runtime-control-plane",
 };

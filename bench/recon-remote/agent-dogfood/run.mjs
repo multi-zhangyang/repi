@@ -16,7 +16,7 @@ const extraArgs = (process.env.RECON_AGENT_EXTRA_ARGS || '').split(/\s+/).filter
 const prompt = process.env.RECON_AGENT_PROMPT || '';
 
 if (process.argv.includes('--help') || process.argv.includes('-h') || !model) {
-  console.log(`Pi-RECON agent dogfood benchmark\n\nUsage:\n  RECON_AGENT_PROVIDER=openai RECON_AGENT_MODEL=gpt-4.1 node bench/recon-remote/agent-dogfood/run.mjs\n  node bench/recon-remote/agent-dogfood/run.mjs <provider> <model>\n\nPurpose:\n  Runs the Pi-RECON agent itself against latest remote benchmark evidence, requiring a real model/provider call.\n\nEnvironment:\n  RECON_AGENT_PROVIDER=<provider>       default: aigateway\n  RECON_AGENT_MODEL=<model>             required unless argv[3] or ANTHROPIC_MODEL is set\n  RECON_AGENT_THINKING=low\n  RECON_AGENT_TOOLS=read,grep,find,ls,bash\n  RECON_AGENT_TIMEOUT_MS=240000\n  RECON_AGENT_CMD=./pi-test.sh\n  RECON_AGENT_EXTRA_ARGS='--offline'    optional extra CLI args\n  RECON_AGENT_PROMPT='<custom prompt>'  optional prompt override\n\nOutput:\n  .pi/evidence/remote/agent-dogfood/<timestamp>/\n`);
+  console.log(`Pi-RECON agent dogfood benchmark\n\nUsage:\n  RECON_AGENT_PROVIDER=openai RECON_AGENT_MODEL=gpt-4.1 node bench/recon-remote/agent-dogfood/run.mjs\n  node bench/recon-remote/agent-dogfood/run.mjs <provider> <model>\n\nPurpose:\n  Runs the Pi-RECON agent itself against latest remote benchmark evidence, requiring a real model/provider call.\n\nEnvironment:\n  RECON_AGENT_PROVIDER=<provider>       default: aigateway\n  RECON_AGENT_MODEL=<model>             required unless argv[3] or ANTHROPIC_MODEL is set\n  RECON_AGENT_THINKING=low\n  RECON_AGENT_TOOLS=read,grep,find,ls,bash\n  RECON_AGENT_TIMEOUT_MS=240000\n  RECON_AGENT_CMD=./pi-test.sh\n  RECON_AGENT_EXTRA_ARGS='--offline'    optional extra CLI args\n  RECON_AGENT_PROMPT='<custom prompt>'  optional prompt override\n\nOutput:\n  .repi-harness/evidence/remote/agent-dogfood/<timestamp>/\n`);
   process.exit(model ? 0 : 2);
 }
 
@@ -89,7 +89,7 @@ async function parseSessions(jsonlPaths) {
 }
 function hasAll(text, patterns) { return patterns.every((re) => re.test(text)); }
 
-const outDir = join(repoRoot, '.pi', 'evidence', 'remote', 'agent-dogfood', timestamp());
+const outDir = join(repoRoot, '.repi-harness', 'evidence', 'remote', 'agent-dogfood', timestamp());
 await mkdir(outDir, { recursive: true });
 const sessionDir = join(outDir, 'sessions');
 await mkdir(sessionDir, { recursive: true });

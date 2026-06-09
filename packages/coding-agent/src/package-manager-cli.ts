@@ -1,8 +1,9 @@
-import { Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
+import { Markdown, type MarkdownTheme } from "@pi-recon/repi-tui";
 import chalk from "chalk";
 import { selectConfig } from "./cli/config-selector.ts";
 import {
 	APP_NAME,
+	CONFIG_DIR_NAME,
 	detectInstallMethod,
 	getAgentDir,
 	getPackageDir,
@@ -92,7 +93,7 @@ function printPackageCommandHelp(command: PackageCommand): void {
 Install a package and add it to settings.
 
 Options:
-  -l, --local       Install project-locally (.pi/settings.json)
+  -l, --local       Install project-locally (${CONFIG_DIR_NAME}/settings.json)
   -a, --approve     Trust project-local files for this command
   -na, --no-approve Ignore project-local files for this command
 
@@ -114,7 +115,7 @@ Remove a package and its source from settings.
 Alias: ${APP_NAME} uninstall <source> [-l]
 
 Options:
-  -l, --local       Remove from project settings (.pi/settings.json)
+  -l, --local       Remove from project settings (${CONFIG_DIR_NAME}/settings.json)
   -a, --approve     Trust project-local files for this command
   -na, --no-approve Ignore project-local files for this command
 

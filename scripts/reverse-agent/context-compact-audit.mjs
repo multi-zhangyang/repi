@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const RUNTIME_MIRRORS = ["packages/coding-agent/src/core/recon-profile.ts", ".pi/extensions/reverse-pentest-core.ts"];
+const RUNTIME_MIRRORS = ["packages/coding-agent/src/core/recon-profile.ts", "repi-profile/extensions/reverse-pentest-core.ts"];
 
 export const CONTEXT_COMPACT_REQUIREMENTS = [
 	{
@@ -92,7 +92,7 @@ export const CONTEXT_COMPACT_REQUIREMENTS = [
 				],
 			},
 			{
-				file: ".pi/extensions/reverse-pentest-core.ts",
+				file: "repi-profile/extensions/reverse-pentest-core.ts",
 				markers: [
 					"return { loadedBy: \"missing\" }",
 					"PI_RECON_BRANCH_ID",

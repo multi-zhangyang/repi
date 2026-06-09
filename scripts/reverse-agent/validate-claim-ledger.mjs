@@ -175,7 +175,7 @@ function validateGateAndScores(result, options) {
 
 function writeClaimReleaseMarker(root, report, inputText) {
   const stamp = report.generatedAt.replace(/[:.]/g, "-");
-  const outDir = join(root, ".pi", "evidence", "claim-release", stamp);
+  const outDir = join(root, ".repi-harness", "evidence", "claim-release", stamp);
   mkdirSync(outDir, { recursive: true });
   const markerPath = join(outDir, "result.json");
   const gateAndScores = report.checks.gateAndScores || {};

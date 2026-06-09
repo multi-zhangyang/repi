@@ -36,7 +36,7 @@ node bench/recon-remote/compound-frontier/run.mjs --live --strict
 ## Output
 
 ```text
-.pi/evidence/remote/compound-frontier/<timestamp>/
+.repi-harness/evidence/remote/compound-frontier/<timestamp>/
 artifact.md
 result.json
 context-compact.stdout.txt / context-compact.stderr.txt

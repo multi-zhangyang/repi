@@ -75,19 +75,142 @@ function markerCheck(id, path, required, forbidden = []) {
 	});
 }
 
+function readJsonFile(path) {
+	return JSON.parse(readFileSync(join(root, path), "utf8"));
+}
+
+function packageIdentityChecks() {
+	const checks = [];
+	const expectedPackages = [
+		["packages/ai/package.json", "@pi-recon/repi-ai"],
+		["packages/agent/package.json", "@pi-recon/repi-agent-core"],
+		["packages/tui/package.json", "@pi-recon/repi-tui"],
+		["packages/coding-agent/package.json", "@pi-recon/repi-coding-agent"],
+	];
+
+	try {
+		const rootPackage = readJsonFile("package.json");
+		checks.push(resultCheck("package:root-repi-monorepo", rootPackage.name === "repi-monorepo" ? "pass" : "fail", { name: rootPackage.name }));
+	} catch (error) {
+		checks.push(resultCheck("package:root-repi-monorepo", "fail", { error: String(error) }));
+	}
+
+	for (const [path, expectedName] of expectedPackages) {
+		try {
+			const pkg = readJsonFile(path);
+			checks.push(resultCheck(`package:name:${expectedName}`, pkg.name === expectedName ? "pass" : "fail", { path, name: pkg.name, expectedName }));
+			checks.push(
+				resultCheck(`package:repo:${expectedName}`, String(pkg.repository?.url ?? "").includes("multi-zhangyang/pi-recon-agent") ? "pass" : "fail", {
+					path,
+					repository: pkg.repository ?? null,
+				}),
+			);
+		} catch (error) {
+			checks.push(resultCheck(`package:name:${expectedName}`, "fail", { path, error: String(error) }));
+		}
+	}
+
+	try {
+		const coding = readJsonFile("packages/coding-agent/package.json");
+		const binKeys = Object.keys(coding.bin ?? {}).sort();
+		checks.push(
+			resultCheck(
+				"package:coding-bin-repi-only",
+				JSON.stringify(binKeys) === JSON.stringify(["repi"]) && coding.bin.repi === "dist/cli.js" ? "pass" : "fail",
+				{ bin: coding.bin ?? null },
+			),
+		);
+		checks.push(
+			resultCheck("package:coding-piconfig-repi", coding.piConfig?.name === "repi" && coding.piConfig?.configDir === ".repi" ? "pass" : "fail", {
+				piConfig: coding.piConfig ?? null,
+			}),
+		);
+		const deps = Object.keys(coding.dependencies ?? {});
+		const oldDeps = deps.filter((name) => /@(earendil-works|mariozechner)\/pi-/.test(name) || name.includes("rerepi"));
+		checks.push(
+			resultCheck(
+				"package:coding-deps-repi-only",
+				oldDeps.length === 0 && deps.includes("@pi-recon/repi-agent-core") && deps.includes("@pi-recon/repi-ai") && deps.includes("@pi-recon/repi-tui")
+					? "pass"
+					: "fail",
+				{ deps, oldDeps },
+			),
+		);
+	} catch (error) {
+		checks.push(resultCheck("package:coding-bin-repi-only", "fail", { error: String(error) }));
+	}
+
+	for (const lockPath of ["package-lock.json", "packages/coding-agent/npm-shrinkwrap.json"]) {
+		try {
+			const text = readFileSync(join(root, lockPath), "utf8");
+			const forbidden = [/@earendil-works\/pi-/, /@mariozechner\/pi-/, /@pi-recon\/rerepi/, /"pi"\s*:\s*"dist\/cli\.js"/];
+			const hits = forbidden.filter((pattern) => pattern.test(text)).map(String);
+			checks.push(
+				resultCheck(
+					`package:lock-clean:${lockPath}`,
+					hits.length === 0 && text.includes("@pi-recon/repi-coding-agent") && text.includes('"repi": "dist/cli.js"') ? "pass" : "fail",
+					{ path: lockPath, hits },
+				),
+			);
+		} catch (error) {
+			checks.push(resultCheck(`package:lock-clean:${lockPath}`, "fail", { error: String(error) }));
+		}
+	}
+
+	return checks;
+}
+
 function staticContractChecks() {
 	const checks = [];
 	checks.push(
+		resultCheck("repo:no-root-dot-pi-profile", !existsSync(join(root, ".pi")) ? "pass" : "fail", {
+			forbiddenPath: ".pi",
+			reason: "The checkout must not contain a project .pi profile that can be auto-loaded by upstream pi.",
+		}),
+	);
+	checks.push(
+		resultCheck(
+			"repo:repi-profile-mirror",
+			existsSync(join(root, "repi-profile", "SYSTEM.md")) &&
+				existsSync(join(root, "repi-profile", "extensions", "reverse-pentest-core.ts"))
+				? "pass"
+				: "fail",
+			{ profileDir: "repi-profile" },
+		),
+	);
+	checks.push(
 		markerCheck("launcher:repi-product-env", "repi", [
-			'PI_CODING_AGENT_APP_NAME="repi"',
-			'PI_CODING_AGENT_CONFIG_DIR=".repi"',
+			"REPI_CODING_AGENT_APP_NAME",
+			"REPI_CODING_AGENT_CONFIG_DIR",
+			"PI_CODING_AGENT_APP_NAME",
+			"PI_CODING_AGENT_CONFIG_DIR",
 			"PI_RECON_PRODUCT=1",
 			"PI_SKIP_VERSION_CHECK",
 			"PI_SKIP_PACKAGE_UPDATE_CHECK",
 			"PI_TELEMETRY",
-			"ARGS=(--recon --no-extensions --no-skills --no-prompt-templates --no-approve --no-context-files)",
-			"install|remove|uninstall|update|list|config",
-		]),
+			"packages/coding-agent/src/cli.ts",
+		], ["ARGS=(--recon"]),
+	);
+	checks.push(
+		markerCheck("code:repi-bootstrap-defaults", "packages/coding-agent/src/cli/repi-bootstrap.ts", [
+			"bootstrapRepiCli",
+			"initializeRepiProfile",
+			"DEFAULT_CLEAN_ROOM_FLAGS",
+			'"--recon"',
+			'"--import-pi-auth"',
+			'"--project-context"',
+			'"--with-project-resources"',
+			"PACKAGE_COMMANDS",
+		], []),
+	);
+	checks.push(
+		markerCheck("code:repi-profile-init-core", "packages/coding-agent/src/core/repi-profile-init.ts", [
+			"initializeRepiProfile",
+			"isolated-pi-recon-profile",
+			"legacyPiImported",
+			'join(homedir(), ".pi", "agent")',
+			"settings.compaction",
+		], []),
 	);
 	checks.push(markerCheck("launcher:pi-non-owning-shim", "pi", ["no longer owns the `pi` command", "exec \"$candidate\" \"$@\""], ["ARGS=(--recon", "PI_RECON_PRODUCT=1", "PI_RECON_PRIMARY=1"]));
 	checks.push(
@@ -95,16 +218,19 @@ function staticContractChecks() {
 			"installer:repi-no-pi-takeover",
 			"scripts/reverse-agent/install-repi.sh",
 			["ln -sfn \"$ROOT/repi\" \"$BIN_DIR/repi\"", "pi    -> upstream Pi only", "not modified by install-repi.sh"],
-			[/ln\s+-sfn\s+"\$ROOT\/pi"\s+"\$BIN_DIR\/pi"/, /rm\s+-rf\s+"\$HOME\/\.pi"/, /@earendil-works\/pi-coding-agent\*/],
+			[/ln\s+-sfn\s+"\$ROOT\/pi"\s+"\$BIN_DIR\/pi"/, /rm\s+-rf\s+"\$HOME\/\.pi"/, /@earendil-works\/(?:pi|repi)-coding-agent/],
 		),
 	);
-	checks.push(markerCheck("installer:legacy-no-takeover", "scripts/reverse-agent/install-recon-pi.sh", ["deprecated", "exec \"$ROOT/scripts/reverse-agent/install-repi.sh"], [/ln\s+-s.*\$ROOT\/pi/, /rm\s+-rf/, /deleted upstream/],));
+	checks.push(markerCheck("installer:legacy-no-takeover", "scripts/reverse-agent/install-recon-pi.sh", ["deprecated", 'exec "$ROOT/scripts/reverse-agent/install-repi.sh'], [/ln\s+-s.*\$ROOT\/pi/, /rm\s+-rf/, /deleted upstream/],));
+	checks.push(markerCheck("release:binary-archives-repi", "scripts/build-binaries.sh", ["repi-linux-x64.tar.gz", '--outfile "$OUTPUT_DIR/$platform/repi', "repi-$platform.tar.gz", "repi-$platform.zip"], [/\bpi-linux-x64\.tar\.gz/, /--outfile .*\/pi(?:\.exe)?"/, /\bpi-\$platform\.(?:zip|tar\.gz)/]));
+	checks.push(markerCheck("release:local-shims-repi", "scripts/local-release.mjs", ["createRepiShim", '"repi.cmd"', '"repi"', "repi-${platform}.tar.gz"], ["createPiShim", /node_modules\/\.bin\/pi\b/, /\bpi\.cmd\b/, /\bpi-\$\{platform\}\.tar\.gz/]));
 	checks.push(markerCheck("code:repi-product-switch", "packages/coding-agent/src/config.ts", ["IS_REPI_PRODUCT", "PI_RECON_PRODUCT", "APP_NAME === \"repi\"", "https://gist.github.com/"], []));
 	checks.push(markerCheck("code:update-branding-disabled", "packages/coding-agent/src/modes/interactive/interactive-mode.ts", ["if (!IS_REPI_PRODUCT)", "PI_SKIP_PACKAGE_UPDATE_CHECK", "if (IS_REPI_PRODUCT) return;", "Pi-RECON Changelog"], []));
 	checks.push(markerCheck("code:provider-attribution-rebranded", "packages/coding-agent/src/core/provider-attribution.ts", ["IS_REPI_PRODUCT", "X-OpenRouter-Title", "repi-coding-agent", "x-opencode-client"], []));
 	checks.push(markerCheck("npm:top-harness-script", "package.json", ["gate:repi-harness", "gate:repi-product", "gate:repi-isolation", "install:repi"], []));
 	checks.push(markerCheck("ci:repi-harness-template", "docs/reverse-agent/repi-harness.github-actions.yml", ["REPI Independent Harness", "npm ci --ignore-scripts", "npm run gate:repi-harness", "npm run check", "git diff --exit-code"], []));
 	checks.push(markerCheck("docs:independent-entry", "README.md", ["repi  -> Pi-RECON", "pi    -> 你本机安装的原版 Pi", "npm run install:repi", "npm run gate:repi-harness"], ["npm run install:recon-pi\n", "npm run gate:pi-recon-primary\n"]));
+	checks.push(...packageIdentityChecks());
 	return checks;
 }
 
@@ -172,7 +298,33 @@ function runtimeInstallProbe() {
 	const profilePath = join(home, ".repi", "agent", "recon", "profile.json");
 	const profile = existsSync(profilePath) ? JSON.parse(readFileSync(profilePath, "utf8")) : null;
 	const afterPiHash = treeHash(fakePiAgent);
-	const combined = `${install.combined}\n${piProbe.combined}\n${help.combined}\n${updateHelp.combined}\n${listModels.combined}`;
+
+	const packageHome = join(tempRoot, "package-home");
+	const packagePiAgent = join(packageHome, ".pi", "agent");
+	mkdir(packagePiAgent);
+	writeFileSync(join(packagePiAgent, "auth.json"), JSON.stringify({ fake: { apiKey: "package-bin-do-not-copy" } }, null, 2));
+	writeFileSync(join(packagePiAgent, "models.json"), JSON.stringify({ models: [{ provider: "fake", id: "package-bin-fake" }] }, null, 2));
+	const packageEnv = {
+		HOME: packageHome,
+		PATH: env.PATH,
+		PI_OFFLINE: "1",
+		PI_SKIP_VERSION_CHECK: "1",
+		PI_SKIP_PACKAGE_UPDATE_CHECK: "1",
+		PI_TELEMETRY: "0",
+	};
+	const packageCliHelp = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "--offline", "--help"], {
+		env: packageEnv,
+	});
+	const packageProfilePath = join(packageHome, ".repi", "agent", "recon", "profile.json");
+	const packageProfile = existsSync(packageProfilePath) ? JSON.parse(readFileSync(packageProfilePath, "utf8")) : null;
+	const packageModelsDefaultCopied = existsSync(join(packageHome, ".repi", "agent", "models.json"));
+	const packageImport = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "--import-pi-auth", "--offline", "--list-models"], {
+		env: packageEnv,
+	});
+	const packageModelsAfterImport = existsSync(join(packageHome, ".repi", "agent", "models.json"));
+	const packageAuthAfterImport = existsSync(join(packageHome, ".repi", "agent", "auth.json"));
+
+	const combined = `${install.combined}\n${piProbe.combined}\n${help.combined}\n${updateHelp.combined}\n${listModels.combined}\n${packageCliHelp.combined}\n${packageImport.combined}`;
 	const forbidden = forbiddenRuntimePatterns().filter((pattern) => pattern.test(combined));
 	const modelsAfterImport = existsSync(join(home, ".repi", "agent", "models.json"));
 	const authAfterImport = existsSync(join(home, ".repi", "agent", "auth.json"));
@@ -189,6 +341,26 @@ function runtimeInstallProbe() {
 	checks.push(resultCheck("runtime:no-upstream-warning-leak", forbidden.length === 0 ? "pass" : "fail", { forbidden: forbidden.map(String) }));
 	checks.push(resultCheck("runtime:profile-in-repi-home", profile?.agentDir === join(home, ".repi", "agent") ? "pass" : "fail", { profilePath, agentDir: profile?.agentDir ?? null }));
 	checks.push(resultCheck("runtime:legacy-import-explicit-only", importRun.code === 0 && !modelsBeforeImport && modelsAfterImport && authAfterImport ? "pass" : "fail", { importCode: importRun.code, modelsBeforeImport, authBeforeImport, modelsAfterImport, authAfterImport }));
+	checks.push(
+		resultCheck(
+			"runtime:package-bin-defaults-to-recon",
+			packageCliHelp.code === 0 &&
+				packageCliHelp.combined.includes("repi - Pi-RECON reverse/pentest autonomous agent") &&
+				packageCliHelp.combined.includes("built-in reverse/pentest kernel is enabled") &&
+				packageProfile?.agentDir === join(packageHome, ".repi", "agent") &&
+				!packageModelsDefaultCopied
+				? "pass"
+				: "fail",
+			{
+				code: packageCliHelp.code,
+				head: packageCliHelp.combined.slice(0, 1200),
+				packageProfilePath,
+				packageAgentDir: packageProfile?.agentDir ?? null,
+				packageModelsDefaultCopied,
+			},
+		),
+	);
+	checks.push(resultCheck("runtime:package-bin-import-explicit-only", packageImport.code === 0 && packageModelsAfterImport && packageAuthAfterImport ? "pass" : "fail", { importCode: packageImport.code, packageModelsAfterImport, packageAuthAfterImport }));
 	return { checks, tempRoot, installBin, home };
 }
 

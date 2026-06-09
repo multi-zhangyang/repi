@@ -1,6 +1,6 @@
 # Extension Examples
 
-Example extensions for pi-coding-agent.
+Example extensions for repi-coding-agent.
 
 ## Usage
 
@@ -139,7 +139,7 @@ cp permission-gate.ts ~/.pi/agent/extensions/
 See [docs/extensions.md](../../docs/extensions.md) for full documentation.
 
 ```typescript
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@pi-recon/repi-coding-agent";
 import { Type } from "typebox";
 
 export default function (pi: ExtensionAPI) {
@@ -181,7 +181,7 @@ export default function (pi: ExtensionAPI) {
 
 **Use StringEnum for string parameters** (required for Google API compatibility):
 ```typescript
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "@pi-recon/repi-ai";
 
 // Good
 action: StringEnum(["list", "add"] as const)

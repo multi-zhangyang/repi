@@ -35,7 +35,7 @@ the artifact records `bodySha256`/`bodyBytes` without downloading full media.
 ## Output
 
 ```text
-.pi/evidence/remote/real-platform/<profile>/<host>/<timestamp>/
+.repi-harness/evidence/remote/real-platform/<profile>/<host>/<timestamp>/
 artifact.md
 result.json
 browser.json       # CDP profiles

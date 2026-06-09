@@ -205,7 +205,7 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 - `re_replayer → re_autofix → re_proof_loop` 能把失败复现、compiler gaps、operator feedback 转为 repair queue。
 - `re_operator`、`re_delegate`、`re_swarm`、`re_supervisor` 已有失败预算、score decay、demotion、retry queue、evidence recapture queue 等局部闭环。
 - parallel dogfood runner 已有 role/synthesizer bounded retry。
-- `hard-eval-control-plane --write` 同时写 per-run failure/repair artifact，并追加 canonical `.pi/evidence/failures/ledger.jsonl` 与 `.pi/evidence/repairs/queue.jsonl`；failure event 带 `retryBudget/evidenceWriteback/blockedConditions`，repair item 带 `repairAction/evidenceWriteback/blockedConditions`。
+- `hard-eval-control-plane --write` 同时写 per-run failure/repair artifact，并追加 canonical `.repi-harness/evidence/failures/ledger.jsonl` 与 `.repi-harness/evidence/repairs/queue.jsonl`；failure event 带 `retryBudget/evidenceWriteback/blockedConditions`，repair item 带 `repairAction/evidenceWriteback/blockedConditions`。
 - `schemas/reverse-agent/failure-repair-contract.schema.json` 已开启 strict additionalProperties=false，并绑定 `fixtures/reverse-agent/failure-repair-strict.fixture.json`；`gate:autonomous-contracts` 会验证 valid fixture 通过、duplicate signature/attempt、loose extra field、exhausted 后继续 unpaused rerun/retry 都被拒绝。
 - compound-frontier failed gates、agent-dogfood role retry 和 plan-only invalid fixture 已输出 canonical failure/repair rows。
 
@@ -228,7 +228,7 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 - `re_verifier`、`re_compiler`、`re_supervisor` 已有 assertions、counter evidence、contradictions、conflict matrix、worker scoreboard 和 commander merge queue。
 - parallel dogfood runner 已记录 `roleGateMatrix`、`toolResultsCaptured`、`synthesizerReconciled`、`antiSelfDelusion` 等运行级验证信号。
 - agent-dogfood / re_swarm / compound-frontier 已输出 runtime ClaimLedgerEventV1 hash chain，覆盖 `artifact_handoff`、`claim`、`validation`、`challenge`、`resolution`。
-- `gate:claim-release` 使用 strict claim ledger validator，并写入 `.pi/evidence/claim-release/<timestamp>/result.json`；当前 required platform gap 存在时应失败，避免把 worker/orchestration 成功升级成 final platform pass。
+- `gate:claim-release` 使用 strict claim ledger validator，并写入 `.repi-harness/evidence/claim-release/<timestamp>/result.json`；当前 required platform gap 存在时应失败，避免把 worker/orchestration 成功升级成 final platform pass。
 - `re_supervisor` 输出 `strictClaimGate` / `claimGateResult`；`re_compiler final` 只有 strict marker pass 才写最终 report；`re_complete audit` 会阻断 marker missing/blocked、supervisor claim gate gap 和 compiler final claim gate gap。
 
 仍需硬化：

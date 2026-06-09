@@ -1,4 +1,4 @@
-import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, getKeybindings, Spacer, Text } from "@pi-recon/repi-tui";
 import type { ProjectTrustDecision } from "../../../core/trust-manager.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";

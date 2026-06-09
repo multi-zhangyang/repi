@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Transport } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@pi-recon/repi-agent-core";
+import type { Transport } from "@pi-recon/repi-ai";
 import {
 	Container,
 	getCapabilities,
@@ -10,7 +10,7 @@ import {
 	SettingsList,
 	Spacer,
 	Text,
-} from "@earendil-works/pi-tui";
+} from "@pi-recon/repi-tui";
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
 import type { WarningSettings } from "../../../core/settings-manager.ts";
 import { getSelectListTheme, getSettingsListTheme, theme } from "../theme/theme.ts";

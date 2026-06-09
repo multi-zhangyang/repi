@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@pi-recon/repi-tui";
 import { describe, expect, it } from "vitest";
 
 /**

@@ -6,8 +6,8 @@ ROOT="${1:-$(pwd)}"
 AGENT_DIR="${REPI_CODING_AGENT_DIR:-${REPI_AGENT_DIR:-$HOME/.repi/agent}}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
-if [ ! -d "$ROOT/.pi" ]; then
-  echo "missing $ROOT/.pi" >&2
+if [ ! -d "$ROOT/repi-profile" ]; then
+  echo "missing $ROOT/repi-profile" >&2
   exit 1
 fi
 
@@ -17,26 +17,26 @@ for f in SYSTEM.md APPEND_SYSTEM.md; do
   if [ -f "$AGENT_DIR/$f" ]; then
     cp "$AGENT_DIR/$f" "$AGENT_DIR/$f.bak.$STAMP"
   fi
-  cp "$ROOT/.pi/$f" "$AGENT_DIR/$f"
+  cp "$ROOT/repi-profile/$f" "$AGENT_DIR/$f"
 done
 
-cp "$ROOT/.pi/extensions/reverse-pentest-core.ts" "$AGENT_DIR/extensions/reverse-pentest-core.ts"
+cp "$ROOT/repi-profile/extensions/reverse-pentest-core.ts" "$AGENT_DIR/extensions/reverse-pentest-core.ts"
 rm -rf "$AGENT_DIR/skills/reverse-pentest-orchestrator"
-cp -R "$ROOT/.pi/skills/reverse-pentest-orchestrator" "$AGENT_DIR/skills/reverse-pentest-orchestrator"
-cp "$ROOT/.pi/prompts/"*.md "$AGENT_DIR/prompts/"
+cp -R "$ROOT/repi-profile/skills/reverse-pentest-orchestrator" "$AGENT_DIR/skills/reverse-pentest-orchestrator"
+cp "$ROOT/repi-profile/prompts/"*.md "$AGENT_DIR/prompts/"
 
 for f in field-journal.md case-index.md evolution-log.md; do
   if [ ! -f "$AGENT_DIR/memory/$f" ]; then
-    cp "$ROOT/.pi/memory/$f" "$AGENT_DIR/memory/$f"
+    cp "$ROOT/repi-profile/memory/$f" "$AGENT_DIR/memory/$f"
   fi
 done
 if [ ! -f "$AGENT_DIR/mission/current.json" ]; then
-  cp "$ROOT/.pi/mission/current.json" "$AGENT_DIR/mission/current.json"
+  cp "$ROOT/repi-profile/mission/current.json" "$AGENT_DIR/mission/current.json"
 fi
 if [ ! -f "$AGENT_DIR/evidence/ledger.md" ]; then
-  cp "$ROOT/.pi/evidence/ledger.md" "$AGENT_DIR/evidence/ledger.md"
+  cp "$ROOT/repi-profile/evidence/ledger.md" "$AGENT_DIR/evidence/ledger.md"
 fi
-cp "$ROOT/.pi/tools/tool-index.md" "$AGENT_DIR/recon/tools/tool-index.md"
+cp "$ROOT/repi-profile/tools/tool-index.md" "$AGENT_DIR/recon/tools/tool-index.md"
 
 if [ -d "$ROOT/node_modules" ]; then
   if [ -L "$AGENT_DIR/node_modules" ] || [ ! -e "$AGENT_DIR/node_modules" ]; then

@@ -6,15 +6,23 @@
  */
 
 import { createInterface } from "node:readline";
-import { type ImageContent, modelsAreEqual } from "@earendil-works/pi-ai";
-import { ProcessTerminal, setKeybindings, TUI } from "@earendil-works/pi-tui";
+import { type ImageContent, modelsAreEqual } from "@pi-recon/repi-ai";
+import { ProcessTerminal, setKeybindings, TUI } from "@pi-recon/repi-tui";
 import chalk from "chalk";
 import { type Args, type Mode, parseArgs, printHelp } from "./cli/args.ts";
 import { processFileArguments } from "./cli/file-processor.ts";
 import { buildInitialMessage } from "./cli/initial-message.ts";
 import { listModels } from "./cli/list-models.ts";
 import { selectSession } from "./cli/session-picker.ts";
-import { ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
+import {
+	APP_NAME,
+	CONFIG_DIR_NAME,
+	ENV_SESSION_DIR,
+	expandTildePath,
+	getAgentDir,
+	getPackageDir,
+	VERSION,
+} from "./config.ts";
 import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import {
 	type AgentSessionRuntimeDiagnostic,
@@ -499,7 +507,7 @@ async function promptForProjectTrust(
 ): Promise<ProjectTrustPromptResult | undefined> {
 	return showStartupSelector(
 		settingsManager,
-		`Trust project folder?\n${cwd}\n\nThis allows pi to read project instructions (AGENTS.md/CLAUDE.md), load .pi settings and resources, install missing project packages, and execute project extensions.`,
+		`Trust project folder?\n${cwd}\n\nThis allows ${APP_NAME} to read project instructions (AGENTS.md/CLAUDE.md), load ${CONFIG_DIR_NAME} settings and resources, install missing project packages, and execute project extensions.`,
 		[
 			{ label: "Trust", value: { trusted: true, remember: true } },
 			{ label: "Trust (this session only)", value: { trusted: true, remember: false } },

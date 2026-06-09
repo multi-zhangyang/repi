@@ -18,7 +18,7 @@ const chromeBin = process.env.RECON_CHROME_BIN || process.env.CHROME_BIN || '';
 const userAgent = process.env.RECON_USER_AGENT || 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36 Pi-RECON-real-platform';
 
 if (!selfTestOnly && (!target || target === '--help' || target === '-h')) {
-  console.log(`Pi-RECON real platform hard benchmark\n\nUsage:\n  node bench/recon-remote/real-platform/run.mjs <url> [auto|bilibili-video|xiaohongshu-note|generic-cdp]\n  node bench/recon-remote/real-platform/run.mjs --self-test\n\nExamples:\n  node bench/recon-remote/real-platform/run.mjs https://www.bilibili.com/video/BV1odL76QE6B bilibili-video\n  node bench/recon-remote/real-platform/run.mjs 'https://www.xiaohongshu.com/explore/66237c6e000000001c00893f' xiaohongshu-note\n  RECON_XHS_AUTO_DISCOVER=1 node bench/recon-remote/real-platform/run.mjs https://www.xhs-download.org/zh xiaohongshu-note\n\nEnvironment:\n  RECON_BROWSER=auto|1|0\n  RECON_PROBE_LIMIT=16\n  RECON_TIMEOUT_MS=35000\n  RECON_QUIET_MS=2500\n  RECON_MAX_BODY_BYTES=500000\n  RECON_PROBE_BODY_BYTES=4096\n  RECON_CHROME_BIN=<path>\n  RECON_XHS_AUTO_DISCOVER=1\n  RECON_XHS_DISCOVERY_LIMIT=3\n\nOutput:\n  .pi/evidence/remote/real-platform/<profile>/<host>/<timestamp>/\n`);
+  console.log(`Pi-RECON real platform hard benchmark\n\nUsage:\n  node bench/recon-remote/real-platform/run.mjs <url> [auto|bilibili-video|xiaohongshu-note|generic-cdp]\n  node bench/recon-remote/real-platform/run.mjs --self-test\n\nExamples:\n  node bench/recon-remote/real-platform/run.mjs https://www.bilibili.com/video/BV1odL76QE6B bilibili-video\n  node bench/recon-remote/real-platform/run.mjs 'https://www.xiaohongshu.com/explore/66237c6e000000001c00893f' xiaohongshu-note\n  RECON_XHS_AUTO_DISCOVER=1 node bench/recon-remote/real-platform/run.mjs https://www.xhs-download.org/zh xiaohongshu-note\n\nEnvironment:\n  RECON_BROWSER=auto|1|0\n  RECON_PROBE_LIMIT=16\n  RECON_TIMEOUT_MS=35000\n  RECON_QUIET_MS=2500\n  RECON_MAX_BODY_BYTES=500000\n  RECON_PROBE_BODY_BYTES=4096\n  RECON_CHROME_BIN=<path>\n  RECON_XHS_AUTO_DISCOVER=1\n  RECON_XHS_DISCOVERY_LIMIT=3\n\nOutput:\n  .repi-harness/evidence/remote/real-platform/<profile>/<host>/<timestamp>/\n`);
   process.exit(target ? 0 : 2);
 }
 
@@ -1480,7 +1480,7 @@ if (selfTestOnly) {
 
 const url = assertHttpUrl(target);
 const profile = detectProfile(url);
-const outDir = join('.pi', 'evidence', 'remote', 'real-platform', slug(profile), slug(url.hostname), timestamp());
+const outDir = join('.repi-harness', 'evidence', 'remote', 'real-platform', slug(profile), slug(url.hostname), timestamp());
 await mkdir(outDir, { recursive: true });
 const started = Date.now();
 let result;

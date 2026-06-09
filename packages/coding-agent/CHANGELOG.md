@@ -27,7 +27,7 @@
 
 - Added containerization documentation and a Gondolin extension example for routing built-in tools into a local micro-VM.
 - Added Ant Ling provider selection and setup documentation.
-- Added MiniMax-M3 model support inherited from `@earendil-works/pi-ai` for the `minimax` and `minimax-cn` direct providers ([#5313](https://github.com/earendil-works/pi/issues/5313)).
+- Added MiniMax-M3 model support inherited from `@pi-recon/repi-ai` for the `minimax` and `minimax-cn` direct providers ([#5313](https://github.com/earendil-works/pi/issues/5313)).
 - Added NVIDIA NIM provider selection, setup documentation, and direct NIM request attribution headers.
 - Added `ctx.mode` to extension contexts so extensions can distinguish TUI, RPC, JSON, and print mode.
 - Added `ctx.getSystemPromptOptions()` for extension commands to inspect the current base system prompt inputs ([#5306](https://github.com/earendil-works/pi/pull/5306) by [@xl0](https://github.com/xl0)).
@@ -65,7 +65,7 @@
 - Added `--name` / `-n` to set the session display name at startup ([#5153](https://github.com/earendil-works/pi-mono/issues/5153)).
 - Added a resume command hint when exiting interactive sessions ([#5176](https://github.com/earendil-works/pi-mono/pull/5176) by [@yzhg1983](https://github.com/yzhg1983)).
 - Added OSC 8 `file://` hyperlinks to file paths shown in built-in file tool titles ([#5189](https://github.com/earendil-works/pi-mono/pull/5189) by [@mpazik](https://github.com/mpazik)).
-- Added custom Amazon Bedrock request header support inherited from `@earendil-works/pi-ai` ([#5178](https://github.com/earendil-works/pi-mono/pull/5178) by [@stephanmck](https://github.com/stephanmck)).
+- Added custom Amazon Bedrock request header support inherited from `@pi-recon/repi-ai` ([#5178](https://github.com/earendil-works/pi-mono/pull/5178) by [@stephanmck](https://github.com/stephanmck)).
 
 ### Fixed
 
@@ -178,7 +178,7 @@
 - Fixed config pattern matching to resolve patterns from the correct base directory ([#4898](https://github.com/earendil-works/pi-mono/pull/4898) by [@haoqixu](https://github.com/haoqixu)).
 - Fixed theme pickers to list themes by their content name instead of file stem ([#4830](https://github.com/earendil-works/pi-mono/pull/4830) by [@Perlence](https://github.com/Perlence)).
 - Fixed OpenCode Zen/Go requests to send per-session OpenCode routing headers ([#4847](https://github.com/earendil-works/pi/issues/4847)).
-- Fixed Amazon Bedrock provider loading under strict package managers by inheriting the declared `@smithy/node-http-handler` dependency from `@earendil-works/pi-ai` ([#4842](https://github.com/earendil-works/pi/issues/4842)).
+- Fixed Amazon Bedrock provider loading under strict package managers by inheriting the declared `@smithy/node-http-handler` dependency from `@pi-recon/repi-ai` ([#4842](https://github.com/earendil-works/pi/issues/4842)).
 - Fixed inherited Amazon Bedrock Claude requests to send the model output token cap by default, avoiding Bedrock's 4096-token default truncation ([#4848](https://github.com/earendil-works/pi/issues/4848)).
 - Fixed exported session HTML to escape quote characters in attribute values ([#4832](https://github.com/earendil-works/pi/issues/4832)).
 - Fixed GitHub Copilot device-code login to keep opening the verification URL in browser-capable environments while ignoring browser launch failures for headless use ([#4788](https://github.com/earendil-works/pi-mono/pull/4788) by [@vegarsti](https://github.com/vegarsti)).
@@ -223,9 +223,9 @@
 - Fixed HTML share/export sidebar clicks for shared tool entries to scroll to the rendered tool call ([#4664](https://github.com/earendil-works/pi-mono/pull/4664) by [@yzhg1983](https://github.com/yzhg1983)).
 - Fixed theme palettes to set explicit text colors and avoid terminal-default color drift.
 - Fixed truecolor detection to align terminal image rendering and interactive theme decisions.
-- Fixed loader indicator startup inherited from `@earendil-works/pi-tui` so initialization cannot run before frames are available.
-- Fixed OpenAI-compatible default output token requests inherited from `@earendil-works/pi-ai` to avoid reserving impossible context windows on servers such as vLLM ([#4675](https://github.com/earendil-works/pi/issues/4675)).
-- Fixed OpenAI prompt cache keys inherited from `@earendil-works/pi-ai` to stay within the 64-character provider limit ([#4720](https://github.com/earendil-works/pi/issues/4720)).
+- Fixed loader indicator startup inherited from `@pi-recon/repi-tui` so initialization cannot run before frames are available.
+- Fixed OpenAI-compatible default output token requests inherited from `@pi-recon/repi-ai` to avoid reserving impossible context windows on servers such as vLLM ([#4675](https://github.com/earendil-works/pi/issues/4675)).
+- Fixed OpenAI prompt cache keys inherited from `@pi-recon/repi-ai` to stay within the 64-character provider limit ([#4720](https://github.com/earendil-works/pi/issues/4720)).
 - Fixed Windows npm-family package commands for fnm-managed Node.js installs that expose both extensionless Unix scripts and `.cmd` shims ([#4793](https://github.com/earendil-works/pi/issues/4793)).
 
 ## [0.75.3] - 2026-05-18
@@ -239,7 +239,7 @@
 ### Fixed
 
 - Fixed Bun-compiled release binaries failing to start when Bun's built-in undici shim lacks npm undici's `install` export ([#4661](https://github.com/earendil-works/pi-mono/pull/4661) by [@dmasiero](https://github.com/dmasiero)).
-- Fixed Xiaomi MiMo generated model metadata to replay assistant tool-call messages with `reasoning_content` for thinking-mode multi-turn requests, inherited from `@earendil-works/pi-ai` ([#4678](https://github.com/earendil-works/pi/issues/4678)).
+- Fixed Xiaomi MiMo generated model metadata to replay assistant tool-call messages with `reasoning_content` for thinking-mode multi-turn requests, inherited from `@pi-recon/repi-ai` ([#4678](https://github.com/earendil-works/pi/issues/4678)).
 - Fixed Windows external editor handoff so vim/nvim can receive input after opening from the TUI ([#4612](https://github.com/earendil-works/pi/issues/4612)).
 - Fixed Windows npm self-updates to move loaded native dependency packages out of the active install before reinstalling pi ([#4157](https://github.com/earendil-works/pi/issues/4157)).
 - Fixed `pi update --self` detection for pnpm v11 global installs whose package path resolves through the pnpm store ([#4647](https://github.com/earendil-works/pi/issues/4647)).
@@ -251,17 +251,17 @@
 ### Fixed
 
 - Fixed config selectors to scale their visible row count to terminal height ([#4243](https://github.com/earendil-works/pi-mono/pull/4243) by [@samjonester](https://github.com/samjonester)).
-- Fixed Anthropic-compatible API-key requests to ignore unrelated `ANTHROPIC_AUTH_TOKEN` environment values, avoiding invalid bearer credentials for providers such as Xiaomi MiMo inherited from `@earendil-works/pi-ai` ([#4342](https://github.com/earendil-works/pi/issues/4342)).
-- Fixed Amazon Bedrock message conversion to skip unknown content blocks instead of failing the stream, inherited from `@earendil-works/pi-ai` ([#4223](https://github.com/earendil-works/pi/issues/4223)).
-- Fixed Azure OpenAI Responses and OpenAI Responses error formatting to prefix HTTP status codes onto `errorMessage`, so transient 5xx and 429 errors are correctly matched by the agent-level auto-retry classifier inherited from `@earendil-works/pi-ai` ([#4232](https://github.com/earendil-works/pi/issues/4232)).
-- Fixed OpenCode Go Kimi reasoning replay by normalizing streamed `reasoning` fields back to `reasoning_content` for OpenCode Go only, inherited from `@earendil-works/pi-ai` ([#4251](https://github.com/earendil-works/pi/issues/4251)).
-- Fixed Xiaomi MiMo model metadata to use the OpenAI-compatible endpoints and `openai-completions` API, restoring multi-turn thinking/tool-call sessions inherited from `@earendil-works/pi-ai` ([#4505](https://github.com/earendil-works/pi/issues/4505)).
+- Fixed Anthropic-compatible API-key requests to ignore unrelated `ANTHROPIC_AUTH_TOKEN` environment values, avoiding invalid bearer credentials for providers such as Xiaomi MiMo inherited from `@pi-recon/repi-ai` ([#4342](https://github.com/earendil-works/pi/issues/4342)).
+- Fixed Amazon Bedrock message conversion to skip unknown content blocks instead of failing the stream, inherited from `@pi-recon/repi-ai` ([#4223](https://github.com/earendil-works/pi/issues/4223)).
+- Fixed Azure OpenAI Responses and OpenAI Responses error formatting to prefix HTTP status codes onto `errorMessage`, so transient 5xx and 429 errors are correctly matched by the agent-level auto-retry classifier inherited from `@pi-recon/repi-ai` ([#4232](https://github.com/earendil-works/pi/issues/4232)).
+- Fixed OpenCode Go Kimi reasoning replay by normalizing streamed `reasoning` fields back to `reasoning_content` for OpenCode Go only, inherited from `@pi-recon/repi-ai` ([#4251](https://github.com/earendil-works/pi/issues/4251)).
+- Fixed Xiaomi MiMo model metadata to use the OpenAI-compatible endpoints and `openai-completions` API, restoring multi-turn thinking/tool-call sessions inherited from `@pi-recon/repi-ai` ([#4505](https://github.com/earendil-works/pi/issues/4505)).
 - Fixed JSON parse failures for compressed fetch responses under Node 26.0 by installing undici fetch globals alongside pi's global dispatcher ([#4650](https://github.com/earendil-works/pi/issues/4650), [#4652](https://github.com/earendil-works/pi/issues/4652), [#4653](https://github.com/earendil-works/pi/issues/4653)).
 - Fixed npm-family package commands on Windows to avoid shell argument splitting when install prefixes contain spaces ([#4623](https://github.com/earendil-works/pi/issues/4623)).
 
 ### Removed
 
-- Removed non-working OpenAI Codex fast model variants inherited from `@earendil-works/pi-ai`.
+- Removed non-working OpenAI Codex fast model variants inherited from `@pi-recon/repi-ai`.
 
 ## [0.75.0] - 2026-05-17
 
@@ -273,24 +273,24 @@
 
 - Fixed compaction summary calls to use custom agent stream functions, preserving proxy-backed LLM routing ([#4484](https://github.com/earendil-works/pi/issues/4484)).
 - Fixed system prompt and context file boundaries to use explicit XML tags instead of Markdown headings, reducing inconsistent boundary ingestion by models ([#4541](https://github.com/earendil-works/pi-mono/pull/4541) by [@herrnel](https://github.com/herrnel)).
-- Fixed OpenAI Codex generated model metadata to use the current upstream model list inherited from `@earendil-works/pi-ai` ([#4603](https://github.com/earendil-works/pi-mono/pull/4603) by [@mattiacerutti](https://github.com/mattiacerutti)).
-- Fixed GitHub Copilot GPT model thinking metadata inherited from `@earendil-works/pi-ai` to map unsupported minimal thinking to low ([#4622](https://github.com/earendil-works/pi-mono/pull/4622) by [@mattiacerutti](https://github.com/mattiacerutti)).
+- Fixed OpenAI Codex generated model metadata to use the current upstream model list inherited from `@pi-recon/repi-ai` ([#4603](https://github.com/earendil-works/pi-mono/pull/4603) by [@mattiacerutti](https://github.com/mattiacerutti)).
+- Fixed GitHub Copilot GPT model thinking metadata inherited from `@pi-recon/repi-ai` to map unsupported minimal thinking to low ([#4622](https://github.com/earendil-works/pi-mono/pull/4622) by [@mattiacerutti](https://github.com/mattiacerutti)).
 - Fixed user-scoped npm pi packages to install under `~/.pi/agent/npm/` instead of npm's global package root, avoiding permission errors with system-managed Node installs ([#4587](https://github.com/earendil-works/pi/issues/4587)).
 - Fixed Mistral requests failing after the global fetch proxy/timeout workaround by removing the custom fetch override and using undici 8 dispatcher support instead ([#4619](https://github.com/earendil-works/pi/issues/4619)).
-- Fixed default output token requests for models whose advertised output limit is effectively their full context window, avoiding impossible provider requests inherited from `@earendil-works/pi-ai` ([#4614](https://github.com/earendil-works/pi/issues/4614)).
+- Fixed default output token requests for models whose advertised output limit is effectively their full context window, avoiding impossible provider requests inherited from `@pi-recon/repi-ai` ([#4614](https://github.com/earendil-works/pi/issues/4614)).
 
 ## [0.74.1] - 2026-05-16
 
 ### New Features
 
-- **Image generation support** - Added image generation APIs, generated image model metadata, and built-in OpenRouter image generation support inherited from `@earendil-works/pi-ai`.
+- **Image generation support** - Added image generation APIs, generated image model metadata, and built-in OpenRouter image generation support inherited from `@pi-recon/repi-ai`.
 - **Together AI provider** - Added Together AI as a built-in provider with `/login` API-key auth, default model resolution, and setup docs. See [README.md#providers--models](README.md#providers--models) and [docs/providers.md](docs/providers.md).
 - **Windows ARM64 standalone binaries** - Added standalone release artifacts for Windows ARM64.
-- **Improved terminal and markdown rendering** - Added markdown list indentation, task-list checkbox rendering, large markdown robustness, and inline image placement fixes inherited from `@earendil-works/pi-tui`.
+- **Improved terminal and markdown rendering** - Added markdown list indentation, task-list checkbox rendering, large markdown robustness, and inline image placement fixes inherited from `@pi-recon/repi-tui`.
 
 ### Added
 
-- Added image generation support from `@earendil-works/pi-ai`, including image generation APIs, image model metadata, and built-in OpenRouter image generation support ([#3887](https://github.com/earendil-works/pi-mono/pull/3887) by [@cristinaponcela](https://github.com/cristinaponcela)).
+- Added image generation support from `@pi-recon/repi-ai`, including image generation APIs, image model metadata, and built-in OpenRouter image generation support ([#3887](https://github.com/earendil-works/pi-mono/pull/3887) by [@cristinaponcela](https://github.com/cristinaponcela)).
 - Added Together AI to built-in provider setup, `/login` API-key auth, and default model resolution ([#3624](https://github.com/earendil-works/pi-mono/pull/3624) by [@Nutlope](https://github.com/Nutlope)).
 - Added Windows ARM64 standalone binary release artifacts ([#4458](https://github.com/earendil-works/pi/pull/4458) by [@brianmichel](https://github.com/brianmichel)).
 
@@ -314,8 +314,8 @@
 - Fixed uncaught interactive-mode exceptions to restore the terminal before exiting ([#4426](https://github.com/earendil-works/pi-mono/pull/4426) by [@ofa1](https://github.com/ofa1)).
 - Fixed ANSI stripping to match `strip-ansi` behavior after dependency removal.
 - Fixed UUIDv7 sequence generation shared by session IDs after dependency removal.
-- Fixed OpenRouter cached-token usage accounting, Fireworks caching compatibility, and OpenAI Codex WebSocket proxy handling inherited from `@earendil-works/pi-ai`.
-- Fixed markdown list wrapping, task-list checkboxes, large markdown rendering, WezTerm Kitty keyboard escape handling, and short-viewport inline image placement inherited from `@earendil-works/pi-tui`.
+- Fixed OpenRouter cached-token usage accounting, Fireworks caching compatibility, and OpenAI Codex WebSocket proxy handling inherited from `@pi-recon/repi-ai`.
+- Fixed markdown list wrapping, task-list checkboxes, large markdown rendering, WezTerm Kitty keyboard escape handling, and short-viewport inline image placement inherited from `@pi-recon/repi-tui`.
 - Fixed theme sharing across package scopes so extensions do not crash with `Theme not initialized` ([#4333](https://github.com/earendil-works/pi/issues/4333)).
 - Fixed keybinding hints to show Option instead of Alt on macOS ([#4289](https://github.com/earendil-works/pi/issues/4289)).
 - Fixed the interactive update notification to render the changelog as an OSC 8 hyperlink when the terminal supports hyperlinks ([#4280](https://github.com/earendil-works/pi/issues/4280)).
@@ -330,7 +330,7 @@
 
 ### New Features
 
-- **Self-update support for the npm scope migration**: `pi update --self` now supports the upcoming package rename from `@mariozechner/pi-coding-agent` to `@earendil-works/pi-coding-agent`. After the new package is published, existing global installs can update through the normal self-update flow; pi will uninstall the old global package and install the package name returned by the version check endpoint.
+- **Self-update support for the npm scope migration**: `pi update --self` now supports the upcoming package rename from `@mariozechner/repi-coding-agent` to `@pi-recon/repi-coding-agent`. After the new package is published, existing global installs can update through the normal self-update flow; pi will uninstall the old global package and install the package name returned by the version check endpoint.
 - **Interactive OAuth login selection**: OAuth providers can now present multiple login choices in `/login`, enabling provider-specific interactive authentication flows. See [Providers](docs/providers.md).
 - **JSONC-style `models.json` parsing**: `models.json` now allows comments and trailing commas, making custom provider and model configuration easier to maintain. See [Providers](docs/providers.md) and [Custom Providers](docs/custom-provider.md).
 
@@ -409,7 +409,7 @@
 
 - Added Xiaomi MiMo Token Plan provider support with `XIAOMI_API_KEY`, default model resolution, `/login` display support, and provider documentation ([#4005](https://github.com/badlogic/pi-mono/pull/4005) by [@Phoen1xCode](https://github.com/Phoen1xCode)).
 - Added model-level `thinkingLevelMap` support in `models.json` and `pi.registerProvider()`, allowing models to expose only the thinking levels they actually support ([#3208](https://github.com/badlogic/pi-mono/issues/3208)).
-- Added `shouldStopAfterTurn` agent loop callback for post-turn stop control, inherited from `@mariozechner/pi-agent-core`. See [`packages/agent/README.md`](https://github.com/badlogic/pi-mono/blob/main/packages/agent/README.md).
+- Added `shouldStopAfterTurn` agent loop callback for post-turn stop control, inherited from `@mariozechner/repi-agent-core`. See [`packages/agent/README.md`](https://github.com/badlogic/pi-mono/blob/main/packages/agent/README.md).
 
 ### Fixed
 
@@ -455,7 +455,7 @@
 - Fixed Google Vertex Gemini 3 tool call replay for unsigned tool calls ([#4032](https://github.com/badlogic/pi-mono/issues/4032)).
 - Fixed blocked `edit` tool results rendering the rejection reason twice after interactive extension confirmation ([#3830](https://github.com/badlogic/pi-mono/issues/3830)).
 - Fixed extension-triggered thinking level changes refreshing the interactive editor border immediately ([#3888](https://github.com/badlogic/pi-mono/issues/3888)).
-- Fixed the coding-agent README See Also link to point at `@mariozechner/pi-agent-core` ([#4023](https://github.com/badlogic/pi-mono/issues/4023)).
+- Fixed the coding-agent README See Also link to point at `@mariozechner/repi-agent-core` ([#4023](https://github.com/badlogic/pi-mono/issues/4023)).
 - Fixed `grep` and `find` tool argument injection for flag-like search patterns ([#4018](https://github.com/badlogic/pi-mono/issues/4018)).
 - Fixed PowerShell shell command output on Windows by only spawning detached processes on Unix ([#4013](https://github.com/badlogic/pi-mono/pull/4013) by [@picasso250](https://github.com/picasso250)).
 - Fixed Bun package manager `node_modules` discovery when `npmCommand` is configured to use Bun ([#3998](https://github.com/badlogic/pi-mono/pull/3998) by [@thirtythreeforty](https://github.com/thirtythreeforty)).
@@ -622,7 +622,7 @@
 - Fixed auto-retry to treat Bedrock/Smithy HTTP/2 transport failures like `http2 request did not get a response` as transient errors, so the agent retries automatically instead of waiting for a manual nudge ([#3594](https://github.com/badlogic/pi-mono/issues/3594))
 - Fixed the CLI/SDK tool-selection split so `--no-builtin-tools` and `createAgentSession({ noTools: "builtin" })` disable only built-in default tools while keeping extension/custom tools enabled, instead of falling through to the same "disable everything" path as `--no-tools` ([#3592](https://github.com/badlogic/pi-mono/issues/3592))
 - Fixed remaining hardcoded `pi` / `.pi` branding to route through `APP_NAME` and `CONFIG_DIR_NAME` extension points, so SDK rebrands get consistent naming in `/quit` description, `process.title`, and the project-local extensions directory ([#3583](https://github.com/badlogic/pi-mono/pull/3583) by [@jlaneve](https://github.com/jlaneve))
-- Fixed `pi-coding-agent` shipping `uuid@11`, which triggered `npm audit` moderate vulnerability reports for downstream installs; the package now depends on `uuid@14` ([#3577](https://github.com/badlogic/pi-mono/issues/3577))
+- Fixed `repi-coding-agent` shipping `uuid@11`, which triggered `npm audit` moderate vulnerability reports for downstream installs; the package now depends on `uuid@14` ([#3577](https://github.com/badlogic/pi-mono/issues/3577))
 - Fixed `openai-completions` streamed tool-call assembly to coalesce deltas by stable tool index when OpenAI-compatible gateways mutate tool call IDs mid-stream, preventing malformed Kimi K2.6/OpenCode tool streams from splitting one call into multiple bogus tool calls ([#3576](https://github.com/badlogic/pi-mono/issues/3576))
 - Fixed `ctx.ui.setWorkingMessage()` to persist across loader recreation, matching the behavior of `ctx.ui.setWorkingIndicator()` ([#3566](https://github.com/badlogic/pi-mono/issues/3566))
 - Fixed coding-agent `fs.watch` error handling for theme and git-footer watchers to retry after transient watcher failures such as `EMFILE`, avoiding startup crashes in large repos ([#3564](https://github.com/badlogic/pi-mono/issues/3564))
@@ -698,7 +698,7 @@
 ### Breaking Changes
 
 - Changed SDK and CLI tool selection from cwd-bound built-in tool instances to tool-name allowlists. `createAgentSession({ tools })` now expects `string[]` names such as `"read"` and `"bash"` instead of `Tool[]`, `--tools` now allowlists built-in, extension, and custom tools by name, and `--no-tools` now disables all tools by default rather than only built-ins. Migrate SDK code from `tools: [readTool, bashTool]` to `tools: ["read", "bash"]` ([#2835](https://github.com/badlogic/pi-mono/issues/2835), [#3452](https://github.com/badlogic/pi-mono/issues/3452))
-- Removed prebuilt cwd-bound tool and tool-definition exports from `@mariozechner/pi-coding-agent`, including `readTool`, `bashTool`, `editTool`, `writeTool`, `grepTool`, `findTool`, `lsTool`, `readOnlyTools`, `codingTools`, and the corresponding `*ToolDefinition` values. Use the explicit factory exports instead, for example `createReadTool(cwd)`, `createBashTool(cwd)`, `createCodingTools(cwd)`, and `createReadToolDefinition(cwd)` ([#3452](https://github.com/badlogic/pi-mono/issues/3452))
+- Removed prebuilt cwd-bound tool and tool-definition exports from `@mariozechner/repi-coding-agent`, including `readTool`, `bashTool`, `editTool`, `writeTool`, `grepTool`, `findTool`, `lsTool`, `readOnlyTools`, `codingTools`, and the corresponding `*ToolDefinition` values. Use the explicit factory exports instead, for example `createReadTool(cwd)`, `createBashTool(cwd)`, `createCodingTools(cwd)`, and `createReadToolDefinition(cwd)` ([#3452](https://github.com/badlogic/pi-mono/issues/3452))
 - Removed ambient `process.cwd()` / default agent-dir fallback behavior from public resource helpers. `DefaultResourceLoader`, `loadProjectContextFiles()`, and `loadSkills()` now require explicit cwd/agent-dir style inputs, and exported system-prompt option types now require an explicit `cwd`. Pass the session or project cwd explicitly instead of relying on process-global defaults ([#3452](https://github.com/badlogic/pi-mono/issues/3452))
 
 ### Added
@@ -729,8 +729,8 @@
 - Fixed OpenAI-compatible Chat Completions sessions to optionally send aligned `session_id`, `x-client-request-id`, and `x-session-affinity` headers from `sessionId` via `compat.sendSessionAffinityHeaders`, improving cache-affinity routing for backends such as Fireworks ([#3430](https://github.com/badlogic/pi-mono/issues/3430))
 - Fixed threaded `/resume` session relationships and current-session detection to canonicalize symlinked session paths during selector comparisons, so shared session directories no longer break parent-child matching or active-session delete protection ([#3364](https://github.com/badlogic/pi-mono/issues/3364))
 - Fixed `/session`, Sessions docs, and CLI help to consistently document that session reuse supports both file paths and session IDs, and that `/session` shows the current session ID ([#3390](https://github.com/badlogic/pi-mono/issues/3390))
-- Fixed Windows pnpm global install detection to recognize `\\.pnpm\\` store paths, so update notices now suggest `pnpm install -g @mariozechner/pi-coding-agent` instead of falling back to npm ([#3378](https://github.com/badlogic/pi-mono/issues/3378))
-- Fixed missing `@sinclair/typebox` runtime dependency in `@mariozechner/pi-coding-agent`, so strict pnpm installs no longer fail with `ERR_MODULE_NOT_FOUND` when starting `pi` ([#3434](https://github.com/badlogic/pi-mono/issues/3434))
+- Fixed Windows pnpm global install detection to recognize `\\.pnpm\\` store paths, so update notices now suggest `pnpm install -g @mariozechner/repi-coding-agent` instead of falling back to npm ([#3378](https://github.com/badlogic/pi-mono/issues/3378))
+- Fixed missing `@sinclair/typebox` runtime dependency in `@mariozechner/repi-coding-agent`, so strict pnpm installs no longer fail with `ERR_MODULE_NOT_FOUND` when starting `pi` ([#3434](https://github.com/badlogic/pi-mono/issues/3434))
 - Fixed xterm uppercase typing in the interactive editor by decoding printable `modifyOtherKeys` input and normalizing shifted letter matching, so `Shift+letter` no longer disappears in `pi` ([#3436](https://github.com/badlogic/pi-mono/issues/3436))
 - Fixed `/compact` to reuse the session thinking level for compaction summaries instead of forcing `high`, avoiding invalid reasoning-effort errors on `github-copilot/claude-opus-4.7` sessions configured for `medium` thinking ([#3438](https://github.com/badlogic/pi-mono/issues/3438))
 - Fixed shared/exported plain-text tool output to preserve indentation instead of collapsing leading whitespace in the web share page ([#3440](https://github.com/badlogic/pi-mono/issues/3440))
@@ -767,7 +767,7 @@
 - Fixed compact interactive extension startup summaries to disambiguate package extensions and repeated local `index.ts` entries by using package-aware labels and the minimal parent path needed to make local entries unique ([#3308](https://github.com/badlogic/pi-mono/issues/3308))
 - Fixed git package dependency installation to use production installs (`npm install --omit=dev`) during both install and update flows, so extension runtime dependencies must come from `dependencies` and not `devDependencies` ([#3009](https://github.com/badlogic/pi-mono/issues/3009))
 - Fixed `tool_result` / `afterToolCall` extension handling for error results by forwarding `details` and `isError` overrides through `AgentSession` instead of dropping them when `isError` was already true ([#3051](https://github.com/badlogic/pi-mono/issues/3051))
-- Fixed missing root exports for `RpcClient` and RPC protocol types from `@mariozechner/pi-coding-agent`, so ESM consumers can import them from the main package entrypoint ([#3275](https://github.com/badlogic/pi-mono/issues/3275))
+- Fixed missing root exports for `RpcClient` and RPC protocol types from `@mariozechner/repi-coding-agent`, so ESM consumers can import them from the main package entrypoint ([#3275](https://github.com/badlogic/pi-mono/issues/3275))
 - Fixed OpenAI Codex service-tier cost accounting to trust the explicitly requested tier when the API echoes the default tier in responses, keeping session cost displays aligned with the selected tier ([#3307](https://github.com/badlogic/pi-mono/pull/3307) by [@markusylisiurunen](https://github.com/markusylisiurunen))
 - Fixed parallel tool-call finalization to convert `afterToolCall` hook throws into error tool results instead of aborting the remaining tool batch ([#3084](https://github.com/badlogic/pi-mono/issues/3084))
 - Fixed Bun binary asset path resolution to honor `PI_PACKAGE_DIR` for built-in themes, HTML export templates, and interactive bundled assets ([#3074](https://github.com/badlogic/pi-mono/issues/3074))
@@ -1031,7 +1031,7 @@ import {
   createAgentSessionServices,
   getAgentDir,
   SessionManager,
-} from "@mariozechner/pi-coding-agent";
+} from "@mariozechner/repi-coding-agent";
 
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
   const services = await createAgentSessionServices({ cwd });
@@ -1221,7 +1221,7 @@ Examples:
 
 ### Changed
 
-- Built-in tools now work like custom tools in extensions. To get built-in tool definitions, import `readToolDefinition` / `createReadToolDefinition()` and the equivalent `bash`, `edit`, `write`, `grep`, `find`, and `ls` exports from `@mariozechner/pi-coding-agent`.
+- Built-in tools now work like custom tools in extensions. To get built-in tool definitions, import `readToolDefinition` / `createReadToolDefinition()` and the equivalent `bash`, `edit`, `write`, `grep`, `find`, and `ls` exports from `@mariozechner/repi-coding-agent`.
 - Cleaned up `buildSystemPrompt()` so built-in tool snippets and tool-local guidelines come from built-in `ToolDefinition` metadata, while cross-tool and global prompt rules stay in system prompt construction.
 - Added structured `sourceInfo` to `pi.getAllTools()` results for built-in, SDK, and extension tools ([#1734](https://github.com/badlogic/pi-mono/issues/1734))
 
@@ -1249,7 +1249,7 @@ Examples:
 
 ### Added
 
-- Added `ToolCallEventResult` to the `@mariozechner/pi-coding-agent` top-level and core extension exports so extension authors can type explicit `tool_call` handler return values ([#2458](https://github.com/badlogic/pi-mono/issues/2458))
+- Added `ToolCallEventResult` to the `@mariozechner/repi-coding-agent` top-level and core extension exports so extension authors can type explicit `tool_call` handler return values ([#2458](https://github.com/badlogic/pi-mono/issues/2458))
 
 ### Changed
 
@@ -2056,7 +2056,7 @@ Examples:
 - **Android/Termux support**: Pi now runs on Android via Termux. Install with:
   ```bash
   pkg install nodejs termux-api git
-  npm install -g @mariozechner/pi-coding-agent
+  npm install -g @mariozechner/repi-coding-agent
   mkdir -p ~/.pi/agent
   echo "You are running on Android in Termux." > ~/.pi/agent/AGENTS.md
   ```
@@ -2572,7 +2572,7 @@ There are multiple SDK breaking changes since v0.49.3. For the quickest migratio
 
 ### Fixed
 
-- Extensions now load correctly in compiled Bun binary using `@mariozechner/jiti` fork with `virtualModules` support. Bundled packages (`@sinclair/typebox`, `@mariozechner/pi-tui`, `@mariozechner/pi-ai`, `@mariozechner/pi-coding-agent`) are accessible to extensions without filesystem node_modules.
+- Extensions now load correctly in compiled Bun binary using `@mariozechner/jiti` fork with `virtualModules` support. Bundled packages (`@sinclair/typebox`, `@mariozechner/pi-tui`, `@mariozechner/pi-ai`, `@mariozechner/repi-coding-agent`) are accessible to extensions without filesystem node_modules.
 
 ## [0.45.1] - 2026-01-13
 
@@ -2953,16 +2953,16 @@ No recursion beyond one level. Complex packages must use the `package.json` mani
 
 ```typescript
 // Before (hook)
-import type { HookAPI, HookContext } from "@mariozechner/pi-coding-agent";
+import type { HookAPI, HookContext } from "@mariozechner/repi-coding-agent";
 export default function (pi: HookAPI) { ... }
 
 // Before (custom tool)
-import type { CustomToolFactory } from "@mariozechner/pi-coding-agent";
+import type { CustomToolFactory } from "@mariozechner/repi-coding-agent";
 const factory: CustomToolFactory = (pi) => ({ name: "my_tool", ... });
 export default factory;
 
 // After (both are now extensions)
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/repi-coding-agent";
 export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => { ... });
   pi.registerTool({ name: "my_tool", ... });
@@ -3405,7 +3405,7 @@ See [docs/custom-tools.md](docs/custom-tools.md) and [examples/custom-tools/](ex
 import {
   discoverAuthStorage,
   discoverModels,
-} from "@mariozechner/pi-coding-agent";
+} from "@mariozechner/repi-coding-agent";
 
 const authStorage = discoverAuthStorage(); // ~/.pi/agent/auth.json
 const modelRegistry = discoverModels(authStorage); // + ~/.pi/agent/models.json
@@ -3803,7 +3803,7 @@ Total color count increased from 46 to 50. See [docs/themes.md](docs/themes.md) 
 
 ### Added
 
-- **OAuth and model config exports**: Scripts using `AgentSession` directly can now import `getAvailableModels`, `getApiKeyForModel`, `findModel`, `login`, `logout`, and `getOAuthProviders` from `@mariozechner/pi-coding-agent` to reuse OAuth token storage and model resolution. ([#245](https://github.com/badlogic/pi-mono/issues/245))
+- **OAuth and model config exports**: Scripts using `AgentSession` directly can now import `getAvailableModels`, `getApiKeyForModel`, `findModel`, `login`, `logout`, and `getOAuthProviders` from `@mariozechner/repi-coding-agent` to reuse OAuth token storage and model resolution. ([#245](https://github.com/badlogic/pi-mono/issues/245))
 
 - **xhigh thinking level for gpt-5.2 models**: The thinking level selector and shift+tab cycling now show xhigh option for gpt-5.2 and gpt-5.2-codex models (in addition to gpt-5.1-codex-max). ([#236](https://github.com/badlogic/pi-mono/pull/236) by [@theBucky](https://github.com/theBucky))
 
@@ -3829,7 +3829,7 @@ Total color count increased from 46 to 50. See [docs/themes.md](docs/themes.md) 
 
 - **Subagent orchestration example**: Added comprehensive custom tool example for spawning and orchestrating sub-agents with isolated context windows. Includes scout/planner/reviewer/worker agents and workflow commands for multi-agent pipelines. ([#215](https://github.com/badlogic/pi-mono/pull/215) by [@nicobailon](https://github.com/nicobailon))
 
-- **`getMarkdownTheme()` export**: Custom tools can now import `getMarkdownTheme()` from `@mariozechner/pi-coding-agent` to use the same markdown styling as the main UI.
+- **`getMarkdownTheme()` export**: Custom tools can now import `getMarkdownTheme()` from `@mariozechner/repi-coding-agent` to use the same markdown styling as the main UI.
 
 - **`pi.exec()` signal and timeout support**: Custom tools and hooks can now pass `{ signal, timeout }` options to `pi.exec()` for cancellation and timeout handling. The result includes a `killed` flag when the process was terminated.
 
@@ -3901,7 +3901,7 @@ Total color count increased from 46 to 50. See [docs/themes.md](docs/themes.md) 
   - `rpc.md`: Added missing `hook_error` event documentation
   - `README.md`: Complete settings table, condensed philosophy section, standardized OAuth docs
 
-- Hooks loader now supports same import aliases as custom tools (`@sinclair/typebox`, `@mariozechner/pi-ai`, `@mariozechner/pi-tui`, `@mariozechner/pi-coding-agent`).
+- Hooks loader now supports same import aliases as custom tools (`@sinclair/typebox`, `@mariozechner/pi-ai`, `@mariozechner/pi-tui`, `@mariozechner/repi-coding-agent`).
 
 ### Breaking Changes
 

@@ -48,8 +48,8 @@ const TEST_COMMANDS_PAUSED = [
 ];
 
 const FAILURE_REPAIR_WRITEBACK = {
-	failureLedgerPath: ".pi/evidence/failures/ledger.jsonl",
-	repairQueuePath: ".pi/evidence/repairs/queue.jsonl",
+	failureLedgerPath: ".repi-harness/evidence/failures/ledger.jsonl",
+	repairQueuePath: ".repi-harness/evidence/repairs/queue.jsonl",
 	appendOnly: true,
 	mode: "offline-hard-eval-control-plane",
 };
@@ -318,7 +318,7 @@ function repairAction(claim) {
 		return {
 			action: "recapture-evidence",
 			commands: ["node bench/recon-remote/real-platform/run.mjs --platform xiaohongshu"],
-			expectedArtifacts: [".pi/evidence/remote/real-platform/xiaohongshu-note/**/result.json"],
+			expectedArtifacts: [".repi-harness/evidence/remote/real-platform/xiaohongshu-note/**/result.json"],
 			note: "resume only when live testing is allowed; require signed x-s/x-t trace and target structured 2xx claim before promotion",
 		};
 	}
@@ -326,14 +326,14 @@ function repairAction(claim) {
 		return {
 			action: "recapture-evidence",
 			commands: ["node bench/recon-remote/douyin-nowatermark/run.mjs"],
-			expectedArtifacts: [".pi/evidence/remote/douyin-nowatermark/**/result.json"],
+			expectedArtifacts: [".repi-harness/evidence/remote/douyin-nowatermark/**/result.json"],
 			note: "resume only when live testing is allowed; require browser-captured structured API replay before promotion",
 		};
 	}
 	return {
 		action: "recapture-evidence",
 		commands: ["node bench/recon-remote/same-window-live/run.mjs --strict"],
-		expectedArtifacts: [".pi/evidence/remote/same-window-live/**/result.json"],
+		expectedArtifacts: [".repi-harness/evidence/remote/same-window-live/**/result.json"],
 		note: "resume only when live testing is allowed",
 	};
 }
@@ -421,9 +421,9 @@ function buildFailures({ claims, sourceArtifact }) {
 }
 
 function buildResult(root) {
-	const sameWindowPath = latestFile(root, ".pi/evidence/remote/same-window-live", "result.json");
-	const agentParallelPath = latestFile(root, ".pi/evidence/remote/agent-parallel-dogfood", "result.json");
-	const hardScorePath = latestFile(root, ".pi/evidence/remote/hard-score", "scoreboard.json");
+	const sameWindowPath = latestFile(root, ".repi-harness/evidence/remote/same-window-live", "result.json");
+	const agentParallelPath = latestFile(root, ".repi-harness/evidence/remote/agent-parallel-dogfood", "result.json");
+	const hardScorePath = latestFile(root, ".repi-harness/evidence/remote/hard-score", "scoreboard.json");
 	const sameWindow = sameWindowPath ? readJson(sameWindowPath) : null;
 	const agentParallel = agentParallelPath ? readJson(agentParallelPath) : null;
 	const hardScore = hardScorePath ? readJson(hardScorePath) : null;
@@ -511,7 +511,7 @@ function ensureDir(path) {
 
 function writeOutputs(root, result) {
 	const stamp = result.generatedAt.replace(/[:.]/g, "-");
-	const outDir = join(root, ".pi", "evidence", "hard-eval-control-plane", stamp);
+	const outDir = join(root, ".repi-harness", "evidence", "hard-eval-control-plane", stamp);
 	ensureDir(outDir);
 	writeFileSync(join(outDir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
 	writeFileSync(join(outDir, "contract.json"), `${JSON.stringify(result.contract, null, 2)}\n`);

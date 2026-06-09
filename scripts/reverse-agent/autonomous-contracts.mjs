@@ -376,7 +376,7 @@ function buildParallelPlan(hardEval) {
 			evidenceContract: ["ledger hash chain passes", "required platform gaps are preserved", "orchestration/platform score split exists"],
 			mergeKeys: ["claimId", "scope", "gate", "eventHash"],
 			dependencies: [],
-			artifactGlobs: [".pi/evidence/hard-eval-control-plane/**/ledger.jsonl", ".pi/evidence/hard-eval-control-plane/**/gate.json"],
+			artifactGlobs: [".repi-harness/evidence/hard-eval-control-plane/**/ledger.jsonl", ".repi-harness/evidence/hard-eval-control-plane/**/gate.json"],
 			limits: { timeoutMs: 60000, maxCommands: 1 },
 		},
 		...repairs.map((repair, index) => ({
@@ -464,7 +464,7 @@ function buildResult(root) {
 		runtimeFailureRepairMarkers: passFail(true, {
 			markers: [
 				readMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", ["type FailureLedgerEventV1", "type RepairQueueItemV1", "function runtimeFailureSignature", "function failureToRepair", "function appendFailureRepairLedger", "appendRuntimeFailureRepairFromReplay", "appendRuntimeFailureRepairFromAutofix", "appendRuntimeFailureRepairFromOperator", "appendRuntimeFailureRepairFromProofLoop", "runtimeFailureLedgerPath", "runtimeRepairQueuePath"]),
-				readMarkers(root, ".pi/extensions/reverse-pentest-core.ts", ["type FailureLedgerEventV1", "type RepairQueueItemV1", "function runtimeFailureSignature", "function failureToRepair", "function appendFailureRepairLedger", "appendRuntimeFailureRepairFromReplay", "appendRuntimeFailureRepairFromAutofix", "appendRuntimeFailureRepairFromOperator", "appendRuntimeFailureRepairFromProofLoop", "runtimeFailureLedgerPath", "runtimeRepairQueuePath"]),
+				readMarkers(root, "repi-profile/extensions/reverse-pentest-core.ts", ["type FailureLedgerEventV1", "type RepairQueueItemV1", "function runtimeFailureSignature", "function failureToRepair", "function appendFailureRepairLedger", "appendRuntimeFailureRepairFromReplay", "appendRuntimeFailureRepairFromAutofix", "appendRuntimeFailureRepairFromOperator", "appendRuntimeFailureRepairFromProofLoop", "runtimeFailureLedgerPath", "runtimeRepairQueuePath"]),
 				readMarkers(root, "scripts/reverse-agent/failure-repair-ledger.mjs", ["failureRepairFromGap", "failureRepairFromGaps", "appendFailureRepairWriteback", "FailureLedgerEventV1", "validateFailureRepairBatch", "validateFailureRepairDedup", "FAILURE_REPAIR_DEDUP_WINDOW", "FAILURE_REPAIR_STRICT_FIXTURE_PATH"]),
 				readMarkers(root, "bench/recon-remote/compound-frontier/run.mjs", ["failureRepairFromGaps", "failureLedgerEvents", "repairQueue", "failure-ledger.jsonl"]),
 				readMarkers(root, "bench/recon-remote/agent-dogfood/parallel-run.mjs", ["failureRepairFromGap", "retryExhausted", "attemptStdoutFile", "failureLedgerEvents", "repair-queue.jsonl"]),
@@ -474,14 +474,14 @@ function buildResult(root) {
 		contextRuntimeMarkers: passFail(true, {
 			markers: [
 				readMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", ["buildContextPack", "contextPackSha256", "contextArtifactHashes", "verifyContextPackResume", "buildExactResumeContextPack", "buildReconCompactionResumeContract", "pi-recon-compaction-auto-resume", "compact_resume_case_memory", "compaction-resume-ledger.jsonl"]),
-				readMarkers(root, ".pi/extensions/reverse-pentest-core.ts", ["buildContextPack", "contextPackSha256", "contextArtifactHashes", "verifyContextPackResume", "buildExactResumeContextPack", "buildReconCompactionResumeContract", "pi-recon-compaction-auto-resume", "compact_resume_case_memory", "compaction-resume-ledger.jsonl"]),
+				readMarkers(root, "repi-profile/extensions/reverse-pentest-core.ts", ["buildContextPack", "contextPackSha256", "contextArtifactHashes", "verifyContextPackResume", "buildExactResumeContextPack", "buildReconCompactionResumeContract", "pi-recon-compaction-auto-resume", "compact_resume_case_memory", "compaction-resume-ledger.jsonl"]),
 			],
 		}),
 		contextResumeSchemaFile: validateContextResumeSchemaFile(root),
 		runtimeParallelPlanMarkers: passFail(true, {
 			markers: [
 				readMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", ["type ReconParallelPlanV1", "function buildSwarmParallelPlan", "planCoverage", "releaseGateMetadata", "function supervisorClaimGatePolicy", "claimGatePolicy"]),
-				readMarkers(root, ".pi/extensions/reverse-pentest-core.ts", ["type ReconParallelPlanV1", "function buildSwarmParallelPlan", "planCoverage", "releaseGateMetadata", "function supervisorClaimGatePolicy", "claimGatePolicy"]),
+				readMarkers(root, "repi-profile/extensions/reverse-pentest-core.ts", ["type ReconParallelPlanV1", "function buildSwarmParallelPlan", "planCoverage", "releaseGateMetadata", "function supervisorClaimGatePolicy", "claimGatePolicy"]),
 			],
 		}),
 		runtimeClaimLedgerMarkers: passFail(true, {
@@ -493,7 +493,7 @@ function buildResult(root) {
 			markers: [
 				readMarkers(root, "bench/recon-remote/agent-dogfood/parallel-run.mjs", ["ClaimLedgerEventV1", "buildRuntimeClaimLedgerEvents", "claim-ledger.jsonl", "runtimeClaimLedgerCaptured", "artifact_handoff", "claim", "validation", "challenge", "resolution"]),
 				readMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", ["SwarmClaimLedgerEventV1", "appendSwarmClaimLedgerEvent", "buildSwarmRuntimeClaimLedger", "swarmClaimLedgerHashChainOk", "claimLedgerPath", "claimLedgerEventCount", "claimLedgerTipHash", "runtimeClaimLedgerCaptured", "claim-ledger.jsonl", "artifact_handoff", "claim", "validation", "challenge", "resolution"]),
-				readMarkers(root, ".pi/extensions/reverse-pentest-core.ts", ["SwarmClaimLedgerEventV1", "appendSwarmClaimLedgerEvent", "buildSwarmRuntimeClaimLedger", "swarmClaimLedgerHashChainOk", "claimLedgerPath", "claimLedgerEventCount", "claimLedgerTipHash", "runtimeClaimLedgerCaptured", "claim-ledger.jsonl", "artifact_handoff", "claim", "validation", "challenge", "resolution"]),
+				readMarkers(root, "repi-profile/extensions/reverse-pentest-core.ts", ["SwarmClaimLedgerEventV1", "appendSwarmClaimLedgerEvent", "buildSwarmRuntimeClaimLedger", "swarmClaimLedgerHashChainOk", "claimLedgerPath", "claimLedgerEventCount", "claimLedgerTipHash", "runtimeClaimLedgerCaptured", "claim-ledger.jsonl", "artifact_handoff", "claim", "validation", "challenge", "resolution"]),
 				readMarkers(root, "bench/recon-remote/compound-frontier/run.mjs", ["ClaimLedgerEventV1", "appendCompoundClaimLedgerEvent", "buildCompoundClaimLedgerEvents", "claim-ledger.jsonl", "claimLedgerEvents", "claimLedgerPath", "claimLedgerEventCount", "claimLedgerTipHash", "runtimeClaimLedgerCaptured", "artifact_handoff", "claim", "validation", "challenge", "resolution"]),
 				readMarkers(root, "scripts/reverse-agent/audit-parallel-plan.mjs", ["runtimeClaimLedger", "runtime_claim_ledger_sources", "agent-dogfood,re_swarm,compound-frontier"]),
 			],
@@ -589,7 +589,7 @@ function formatMarkdown(result) {
 
 function writeOutputs(root, result) {
 	const stamp = result.generatedAt.replace(/[:.]/g, "-");
-	const outDir = join(root, ".pi", "evidence", "autonomous-contracts", stamp);
+	const outDir = join(root, ".repi-harness", "evidence", "autonomous-contracts", stamp);
 	mkdirSync(outDir, { recursive: true });
 	writeFileSync(join(outDir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
 	writeFileSync(join(outDir, "schemas.json"), `${JSON.stringify(result.schemas, null, 2)}\n`);

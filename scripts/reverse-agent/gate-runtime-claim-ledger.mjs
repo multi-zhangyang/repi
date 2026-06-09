@@ -111,7 +111,7 @@ function sourceSummary(row) {
 
 export function buildResult(root, options = {}) {
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-	const outDir = resolve(root, ".pi", "evidence", "runtime-claim-ledger", stamp);
+	const outDir = resolve(root, ".repi-harness", "evidence", "runtime-claim-ledger", stamp);
 	mkdirSync(outDir, { recursive: true });
 	const fixture = buildRuntimeClaimLedgerAdapterFixture(root, join(outDir, "adapter-fixture"));
 	const rows = [evaluateSource(root, fixture, outDir), ...discoverRuntimeClaimLedgerSources(root).map((loaded) => evaluateSource(root, loaded, outDir))];

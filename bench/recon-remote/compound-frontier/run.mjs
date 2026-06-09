@@ -17,7 +17,7 @@ const runHardScore = !/^(0|false|no)$/i.test(process.env.RECON_COMPOUND_HARD_SCO
 const runAgent = !/^(0|false|no)$/i.test(process.env.RECON_COMPOUND_AGENT || '1');
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`Pi-RECON compound frontier live-swarm gate\n\nUsage:\n  node bench/recon-remote/compound-frontier/run.mjs --use-latest --strict\n  node bench/recon-remote/compound-frontier/run.mjs --live --strict\n\nPurpose:\n  Binds or reruns the two hardest release-frontier proofs:\n  1. same-window-live: Bilibili + Xiaohongshu + Douyin live platform proof.\n  2. agent-parallel-dogfood: real multi-agent Pi-RECON worker/synthesizer proof.\n\n  It then verifies freshness, no frontier gaps, no stale artifact override, process/tool-result\n  runtime evidence, non-mock runtime audit, hard-score recognition, and context/compact readiness.\n\nEnvironment:\n  RECON_COMPOUND_LIVE=1                 rerun same-window and agent-parallel instead of binding latest\n  RECON_COMPOUND_USE_LATEST=1           bind latest artifacts\n  RECON_COMPOUND_MAX_AGE_MS=7200000\n  RECON_COMPOUND_AGENT=1\n  RECON_COMPOUND_CONTEXT_COMPACT=1\n  RECON_COMPOUND_HARD_SCORE=1\n  RECON_COMPOUND_TIMEOUT_MS=1800000\n  RECON_COMPOUND_STRICT=1\n\nOutput:\n  .pi/evidence/remote/compound-frontier/<timestamp>/\n`);
+  console.log(`Pi-RECON compound frontier live-swarm gate\n\nUsage:\n  node bench/recon-remote/compound-frontier/run.mjs --use-latest --strict\n  node bench/recon-remote/compound-frontier/run.mjs --live --strict\n\nPurpose:\n  Binds or reruns the two hardest release-frontier proofs:\n  1. same-window-live: Bilibili + Xiaohongshu + Douyin live platform proof.\n  2. agent-parallel-dogfood: real multi-agent Pi-RECON worker/synthesizer proof.\n\n  It then verifies freshness, no frontier gaps, no stale artifact override, process/tool-result\n  runtime evidence, non-mock runtime audit, hard-score recognition, and context/compact readiness.\n\nEnvironment:\n  RECON_COMPOUND_LIVE=1                 rerun same-window and agent-parallel instead of binding latest\n  RECON_COMPOUND_USE_LATEST=1           bind latest artifacts\n  RECON_COMPOUND_MAX_AGE_MS=7200000\n  RECON_COMPOUND_AGENT=1\n  RECON_COMPOUND_CONTEXT_COMPACT=1\n  RECON_COMPOUND_HARD_SCORE=1\n  RECON_COMPOUND_TIMEOUT_MS=1800000\n  RECON_COMPOUND_STRICT=1\n\nOutput:\n  .repi-harness/evidence/remote/compound-frontier/<timestamp>/\n`);
   process.exit(0);
 }
 
@@ -108,7 +108,7 @@ async function fileMeta(path, tier = 'runtime_artifact') {
 }
 async function latestResult(globPart) {
   const candidates = [];
-  for (const path of (await walk(join(repoRoot, '.pi', 'evidence', 'remote'))).filter((p) => p.includes(globPart))) {
+  for (const path of (await walk(join(repoRoot, '.repi-harness', 'evidence', 'remote'))).filter((p) => p.includes(globPart))) {
     const obj = await readJson(path);
     candidates.push({ path, timeMs: artifactTimeMs(path, obj || {}) || 0 });
   }
@@ -272,7 +272,7 @@ async function buildCompoundClaimLedgerEvents({
   return events;
 }
 
-const outDir = join(repoRoot, '.pi', 'evidence', 'remote', 'compound-frontier', timestamp());
+const outDir = join(repoRoot, '.repi-harness', 'evidence', 'remote', 'compound-frontier', timestamp());
 await mkdir(outDir, { recursive: true });
 const startedAt = new Date().toISOString();
 const runs = {};

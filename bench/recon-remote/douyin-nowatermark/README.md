@@ -2,7 +2,7 @@
 
 A live Pi-RECON benchmark for short-video media URL reverse analysis. Given a Douyin share/video URL, the harness records redirect behavior, captures browser/CDP runtime traffic when static extraction is weak, extracts `aweme_id` / media IDs / state JSON hints, inventories `a_bogus` / `msToken` / webid / `X-Bogus` style anti-bot parameters, records signer-bundle hints, ranks media URL candidates, builds `playwm -> play` style no-watermark hypotheses, verifies candidates with `HEAD` plus bounded `Range` body-hash probes, and attempts exact replay of browser-observed signed aweme APIs.
 
-It writes evidence only under `.pi/evidence/remote/douyin-nowatermark/`; those runtime artifacts are git-ignored.
+It writes evidence only under `.repi-harness/evidence/remote/douyin-nowatermark/`; those runtime artifacts are git-ignored.
 
 ## Usage
 
@@ -63,7 +63,7 @@ RECON_BROWSER=1 RECON_API_PROBE=1 RECON_DOUYIN_RUNTIME_API_LIMIT=4 \
 Artifacts are written to:
 
 ```text
-.pi/evidence/remote/douyin-nowatermark/<timestamp>/
+.repi-harness/evidence/remote/douyin-nowatermark/<timestamp>/
 ```
 
 Files:

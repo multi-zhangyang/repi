@@ -36,11 +36,13 @@ out.html
 packages/coding-agent/binaries/
 todo.md
 plans/
+.repi-harness/
+.repi/
 .pi/hf-sessions/
 .pi/hf-sessions-backup/
 collect.sh
 
-# Local live benchmark evidence
+# Local live benchmark evidence (legacy .pi ignores kept only for old checkouts)
 .pi/evidence/remote/
 .pi/evidence/claim-release/
 .pi/evidence/failures/

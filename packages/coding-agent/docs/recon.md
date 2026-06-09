@@ -1,6 +1,6 @@
 # Pi-RECON Kernel Profile
 
-Pi includes a built-in reverse-engineering and pentest-oriented kernel profile. In this repository the recommended clean-room launcher is `repi`, which enables the profile and stores state under `~/.repi/agent` so it can coexist with normal `pi`:
+REPI includes a built-in reverse-engineering and pentest-oriented kernel profile. In this repository the recommended clean-room launcher is `repi`, which enables the profile and stores state under `~/.repi/agent` so it can coexist with normal `repi`:
 
 ```bash
 repi
@@ -8,12 +8,12 @@ repi --offline --help
 repi --offline --list-models
 ```
 
-The lower-level Pi flags are still available:
+The lower-level REPI flags are still available:
 
 ```bash
-pi --recon
+repi --recon
 # alias:
-pi --reverse-pentest
+repi --reverse-pentest
 ```
 
 `--recon` is not just a prompt preset. It changes the runtime session wiring and installs a bottom-level execution contract: `refusal_to_execution` converts missing target/sample/credential/tool/context cases into `re_map`, `re_lane plan`, `fallback_commands`, `bootstrap plan`, a minimal repro script, or one precise gap question, and `operator_next_command_required` plus `operator_command_floor` keep every non-status turn tied to a concrete next command, tool call, artifact path, or repro command.
@@ -23,8 +23,8 @@ pi --reverse-pentest
 - appends the Pi-RECON runtime protocol
 - injects an inline extension factory before the agent starts
 - registers reverse/pentest commands and LLM tools
-- injects built-in skills and prompt templates even when no project `.pi` files exist
-- persists Pi-RECON memory, executable mission lanes, mission blackboard, evidence ledger, and tool indexes under the active agent dir (`repi`: `~/.repi/agent/recon/`; raw `pi --recon`: `~/.pi/agent/recon/`)
+- injects built-in skills and prompt templates even when no project `.repi` files exist
+- persists Pi-RECON memory, executable mission lanes, mission blackboard, evidence ledger, and tool indexes under the active agent dir (`repi`: `~/.repi/agent/recon/`; raw `repi --recon`: `~/.repi/agent/recon/`)
 
 ## Runtime resources
 
@@ -188,13 +188,13 @@ Examples:
 /re-memory prune-playbooks
 ```
 
-`re_bootstrap` turns the reverse-skill “missing tools → bootstrap → refresh tool-index” rule into an in-kernel tool. Use `plan` first to see exact commands, then `install` only for tools required by the active mission lane. After installation, Pi refreshes the tool index and updates the mission gate.
+`re_bootstrap` turns the reverse-skill “missing tools → bootstrap → refresh tool-index” rule into an in-kernel tool. Use `plan` first to see exact commands, then `install` only for tools required by the active mission lane. After installation, REPI refreshes the tool index and updates the mission gate.
 
 `re_complete` audits mission gates before a final claim. It checks route/memory/tool/passive-map/minimal-proof/evidence/repro/report/memory gates, evidence metadata, and journal/evolution state. `scaffold` writes a report draft under `~/.repi/agent/recon/reports/`.
 
 ## Project profile coexistence
 
-A project or global `.pi/extensions/reverse-pentest-core.ts` profile can still exist. `repi` avoids those collisions by default with `--no-extensions --no-skills --no-prompt-templates --no-approve --no-context-files`; raw `pi --recon` also keeps the built-in inline kernel profile and suppresses conflicts from the legacy file-based Pi-RECON extension where possible.
+A project or global `.repi/extensions/reverse-pentest-core.ts` profile can still exist. `repi` avoids those collisions by default with `--no-extensions --no-skills --no-prompt-templates --no-approve --no-context-files`; raw `repi --recon` also keeps the built-in inline kernel profile and suppresses conflicts from the legacy file-based Pi-RECON extension where possible.
 
 ## Examples
 
@@ -214,11 +214,11 @@ repi /identity "AD kerberos ldap bloodhound"
 
 ## Live browser/XHR/WS runtime 层
 
-`/re-live-browser plan|show|run` / `re_live_browser` 面向 HTTP(S) 目标生成或执行浏览器运行时捕获。它输出 `live_browser` / `browser_artifact`、`runtime_matrix`、`request_response_log`、`runtime_anchors`、`auth_matrix`、`idor_bola_probe_templates`、`websocket_probes`、`replay_commands`、`capture_script`、`browser_next_actions` 与 `next_browser_command`；artifact 写入 `.pi/evidence/browser/*.md` 并闭合 `live_browser_ready`。`run` 模式优先使用 Playwright，缺失时自动降级到 Node fetch baseline。
+`/re-live-browser plan|show|run` / `re_live_browser` 面向 HTTP(S) 目标生成或执行浏览器运行时捕获。它输出 `live_browser` / `browser_artifact`、`runtime_matrix`、`request_response_log`、`runtime_anchors`、`auth_matrix`、`idor_bola_probe_templates`、`websocket_probes`、`replay_commands`、`capture_script`、`browser_next_actions` 与 `next_browser_command`；artifact 写入 `.repi/evidence/browser/*.md` 并闭合 `live_browser_ready`。`run` 模式优先使用 Playwright，缺失时自动降级到 Node fetch baseline。
 
 ## Exploit Lab 稳定化层
 
-`/re-exploit-lab plan|show|run|bundle` / `re_exploit_lab` 面向 exploit/PoC/autopwn 任务建立稳定化实验室。它输出 `exploit_lab` / `exploit_lab_artifact`、`lab_matrix`、`poc_inventory`、`environment_pins`、`replay_matrix`、`flake_triage`、`bundle_manifest`、`stability_anchors`、`lab_commands`、`lab_next_actions` 与 `next_lab_command`；artifact 写入 `.pi/evidence/exploit-lab/*.md` 并闭合 `exploit_lab_ready`。`run` 模式用本地 Python harness 或 `PI_RECON_EXPLOIT_CMD` 做 bounded 多次 replay，记录 exit、duration、stdout/stderr SHA256、success_rate、stable/flake 结论和 bundle manifest。
+`/re-exploit-lab plan|show|run|bundle` / `re_exploit_lab` 面向 exploit/PoC/autopwn 任务建立稳定化实验室。它输出 `exploit_lab` / `exploit_lab_artifact`、`lab_matrix`、`poc_inventory`、`environment_pins`、`replay_matrix`、`flake_triage`、`bundle_manifest`、`stability_anchors`、`lab_commands`、`lab_next_actions` 与 `next_lab_command`；artifact 写入 `.repi/evidence/exploit-lab/*.md` 并闭合 `exploit_lab_ready`。`run` 模式用本地 Python harness 或 `PI_RECON_EXPLOIT_CMD` 做 bounded 多次 replay，记录 exit、duration、stdout/stderr SHA256、success_rate、stable/flake 结论和 bundle manifest。
 
 
 
@@ -235,7 +235,7 @@ repi /identity "AD kerberos ldap bloodhound"
 
 ## Decision Core 决策内核层
 
-`/re-decision plan|show|tick|run` / `re_decision_core` 读取 mission gates、active lane、tool posture、artifact posture、evidence priority、execution kernel 与 context/operator/verifier/compiler/replayer/autofix/proof-loop/knowledge artifacts，输出 `decision_core` / `decision_artifact`、`objective_stack`、`gate_pressure`、`evidence_priority`、`tool_posture`、`artifact_posture`、`decision_rules`、`operator_queue`、`decision_next_actions`、`operator_next_command` 与 `next_decision_command`；artifact 写入 `.pi/evidence/decisions/*.md`，同时写入 `memory/decision-core.md` 并闭合 `decision_core_ready`。当下一步不清、上下文恢复、关键 artifact 更新或出现 narrative-only 倾向时，先 `re_decision_core tick <target>` 生成队列，再 `re_decision_core run <target> 1` bounded dispatch，最后进入 `re_proof_loop run <target> 4 2`。
+`/re-decision plan|show|tick|run` / `re_decision_core` 读取 mission gates、active lane、tool posture、artifact posture、evidence priority、execution kernel 与 context/operator/verifier/compiler/replayer/autofix/proof-loop/knowledge artifacts，输出 `decision_core` / `decision_artifact`、`objective_stack`、`gate_pressure`、`evidence_priority`、`tool_posture`、`artifact_posture`、`decision_rules`、`operator_queue`、`decision_next_actions`、`operator_next_command` 与 `next_decision_command`；artifact 写入 `.repi/evidence/decisions/*.md`，同时写入 `memory/decision-core.md` 并闭合 `decision_core_ready`。当下一步不清、上下文恢复、关键 artifact 更新或出现 narrative-only 倾向时，先 `re_decision_core tick <target>` 生成队列，再 `re_decision_core run <target> 1` bounded dispatch，最后进入 `re_proof_loop run <target> 4 2`。
 
 ## Exploit Chain 漏洞/利用链编排层
 
@@ -263,11 +263,11 @@ repi /identity "AD kerberos ldap bloodhound"
 
 ## Reflection/evolution 闭环
 
-`/re-reflect plan|show|write` / `re_reflect` 消费 `supervisor_review` / `supervisor_artifact`，输出 `reflection_cycle` 与 `reflection_artifact`。`write` 模式将 lessons、failure_patterns、reuse_rules、repair_playbook 写入 field journal、evolution log 和 `.pi/memory/playbooks/*.md`，并闭合 `reflection_memory_ready`。
+`/re-reflect plan|show|write` / `re_reflect` 消费 `supervisor_review` / `supervisor_artifact`，输出 `reflection_cycle` 与 `reflection_artifact`。`write` 模式将 lessons、failure_patterns、reuse_rules、repair_playbook 写入 field journal、evolution log 和 `.repi/memory/playbooks/*.md`，并闭合 `reflection_memory_ready`。
 
 ## Context/resume pack 闭环
 
-`/re-context pack|show|resume` / `re_context` 消费 mission blackboard、evidence ledger、artifact_index、supervisor/reflect 结果、tool digest 与 memory tail，输出 `context_pack` 与 `context_artifact`。它把 `resume_brief`、`repair_queue`（含 supervisor 的 `commander_merge_queue`）、`commander_merge_budget`、`worker_scoreboard`、`reflection_reuse_rules`、`next_operator_commands` 和 `next_context_command` 固化到 `.pi/evidence/contexts/*.md`，并闭合 `context_pack_ready`，用于压缩、重启、handoff 后恢复连续逆向渗透作战。
+`/re-context pack|show|resume` / `re_context` 消费 mission blackboard、evidence ledger、artifact_index、supervisor/reflect 结果、tool digest 与 memory tail，输出 `context_pack` 与 `context_artifact`。它把 `resume_brief`、`repair_queue`（含 supervisor 的 `commander_merge_queue`）、`commander_merge_budget`、`worker_scoreboard`、`reflection_reuse_rules`、`next_operator_commands` 和 `next_context_command` 固化到 `.repi/evidence/contexts/*.md`，并闭合 `context_pack_ready`，用于压缩、重启、handoff 后恢复连续逆向渗透作战。
 
 ## Operator queue 调度闭环
 
@@ -295,11 +295,11 @@ repi /identity "AD kerberos ldap bloodhound"
 
 ## Proof loop 证明-复现-修复闭环
 
-`/re-proof-loop plan|show|run` / `re_proof_loop` 把 `re_verifier matrix`、`re_compiler draft|final`、`re_replayer run`、`re_autofix plan|apply`、`re_knowledge_graph build` 和 `re_complete audit` 串成 bounded proof loop。输出 `proof_loop` / `proof_loop_artifact`、`verdict`、`gate_status`、`evidence_summary`、`specialist_queue`、`swarm_bridge`、`bridge_artifacts`、`steps`、`executed_steps`、`next_proof_actions` 与 `next_proof_command`；当 verdict 为 `partial`/`needs_repair` 时把 verifier/compiler/replayer/autofix/gate gap 分类为 web-authz、mobile-runtime、native-runtime、pwn-exploit、firmware-dfir、cloud、identity、agentsec、malware、reporting 或 general 专项 worker，并生成/执行 `re_delegate plan` → `re_swarm run` → `re_swarm merge` → `re_supervisor repair` 桥接；supervisor 再把 `commander_merge_queue` 注入 context/operator/proof-loop；artifact 写入 `.pi/evidence/proof-loops/*.md` 并闭合 `proof_loop_ready`。在 `re_decision_core run` 或 `re_operator dispatch` 后优先用 `re_proof_loop run <target> 4 2` 关闭 verifier→compiler→replayer→autofix 证据链。
+`/re-proof-loop plan|show|run` / `re_proof_loop` 把 `re_verifier matrix`、`re_compiler draft|final`、`re_replayer run`、`re_autofix plan|apply`、`re_knowledge_graph build` 和 `re_complete audit` 串成 bounded proof loop。输出 `proof_loop` / `proof_loop_artifact`、`verdict`、`gate_status`、`evidence_summary`、`specialist_queue`、`swarm_bridge`、`bridge_artifacts`、`steps`、`executed_steps`、`next_proof_actions` 与 `next_proof_command`；当 verdict 为 `partial`/`needs_repair` 时把 verifier/compiler/replayer/autofix/gate gap 分类为 web-authz、mobile-runtime、native-runtime、pwn-exploit、firmware-dfir、cloud、identity、agentsec、malware、reporting 或 general 专项 worker，并生成/执行 `re_delegate plan` → `re_swarm run` → `re_swarm merge` → `re_supervisor repair` 桥接；supervisor 再把 `commander_merge_queue` 注入 context/operator/proof-loop；artifact 写入 `.repi/evidence/proof-loops/*.md` 并闭合 `proof_loop_ready`。在 `re_decision_core run` 或 `re_operator dispatch` 后优先用 `re_proof_loop run <target> 4 2` 关闭 verifier→compiler→replayer→autofix 证据链。
 
 ## Knowledge graph 长期知识图谱闭环
 
-`/re-knowledge-graph build|show|query` / `re_knowledge_graph` 汇总 `.pi/evidence/*` 下的 map、browser、run、attack_graph、campaign、operation、delegation、supervisor、reflection、context、operator、verifier、compiler、replayer、autofix artifacts，生成 `knowledge_graph` 与 `knowledge_artifact`。输出包含 `case_signatures`、`artifact_nodes`、`high_value_edges`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_telemetry`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints` 和 `next_knowledge_command`，同时写入 `memory/knowledge-graph-index.md` 并闭合 `knowledge_graph_ready`，用于跨任务迁移和相似案例检索。
+`/re-knowledge-graph build|show|query` / `re_knowledge_graph` 汇总 `.repi/evidence/*` 下的 map、browser、run、attack_graph、campaign、operation、delegation、supervisor、reflection、context、operator、verifier、compiler、replayer、autofix artifacts，生成 `knowledge_graph` 与 `knowledge_artifact`。输出包含 `case_signatures`、`artifact_nodes`、`high_value_edges`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_telemetry`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints` 和 `next_knowledge_command`，同时写入 `memory/knowledge-graph-index.md` 并闭合 `knowledge_graph_ready`，用于跨任务迁移和相似案例检索。
 
 ## Pi-RECON native-deep execution kernel update
 
@@ -366,7 +366,7 @@ repi /identity "AD kerberos ldap bloodhound"
 
 ## Pi-RECON owned compaction kernel update
 
-Built-in Pi-RECON handles `session_before_compact` as a first-class compaction provider. It returns a `pi-recon-compaction` summary/details object, writes a `pi-recon-compaction-checkpoint`, and embeds the `context_path`, `re_context resume`, bounded `re_operator plan/dispatch`, `re_proof_loop run <target> 4 2`, `autonomous_execution_budget`, dispatcher score decay, repair queues, ledger/playbook paths, case memory, and artifact index. Resume logic should consume this RECON contract before relying on generic Pi compact text. After `session_compact`, Pi-RECON appends `pi-recon-compaction-resume-contract`, verifies fromExtension/details/context_path/resume/operator/proof-loop coverage, and updates the `compaction_resume_contract_ready` gate. A verified contract appends `pi-recon-compaction-auto-resume` and injects a `pi-recon-auto-resume` custom message with `triggerTurn` to run one bounded resume turn. `pi-recon-compaction-resume-telemetry` persists `compact_resume_command` queued/done/blocked state, proof-loop entry, output hashes, and gate status in `memory/compaction-auto-resume-board.md`; `re_operator` imports it as `compact_resume_telemetry` / `compact_resume_queue`; `re_proof_loop` turns unresolved rows into `source=compact_resume` gaps, and `re_complete audit` treats queued/blocked resume commands or missing proof-loop entry as blockers. `re_knowledge_graph build` also promotes the telemetry into `compact_resume_case_memory`, `compact_resume_routing_hints`, and `compact_resume_status=*` signatures so compact recovery success/failure affects future case-memory routing; `re_autopilot plan|run` consumes those rows through `compactResumeCaseMemoryCommands`, creating `compact_resume_repair_from_case_memory` lanes for queued/blocked recovery or `compact_resume_success_skip_low_value_lane` handoffs after proof-loop success.
+Built-in Pi-RECON handles `session_before_compact` as a first-class compaction provider. It returns a `repi-recon-compaction` summary/details object, writes a `repi-recon-compaction-checkpoint`, and embeds the `context_path`, `re_context resume`, bounded `re_operator plan/dispatch`, `re_proof_loop run <target> 4 2`, `autonomous_execution_budget`, dispatcher score decay, repair queues, ledger/playbook paths, case memory, and artifact index. Resume logic should consume this RECON contract before relying on generic REPI compact text. After `session_compact`, Pi-RECON appends `repi-recon-compaction-resume-contract`, verifies fromExtension/details/context_path/resume/operator/proof-loop coverage, and updates the `compaction_resume_contract_ready` gate. A verified contract appends `repi-recon-compaction-auto-resume` and injects a `repi-recon-auto-resume` custom message with `triggerTurn` to run one bounded resume turn. `repi-recon-compaction-resume-telemetry` persists `compact_resume_command` queued/done/blocked state, proof-loop entry, output hashes, and gate status in `memory/compaction-auto-resume-board.md`; `re_operator` imports it as `compact_resume_telemetry` / `compact_resume_queue`; `re_proof_loop` turns unresolved rows into `source=compact_resume` gaps, and `re_complete audit` treats queued/blocked resume commands or missing proof-loop entry as blockers. `re_knowledge_graph build` also promotes the telemetry into `compact_resume_case_memory`, `compact_resume_routing_hints`, and `compact_resume_status=*` signatures so compact recovery success/failure affects future case-memory routing; `re_autopilot plan|run` consumes those rows through `compactResumeCaseMemoryCommands`, creating `compact_resume_repair_from_case_memory` lanes for queued/blocked recovery or `compact_resume_success_skip_low_value_lane` handoffs after proof-loop success.
 
 ## Harness 自检与安装就绪
 

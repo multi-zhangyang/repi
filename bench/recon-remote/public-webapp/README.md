@@ -1,6 +1,6 @@
 # Public webapp live benchmark
 
-A Pi-RECON live benchmark for public web application surface mapping and replay-safe vulnerability confirmation. It records a small probe matrix, response hashes/body heads, route hints, and profile-specific findings under `.pi/evidence/remote/public-webapp/`.
+A Pi-RECON live benchmark for public web application surface mapping and replay-safe vulnerability confirmation. It records a small probe matrix, response hashes/body heads, route hints, and profile-specific findings under `.repi-harness/evidence/remote/public-webapp/`.
 
 ## Usage
 
@@ -22,7 +22,7 @@ Profiles:
 ## Output
 
 ```text
-.pi/evidence/remote/public-webapp/<host>/<timestamp>/
+.repi-harness/evidence/remote/public-webapp/<host>/<timestamp>/
 artifact.md
 result.json
 *.head.txt

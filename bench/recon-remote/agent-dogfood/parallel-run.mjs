@@ -130,7 +130,7 @@ if (planJsonPath && !parallelPlanValidation.valid) {
 
 
 if (argv.includes('--help') || argv.includes('-h') || (!model && !planOnly)) {
-  console.log(`Pi-RECON parallel agent dogfood benchmark\n\nUsage:\n  RECON_AGENT_PROVIDER=openai RECON_AGENT_MODEL=gpt-4.1 node bench/recon-remote/agent-dogfood/parallel-run.mjs\n  node bench/recon-remote/agent-dogfood/parallel-run.mjs <provider> <model>\n  node bench/recon-remote/agent-dogfood/parallel-run.mjs --plan-json plan.json --plan-only --json\n\nPurpose:\n  Launches multiple real Pi-RECON --recon agents in parallel against the latest real-platform evidence,\n  then runs a synthesizer agent that reconciles worker disagreements. The harness gates real model calls,\n  tool calls, parallel overlap, platform coverage, artifact paths, and anti-self-delusion review.\n\nEnvironment:\n  RECON_AGENT_PROVIDER=<provider>       default: aigateway\n  RECON_AGENT_MODEL=<model>             required unless argv[3] or ANTHROPIC_MODEL is set\n  RECON_AGENT_THINKING=low\n  RECON_AGENT_TOOLS=read,grep,find,ls,bash\n  RECON_AGENT_TIMEOUT_MS=300000\n  RECON_AGENT_CMD=./pi-test.sh\n  RECON_AGENT_EXTRA_ARGS='--offline'    optional extra Pi CLI args\n  RECON_PARALLEL_ROLES=a,b              optional subset: mapper,verifier,adversary,planner\n  RECON_PARALLEL_MAX_TOOL_CALLS=4        prompt-level cap to prevent runaway workers\n  RECON_PARALLEL_MAX_WORDS=500           prompt-level output cap per worker\n  RECON_SYNTHESIZER=1                    run the sequential conflict-synthesizer; set 0 to skip\n  RECON_ROLE_RETRIES=1                   retry failed/flaky role runs before judging the gate\n  RECON_PARALLEL_PLAN_JSON=<path>        optional ReconParallelPlanV1 manifest.\n  RECON_PARALLEL_PLAN_ONLY=1             print normalized plan without launching providers.\n\nOutput:\n  .pi/evidence/remote/agent-parallel-dogfood/<timestamp>/\n`);
+  console.log(`Pi-RECON parallel agent dogfood benchmark\n\nUsage:\n  RECON_AGENT_PROVIDER=openai RECON_AGENT_MODEL=gpt-4.1 node bench/recon-remote/agent-dogfood/parallel-run.mjs\n  node bench/recon-remote/agent-dogfood/parallel-run.mjs <provider> <model>\n  node bench/recon-remote/agent-dogfood/parallel-run.mjs --plan-json plan.json --plan-only --json\n\nPurpose:\n  Launches multiple real Pi-RECON --recon agents in parallel against the latest real-platform evidence,\n  then runs a synthesizer agent that reconciles worker disagreements. The harness gates real model calls,\n  tool calls, parallel overlap, platform coverage, artifact paths, and anti-self-delusion review.\n\nEnvironment:\n  RECON_AGENT_PROVIDER=<provider>       default: aigateway\n  RECON_AGENT_MODEL=<model>             required unless argv[3] or ANTHROPIC_MODEL is set\n  RECON_AGENT_THINKING=low\n  RECON_AGENT_TOOLS=read,grep,find,ls,bash\n  RECON_AGENT_TIMEOUT_MS=300000\n  RECON_AGENT_CMD=./pi-test.sh\n  RECON_AGENT_EXTRA_ARGS='--offline'    optional extra Pi CLI args\n  RECON_PARALLEL_ROLES=a,b              optional subset: mapper,verifier,adversary,planner\n  RECON_PARALLEL_MAX_TOOL_CALLS=4        prompt-level cap to prevent runaway workers\n  RECON_PARALLEL_MAX_WORDS=500           prompt-level output cap per worker\n  RECON_SYNTHESIZER=1                    run the sequential conflict-synthesizer; set 0 to skip\n  RECON_ROLE_RETRIES=1                   retry failed/flaky role runs before judging the gate\n  RECON_PARALLEL_PLAN_JSON=<path>        optional ReconParallelPlanV1 manifest.\n  RECON_PARALLEL_PLAN_ONLY=1             print normalized plan without launching providers.\n\nOutput:\n  .repi-harness/evidence/remote/agent-parallel-dogfood/<timestamp>/\n`);
   process.exit(model || planOnly ? 0 : 2);
 }
 
@@ -176,7 +176,7 @@ const roles = roleFilter.length ? allRoles.filter((role) => roleFilter.includes(
 if (!roles.length) throw new Error(`No roles selected from RECON_PARALLEL_ROLES=${process.env.RECON_PARALLEL_ROLES || ''}`);
 const expectedWorkerRoleIds = roles.map((role) => role.id);
 function defaultMergeContract() {
-  return { strategy: 'synthesizer', evidenceOrder: ['same_window_live', 'runtime_artifact'], expectedArtifacts: ['.pi/evidence/remote/**/result.json'] };
+  return { strategy: 'synthesizer', evidenceOrder: ['same_window_live', 'runtime_artifact'], expectedArtifacts: ['.repi-harness/evidence/remote/**/result.json'] };
 }
 function normalizedPlanSummary() {
   return {
@@ -472,7 +472,7 @@ async function walkJsonl(dir) {
   return (await walk(dir)).filter((path) => path.endsWith('.jsonl')).sort();
 }
 async function latestResultPath(predicate) {
-  const paths = (await walk(join(repoRoot, '.pi', 'evidence', 'remote')))
+  const paths = (await walk(join(repoRoot, '.repi-harness', 'evidence', 'remote')))
     .filter((path) => path.endsWith('/result.json'))
     .filter(predicate)
     .sort();
@@ -638,7 +638,7 @@ function outputChecks(role, output, session, code) {
   const platformsOk = platformPatternsForRole(role).every((pattern) => pattern.test(output));
   const sameWindowMentioned = !requireSameWindowCoverage || /same-window-live|same_window|spanMs|frontierGaps/i.test(output);
   const hardScoreMentioned = !requireHardScoreCoverage || /hard-score|scoreboard|bench\/recon-remote\/hard-score|hard-eval-control-plane|claim ledger|claim-ledger/i.test(output);
-  const artifactPathsOk = /\.pi\/evidence\/remote\//.test(output);
+  const artifactPathsOk = /\.repi-harness\/evidence\/remote\//.test(output);
   const modelCalled = session.modelCalls > 0;
   const toolUsed = session.toolCalls > 0;
   const roleSpecific = role.id === 'verifier'
@@ -676,7 +676,7 @@ function overlapStats(runs) {
   };
 }
 
-const outDir = join(repoRoot, '.pi', 'evidence', 'remote', 'agent-parallel-dogfood', timestamp());
+const outDir = join(repoRoot, '.repi-harness', 'evidence', 'remote', 'agent-parallel-dogfood', timestamp());
 await mkdir(outDir, { recursive: true });
 const sessionRoot = join(outDir, 'sessions');
 await mkdir(sessionRoot, { recursive: true });
@@ -739,7 +739,7 @@ ${JSON.stringify({
 }, null, 2)}
 `;
 const boundedWork = `\n\nOperational bounds for this parallel worker:\n- Use at most ${maxToolCallsHint} tool calls unless a required command fails.\n- Keep the final answer under ${maxWordsHint} words.\n- Stop immediately after the Next Step section; do not continue exploring once the required gates are covered.\n- Prefer decisive jq/grep/read checks over broad recursive inspection.\n`;
-const requiredCitations = `\n\nRequired citations for every role:\n- Mention the hard-score or scoreboard artifact path explicitly when the plan requires hard-score coverage.\n- Mention the same-window-live artifact path explicitly when the plan requires same-window coverage.\n- Mention at least one .pi/evidence/remote artifact path for each plan focus: ${platformFocus.join(', ')}.\n`;
+const requiredCitations = `\n\nRequired citations for every role:\n- Mention the hard-score or scoreboard artifact path explicitly when the plan requires hard-score coverage.\n- Mention the same-window-live artifact path explicitly when the plan requires same-window coverage.\n- Mention at least one .repi-harness/evidence/remote artifact path for each plan focus: ${platformFocus.join(', ')}.\n`;
 
 function strictRunPassed(runResult) {
   return Boolean(runResult?.checks?.exitOk && runResult?.checks?.modelCalled && runResult?.checks?.toolUsed && runResult?.checks?.sectionsOk && runResult?.checks?.platformsOk && runResult?.checks?.sameWindowMentioned && runResult?.checks?.hardScoreMentioned && runResult?.checks?.artifactPathsOk && runResult?.checks?.roleSpecific);
@@ -855,7 +855,7 @@ async function launchSynthesizer(workerSummaryPath, workerRuns, attempt = 0) {
   }]));
   const workerNames = expectedWorkerRoleIds.join(', ');
   const retryHint = attempt ? `\n\nRetry attempt ${attempt}: the previous synthesizer attempt did not satisfy the harness gates. Mention these worker IDs (${workerNames}) and explicitly accept/reject/downgrade disputed claims.\n` : '';
-  const prompt = `Role: conflict synthesizer. You are the sequential supervisor after the parallel Pi-RECON workers.\n\nRequired actions:\n1. Use tools to read ${workerSummaryPath} and inspect the worker outputs: ${JSON.stringify(workerOutputPaths)}.\n2. Reconcile worker disagreements across: ${workerNames}. Explicitly say which claims are accepted, rejected, or downgraded.\n3. Use the evidence order to resolve conflicts: live same-window runtime > platform runtime artifacts > network traffic > served assets > config > persisted artifacts/source/comments.\n4. Cover plan focus (${platformFocus.join(', ')}), same-window freshness/gaps when applicable, and Pi-RECON orchestration.\n5. Cite the hard-score/scoreboard artifact when applicable, same-window-live artifact when applicable, and at least one .pi/evidence/remote artifact path per plan focus.\n6. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n7. Do not edit files.${retryHint}${boundedWork}${requiredCitations}`;
+  const prompt = `Role: conflict synthesizer. You are the sequential supervisor after the parallel Pi-RECON workers.\n\nRequired actions:\n1. Use tools to read ${workerSummaryPath} and inspect the worker outputs: ${JSON.stringify(workerOutputPaths)}.\n2. Reconcile worker disagreements across: ${workerNames}. Explicitly say which claims are accepted, rejected, or downgraded.\n3. Use the evidence order to resolve conflicts: live same-window runtime > platform runtime artifacts > network traffic > served assets > config > persisted artifacts/source/comments.\n4. Cover plan focus (${platformFocus.join(', ')}), same-window freshness/gaps when applicable, and Pi-RECON orchestration.\n5. Cite the hard-score/scoreboard artifact when applicable, same-window-live artifact when applicable, and at least one .repi-harness/evidence/remote artifact path per plan focus.\n6. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n7. Do not edit files.${retryHint}${boundedWork}${requiredCitations}`;
   const args = [
     '--recon',
     '--provider', provider,
@@ -1285,8 +1285,8 @@ const result = {
   failureLedgerEvents,
   repairQueue,
   failureRepairWriteback: failureLedgerEvents[0]?.evidenceWriteback || {
-    failureLedgerPath: '.pi/evidence/failures/ledger.jsonl',
-    repairQueuePath: '.pi/evidence/repairs/queue.jsonl',
+    failureLedgerPath: '.repi-harness/evidence/failures/ledger.jsonl',
+    repairQueuePath: '.repi-harness/evidence/repairs/queue.jsonl',
     appendOnly: true,
     mode: 'agent-dogfood',
   },

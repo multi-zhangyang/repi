@@ -2,7 +2,7 @@
  * CLI argument parsing and help display
  */
 
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { ThinkingLevel } from "@pi-recon/repi-agent-core";
 import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR, IS_REPI_PRODUCT } from "../config.ts";
 import type { ExtensionFlag } from "../core/extensions/types.ts";
@@ -218,7 +218,7 @@ export function printHelp(extensionFlags?: ExtensionFlag[]): void {
 		? "Pi-RECON reverse/pentest autonomous agent with read, bash, edit, write tools"
 		: "AI coding assistant with read, bash, edit, write tools";
 	const reconBanner = isReconPrimary
-		? `${chalk.bold("Pi-RECON:")} built-in reverse/pentest kernel is enabled by this launcher. Runtime storage: ~/${CONFIG_DIR_NAME}/agent.\n\n`
+		? `${chalk.bold("Pi-RECON:")} built-in reverse/pentest kernel is enabled by the REPI product entrypoint. Runtime storage: ~/${CONFIG_DIR_NAME}/agent.\n\n`
 		: "";
 	const extensionFlagsText =
 		extensionFlags && extensionFlags.length > 0
@@ -234,7 +234,7 @@ export function printHelp(extensionFlags?: ExtensionFlag[]): void {
 		? `  ${APP_NAME} update [source]          Update installed extension packages`
 		: `  ${APP_NAME} update [source|self|pi]   Update pi and installed extensions`;
 	const shareViewerLine = IS_REPI_PRODUCT
-		? `  PI_SHARE_VIEWER_URL              - Base URL for /share command (default: https://gist.github.com/<gist-id>)`
+		? `  REPI_SHARE_VIEWER_URL            - Base URL for /share command (default: https://gist.github.com/<gist-id>)`
 		: `  PI_SHARE_VIEWER_URL              - Base URL for /share command (default: https://pi.dev/session/)`;
 	console.log(`${chalk.bold(APP_NAME)} - ${description}
 
@@ -394,7 +394,7 @@ ${chalk.bold("Environment Variables:")}
   AWS_REGION                       - AWS region for Amazon Bedrock (e.g., us-east-1)
   ${ENV_AGENT_DIR.padEnd(32)} - Config directory (default: ~/${CONFIG_DIR_NAME}/agent)
   ${ENV_SESSION_DIR.padEnd(32)} - Session storage directory (overridden by --session-dir)
-  PI_PACKAGE_DIR                   - Override package directory (for Nix/Guix store paths)
+  REPI_PACKAGE_DIR                 - Override package directory (PI_PACKAGE_DIR is accepted as compatibility fallback)
   PI_OFFLINE                       - Disable startup network operations when set to 1/true/yes
   PI_TELEMETRY                     - Override install telemetry when set to 1/true/yes or 0/false/no
 ${shareViewerLine}

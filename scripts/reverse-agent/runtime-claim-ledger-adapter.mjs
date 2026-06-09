@@ -112,13 +112,13 @@ function latestResult(root, relativeDir) {
 }
 
 function latestSwarmLedger(root) {
-	return latest(listFiles(join(root, ".pi", "evidence", "swarms"), (path) => /claim-ledger\.jsonl$/.test(path), 1));
+	return latest(listFiles(join(root, ".repi-harness", "evidence", "swarms"), (path) => /claim-ledger\.jsonl$/.test(path), 1));
 }
 
 export function loadRuntimeClaimLedgerSource(root, source) {
 	if (source === "agentDogfood" || source === "compoundFrontier") {
 		const family = source === "agentDogfood" ? "agent-parallel-dogfood" : "compound-frontier";
-		const resultAbs = latestResult(root, `.pi/evidence/remote/${family}`);
+		const resultAbs = latestResult(root, `.repi-harness/evidence/remote/${family}`);
 		if (!resultAbs) return { source, status: "missing_runtime_artifact", reason: `missing latest ${family}/result.json` };
 		const resultPath = relPath(root, resultAbs);
 		const result = readJson(root, resultPath) ?? {};
@@ -129,7 +129,7 @@ export function loadRuntimeClaimLedgerSource(root, source) {
 	}
 	if (source === "reSwarm") {
 		const ledgerAbs = latestSwarmLedger(root);
-		if (!ledgerAbs) return { source, status: "missing_runtime_artifact", reason: "missing .pi/evidence/swarms/*-claim-ledger.jsonl" };
+		if (!ledgerAbs) return { source, status: "missing_runtime_artifact", reason: "missing .repi-harness/evidence/swarms/*-claim-ledger.jsonl" };
 		const ledgerPath = relPath(root, ledgerAbs);
 		const events = readJsonl(root, ledgerPath);
 		if (!events.length) return { source, status: "missing_runtime_artifact", reason: "re_swarm runtime claim ledger is empty", ledgerPath };
@@ -189,7 +189,7 @@ function evidenceSummary(loaded, evidencePath) {
 
 export function normalizeRuntimeClaimLedgerToStrictInput(root, loaded, options = {}) {
 	if (loaded?.status !== "loaded") return { ok: false, status: loaded?.status ?? "missing_runtime_artifact", reason: loaded?.reason ?? "runtime claim ledger not loaded" };
-	const outDir = options.outDir ?? join(root, ".pi", "evidence", "runtime-claim-ledger", "adapter-preview");
+	const outDir = options.outDir ?? join(root, ".repi-harness", "evidence", "runtime-claim-ledger", "adapter-preview");
 	mkdirSync(outDir, { recursive: true });
 	const source = sourceLabel(loaded.source);
 	const evidencePath = relPath(root, join(outDir, `${source.replace(/[^a-zA-Z0-9_.-]+/g, "-")}-evidence.json`));
@@ -241,7 +241,7 @@ function main(argv) {
 	const rootArg = argv.find((arg, index) => !arg.startsWith("-") && argv[index - 1] !== "--source" && argv[index - 1] !== "--out-dir");
 	const root = resolve(rootArg ?? process.cwd());
 	const source = argv.includes("--source") ? argv[argv.indexOf("--source") + 1] : "compoundFrontier";
-	const outDir = resolve(root, argv.includes("--out-dir") ? argv[argv.indexOf("--out-dir") + 1] : join(".pi", "evidence", "runtime-claim-ledger", "adapter-cli"));
+	const outDir = resolve(root, argv.includes("--out-dir") ? argv[argv.indexOf("--out-dir") + 1] : join(".repi-harness", "evidence", "runtime-claim-ledger", "adapter-cli"));
 	const loaded = source === "adapterFixture" ? buildRuntimeClaimLedgerAdapterFixture(root, outDir) : loadRuntimeClaimLedgerSource(root, source);
 	const adapted = normalizeRuntimeClaimLedgerToStrictInput(root, loaded, { outDir });
 	const result = { kind: "pi-recon-runtime-claim-ledger-adapter", generatedAt: new Date().toISOString(), root, loaded, adapted };

@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const AUDIT_VERSION = 1;
-const DOGFOOD_EVIDENCE_DIR = join(".pi", "evidence", "remote", "agent-parallel-dogfood");
+const DOGFOOD_EVIDENCE_DIR = join(".repi-harness", "evidence", "remote", "agent-parallel-dogfood");
 const DOGFOOD_RUNNER = join("bench", "recon-remote", "agent-dogfood", "parallel-run.mjs");
 const FRONTIER_PLAN_ARGS = [
 	"bench/recon-remote/frontier-orchestrator/run.mjs",
@@ -378,7 +378,7 @@ function validateRuntimeClaimLedgerMarkers(root) {
 			"claimLedgerTipHash",
 			...shared,
 		]),
-		readStaticMarkers(root, ".pi/extensions/reverse-pentest-core.ts", [
+		readStaticMarkers(root, "repi-profile/extensions/reverse-pentest-core.ts", [
 			"SwarmClaimLedgerEventV1",
 			"appendSwarmClaimLedgerEvent",
 			"buildSwarmRuntimeClaimLedger",
@@ -632,7 +632,7 @@ function buildResult(root) {
 }
 
 function printHelp() {
-	console.log(`Usage: node scripts/reverse-agent/audit-parallel-plan.mjs [root] [--json] [--strict]\n\nOffline validator for ReconParallelPlanV1 and agent-dogfood plan-only behavior. It runs frontier-orchestrator --plan only, then verifies agent-dogfood --plan-json --plan-only --json with model/provider env removed and checks that no .pi/evidence/remote/agent-parallel-dogfood/<timestamp> directory is created.`);
+	console.log(`Usage: node scripts/reverse-agent/audit-parallel-plan.mjs [root] [--json] [--strict]\n\nOffline validator for ReconParallelPlanV1 and agent-dogfood plan-only behavior. It runs frontier-orchestrator --plan only, then verifies agent-dogfood --plan-json --plan-only --json with model/provider env removed and checks that no .repi-harness/evidence/remote/agent-parallel-dogfood/<timestamp> directory is created.`);
 }
 
 function main(argv) {

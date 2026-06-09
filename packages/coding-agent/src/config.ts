@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync, readFileSync, realpathSync } from "fs";
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join, resolve, sep, win32 } from "path";
 import { fileURLToPath } from "url";
@@ -272,7 +272,7 @@ function isSelfUpdatePathWritable(): boolean {
 	try {
 		accessSync(packageDir, constants.W_OK);
 		accessSync(dirname(packageDir), constants.W_OK);
-		return true;
+		return (statSync(packageDir).mode & 0o222) !== 0 && (statSync(dirname(packageDir)).mode & 0o222) !== 0;
 	} catch {
 		return false;
 	}
@@ -309,7 +309,7 @@ export function getSelfUpdateUnavailableInstruction(
 ): string {
 	const method = detectInstallMethod();
 	if (method === "bun-binary") {
-		return `Download from: https://github.com/earendil-works/pi-mono/releases/latest`;
+		return `Download from: https://github.com/multi-zhangyang/pi-recon-agent/releases/latest`;
 	}
 	const command = getSelfUpdateCommandForMethod(method, packageName, updatePackageName, npmCommand);
 	if (command) {
@@ -342,7 +342,7 @@ export function getUpdateInstruction(packageName: string): string {
  */
 export function getPackageDir(): string {
 	// Allow override via environment variable (useful for Nix/Guix where store paths tokenize poorly)
-	const envDir = process.env.PI_PACKAGE_DIR;
+	const envDir = process.env.REPI_PACKAGE_DIR || process.env.PI_PACKAGE_DIR;
 	if (envDir) {
 		return normalizePath(envDir);
 	}
@@ -460,17 +460,19 @@ try {
 	if (err.code !== "ENOENT") throw e;
 }
 
-const runtimeAppNameOverride = process.env.PI_CODING_AGENT_APP_NAME?.trim();
-const runtimeConfigDirOverride = process.env.PI_CODING_AGENT_CONFIG_DIR?.trim();
+const runtimeAppNameOverride =
+	process.env.REPI_CODING_AGENT_APP_NAME?.trim() || process.env.PI_CODING_AGENT_APP_NAME?.trim();
+const runtimeConfigDirOverride =
+	process.env.REPI_CODING_AGENT_CONFIG_DIR?.trim() || process.env.PI_CODING_AGENT_CONFIG_DIR?.trim();
 const piConfigName: string | undefined = runtimeAppNameOverride || pkg.piConfig?.name;
-export const PACKAGE_NAME: string = pkg.name || "@earendil-works/pi-coding-agent";
-export const APP_NAME: string = piConfigName || "pi";
+export const PACKAGE_NAME: string = pkg.name || "@pi-recon/repi-coding-agent";
+export const APP_NAME: string = piConfigName || "repi";
 export const IS_REPI_PRODUCT: boolean = process.env.PI_RECON_PRODUCT === "1" || APP_NAME === "repi";
-export const APP_TITLE: string = piConfigName ? APP_NAME : "π";
-export const CONFIG_DIR_NAME: string = runtimeConfigDirOverride || pkg.piConfig?.configDir || ".pi";
+export const APP_TITLE: string = piConfigName ? APP_NAME : "REPI";
+export const CONFIG_DIR_NAME: string = runtimeConfigDirOverride || pkg.piConfig?.configDir || ".repi";
 export const VERSION: string = pkg.version || "0.0.0";
 
-// e.g., PI_CODING_AGENT_DIR or TAU_CODING_AGENT_DIR
+// e.g., REPI_CODING_AGENT_DIR; PI_CODING_AGENT_DIR remains supported for compatibility
 export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
 export const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_DIR`;
 
@@ -482,7 +484,7 @@ const DEFAULT_SHARE_VIEWER_URL = IS_REPI_PRODUCT ? "https://gist.github.com/" : 
 
 /** Get the share viewer URL for a gist ID */
 export function getShareViewerUrl(gistId: string): string {
-	const baseUrl = process.env.PI_SHARE_VIEWER_URL || DEFAULT_SHARE_VIEWER_URL;
+	const baseUrl = process.env.REPI_SHARE_VIEWER_URL || process.env.PI_SHARE_VIEWER_URL || DEFAULT_SHARE_VIEWER_URL;
 	if (IS_REPI_PRODUCT && !process.env.PI_SHARE_VIEWER_URL) {
 		return `${baseUrl}${gistId}`;
 	}
@@ -490,10 +492,10 @@ export function getShareViewerUrl(gistId: string): string {
 }
 
 // =============================================================================
-// User Config Paths (~/.pi/agent/*)
+// User Config Paths (~/.repi/agent/*)
 // =============================================================================
 
-/** Get the agent config directory (e.g., ~/.pi/agent/) */
+/** Get the agent config directory (e.g., ~/.repi/agent/) */
 export function getAgentDir(): string {
 	const envDir = process.env[ENV_AGENT_DIR];
 	if (envDir) {

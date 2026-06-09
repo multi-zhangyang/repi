@@ -1,5 +1,5 @@
-import type { AgentTool, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { fauxAssistantMessage, fauxToolCall, type Model } from "@earendil-works/pi-ai";
+import type { AgentTool, ThinkingLevel } from "@pi-recon/repi-agent-core";
+import { fauxAssistantMessage, fauxToolCall, type Model } from "@pi-recon/repi-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BuildSystemPromptOptions, ExtensionAPI } from "../../src/index.ts";

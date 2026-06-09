@@ -13628,7 +13628,7 @@ function swarmArtifactGlobs(worker: SwarmWorkerRuntime, delegationArtifact?: str
 			...worker.sourceArtifacts,
 			"memory/evidence-ledger.md",
 			"memory/commander-merge-board.md",
-			".pi/evidence/**",
+			"recon/evidence/**",
 		].filter((item): item is string => Boolean(item))),
 	).slice(0, 16);
 }
@@ -16878,7 +16878,7 @@ function buildExactResumeContextPack(ref: string, target?: string): ContextPackA
 }
 
 function contextRefLooksExplicit(ref?: string): boolean {
-	return Boolean(ref && (/\.pi\/evidence\/contexts|\.md$|^\/|^\.\.?\/|context-pack\/|compaction/i.test(ref) || existsSync(ref) || existsSync(join(process.cwd(), ref))));
+	return Boolean(ref && (/(?:recon|\.pi)\/evidence\/contexts|\.md$|^\/|^\.\.?\/|context-pack\/|compaction/i.test(ref) || existsSync(ref) || existsSync(join(process.cwd(), ref))));
 }
 
 function buildContextOutput(action: "pack" | "show" | "resume" = "pack", options: { target?: string; contextRef?: string } = {}): string {
@@ -21392,30 +21392,30 @@ function harnessFileCheck(params: {
 
 function harnessSourceFiles(): Array<{ id: string; path: string; markers: string[] }> {
 	return [
-		{ id: "profile:system", path: harnessWorkspacePath(".pi/SYSTEM.md"), markers: ["Pi-RECON", "re_harness"] },
+		{ id: "profile:system", path: harnessWorkspacePath("repi-profile/SYSTEM.md"), markers: ["Pi-RECON", "re_harness"] },
 		{
 			id: "profile:append-system",
-			path: harnessWorkspacePath(".pi/APPEND_SYSTEM.md"),
+			path: harnessWorkspacePath("repi-profile/APPEND_SYSTEM.md"),
 			markers: ["operator_command_floor", "re_harness"],
 		},
 		{
 			id: "profile:extension",
-			path: harnessWorkspacePath(".pi/extensions/reverse-pentest-core.ts"),
+			path: harnessWorkspacePath("repi-profile/extensions/reverse-pentest-core.ts"),
 			markers: ["re_harness", "HarnessArtifact", "harness_artifact"],
 		},
 		{
 			id: "profile:skill",
-			path: harnessWorkspacePath(".pi/skills/reverse-pentest-orchestrator/SKILL.md"),
+			path: harnessWorkspacePath("repi-profile/skills/reverse-pentest-orchestrator/SKILL.md"),
 			markers: ["reverse_capability_guards", "re_harness"],
 		},
 		{
 			id: "profile:decision-prompt",
-			path: harnessWorkspacePath(".pi/prompts/decision.md"),
+			path: harnessWorkspacePath("repi-profile/prompts/decision.md"),
 			markers: ["compact_resume_case_memory", "re_harness"],
 		},
 		{
 			id: "profile:chain-prompt",
-			path: harnessWorkspacePath(".pi/prompts/chain.md"),
+			path: harnessWorkspacePath("repi-profile/prompts/chain.md"),
 			markers: ["proof_exit_criteria", "harness_artifact"],
 		},
 		{
@@ -21462,9 +21462,9 @@ function harnessInstalledFiles(
 			missingStatus,
 		},
 		{
-			id: "install:node-deps:pi-coding-agent",
-			path: join(getAgentDir(), "node_modules", "@earendil-works", "pi-coding-agent", "package.json"),
-			markers: ["@earendil-works/pi-coding-agent"],
+			id: "install:node-deps:repi-coding-agent",
+			path: join(getAgentDir(), "node_modules", "@pi-recon", "repi-coding-agent", "package.json"),
+			markers: ["@pi-recon/repi-coding-agent"],
 			missingStatus,
 		},
 	];
@@ -21637,7 +21637,7 @@ function buildHarnessArtifact(mode: HarnessMode = "quick"): HarnessArtifact {
 	];
 	const regressionGuards = [
 		...criticalChecks.map((check) => `${check.status}:${check.id}:${check.evidence[0] ?? ""}`),
-		"transpile_guard=node TypeScript transpile packages/coding-agent/src/core/recon-profile.ts .pi/extensions/reverse-pentest-core.ts",
+		"transpile_guard=node TypeScript transpile packages/coding-agent/src/core/recon-profile.ts repi-profile/extensions/reverse-pentest-core.ts",
 		"focused_tests=node node_modules/vitest/dist/cli.js --run packages/coding-agent/test/recon-profile.test.ts packages/coding-agent/test/args.test.ts",
 		"repo_check=npm run check",
 		"verify_profile=scripts/reverse-agent/verify-profile.mjs /root/pi-diy/pi",

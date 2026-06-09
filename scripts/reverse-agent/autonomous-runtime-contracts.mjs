@@ -457,7 +457,7 @@ function formatMarkdown(result) {
 
 function writeOutputs(root, result) {
 	const stamp = result.generatedAt.replace(/[:.]/g, "-");
-	const outDir = join(root, ".pi", "evidence", "autonomous-runtime-contracts", stamp);
+	const outDir = join(root, ".repi-harness", "evidence", "autonomous-runtime-contracts", stamp);
 	mkdirSync(outDir, { recursive: true });
 	writeFileSync(join(outDir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
 	writeFileSync(join(outDir, "report.md"), formatMarkdown(result));

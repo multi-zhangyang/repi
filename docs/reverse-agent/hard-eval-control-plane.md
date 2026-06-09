@@ -1,6 +1,6 @@
 # Pi-RECON Hard Eval Control Plane
 
-`hard-eval-control-plane.mjs` 是 Pi-RECON 的离线严苛评测控制面。它不访问真实网站、不调用模型 provider、不重跑 benchmark，而是读取当前 `.pi/evidence/remote/*` 已有证据，把“agent 编排是否成功”和“平台 claim 是否被证明”拆开。
+`hard-eval-control-plane.mjs` 是 Pi-RECON 的离线严苛评测控制面。它不访问真实网站、不调用模型 provider、不重跑 benchmark，而是读取当前 `.repi-harness/evidence/remote/*` 已有证据，把“agent 编排是否成功”和“平台 claim 是否被证明”拆开。
 
 目的：避免把 agent 并行运行成功、hard-score 高分或旧证据成功，误写成当前 B站 / 小红书 / 抖音 same-window claim 全绿。
 
@@ -15,20 +15,20 @@ node scripts/reverse-agent/hard-eval-control-plane.mjs . --write
 默认只输出，不写文件。`--write` 会生成：
 
 ```text
-.pi/evidence/hard-eval-control-plane/<timestamp>/result.json
-.pi/evidence/hard-eval-control-plane/<timestamp>/contract.json
-.pi/evidence/hard-eval-control-plane/<timestamp>/ledger.jsonl
-.pi/evidence/hard-eval-control-plane/<timestamp>/gate.json
-.pi/evidence/hard-eval-control-plane/<timestamp>/failure-ledger.jsonl
-.pi/evidence/hard-eval-control-plane/<timestamp>/repair-queue.jsonl
-.pi/evidence/hard-eval-control-plane/<timestamp>/report.md
+.repi-harness/evidence/hard-eval-control-plane/<timestamp>/result.json
+.repi-harness/evidence/hard-eval-control-plane/<timestamp>/contract.json
+.repi-harness/evidence/hard-eval-control-plane/<timestamp>/ledger.jsonl
+.repi-harness/evidence/hard-eval-control-plane/<timestamp>/gate.json
+.repi-harness/evidence/hard-eval-control-plane/<timestamp>/failure-ledger.jsonl
+.repi-harness/evidence/hard-eval-control-plane/<timestamp>/repair-queue.jsonl
+.repi-harness/evidence/hard-eval-control-plane/<timestamp>/report.md
 ```
 
 同时追加 canonical append-only ledger：
 
 ```text
-.pi/evidence/failures/ledger.jsonl
-.pi/evidence/repairs/queue.jsonl
+.repi-harness/evidence/failures/ledger.jsonl
+.repi-harness/evidence/repairs/queue.jsonl
 ```
 
 `--strict-claims` 会在 required platform claim 存在 gap 时返回非零；这个开关用于恢复 live 评测后的硬门禁，不建议在控制面开发期间默认开启。
@@ -38,9 +38,9 @@ node scripts/reverse-agent/hard-eval-control-plane.mjs . --write
 脚本只读取最新已有 artifact：
 
 ```text
-.pi/evidence/remote/same-window-live/**/result.json
-.pi/evidence/remote/agent-parallel-dogfood/**/result.json
-.pi/evidence/remote/hard-score/**/scoreboard.json
+.repi-harness/evidence/remote/same-window-live/**/result.json
+.repi-harness/evidence/remote/agent-parallel-dogfood/**/result.json
+.repi-harness/evidence/remote/hard-score/**/scoreboard.json
 ```
 
 证据优先级：

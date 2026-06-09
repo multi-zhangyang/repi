@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="${1:-$(pwd)}"
-PI_DIR="$ROOT/.pi"
+PI_DIR="$ROOT/repi-profile"
 OUT="$PI_DIR/tools/tool-index.md"
 mkdir -p "$PI_DIR/tools"
 TOOLS=(

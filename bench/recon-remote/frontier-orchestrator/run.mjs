@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 
 const repoRoot = resolve(process.env.RECON_REPO_ROOT || '.');
-const evidenceRoot = join(repoRoot, '.pi', 'evidence', 'remote');
+const evidenceRoot = join(repoRoot, '.repi-harness', 'evidence', 'remote');
 const matrixRunner = 'bench/recon-remote/frontier-matrix/run.mjs';
 const argv = process.argv.slice(2);
 
@@ -293,7 +293,7 @@ function makeParallelPlan(selectedCases, options, latest, shards) {
     evidenceContract: shard.cases.flatMap(caseEvidenceContract),
     mergeKeys: caseMergeKeys(shard.cases),
     dependencies: [],
-    artifactGlobs: ['.pi/evidence/remote/frontier-matrix/**/result.json', '.pi/evidence/remote/real-platform/**/result.json', '.pi/evidence/remote/douyin-nowatermark/**/result.json'],
+    artifactGlobs: ['.repi-harness/evidence/remote/frontier-matrix/**/result.json', '.repi-harness/evidence/remote/real-platform/**/result.json', '.repi-harness/evidence/remote/douyin-nowatermark/**/result.json'],
     limits: { timeoutMs: options.timeoutMs, maxCommands: 1 },
   }));
   return {
@@ -308,7 +308,7 @@ function makeParallelPlan(selectedCases, options, latest, shards) {
     merge: {
       strategy: 'frontier-summary',
       evidenceOrder: ['same_window_live', 'runtime_artifact', 'network', 'served_asset', 'process_config', 'persisted_state'],
-      expectedArtifacts: ['.pi/evidence/remote/frontier-matrix/**/result.json'],
+      expectedArtifacts: ['.repi-harness/evidence/remote/frontier-matrix/**/result.json'],
       command: 'node bench/recon-remote/frontier-orchestrator/run.mjs --summarize-latest --json',
       conflictPolicy: 'latest runtime evidence and negative controls overrule stale green platform rows',
     },
@@ -322,7 +322,7 @@ function makePlan(selectedCases, options, latest) {
     command: commandFor(cases, options).shell,
     evidenceContract: cases.flatMap(caseEvidenceContract),
     mergeKeys: caseMergeKeys(cases),
-    expectedArtifacts: ['.pi/evidence/remote/frontier-matrix/**/result.json'],
+    expectedArtifacts: ['.repi-harness/evidence/remote/frontier-matrix/**/result.json'],
   }));
   const parallelPlan = makeParallelPlan(selectedCases, options, latest, shards);
   return {
