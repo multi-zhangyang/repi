@@ -225,6 +225,7 @@ The harness writes artifacts under:
 .pi/tools/tool-index.md           Tool availability index
 docs/reverse-agent/README.md      Detailed reverse-agent docs
 docs/reverse-agent/model-provider-formats.md
+bench/recon-remote/               Live remote benchmark harnesses
 packages/coding-agent/docs/recon.md
 scripts/reverse-agent/            Install, verify, and tool-index scripts
 packages/coding-agent/src/core/    Built-in profile source

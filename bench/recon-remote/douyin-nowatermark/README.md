@@ -1,0 +1,89 @@
+# Douyin no-watermark live benchmark
+
+A live Pi-RECON benchmark for short-video media URL reverse analysis. Given a Douyin share/video URL, the harness records redirect behavior, captures browser/CDP runtime traffic when static extraction is weak, extracts `aweme_id` / media IDs / state JSON hints, ranks media URL candidates, builds `playwm -> play` style no-watermark hypotheses, and verifies candidates with `HEAD` or `Range: bytes=0-0` probes.
+
+It writes evidence only under `.pi/evidence/remote/douyin-nowatermark/`; those runtime artifacts are git-ignored.
+
+## Usage
+
+```bash
+export DOUYIN_SHARE_URL='https://v.douyin.com/xxxxx/'
+node bench/recon-remote/douyin-nowatermark/run.mjs
+```
+
+or:
+
+```bash
+node bench/recon-remote/douyin-nowatermark/run.mjs 'https://v.douyin.com/xxxxx/'
+```
+
+Force browser/CDP capture through local Chrome:
+
+```bash
+RECON_BROWSER=1 RECON_PROBE_LIMIT=12 \
+  node bench/recon-remote/douyin-nowatermark/run.mjs 'https://v.douyin.com/xxxxx/'
+```
+
+Probe generated aweme detail endpoint hypotheses after an `aweme_id` is found:
+
+```bash
+RECON_API_PROBE=1 RECON_BROWSER=1 \
+  node bench/recon-remote/douyin-nowatermark/run.mjs 'https://v.douyin.com/xxxxx/'
+```
+
+## Environment
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `RECON_BROWSER` | `auto` | `auto`, `1`, or `0`; uses local Chrome CDP capture when static extraction is weak or when forced. |
+| `RECON_BROWSER_TIMEOUT_MS` | `45000` | Max browser capture time. |
+| `RECON_BROWSER_QUIET_MS` | `2500` | Network quiet window before ending capture. |
+| `RECON_PROBE_LIMIT` | `28` | Number of ranked media candidates / transform hypotheses to probe. |
+| `RECON_API_PROBE` | unset | Set `1` to request generated aweme detail endpoint hypotheses. |
+| `RECON_MAX_REDIRECTS` | `10` | Share URL redirect limit. |
+| `RECON_MAX_PROBE_REDIRECTS` | `5` | Media probe redirect limit. |
+| `RECON_MAX_BODY_BYTES` | `5000000` | Max stored text/HTML body bytes per source. |
+| `RECON_USER_AGENT` | mobile Chrome UA | Browser/fetch user-agent. |
+| `RECON_COOKIE` | unset | Optional runtime cookie for browser/fetch; redacted in artifacts by default. |
+| `RECON_EXTRA_HEADERS_JSON` | `{}` | Additional headers as JSON. |
+| `RECON_REDACT_HEADERS` | `1` | Set `0` to keep sensitive headers in local evidence. |
+| `RECON_CHROME_BIN` | auto | Chrome/Chromium binary path. |
+
+## Output
+
+Artifacts are written to:
+
+```text
+.pi/evidence/remote/douyin-nowatermark/<timestamp>/
+```
+
+Files:
+
+```text
+artifact.md    Human-readable evidence summary
+result.json    Structured redirect/candidate/probe data
+body.html      Static final response body
+browser.json   Chrome/CDP request/response/body/storage artifact when browser capture runs
+browser.html   Rendered document HTML when browser capture runs
+```
+
+## Verdicts
+
+| Verdict | Meaning |
+|---|---|
+| `strong-candidate` | A reachable video candidate was probed and has no common watermark markers in the URL/redirect path. |
+| `video-candidate` | A video resource was found, but no-watermark confidence is weaker. |
+| `needs-manual-replay` | Browser/CDP found relevant candidates, but replay or endpoint parameters need manual verification. |
+| `needs-browser-capture` | Static fetch found candidate URLs, but browser/CDP capture is needed. |
+| `no-candidate` | No usable media candidates were extracted. |
+
+## Pi-RECON follow-up
+
+Use the generated `artifact.md` as input to:
+
+```text
+/re-map <share-url> 2
+/re-live-browser run <share-url>
+/re-replayer plan <candidate-url>
+/re-verifier matrix <artifact-dir>
+```

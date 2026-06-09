@@ -55,6 +55,7 @@ Pi-RECON 在 `packages/coding-agent/src/core/recon-profile.ts`、`.pi/SYSTEM.md`
 | `.pi/evidence/knowledge/*.md` | `re_knowledge_graph build|query` 生成的 knowledge_graph、case_signatures、similarity_index、worker_routing_hints、worker_scoreboard、adaptive_routing_hints、worker_promotion_queue、compact_resume_case_memory、compact_resume_routing_hints 与 command_strategy_hints |
 | `.pi/tools/tool-index.md` | 本机工具可用性索引，避免猜工具路径 |
 | `docs/reverse-agent/model-provider-formats.md` | 主流模型/API/provider 格式模板：OpenAI-compatible、Anthropic-compatible、Gemini、OpenRouter、local runtime、Azure、Bedrock、Vertex、Cloudflare/Vercel 等 |
+| `bench/recon-remote/douyin-nowatermark/` | 真实网络 benchmark：对短视频分享页做 redirect、Chrome/CDP、状态 JSON、媒体 URL、无水印候选变换与 HEAD/range 验证 |
 | `scripts/reverse-agent/refresh-tool-index.sh` | 离线刷新工具索引脚本 |
 | `scripts/reverse-agent/verify-profile.mjs` | 配置完整性验证脚本 |
 | `scripts/reverse-agent/install-global-profile.sh` | 安装到 `~/.pi/agent` 的全局 profile 脚本（会备份同名文件） |
