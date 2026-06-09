@@ -508,6 +508,20 @@ async function captureCdp(url, outDir, options = {}) {
     }
     const evalResult = await client.send('Runtime.evaluate', { returnByValue: true, awaitPromise: true, expression: `JSON.stringify({href:location.href,title:document.title,html:document.documentElement.outerHTML.slice(0, ${maxBodyBytes}),localStorage:{...localStorage},sessionStorage:{...sessionStorage},cookies:document.cookie,piReconFetchLog:window.__PI_RECON_FETCH_LOG__||[],piReconSignerLog:window.__PI_RECON_SIGNER_LOG__||[]})` });
     artifact.storage = safeJsonParse(evalResult.result?.value || '{}', {});
+    try {
+      const allCookies = await client.send('Network.getAllCookies');
+      const scopedCookies = (allCookies.cookies || []).filter((cookie) => {
+        try {
+          const host = new URL(url.toString()).hostname;
+          const domain = String(cookie.domain || '').replace(/^\./, '');
+          return domain && (host.endsWith(domain) || /xiaohongshu|xhscdn|edith|bilibili|bilivideo/i.test(domain));
+        } catch { return false; }
+      });
+      artifact.storage.cookieNames = scopedCookies.map((cookie) => cookie.name).slice(0, 80);
+      artifact.storage.cookieHeader = scopedCookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
+    } catch (error) {
+      artifact.errors.push({ type: 'cookies', message: error instanceof Error ? error.message : String(error) });
+    }
     artifact.storage.cookies = artifact.storage.cookies ? '<redacted>' : '';
     await client.close();
   } catch (error) {
@@ -681,32 +695,87 @@ function stripRuntimeSecrets(cdp) {
   };
 }
 
-async function replayXhsReadOnly(cdp) {
-  const seed = (cdp.requests || []).find((request) => request.method === 'GET' && /\/api\/sns\/h5\/v1\/note_info/i.test(request.rawUrl || request.url || ''))
-    || (cdp.requests || []).find((request) => request.method === 'GET' && /\/api\/sns\/web\//i.test(request.rawUrl || request.url || ''));
-  if (!seed) return { attempted: false, reason: 'no read-only XHS API GET seed captured' };
+function classifyXhsEndpoint(value = '') {
+  const url = String(value || '');
+  if (/\/api\/sns\/h5\/v1\/note_info/i.test(url)) return 'h5-note-info';
+  if (/\/api\/sns\/web\/(?:v\d+\/)?note|\/api\/sns\/web\/v\d+\/feed/i.test(url)) return 'web-note-or-feed';
+  if (/\/api\/sns\/web\/v2\/user\/me/i.test(url)) return 'web-user-me';
+  if (/\/api\/sns\/web\/v1\/system\/config/i.test(url)) return 'web-system-config';
+  if (/\/api\/sns\/web\/global\/config/i.test(url)) return 'web-global-config';
+  return /\/api\/sns\/web\//i.test(url) ? 'web-api' : /\/api\/sns\/h5\//i.test(url) ? 'h5-api' : 'other';
+}
+function isXhsReadOnlySeed(request) {
+  const raw = request.rawUrl || request.url || '';
+  if (request.method !== 'GET') return false;
+  if (!/\/api\/sns\/(?:web|h5)\//i.test(raw)) return false;
+  if (/\/login\/|\/qrcode|\/activate|racing_report|report|captcha|redcaptcha|access_check/i.test(raw)) return false;
+  return true;
+}
+function xhsSignedHeaderNames(headers = {}) {
+  return Object.keys(headers || {}).filter((name) => /^x-s$|^x-t$|^x-s-common$|^x-b3-traceid|^x-xray-traceid/i.test(name)).sort();
+}
+function parseMaybeJson(text) { return safeJsonParse(text, null); }
+function xhsStructuredReplay(text, endpointClass = '') {
+  const parsed = parseMaybeJson(text);
+  const data = parsed?.data;
+  const success = parsed?.success === true || parsed?.code === 0;
+  const dataText = typeof data === 'string' ? data : JSON.stringify(data || {});
+  const dataObjectKeys = data && typeof data === 'object' && !Array.isArray(data) ? Object.keys(data) : [];
+  const anyStructured = success && (dataObjectKeys.length > 0 || /user_id|note_id|image|title|desc|items?|cursor|config/i.test(dataText));
+  const noteStructured = success && /note_id|noteId|image_list|interact_info|share_info|tag_list|title|desc|items?|cursor/i.test(dataText);
+  return { success, anyStructured, noteStructured, dataKeys: dataObjectKeys.slice(0, 20) };
+}
+function xhsReplayVariantHeaders(seed, variant, cdp) {
   const headers = { ...(seed.replayHeaders || {}) };
-  for (const key of Object.keys(headers)) if (/^(host|content-length|accept-encoding|connection|sec-fetch-|cookie)$/i.test(key)) delete headers[key];
-  const observedResponse = (cdp.responses || []).find((response) => response.id === seed.id);
-  const observedBody = (cdp.bodies || []).find((body) => body.id === seed.id);
+  if (variant === 'exact-cookie' && !Object.keys(headers).some((key) => /^cookie$/i.test(key)) && (cdp?.storage?.cookieHeader || cdp?.storage?.cookies)) headers.Cookie = cdp.storage.cookieHeader || cdp.storage.cookies;
+  for (const key of Object.keys(headers)) {
+    if (/^(host|content-length|accept-encoding|connection|sec-fetch-)$/i.test(key)) delete headers[key];
+    if (variant === 'no-cookie' && /^cookie$/i.test(key)) delete headers[key];
+  }
+  return headers;
+}
+function rankXhsSeed(seed, observedResponse, observedBody) {
+  const raw = seed.rawUrl || seed.url || '';
+  const endpointClass = classifyXhsEndpoint(raw);
+  const signedHeaders = xhsSignedHeaderNames(seed.replayHeaders || {});
+  const observedStatus = Number(observedResponse?.status || 0);
+  const observedShape = xhsStructuredReplay(observedBody?.text || '', endpointClass);
+  let score = 0;
+  if (/note|feed/i.test(endpointClass)) score += 80;
+  if (signedHeaders.length >= 3) score += 30;
+  if (observedStatus >= 200 && observedStatus < 300) score += 20;
+  if (observedStatus === 461) score += 12;
+  if (observedShape.noteStructured) score += 30;
+  else if (observedShape.anyStructured) score += 12;
+  if (/user-me|system-config|global-config/.test(endpointClass)) score += 5;
+  return { score, endpointClass, signedHeaders, observedShape };
+}
+async function replayOneXhsSeed(seed, variant, observedResponse, observedBody, cdp) {
+  const headers = xhsReplayVariantHeaders(seed, variant, cdp);
+  const headerNames = Object.keys(headers).sort();
+  const signedHeaderNames = xhsSignedHeaderNames(headers);
   try {
     const response = await fetch(seed.rawUrl || seed.url, { method: 'GET', redirect: 'manual', headers });
     const buffer = Buffer.from(await response.arrayBuffer());
-    const text = buffer.subarray(0, 1200).toString('utf8');
+    const text = buffer.subarray(0, 1600).toString('utf8');
     const parsed = safeJsonParse(text, {});
-    const headerNames = Object.keys(headers).sort();
+    const endpointClass = classifyXhsEndpoint(seed.rawUrl || seed.url || '');
+    const shape = xhsStructuredReplay(text, endpointClass);
+    const replayBodySha256 = sha256(buffer).slice(0, 24);
     return {
       attempted: true,
+      variant,
       url: redactUrl(seed.rawUrl || seed.url),
       status: response.status,
       headers: sanitizeHeaders(Object.fromEntries(response.headers.entries())),
       bytes: buffer.length,
-      sha256: sha256(buffer).slice(0, 24),
+      sha256: replayBodySha256,
       jsonCode: parsed?.code,
       success: parsed?.success,
+      structured: shape,
       seed: {
         id: seed.id,
-        endpointClass: /\/api\/sns\/h5\//i.test(seed.rawUrl || seed.url || '') ? 'h5-note-info' : 'web-api',
+        endpointClass,
         observedStatus: observedResponse?.status,
         observedMimeType: observedResponse?.mimeType,
         observedBodySha256: observedBody?.sha256,
@@ -716,15 +785,87 @@ async function replayXhsReadOnly(cdp) {
         observedStatus: observedResponse.status,
         replayStatus: response.status,
         observedBodySha256: observedBody?.sha256,
-        replayBodySha256: sha256(buffer).slice(0, 24),
+        replayBodySha256,
       } : undefined,
       headerNames,
-      signedHeaderNames: headerNames.filter((name) => /^x-s$|^x-t$|^x-s-common$|^x-b3-traceid|^x-xray-traceid/i.test(name)),
-      bodyHead: redactText(text),
+      signedHeaderNames,
+      bodyHead: redactText(text).slice(0, 1600),
     };
   } catch (error) {
-    return { attempted: true, url: redactUrl(seed.rawUrl || seed.url), status: 'error', error: error instanceof Error ? error.message : String(error) };
+    return { attempted: true, variant, url: redactUrl(seed.rawUrl || seed.url), status: 'error', error: error instanceof Error ? error.message : String(error), signedHeaderNames };
   }
+}
+function pickPrimaryXhsReplay(attempts) {
+  const sorted = [...attempts].sort((a, b) => {
+    const rank = (item) => {
+      const status = Number(item.status || 0);
+      let score = 0;
+      if (/note|feed/i.test(item.seed?.endpointClass || '')) score += 100;
+      if (status >= 200 && status < 300 && item.structured?.noteStructured) score += 1000;
+      else if (status === 461 || item.headers?.verifytype) score += 600;
+      else if (status >= 200 && status < 300 && item.structured?.anyStructured) score += 300;
+      if (item.signedHeaderNames?.length >= 3) score += 50;
+      if (item.variant === 'no-cookie') score += 5;
+      return score;
+    };
+    return rank(b) - rank(a);
+  });
+  return sorted[0] || { attempted: false, reason: 'no replay attempts' };
+}
+async function replayXhsReadOnly(cdp) {
+  const allSeeds = (cdp.requests || [])
+    .filter(isXhsReadOnlySeed)
+    .map((seed) => {
+      const observedResponse = (cdp.responses || []).find((response) => response.id === seed.id);
+      const observedBody = (cdp.bodies || []).find((body) => body.id === seed.id);
+      return { seed, observedResponse, observedBody, rank: rankXhsSeed(seed, observedResponse, observedBody) };
+    })
+    .sort((a, b) => b.rank.score - a.rank.score);
+  const uniqueSeeds = [];
+  const seen = new Set();
+  for (const item of allSeeds) {
+    const raw = item.seed.rawUrl || item.seed.url || '';
+    const key = `${classifyXhsEndpoint(raw)}:${redactUrl(raw).replace(/[?&](?:x-s|x-t|x-s-common)=[^&]+/ig, '')}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueSeeds.push(item);
+  }
+  const limit = Number(process.env.RECON_XHS_REPLAY_LIMIT || 8);
+  const selectedSeeds = uniqueSeeds.slice(0, limit);
+  if (!selectedSeeds.length) return { attempted: false, reason: 'no read-only XHS API GET seed captured' };
+  const attempts = [];
+  for (const item of selectedSeeds) {
+    for (const variant of ['no-cookie', 'exact-cookie']) {
+      attempts.push(await replayOneXhsSeed(item.seed, variant, item.observedResponse, item.observedBody, cdp));
+    }
+  }
+  const primary = pickPrimaryXhsReplay(attempts);
+  const best2xx = attempts.find((item) => Number(item.status) >= 200 && Number(item.status) < 300 && item.structured?.anyStructured) || null;
+  const bestNote2xx = attempts.find((item) => Number(item.status) >= 200 && Number(item.status) < 300 && item.structured?.noteStructured) || null;
+  const firstDivergence = attempts.find((item) => item.replayDivergence?.statusChanged || (item.replayDivergence?.observedBodySha256 && item.replayDivergence.observedBodySha256 !== item.replayDivergence.replayBodySha256)) || null;
+  return {
+    ...primary,
+    selectedSeedCount: selectedSeeds.length,
+    attemptCount: attempts.length,
+    attempts: attempts.map((item) => ({
+      variant: item.variant,
+      url: item.url,
+      status: item.status,
+      bytes: item.bytes,
+      sha256: item.sha256,
+      jsonCode: item.jsonCode,
+      success: item.success,
+      structured: item.structured,
+      seed: item.seed,
+      replayDivergence: item.replayDivergence,
+      signedHeaderNames: item.signedHeaderNames,
+      bodyHead: item.bodyHead,
+    })),
+    best2xxSignedReplay: best2xx ? { variant: best2xx.variant, url: best2xx.url, status: best2xx.status, endpointClass: best2xx.seed?.endpointClass, structured: best2xx.structured, signedHeaderNames: best2xx.signedHeaderNames, bodyHead: best2xx.bodyHead } : null,
+    bestNote2xxSignedReplay: bestNote2xx ? { variant: bestNote2xx.variant, url: bestNote2xx.url, status: bestNote2xx.status, endpointClass: bestNote2xx.seed?.endpointClass, structured: bestNote2xx.structured, signedHeaderNames: bestNote2xx.signedHeaderNames, bodyHead: bestNote2xx.bodyHead } : null,
+    firstDivergence: firstDivergence ? { variant: firstDivergence.variant, url: firstDivergence.url, seed: firstDivergence.seed, replayDivergence: firstDivergence.replayDivergence, status: firstDivergence.status, structured: firstDivergence.structured } : null,
+    seedRankSummary: selectedSeeds.map((item) => ({ id: item.seed.id, endpointClass: item.rank.endpointClass, score: item.rank.score, observedStatus: item.observedResponse?.status, observedShape: item.rank.observedShape, signedHeaderNames: item.rank.signedHeaders, url: redactUrl(item.seed.rawUrl || item.seed.url) })),
+  };
 }
 
 function analyzeXhs(url, cdp) {
@@ -743,6 +884,9 @@ async function runXhs(url, outDir) {
   const xhsReplay = await replayXhsReadOnly(cdp);
   const signatureTrace = analyzeSignatureTrace(cdp, 'xhs');
   if (xhsReplay.replayDivergence) signatureTrace.replayDivergence = xhsReplay.replayDivergence;
+  if (xhsReplay.firstDivergence) signatureTrace.firstReplayDivergence = xhsReplay.firstDivergence;
+  if (xhsReplay.best2xxSignedReplay) signatureTrace.best2xxSignedReplay = xhsReplay.best2xxSignedReplay;
+  if (xhsReplay.bestNote2xxSignedReplay) signatureTrace.bestNote2xxSignedReplay = xhsReplay.bestNote2xxSignedReplay;
   const safeCdp = stripRuntimeSecrets(cdp);
   await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(safeCdp, null, 2)}\n`);
   if (safeCdp.storage?.html) await writeFile(join(outDir, 'browser.html'), safeCdp.storage.html);

@@ -108,10 +108,20 @@ function observedParam(result, name) {
 function runtimeSignedDouyin(result) {
   return (result?.signatureSurface?.runtimeFetchHits || []).some((url) => /a_bogus|msToken|aweme|iteminfo/i.test(url));
 }
-function xhs2xxReplay(result) {
+function xhsAny2xxReplay(result) {
+  const best = result?.xhsReplay?.best2xxSignedReplay || result?.signatureTrace?.best2xxSignedReplay;
+  if (best && Number(best.status) >= 200 && Number(best.status) < 300 && best.structured?.anyStructured) return true;
   const status = Number(result?.xhsReplay?.status || 0);
   const body = String(result?.xhsReplay?.bodyHead || '');
   return result?.xhsReplay?.attempted && status >= 200 && status < 300 && !/"data"\s*:\s*\{\s*\}/.test(body) && /"success"\s*:\s*true|"code"\s*:\s*0|note|image|user/i.test(body);
+}
+function xhsNote2xxReplay(result) {
+  const best = result?.xhsReplay?.bestNote2xxSignedReplay || result?.signatureTrace?.bestNote2xxSignedReplay;
+  if (best && Number(best.status) >= 200 && Number(best.status) < 300 && best.structured?.noteStructured) return true;
+  const status = Number(result?.xhsReplay?.status || 0);
+  const endpoint = result?.xhsReplay?.seed?.endpointClass || '';
+  const body = String(result?.xhsReplay?.bodyHead || '');
+  return /note|feed/i.test(endpoint) && result?.xhsReplay?.attempted && status >= 200 && status < 300 && !/"data"\s*:\s*\{\s*\}/.test(body) && /note_id|noteId|image|title|desc|items?/i.test(body);
 }
 function proofLiveBound(result) {
   if (!result || result.verdict !== 'proof-gate-passed' || result.mode !== 'live-rerun') return false;
@@ -162,12 +172,14 @@ const xhsSignerEvents = xhs?.signatureTrace?.signerLog?.length || 0;
 const xhsBundles = xhs?.signatureTrace?.bundleHints?.length || 0;
 const xhsStatus = Number(xhs?.xhsReplay?.status || 0);
 const xhsHeaderOk = hasHeader(xhsHeaders, ['x-s', 'x-t', 'x-s-common']);
+const xhsAny2xx = xhsAny2xxReplay(xhs);
+const xhsNote2xx = xhsNote2xxReplay(xhs);
 gates.push(pass(
   'xiaohongshu_xs_2xx_signed_replay',
-  xhsHeaderOk && xhs2xxReplay(xhs) && xhsSignerEvents >= 20,
-  (xhsHeaderOk ? 6 : 0) + (xhs?.xhsReplay?.attempted ? 3 : 0) + (xhsStatus === 461 ? 3 : 0) + Math.min(3, Math.floor(xhsSignerEvents / 25)) + Math.min(3, xhsBundles * 2) + (xhs2xxReplay(xhs) ? 10 : 0),
+  xhsHeaderOk && xhsNote2xx && xhsSignerEvents >= 20,
+  (xhsHeaderOk ? 6 : 0) + (xhs?.xhsReplay?.attempted ? 3 : 0) + (xhsStatus === 461 ? 3 : 0) + Math.min(3, Math.floor(xhsSignerEvents / 25)) + Math.min(3, xhsBundles * 2) + (xhsAny2xx ? 4 : 0) + (xhsNote2xx ? 8 : 0),
   25,
-  { artifact: latest.get('xiaohongshu-note')?.path, verdict: xhs?.verdict, status: xhsStatus || null, signedHeaders: xhsHeaders, signerEvents: xhsSignerEvents, bundleHints: xhsBundles, replayDivergence: xhs?.signatureTrace?.replayDivergence || xhs?.xhsReplay?.replayDivergence },
+  { artifact: latest.get('xiaohongshu-note')?.path, verdict: xhs?.verdict, status: xhsStatus || null, signedHeaders: xhsHeaders, signerEvents: xhsSignerEvents, bundleHints: xhsBundles, any2xx: xhsAny2xx, note2xx: xhsNote2xx, best2xx: xhs?.xhsReplay?.best2xxSignedReplay || xhs?.signatureTrace?.best2xxSignedReplay, replayDivergence: xhs?.signatureTrace?.replayDivergence || xhs?.xhsReplay?.replayDivergence, firstDivergence: xhs?.xhsReplay?.firstDivergence || xhs?.signatureTrace?.firstReplayDivergence },
   'x-s/x-t/x-s-common captured + signed replay returns structured 2xx note data + signer events >=20',
   "RECON_TIMEOUT_MS=45000 RECON_QUIET_MS=5000 node bench/recon-remote/real-platform/run.mjs 'https://www.xiaohongshu.com/explore/66237c6e000000001c00893f' xiaohongshu-note"
 ));

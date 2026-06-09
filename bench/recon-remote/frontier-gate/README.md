@@ -45,4 +45,4 @@ result.json
 
 ## Current frontier interpretation
 
-A passing Bilibili gate means runtime WBI request/bundle evidence exists. `frontier-incomplete` still remains until Xiaohongshu returns structured 2xx signed replay data and Douyin produces an independently replayed structured 2xx aweme API response with the observed anti-bot surface.
+A passing Bilibili gate means runtime WBI request/bundle evidence exists. Xiaohongshu can earn partial frontier credit for exact-cookie signed 2xx web API replay, but it does not pass until note/feed data returns structured 2xx. `frontier-incomplete` still remains until Xiaohongshu note 2xx and Douyin structured aweme API replay are both solved.

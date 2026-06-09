@@ -117,10 +117,14 @@ function scoreArtifact(path, obj) {
     const bundleHints = obj.signatureTrace?.bundleHints?.length || 0;
     const signedReqs = obj.signatureTrace?.signedRequestCount || 0;
     const signerEvents = obj.signatureTrace?.signerLog?.length || 0;
+    const best2xx = obj.xhsReplay?.best2xxSignedReplay || obj.signatureTrace?.best2xxSignedReplay;
+    const bestNote2xx = obj.xhsReplay?.bestNote2xxSignedReplay || obj.signatureTrace?.bestNote2xxSignedReplay;
     if (signedHeaders >= 4 || signedReqs >= 2 || signerEvents >= 10) dimensions.signature_rebuild = 16;
     else if (signedHeaders >= 3) dimensions.signature_rebuild = 14;
     else if (antiSignals.size >= 4) dimensions.signature_rebuild = 8;
-    if (obj.xhsReplay?.attempted && safeNum(obj.xhsReplay.status) >= 200 && safeNum(obj.xhsReplay.status) < 300) dimensions.signed_replay = 15;
+    if (bestNote2xx?.structured?.noteStructured) dimensions.signed_replay = 15;
+    else if (best2xx?.structured?.anyStructured) dimensions.signed_replay = 13;
+    else if (obj.xhsReplay?.attempted && safeNum(obj.xhsReplay.status) >= 200 && safeNum(obj.xhsReplay.status) < 300) dimensions.signed_replay = 12;
     else if (obj.xhsReplay?.attempted) dimensions.signed_replay = 11;
     if (safeNum(obj.xhsReplay?.status) === 461 || obj.xhsReplay?.headers?.verifytype) dimensions.anti_bot_challenge = 15;
     else if (antiSignals.size >= 5) dimensions.anti_bot_challenge = 11;
@@ -129,7 +133,7 @@ function scoreArtifact(path, obj) {
     dimensions.exploit_chain = obj.xhsReplay?.attempted ? 8 : 4;
     if (obj.signatureTrace?.replayDivergence) dimensions.regression_readiness = 6;
     if (signerEvents >= 10) dimensions.regression_readiness = Math.max(dimensions.regression_readiness, 8);
-    evidence.push(`xhs signed_headers=${signedHeaders} signed_reqs=${signedReqs} replay=${obj.xhsReplay?.status || 'none'} bundles=${bundleHints} signer_events=${signerEvents}`);
+    evidence.push(`xhs signed_headers=${signedHeaders} signed_reqs=${signedReqs} replay=${obj.xhsReplay?.status || 'none'} best2xx=${best2xx?.endpointClass || 'none'} best_note_2xx=${Boolean(bestNote2xx)} bundles=${bundleHints} signer_events=${signerEvents}`);
   } else if (family === 'douyin-nowatermark') {
     const strong = countStrongDouyin(obj);
     const transform = (obj.transformHypotheses || []).some((h) => /playwm|watermark/i.test(`${h.source} ${h.hypothesis} ${h.reason}`));
