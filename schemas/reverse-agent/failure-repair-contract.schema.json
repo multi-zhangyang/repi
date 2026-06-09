@@ -21,6 +21,9 @@
         "artifactHashes",
         "repairId",
         "budget",
+        "retryBudget",
+        "evidenceWriteback",
+        "blockedConditions",
         "rollback"
       ],
       "properties": {
@@ -34,7 +37,7 @@
         "signature": { "type": "string" },
         "attempt": { "type": "integer", "minimum": 0 },
         "maxAttempts": { "type": "integer", "minimum": 0 },
-        "status": { "enum": ["failed", "retrying", "repair_queued", "repaired", "exhausted", "rolled_back", "escalated"] },
+        "status": { "enum": ["failed", "retrying", "repair_queued", "repaired", "exhausted", "rolled_back", "escalated", "blocked"] },
         "failedGates": { "type": "array", "items": { "type": "string" } },
         "artifacts": {
           "type": "array",
@@ -71,6 +74,39 @@
             "exhaustedAction": { "type": "string" }
           },
           "additionalProperties": true
+        },
+        "retryBudget": {
+          "type": "object",
+          "required": ["retryKey", "remainingAttempts", "exhaustedAction"],
+          "properties": {
+            "retryKey": { "type": "string" },
+            "remainingAttempts": { "type": "integer", "minimum": 0 },
+            "exhaustedAction": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "evidenceWriteback": {
+          "type": "object",
+          "required": ["failureLedgerPath", "repairQueuePath", "appendOnly"],
+          "properties": {
+            "failureLedgerPath": { "type": "string" },
+            "repairQueuePath": { "type": "string" },
+            "appendOnly": { "const": true },
+            "mode": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "blockedConditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["reason", "unblock"],
+            "properties": {
+              "reason": { "type": "string" },
+              "unblock": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
         },
         "rollback": {
           "type": "object",
@@ -110,6 +146,9 @@
         "paused",
         "allowlist",
         "rollbackCriteria",
+        "repairAction",
+        "blockedConditions",
+        "evidenceWriteback",
         "regressionGates"
       ],
       "properties": {
@@ -118,6 +157,7 @@
         "signature": { "type": "string" },
         "scope": { "type": "string" },
         "action": { "enum": ["rerun", "replace-command", "recapture-evidence", "refresh-context", "escalate", "rollback"] },
+        "repairAction": { "enum": ["rerun", "replace-command", "recapture-evidence", "refresh-context", "escalate", "rollback"] },
         "commands": { "type": "array", "items": { "type": "string" } },
         "expectedArtifacts": { "type": "array", "items": { "type": "string" } },
         "expectedGates": { "type": "array", "items": { "type": "string" } },
@@ -140,6 +180,29 @@
             "baseline": { "type": "string" },
             "mustRestore": { "type": "array", "items": { "type": "string" } },
             "verificationCommand": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "blockedConditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["reason", "unblock"],
+            "properties": {
+              "reason": { "type": "string" },
+              "unblock": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "evidenceWriteback": {
+          "type": "object",
+          "required": ["failureLedgerPath", "repairQueuePath", "appendOnly"],
+          "properties": {
+            "failureLedgerPath": { "type": "string" },
+            "repairQueuePath": { "type": "string" },
+            "appendOnly": { "const": true },
+            "mode": { "type": "string" }
           },
           "additionalProperties": true
         },

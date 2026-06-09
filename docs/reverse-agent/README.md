@@ -249,6 +249,34 @@ scripts/reverse-agent/install-global-profile.sh /root/pi-diy/pi
 
 `/re-supervisor review|show|repair [target]` / `re_supervisor` 是 specialist delegation 之上的评审层：读取 `delegation_artifact` 与最新 `swarm_artifact`，生成 `supervisor_review` 与 `supervisor_artifact`，按 worker/swarm 输出 `supervisor_verdict`、`swarm_artifact`、`worker_reviews`、`conflict_matrix`、`repair_queue`、`commander_merge_queue`、`commander_merge_budget`、`worker_scoreboard`、`priority_queue`、`gates`、`operator_next_actions`、`next_supervisor_command`；`commander_merge_queue` 把 swarm `worker_results` / `blocked` / `merge_digest` 回流到 `re_swarm merge`、`re_context pack`、`re_operator dispatch` 与 `re_proof_loop run`，并写出 `commander_merge_budget` / `worker_scoreboard` / `commander_runtime_policy`，artifact 写入 `.pi/evidence/supervisor/*.md`，并更新 `supervisor_review_ready` gate。
 
+## Runtime parallel-plan / claim-gate 边界
+
+`ReconParallelPlanV1` 目前已经能由 frontier orchestrator 离线输出，并可由
+agent-dogfood 以 `--plan-json --plan-only` 预览；runtime 层下一步是让
+`re_swarm`、`re_supervisor` 和 release gate 消费同一份计划合同，而不是各自维护
+松散摘要。这个边界只说明控制面接线要求，不表示 Pi-RECON 已经达到完整顶级
+autonomous red-team agent。
+
+- `re_swarm` 应消费 `parallelPlan.planId/source/workers/merge`，输出绑定
+  `planId` 和 `workerId` 的 `worker_runtime_packets`、`worker_executions`、
+  `worker_results`、`blocked`、`merge_digest`，并新增/保留 `planCoverage`：
+  worker、`evidenceContract`、`mergeKeys`、`artifactGlobs` 分别标记
+  `planned / observed / covered / blocked / unresolved`。
+- `re_supervisor` 应消费 `ReconParallelPlanV1`、`planCoverage`、runtime digest、
+  role contract 的 `claimGatePolicy` 和 claim ledger，输出 `planCoverageReview`、
+  `claimGatePolicy`、`claimGateResult`、`commander_merge_queue` 和 `repair_queue`。
+  未绑定 artifact sha256、JSON query、verifier pass、challenge resolution 的 claim
+  只能作为 observation，不能升级为 final/platform pass。
+- release gate metadata 应聚合 `planId`、`planSha256`、`planCoverageSummary`、
+  `claimGateVerdict`、`scoreSeparation`、`releaseBlockingGaps` 和
+  `controlPlaneMode=offline|plan-only|no-provider|no-live` 等字段，防止把
+  orchestration smoke check 写成真实平台成功。
+
+仍未完成：`re_swarm` 真实 runtime 写入完整 `planCoverage`、`re_supervisor` 把
+`claimGatePolicy` 变成硬门禁、release gate 生成机器可读 metadata、failure/repair
+ledger 接收缺覆盖和 claim 冲突并回流 proof-loop。完成这些前，当前结论仍是
+“专业逆向/渗透任务组织 agent”，不是完整 autonomous red-team agent。
+
 ## Reflection/evolution 闭环
 
 `/re-reflect plan|show|write` / `re_reflect` 消费 `supervisor_review` / `supervisor_artifact`，输出 `reflection_cycle` 与 `reflection_artifact`。`write` 模式将 lessons、failure_patterns、reuse_rules、repair_playbook 写入 field journal、evolution log 和 `.pi/memory/playbooks/*.md`，并闭合 `reflection_memory_ready`。
@@ -402,8 +430,7 @@ npm run audit:claim-ledger
 严格平台 claim 门禁可用：
 
 ```bash
-node scripts/reverse-agent/hard-eval-control-plane.mjs . --json \
-  | node scripts/reverse-agent/validate-claim-ledger.mjs --stdin --strict-claims
+npm run gate:claim-release
 ```
 
 在当前 evidence 下 strict-claims 应失败，因为最新 same-window 仍有小红书/抖音 required gaps；这正是反自嗨边界。
@@ -413,6 +440,14 @@ node scripts/reverse-agent/hard-eval-control-plane.mjs . --json \
 ```bash
 npm run gate:autonomous-contracts
 ```
+
+Failure/repair 合同现在同时保留机器字段和人类可读别名：
+
+- failure event：`category/signature/attempt/maxAttempts/status/failedGates/artifactHashes/budget/retryBudget/rollback/evidenceWriteback/blockedConditions`。
+- repair item：`action/repairAction/commands/expectedArtifacts/expectedGates/preconditions/paused/rollbackCriteria/regressionGates/blockedConditions/evidenceWriteback`。
+- `--write` 仍写 per-run 目录，同时追加 canonical append-only 路径：
+  `.pi/evidence/failures/ledger.jsonl` 与 `.pi/evidence/repairs/queue.jsonl`。
+- release 级 claim 不走 `audit:claim-ledger --allow-platform-gaps`，而走 `gate:claim-release`；当前 required platform gaps 存在时它应该阻断。
 
 ## Harness 自检层
 

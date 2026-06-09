@@ -913,6 +913,37 @@ type SwarmWorkerExecution = {
 	sourceArtifacts: string[];
 };
 
+type ReconParallelPlanWorkerV1 = {
+	id: string;
+	role: string;
+	objective: string;
+	commands: string[];
+	evidenceContract: string[];
+	mergeKeys: string[];
+	dependencies: string[];
+	artifactGlobs: string[];
+	limits: Record<string, unknown>;
+	prompt?: string[];
+	sourceWorkerId?: string;
+};
+
+type ReconParallelPlanV1 = {
+	kind: "ReconParallelPlanV1";
+	schemaVersion: 1;
+	planId: string;
+	target?: string;
+	source: "re_swarm" | "frontier-orchestrator" | "agent-dogfood" | "hard-eval-control-plane" | "operator" | "manual";
+	strategy?: string;
+	workers: ReconParallelPlanWorkerV1[];
+	merge: {
+		strategy: "supervisor" | "synthesizer" | "frontier-summary" | "claim-ledger";
+		evidenceOrder: string[];
+		expectedArtifacts: string[];
+		command?: string;
+		conflictPolicy?: string;
+	};
+};
+
 type SwarmArtifact = {
 	timestamp: string;
 	missionId?: string;
@@ -934,6 +965,9 @@ type SwarmArtifact = {
 	evidenceContract: string[];
 	commanderNextActions: string[];
 	handoffDigest: string[];
+	parallelPlan?: ReconParallelPlanV1;
+	planCoverage: string[];
+	releaseGateMetadata: string[];
 	sourceArtifacts: string[];
 };
 
@@ -969,6 +1003,9 @@ type SupervisorArtifact = {
 	priorityQueue: string[];
 	gates: string[];
 	nextActions: string[];
+	parallelPlan?: ReconParallelPlanV1;
+	planCoverage: string[];
+	claimGatePolicy: string[];
 	sourceArtifacts: string[];
 };
 
@@ -12725,9 +12762,125 @@ function swarmSpawnPrompt(packet: DelegatePacket, target?: string): string[] {
 	];
 }
 
+
+const RECON_PARALLEL_EVIDENCE_ORDER = [
+	"same_window_live",
+	"runtime_artifact",
+	"network",
+	"served_asset",
+	"process_config",
+	"persisted_state",
+];
+
+function swarmArtifactGlobs(worker: SwarmWorkerRuntime, delegationArtifact?: string): string[] {
+	return Array.from(
+		new Set([
+			delegationArtifact,
+			...worker.sourceArtifacts,
+			"memory/evidence-ledger.md",
+			"memory/commander-merge-board.md",
+			".pi/evidence/**",
+		].filter((item): item is string => Boolean(item))),
+	).slice(0, 16);
+}
+
+function buildSwarmParallelPlan(params: {
+	delegate: DelegateArtifact;
+	delegationArtifact?: string;
+	workers: SwarmWorkerRuntime[];
+	timestamp: string;
+	target?: string;
+	mode?: "plan" | "run" | "merge";
+}): ReconParallelPlanV1 {
+	const { delegate, delegationArtifact, workers, timestamp } = params;
+	const target = delegate.target ?? params.target;
+	const planIdBase = delegate.missionId ?? delegate.route ?? target ?? "mission";
+	return {
+		kind: "ReconParallelPlanV1",
+		schemaVersion: 1,
+		planId: `re_swarm/${slug(planIdBase).slice(0, 64)}/${timestamp}`,
+		target,
+		source: "re_swarm",
+		strategy: `${delegate.route ?? "operation"}:${params.mode ?? "plan"}`,
+		workers: workers.map((worker) => ({
+			id: worker.id,
+			role: worker.worker,
+			objective: worker.objective,
+			commands: worker.commands,
+			evidenceContract: worker.evidenceContract,
+			mergeKeys: worker.mergeKeys,
+			dependencies: worker.dependencies,
+			artifactGlobs: swarmArtifactGlobs(worker, delegationArtifact),
+			limits: {
+				timeoutMs: 60000,
+				maxCommands: Math.max(1, Math.min(5, worker.commands.length || 1)),
+				recommendedTools: worker.recommendedTools.slice(0, 8),
+			},
+			prompt: worker.spawnPrompt,
+			sourceWorkerId: worker.worker,
+		})),
+		merge: {
+			strategy: "supervisor",
+			evidenceOrder: RECON_PARALLEL_EVIDENCE_ORDER,
+			expectedArtifacts: Array.from(
+				new Set([
+					delegationArtifact,
+					...workers.flatMap((worker) => worker.sourceArtifacts),
+					"memory/evidence-ledger.md",
+					"memory/commander-merge-board.md",
+				].filter((item): item is string => Boolean(item))),
+			).slice(0, 40),
+			command: "re_supervisor review",
+			conflictPolicy:
+				"supervisor coverage_matrix, execution_audit, and runtime artifacts overrule narrative-only worker summaries; unresolved conflicts block final claim promotion",
+		},
+	};
+}
+
+function swarmPlanCoverage(swarm: Pick<SwarmArtifact, "workers" | "parallelPlan" | "coverageMatrix" | "collisionMatrix">): string[] {
+	const plan = swarm.parallelPlan;
+	if (!plan) return ["parallel_plan=missing status=fail next=re_swarm plan"];
+	const workerIds = new Set(swarm.workers.map((worker) => worker.id));
+	const planWorkerIds = new Set(plan.workers.map((worker) => worker.id));
+	const missingFromPlan = [...workerIds].filter((id) => !planWorkerIds.has(id));
+	const orphanPlanWorkers = [...planWorkerIds].filter((id) => !workerIds.has(id));
+	const contractRows = plan.workers.map((worker) => {
+		const coverageRows = swarm.coverageMatrix.filter((row) => row.includes(`worker=${worker.id}`));
+		const missingRows = coverageRows.filter((row) => /status=missing/i.test(row));
+		return `worker=${worker.id} contract=${worker.evidenceContract.length} coverage_rows=${coverageRows.length} missing=${missingRows.length}`;
+	});
+	return [
+		`parallel_plan_id=${plan.planId}`,
+		`parallel_plan_source=${plan.source}`,
+		`parallel_plan_workers=${plan.workers.length} swarm_workers=${swarm.workers.length}`,
+		`worker_binding=${missingFromPlan.length || orphanPlanWorkers.length ? "fail" : "pass"}`,
+		`missing_from_plan=${missingFromPlan.join(",") || "none"}`,
+		`orphan_plan_workers=${orphanPlanWorkers.join(",") || "none"}`,
+		`merge_strategy=${plan.merge.strategy}`,
+		`evidence_order=${plan.merge.evidenceOrder.join(">")}`,
+		`collision_rows=${swarm.collisionMatrix.length}`,
+		...contractRows,
+	].slice(0, 48);
+}
+
+function swarmReleaseGateMetadata(plan?: ReconParallelPlanV1): string[] {
+	if (!plan) return ["release_gate.parallel_plan_present=false", "release_gate.next=re_swarm plan"];
+	return [
+		"release_gate.parallel_plan_present=true",
+		`release_gate.parallel_plan_id=${plan.planId}`,
+		`release_gate.source=${plan.source}`,
+		`release_gate.worker_count=${plan.workers.length}`,
+		`release_gate.worker_required_fields=id,role,objective,commands,evidenceContract,mergeKeys,dependencies,artifactGlobs,limits`,
+		`release_gate.merge_strategy=${plan.merge.strategy}`,
+		`release_gate.evidence_order=${plan.merge.evidenceOrder.join(">")}`,
+		"release_gate.claim_promotion=blocked_until_supervisor_claim_gate_passes",
+	];
+}
+
 function buildSwarm(options: { target?: string; task?: string; mode?: "plan" | "run" | "merge" } = {}): SwarmArtifact {
 	ensureReconStorage();
 	const { delegate, path: delegationArtifact } = latestOrBuildDelegate(options);
+	const timestamp = new Date().toISOString();
 	const workers: SwarmWorkerRuntime[] = delegate.packets.map((packet, index) => {
 		const readyCommands = packet.steps
 			.filter((step) => step.status === "ready")
@@ -12791,8 +12944,18 @@ function buildSwarm(options: { target?: string; task?: string; mode?: "plan" | "
 		(worker) =>
 			`${worker.id} status=${worker.status} deps=${worker.dependencies.join(",")} tools=${worker.recommendedTools.slice(0, 5).join(",")}`,
 	);
+	const parallelPlan = buildSwarmParallelPlan({
+		delegate,
+		delegationArtifact,
+		workers,
+		timestamp,
+		target: options.target,
+		mode: options.mode ?? "plan",
+	});
+	const basePlanCoverage = swarmPlanCoverage({ workers, parallelPlan, coverageMatrix: [], collisionMatrix: collisionMatrix.slice(0, 24) });
+	const releaseGateMetadata = swarmReleaseGateMetadata(parallelPlan);
 	const swarm: SwarmArtifact = {
-		timestamp: new Date().toISOString(),
+		timestamp,
 		missionId: delegate.missionId,
 		route: delegate.route,
 		target: delegate.target ?? options.target,
@@ -12812,6 +12975,9 @@ function buildSwarm(options: { target?: string; task?: string; mode?: "plan" | "
 		evidenceContract,
 		commanderNextActions,
 		handoffDigest,
+		parallelPlan,
+		planCoverage: basePlanCoverage,
+		releaseGateMetadata,
 		sourceArtifacts: Array.from(
 			new Set([
 				delegationArtifact,
@@ -12820,7 +12986,13 @@ function buildSwarm(options: { target?: string; task?: string; mode?: "plan" | "
 			]),
 		).slice(0, 40),
 	};
-	return { ...swarm, ...deriveSwarmAuditFields(swarm) };
+	const auditFields = deriveSwarmAuditFields(swarm);
+	const swarmWithAudit = { ...swarm, ...auditFields };
+	return {
+		...swarmWithAudit,
+		planCoverage: swarmPlanCoverage(swarmWithAudit),
+		releaseGateMetadata: swarmReleaseGateMetadata(swarmWithAudit.parallelPlan),
+	};
 }
 
 function sanitizeSwarmCommand(command: string): string {
@@ -12917,7 +13089,6 @@ function swarmWorkerEvidenceText(swarm: SwarmArtifact, worker: SwarmWorkerRuntim
 		worker.worker,
 		worker.objective,
 		...worker.commands,
-		...worker.evidenceContract,
 		...worker.mergeKeys,
 		...swarm.executions
 			.filter((execution) => execution.workerId === worker.id)
@@ -13044,6 +13215,18 @@ function refreshSwarmRunDerivedFields(swarm: SwarmArtifact): SwarmArtifact {
 		retryQueue: [],
 	});
 	const target = swarm.target ?? "<target>";
+	const refreshedForPlan = {
+		...swarm,
+		workers,
+		blocked,
+		workerResults,
+		mergeDigest,
+		executionAudit: auditFields.executionAudit,
+		coverageMatrix: auditFields.coverageMatrix,
+		retryQueue: auditFields.retryQueue,
+	};
+	const planCoverage = swarmPlanCoverage(refreshedForPlan);
+	const releaseGateMetadata = swarmReleaseGateMetadata(swarm.parallelPlan);
 	const commanderNextActions = Array.from(
 		new Set([
 			...auditFields.retryQueue
@@ -13064,6 +13247,8 @@ function refreshSwarmRunDerivedFields(swarm: SwarmArtifact): SwarmArtifact {
 		workerResults,
 		mergeDigest,
 		...auditFields,
+		planCoverage,
+		releaseGateMetadata,
 		commanderNextActions,
 		sourceArtifacts: Array.from(
 			new Set([...swarm.sourceArtifacts, ...swarm.executions.flatMap((execution) => execution.sourceArtifacts)]),
@@ -13156,6 +13341,19 @@ function formatSwarm(swarm: SwarmArtifact, path?: string): string {
 			: ["- re_supervisor review"]),
 		"handoff_digest:",
 		...(swarm.handoffDigest.length ? swarm.handoffDigest.map((item) => `- ${item}`) : ["- none"]),
+		"parallel_plan:",
+		...(swarm.parallelPlan
+			? [
+					`- plan_id=${swarm.parallelPlan.planId}`,
+					`- source=${swarm.parallelPlan.source}`,
+					`- workers=${swarm.parallelPlan.workers.length}`,
+					`- merge=${swarm.parallelPlan.merge.strategy}`,
+				]
+			: ["- none"]),
+		"plan_coverage:",
+		...(swarm.planCoverage.length ? swarm.planCoverage.map((item) => `- ${item}`) : ["- none"]),
+		"release_gate_metadata:",
+		...(swarm.releaseGateMetadata.length ? swarm.releaseGateMetadata.map((item) => `- ${item}`) : ["- none"]),
 		`next_swarm_command: ${
 			swarm.mode === "merge"
 				? "re_supervisor review"
@@ -13242,7 +13440,7 @@ function writeSwarmArtifact(swarm: SwarmArtifact): string {
 	appendEvidence({
 		kind: swarm.mode === "run" ? "runtime" : "artifact",
 		title: `swarm-${swarm.mode} ${swarm.missionId ?? "no-mission"}`,
-		fact: `Built swarm ${swarm.mode} with ${swarm.workers.length} worker runtime packet(s), ${swarm.executions.length} execution(s), ${swarm.parallelGroups.length} parallel group(s), ${swarm.collisionMatrix.length} collision(s), ${swarm.blocked.length} blocked, audit=${swarm.executionAudit.length}, retries=${swarm.retryQueue.length}`,
+		fact: `Built swarm ${swarm.mode} with ${swarm.workers.length} worker runtime packet(s), ${swarm.executions.length} execution(s), ${swarm.parallelGroups.length} parallel group(s), ${swarm.collisionMatrix.length} collision(s), ${swarm.blocked.length} blocked, audit=${swarm.executionAudit.length}, retries=${swarm.retryQueue.length}, parallel_plan=${swarm.parallelPlan?.planId ?? "missing"}, plan_coverage=${swarm.planCoverage.length}, release_gate_metadata=${swarm.releaseGateMetadata.length}`,
 		command: `re_swarm ${swarm.mode}`,
 		path,
 		verify: `cat ${path}`,
@@ -13565,6 +13763,28 @@ function buildCommanderMergeBudget(
 	];
 }
 
+function supervisorClaimGatePolicy(plan?: ReconParallelPlanV1, planCoverage: string[] = []): string[] {
+	const workerBinding = planCoverage.find((row) => row.startsWith("worker_binding="))?.replace(/^worker_binding=/, "") ?? "missing";
+	const missingContractRows = planCoverage.filter((row) => /\bmissing=[1-9]/.test(row));
+	return [
+		`claim_gate_policy.parallel_plan_id=${plan?.planId ?? "missing"}`,
+		`claim_gate_policy.parallel_plan_source=${plan?.source ?? "missing"}`,
+		`claim_gate_policy.worker_binding=${workerBinding}`,
+		`claim_gate_policy.plan_contract_gaps=${missingContractRows.length}`,
+		"claim_gate_policy.proven_requires_artifact_sha256=true",
+		"claim_gate_policy.proven_requires_json_query=true",
+		"claim_gate_policy.final_pass_requires_verifier=true",
+		"claim_gate_policy.unresolved_challenge_blocks=true",
+		"claim_gate_policy.orchestration_score_never_implies_platform_success=true",
+		"claim_gate_policy.final_pass_blocks_on_plan_coverage_gap=true",
+	];
+}
+
+function supervisorPlanCoverage(swarm?: SwarmArtifact): string[] {
+	if (!swarm) return ["parallel_plan=missing status=blocked next=re_swarm plan"];
+	return swarmPlanCoverage(swarm);
+}
+
 function buildSupervisor(
 	options: { target?: string; task?: string; mode?: "review" | "repair" } = {},
 ): SupervisorArtifact {
@@ -13573,6 +13793,9 @@ function buildSupervisor(
 	const ledger = readText(evidenceLedgerPath());
 	const latestSwarm = latestSwarmForSupervisor({ target: options.target ?? delegate.target });
 	const swarm = latestSwarm?.swarm;
+	const parallelPlan = swarm?.parallelPlan;
+	const planCoverage = supervisorPlanCoverage(swarm);
+	const claimGatePolicy = supervisorClaimGatePolicy(parallelPlan, planCoverage);
 	const swarmReviews = swarm?.workers.map((worker) => reviewSwarmWorkerRuntime(worker, swarm, ledger)) ?? [];
 	const reviews = [...delegate.packets.map((packet) => reviewDelegatePacket(packet, ledger)), ...swarmReviews];
 	const commanderMergeQueue = swarmCommanderMergeQueue(swarm);
@@ -13583,6 +13806,9 @@ function buildSupervisor(
 			[
 				...delegate.gaps,
 				...(swarm?.blocked.map((item) => `swarm blocked: ${item}`) ?? []),
+				...(planCoverage.some((row) => /worker_binding=fail|parallel_plan=missing|\bmissing=[1-9]/.test(row))
+					? planCoverage.map((row) => `parallel plan coverage: ${row}`)
+					: []),
 				...(swarm?.mergeDigest.filter((item) => /^collision:/i.test(item)) ?? []),
 				...reviews.flatMap((review) => review.conflicts.map((item) => `${review.worker}: ${item}`)),
 				delegate.packets.length === 0 ? "no worker packets available" : undefined,
@@ -13622,6 +13848,7 @@ function buildSupervisor(
 		new Set([
 			...repairQueue.map((item) => item.replace(/^.+?:\s*/, "")),
 			...commanderMergeQueue,
+			...(parallelPlan ? [] : ["re_swarm plan"]),
 			"re_delegate merge",
 			"re_swarm merge",
 			"re_operation next",
@@ -13646,6 +13873,9 @@ function buildSupervisor(
 		priorityQueue,
 		gates,
 		nextActions,
+		parallelPlan,
+		planCoverage,
+		claimGatePolicy,
 		sourceArtifacts: Array.from(
 			new Set(
 				[
@@ -13699,6 +13929,19 @@ function formatSupervisor(supervisor: SupervisorArtifact, path?: string): string
 		...(supervisor.priorityQueue.length ? supervisor.priorityQueue.map((item) => `- ${item}`) : ["- none"]),
 		"gates:",
 		...(supervisor.gates.length ? supervisor.gates.map((item) => `- ${item}`) : ["- none"]),
+		"parallel_plan:",
+		...(supervisor.parallelPlan
+			? [
+					`- plan_id=${supervisor.parallelPlan.planId}`,
+					`- source=${supervisor.parallelPlan.source}`,
+					`- workers=${supervisor.parallelPlan.workers.length}`,
+					`- merge=${supervisor.parallelPlan.merge.strategy}`,
+				]
+			: ["- none"]),
+		"plan_coverage:",
+		...(supervisor.planCoverage.length ? supervisor.planCoverage.map((item) => `- ${item}`) : ["- none"]),
+		"claim_gate_policy:",
+		...(supervisor.claimGatePolicy.length ? supervisor.claimGatePolicy.map((item) => `- ${item}`) : ["- none"]),
 		"operator_next_actions:",
 		...(supervisor.nextActions.length ? supervisor.nextActions.map((item) => `- ${item}`) : ["- re_complete audit"]),
 		`next_supervisor_command: ${supervisor.mode === "repair" ? "re_supervisor review" : "re_supervisor repair"}`,
@@ -13759,19 +14002,29 @@ function writeSupervisorArtifact(supervisor: SupervisorArtifact): string {
 				? supervisor.commanderMergeQueue.map((item) => `- ${item}`)
 				: ["- none"]),
 			"",
+			"## Parallel plan coverage",
+			...(supervisor.planCoverage.length ? supervisor.planCoverage.map((item) => `- ${item}`) : ["- none"]),
+			"",
+			"## Claim gate policy",
+			...(supervisor.claimGatePolicy.length ? supervisor.claimGatePolicy.map((item) => `- ${item}`) : ["- none"]),
+			"",
 		].join("\n"),
 		"utf-8",
 	);
 	appendEvidence({
 		kind: "artifact",
 		title: `supervisor-${supervisor.mode} ${supervisor.missionId ?? "no-mission"}`,
-		fact: `Supervisor verdict ${supervisor.supervisorVerdict} across ${supervisor.reviews.length} worker review(s), ${supervisor.conflicts.length} conflict(s), ${supervisor.repairQueue.length} repair action(s), commander_merge=${supervisor.commanderMergeQueue.length}, commander_budget=${supervisor.commanderMergeBudget.length}`,
+		fact: `Supervisor verdict ${supervisor.supervisorVerdict} across ${supervisor.reviews.length} worker review(s), ${supervisor.conflicts.length} conflict(s), ${supervisor.repairQueue.length} repair action(s), commander_merge=${supervisor.commanderMergeQueue.length}, commander_budget=${supervisor.commanderMergeBudget.length}, parallel_plan=${supervisor.parallelPlan?.planId ?? "missing"}, claim_gate_policy=${supervisor.claimGatePolicy.length}`,
 		command: `re_supervisor ${supervisor.mode}`,
 		path,
 		verify: `cat ${path}`,
 		confidence: "delegation/operation supervisor critic",
 	});
-	updateMissionGate("supervisor_review_ready", "done", path);
+	updateMissionGate(
+		"supervisor_review_ready",
+		supervisor.supervisorVerdict === "pass" ? "done" : "blocked",
+		`${path} verdict=${supervisor.supervisorVerdict}`,
+	);
 	return path;
 }
 
@@ -19979,6 +20232,29 @@ function auditCompletion(): { ready: boolean; blockers: string[]; warnings: stri
 			blockers.push("compact resume proof loop not entered after verified auto-resume");
 		warnings.push(`compact_resume_telemetry: ${compactResume.path}`);
 	}
+	const supervisorPath = latestSupervisorArtifactPath();
+	const supervisor = supervisorPath ? parseSupervisorArtifact(supervisorPath) : undefined;
+	if (supervisor) {
+		if (supervisor.supervisorVerdict !== "pass") {
+			blockers.push(`supervisor verdict blocks final claim: ${supervisor.supervisorVerdict} (${supervisorPath})`);
+		}
+		for (const row of (supervisor.planCoverage ?? []).filter((item) => /worker_binding=fail|parallel_plan=missing|\bmissing=[1-9]/i.test(item)).slice(0, 8)) {
+			blockers.push(`supervisor plan coverage gap: ${row}`);
+		}
+		for (const row of (supervisor.claimGatePolicy ?? []).filter((item) => /worker_binding=(?!pass)|plan_contract_gaps=[1-9]|parallel_plan_id=missing/i.test(item)).slice(0, 8)) {
+			blockers.push(`supervisor claim gate blocks final claim: ${row}`);
+		}
+	}
+	const swarmPath = latestSwarmArtifactPath();
+	const swarm = swarmPath ? parseSwarmArtifact(swarmPath) : undefined;
+	if (swarm) {
+		for (const row of (swarm.planCoverage ?? []).filter((item) => /worker_binding=fail|parallel_plan=missing|\bmissing=[1-9]/i.test(item)).slice(0, 8)) {
+			blockers.push(`swarm plan coverage gap: ${row}`);
+		}
+		for (const row of (swarm.executionAudit ?? []).filter((item) => /status=(?:pending_execution|needs_repair|needs_evidence)/i.test(item)).slice(0, 8)) {
+			blockers.push(`swarm execution audit gap: ${row}`);
+		}
+	}
 	return { ready: blockers.length === 0, blockers, warnings, mission };
 }
 
@@ -21002,7 +21278,7 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 	});
 	pi.registerCommand("re-swarm", {
 		description:
-			"Build/show/run/merge Pi-RECON multi-specialist swarm runtime packets: /re-swarm [plan|show|run|merge] [target] [max-workers] [max-commands]",
+			"Build/show/run/merge Pi-RECON multi-specialist swarm runtime packets plus ReconParallelPlanV1/planCoverage/releaseGateMetadata: /re-swarm [plan|show|run|merge] [target] [max-workers] [max-commands]",
 		handler: async (args) => {
 			const parts = args.trim().split(/\s+/).filter(Boolean);
 			const first = parts[0];
@@ -21021,7 +21297,7 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 		},
 	});
 	pi.registerCommand("re-supervisor", {
-		description: "Review/show/repair Pi-RECON worker packets: /re-supervisor [review|show|repair] [target]",
+		description: "Review/show/repair Pi-RECON worker packets with ReconParallelPlanV1, planCoverage, and claimGatePolicy gates: /re-supervisor [review|show|repair] [target]",
 		handler: async (args) => {
 			const parts = args.trim().split(/\s+/).filter(Boolean);
 			const first = parts[0];
@@ -21929,14 +22205,14 @@ function installReconTools(pi: ExtensionAPI): void {
 		name: "re_swarm",
 		label: "RE Swarm",
 		description:
-			"Build, show, run, or merge multi-specialist swarm runtime packets from delegation worker_packets, with bounded worker executions, parallel groups, merge protocol, collision matrix, and commander next actions.",
+			"Build, show, run, or merge multi-specialist swarm runtime packets from delegation worker_packets, emitting ReconParallelPlanV1, planCoverage, releaseGateMetadata, bounded worker executions, parallel groups, merge protocol, collision matrix, and commander next actions.",
 		promptSnippet:
-			"Use re_swarm after re_delegate to organize and run specialist work as parallel worker runtime packets with merge contracts.",
+			"Use re_swarm after re_delegate to organize specialist work as ReconParallelPlanV1-backed worker runtime packets with merge contracts and release-gate metadata.",
 		promptGuidelines: [
 			"Call re_swarm plan after re_delegate plan/merge before broad multi-lane expansion.",
-			"Use worker_runtime_packets as exact sub-agent handoff contracts with evidence requirements and merge keys.",
+			"Use worker_runtime_packets plus parallel_plan.workers as exact sub-agent handoff contracts with evidence requirements, artifactGlobs, limits, and merge keys.",
 			"Call re_swarm run with bounded maxWorkers/maxCommands to execute ready worker commands and produce worker_results/merge_digest.",
-			"Call re_swarm merge before re_supervisor review so conflicts and missing evidence become explicit.",
+			"Call re_swarm merge before re_supervisor review so conflicts, planCoverage gaps, and missing evidence become explicit.",
 		],
 		parameters: Type.Object({
 			action: Type.Optional(
@@ -21968,12 +22244,12 @@ function installReconTools(pi: ExtensionAPI): void {
 		name: "re_supervisor",
 		label: "RE Supervisor",
 		description:
-			"Review, show, or repair Pi-RECON specialist worker packets using a supervisor critic over evidence, conflicts, gates, and priority queues.",
+			"Review, show, or repair Pi-RECON specialist worker packets using a supervisor critic over ReconParallelPlanV1, planCoverage, claimGatePolicy, evidence, conflicts, gates, and priority queues.",
 		promptSnippet:
-			"Use re_supervisor after re_delegate to score worker evidence, find conflicts, and produce repair queues.",
+			"Use re_supervisor after re_swarm/re_delegate to score worker evidence, enforce planCoverage/claimGatePolicy, find conflicts, and produce repair queues.",
 		promptGuidelines: [
-			"Call re_supervisor review before final claims or when worker packets conflict.",
-			"Use supervisor repair_queue and priority_queue to choose the next re_operation or lane action.",
+			"Call re_supervisor review before final claims or when worker packets, planCoverage, or claim gates conflict.",
+			"Use supervisor planCoverage, claimGatePolicy, repair_queue, and priority_queue to choose the next re_swarm/re_operation or lane action.",
 			"Call re_supervisor repair after blocked/weak worker packets to generate a concrete recovery queue.",
 		],
 		parameters: Type.Object({

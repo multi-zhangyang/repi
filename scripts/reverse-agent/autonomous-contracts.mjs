@@ -40,11 +40,11 @@ const SCHEMAS = {
 		enums: { resumeQueueStatus: ["queued", "running", "done", "blocked", "exhausted"] },
 	},
 	FailureLedgerEventV1: {
-		required: ["id", "ts", "source", "scope", "category", "signature", "attempt", "maxAttempts", "status", "failedGates", "artifacts", "artifactHashes", "repairId", "budget", "rollback"],
-		enums: { status: ["failed", "retrying", "repair_queued", "repaired", "exhausted", "rolled_back", "escalated"] },
+		required: ["id", "ts", "source", "scope", "category", "signature", "attempt", "maxAttempts", "status", "failedGates", "artifacts", "artifactHashes", "repairId", "budget", "retryBudget", "evidenceWriteback", "blockedConditions", "rollback"],
+		enums: { status: ["failed", "retrying", "repair_queued", "repaired", "exhausted", "rolled_back", "escalated", "blocked"] },
 	},
 	RepairQueueItemV1: {
-		required: ["repairId", "fromFailureId", "signature", "scope", "action", "commands", "expectedArtifacts", "expectedGates", "preconditions", "paused", "allowlist", "rollbackCriteria", "regressionGates"],
+		required: ["repairId", "fromFailureId", "signature", "scope", "action", "commands", "expectedArtifacts", "expectedGates", "preconditions", "paused", "allowlist", "rollbackCriteria", "repairAction", "blockedConditions", "evidenceWriteback", "regressionGates"],
 		enums: { action: ["rerun", "replace-command", "recapture-evidence", "refresh-context", "escalate", "rollback"] },
 	},
 	RoleContractV1: {
@@ -120,15 +120,39 @@ function validateResumeContractSchema() {
 	);
 }
 
+function validateContextResumeSchemaFile(root) {
+	const path = join(root, "schemas/reverse-agent/context-resume-contract.schema.json");
+	const schema = existsSync(path) ? safeJson(readFileSync(path, "utf8"), {}) : {};
+	const contextPack = schema?.$defs?.ContextPackV2 ?? {};
+	const resume = schema?.$defs?.ResumeContractV2 ?? {};
+	const contextShaPattern = contextPack?.properties?.contextSha256?.pattern === "^[a-f0-9]{64}$";
+	const resumeShaPattern = resume?.properties?.contextSha256?.pattern === "^[a-f0-9]{64}$";
+	const artifactMinItems = resume?.properties?.artifactHashes?.minItems >= 1;
+	const idempotencyMinLength = resume?.properties?.idempotencyKey?.minLength >= 1;
+	const ledgerHashPattern = contextPack?.properties?.compactionLedger?.properties?.entryHash?.pattern === "^[a-f0-9]{64}$";
+	const dateTime =
+		contextPack?.properties?.createdAt?.format === "date-time" &&
+		contextPack?.properties?.artifactIndex?.items?.properties?.mtime?.format === "date-time" &&
+		resume?.properties?.closure?.properties?.closedAt?.format === "date-time";
+	const ok = Boolean(schema?.$defs?.ContextPackV2 && schema?.$defs?.ResumeContractV2 && contextShaPattern && resumeShaPattern && artifactMinItems && idempotencyMinLength && ledgerHashPattern && dateTime);
+	return passFail(ok, { path: "schemas/reverse-agent/context-resume-contract.schema.json", contextShaPattern, resumeShaPattern, artifactMinItems, idempotencyMinLength, ledgerHashPattern, dateTime });
+}
+
 function validateRoleContract(contract) {
 	const schema = SCHEMAS.RoleContractV1;
 	const missing = fieldMissing(contract, schema.required);
 	const roleRows = Array.isArray(contract?.roles)
 		? contract.roles.map((role) => ({ id: role.id, missing: fieldMissing(role, schema.roleRequired) }))
 		: [];
+	const requiredRoles = ["mapper", "verifier", "adversary", "synthesizer"];
+	const roleIds = new Set((contract?.roles ?? []).map((role) => role.id));
+	const rolesCovered = requiredRoles.every((role) => roleIds.has(role));
+	const requiredEvents = ["artifact_handoff", "claim", "validation", "challenge", "resolution"];
+	const eventTypesCovered = requiredEvents.every((eventType) => contract?.ledgerPolicy?.requiredEventTypes?.includes(eventType));
 	const policyOk = contract?.ledgerPolicy?.appendOnly === true && contract?.conflictPolicy?.unresolvedBlocksFinal === true && contract?.claimGatePolicy?.finalPassRequiresVerifier === true;
-	const ok = missing.length === 0 && Array.isArray(contract.roles) && contract.roles.length >= 4 && roleRows.every((row) => row.missing.length === 0) && Array.isArray(contract.evidenceOrder) && contract.evidenceOrder.includes("same_window_live") && policyOk;
-	return passFail(ok, { missing, roleRows, roleCount: contract?.roles?.length ?? 0, policyOk });
+	const rolePayloadsOk = (contract?.roles ?? []).every((role) => role.mustEmit?.length > 0 && role.allowedClaimKinds?.length > 0 && role.evidenceContract?.length > 0);
+	const ok = missing.length === 0 && Array.isArray(contract.roles) && contract.roles.length >= 4 && rolesCovered && eventTypesCovered && rolePayloadsOk && roleRows.every((row) => row.missing.length === 0) && Array.isArray(contract.evidenceOrder) && contract.evidenceOrder.includes("same_window_live") && policyOk;
+	return passFail(ok, { missing, roleRows, roleCount: contract?.roles?.length ?? 0, rolesCovered, eventTypesCovered, rolePayloadsOk, policyOk });
 }
 
 function validateLedgerHashChain(events) {
@@ -170,29 +194,104 @@ function validateFailureRepair(failures, repairs) {
 		signatureOk: typeof failure.signature === "string" && failure.signature.length >= 8,
 		artifactHashesOk: Array.isArray(failure.artifactHashes) && failure.artifactHashes.every((artifact) => artifact?.path && artifact?.sha256),
 		budgetOk: Boolean(failure.budget?.retryKey && Number.isFinite(Number(failure.budget?.remainingAttempts)) && failure.budget?.exhaustedAction),
-		rollbackOk: failure.rollback?.required === true || failure.rollback?.required === false,
+		retryBudgetOk: Boolean(failure.retryBudget?.retryKey && Number.isFinite(Number(failure.retryBudget?.remainingAttempts)) && failure.retryBudget?.exhaustedAction),
+		evidenceWritebackOk: failure.evidenceWriteback?.appendOnly === true && Boolean(failure.evidenceWriteback?.failureLedgerPath && failure.evidenceWriteback?.repairQueuePath),
+		blockedConditionsOk: Array.isArray(failure.blockedConditions),
+		rollbackOk:
+			(failure.rollback?.required === true || failure.rollback?.required === false) &&
+			typeof failure.rollback?.baseline === "string" &&
+			Array.isArray(failure.rollback?.allowlist) &&
+			Array.isArray(failure.rollback?.criteria) &&
+			typeof failure.rollback?.restored === "boolean",
 	}));
 	const repairRows = (repairs || []).map((repair) => ({
 		repairId: repair.repairId,
 		missing: fieldMissing(repair, repairSchema.required),
 		actionOk: repairSchema.enums.action.includes(repair.action),
+		repairActionOk: repair.repairAction === repair.action && repairSchema.enums.action.includes(repair.repairAction),
 		paused: repair.paused === true || repair.paused === false,
 		signatureOk: typeof repair.signature === "string" && repair.signature.length >= 8,
 		expectedGatesOk: Array.isArray(repair.expectedGates) && repair.expectedGates.length > 0,
 		preconditionsOk: repair.preconditions?.liveAllowed === false || repair.preconditions?.liveAllowed === true,
 		rollbackCriteriaOk: typeof repair.rollbackCriteria === "object" && repair.rollbackCriteria !== null,
+		blockedConditionsOk: Array.isArray(repair.blockedConditions),
+		evidenceWritebackOk: repair.evidenceWriteback?.appendOnly === true && Boolean(repair.evidenceWriteback?.failureLedgerPath && repair.evidenceWriteback?.repairQueuePath),
 	}));
 	const ok =
 		failureRows.length > 0 &&
-		failureRows.every((row) => row.missing.length === 0 && row.statusOk && row.attemptOk && row.repairLinked && row.signatureOk && row.artifactHashesOk && row.budgetOk && row.rollbackOk) &&
+		failureRows.every((row) => row.missing.length === 0 && row.statusOk && row.attemptOk && row.repairLinked && row.signatureOk && row.artifactHashesOk && row.budgetOk && row.retryBudgetOk && row.evidenceWritebackOk && row.blockedConditionsOk && row.rollbackOk) &&
 		repairRows.length >= failureRows.length &&
-		repairRows.every((row) => row.missing.length === 0 && row.actionOk && row.paused && row.signatureOk && row.expectedGatesOk && row.preconditionsOk && row.rollbackCriteriaOk);
+		repairRows.every((row) => row.missing.length === 0 && row.actionOk && row.repairActionOk && row.paused && row.signatureOk && row.expectedGatesOk && row.preconditionsOk && row.rollbackCriteriaOk && row.blockedConditionsOk && row.evidenceWritebackOk);
 	return passFail(ok, {
 		failureCount: failureRows.length,
 		repairCount: repairRows.length,
-		badFailures: failureRows.filter((row) => row.missing.length || !row.statusOk || !row.attemptOk || !row.repairLinked || !row.signatureOk || !row.artifactHashesOk || !row.budgetOk || !row.rollbackOk),
-		badRepairs: repairRows.filter((row) => row.missing.length || !row.actionOk || !row.paused || !row.signatureOk || !row.expectedGatesOk || !row.preconditionsOk || !row.rollbackCriteriaOk),
+		badFailures: failureRows.filter((row) => row.missing.length || !row.statusOk || !row.attemptOk || !row.repairLinked || !row.signatureOk || !row.artifactHashesOk || !row.budgetOk || !row.retryBudgetOk || !row.evidenceWritebackOk || !row.blockedConditionsOk || !row.rollbackOk),
+		badRepairs: repairRows.filter((row) => row.missing.length || !row.actionOk || !row.repairActionOk || !row.paused || !row.signatureOk || !row.expectedGatesOk || !row.preconditionsOk || !row.rollbackCriteriaOk || !row.blockedConditionsOk || !row.evidenceWritebackOk),
 	});
+}
+
+function buildReleaseGateMetadata({ checks, hardEval, contextAudit, parallelPlan, parallelPlanAudit }) {
+	const failedChecks = Object.entries(checks)
+		.filter(([, check]) => check.status !== "pass")
+		.map(([name]) => name);
+	const requiredPlatformGaps = (hardEval?.sourceSummary?.frontierGaps ?? [])
+		.filter((gap) => gap.severity === "required")
+		.map((gap) => gap.name);
+	const unresolvedFrontierGaps = (hardEval?.sourceSummary?.frontierGaps ?? []).map((gap) => `${gap.name}:${gap.severity}`);
+	const planSha256 = sha256(JSON.stringify(parallelPlan));
+	const claimGateVerdict =
+		checks.claimLedger?.status === "pass" && hardEval?.gate?.requiredPlatformClaimsValidated === true
+			? "pass"
+			: "blocked";
+	const releaseBlockingGaps = [
+		...failedChecks.map((name) => `check:${name}`),
+		...requiredPlatformGaps.map((name) => `required_platform_gap:${name}`),
+	];
+	return [
+		"release_gate.schema=PiReconReleaseGateMetadataV1",
+		"release_gate.control_plane_mode=offline|plan-only|no-provider|no-live",
+		`release_gate.plan_id=${parallelPlan.planId}`,
+		`release_gate.plan_sha256=${planSha256}`,
+		`release_gate.plan_worker_count=${parallelPlan.workers.length}`,
+		`release_gate.plan_merge_strategy=${parallelPlan.merge.strategy}`,
+		`release_gate.parallel_plan_contract=${checks.parallelPlan?.status ?? "missing"}`,
+		`release_gate.parallel_plan_audit=${checks.parallelPlanAudit?.status ?? "missing"}`,
+		`release_gate.context_compact=${checks.contextCompactAudit?.status ?? "missing"}`,
+		`release_gate.failure_repair=${checks.failureRepair?.status ?? "missing"}`,
+		`release_gate.role_contract=${checks.roleContract?.status ?? "missing"}`,
+		`release_gate.claim_ledger=${checks.claimLedger?.status ?? "missing"}`,
+		`release_gate.runtime_parallel_plan_markers=${checks.runtimeParallelPlanMarkers?.status ?? "missing"}`,
+		`release_gate.score_separation=orchestration:${hardEval?.scores?.orchestration?.score ?? "missing"}/platform_required:${hardEval?.scores?.platformRequired?.score ?? "missing"}/platform_all:${hardEval?.scores?.platformAll?.score ?? "missing"}`,
+		`release_gate.claim_gate_verdict=${claimGateVerdict}`,
+		`release_gate.required_platform_gaps=${requiredPlatformGaps.join(",") || "none"}`,
+		`release_gate.unresolved_frontier_gaps=${unresolvedFrontierGaps.join(",") || "none"}`,
+		`release_gate.release_blocking_gaps=${releaseBlockingGaps.join(",") || "none"}`,
+		`release_gate.parallel_plan_preview_workers=${parallelPlanAudit?.planOnlyPreview?.workerCount ?? "missing"}`,
+		`release_gate.context_compact_status=${contextAudit?.ok ? "pass" : contextAudit?.summary?.status ?? contextAudit?.status ?? "missing"}`,
+		"release_gate.orchestration_score_never_implies_platform_success=true",
+		"release_gate.final_claim_requires_claim_ledger_validation=true",
+		"release_gate.unresolved_required_platform_gap_blocks_final_pass=true",
+	];
+}
+
+function validateReleaseGateMetadata(rows) {
+	const requiredPrefixes = [
+		"release_gate.schema=",
+		"release_gate.control_plane_mode=",
+		"release_gate.plan_id=",
+		"release_gate.plan_sha256=",
+		"release_gate.parallel_plan_contract=",
+		"release_gate.claim_gate_verdict=",
+		"release_gate.score_separation=",
+		"release_gate.release_blocking_gaps=",
+		"release_gate.orchestration_score_never_implies_platform_success=true",
+		"release_gate.final_claim_requires_claim_ledger_validation=true",
+		"release_gate.unresolved_required_platform_gap_blocks_final_pass=true",
+	];
+	const missing = requiredPrefixes.filter((prefix) => !rows.some((row) => row.startsWith(prefix)));
+	const modeOk = rows.some((row) => row === "release_gate.control_plane_mode=offline|plan-only|no-provider|no-live");
+	const scoreSplitOk = rows.some((row) => /^release_gate\.score_separation=orchestration:[^/]+\/platform_required:[^/]+\/platform_all:[^/]+$/.test(row));
+	return passFail(missing.length === 0 && modeOk && scoreSplitOk, { missing, modeOk, scoreSplitOk, rowCount: rows.length });
 }
 
 function buildParallelPlan(hardEval) {
@@ -268,8 +367,18 @@ function buildResult(root) {
 				readMarkers(root, ".pi/extensions/reverse-pentest-core.ts", ["buildContextPack", "buildReconCompactionResumeContract", "pi-recon-compaction-auto-resume", "compact_resume_case_memory"]),
 			],
 		}),
+		contextResumeSchemaFile: validateContextResumeSchemaFile(root),
+		runtimeParallelPlanMarkers: passFail(true, {
+			markers: [
+				readMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", ["type ReconParallelPlanV1", "function buildSwarmParallelPlan", "planCoverage", "releaseGateMetadata", "function supervisorClaimGatePolicy", "claimGatePolicy"]),
+				readMarkers(root, ".pi/extensions/reverse-pentest-core.ts", ["type ReconParallelPlanV1", "function buildSwarmParallelPlan", "planCoverage", "releaseGateMetadata", "function supervisorClaimGatePolicy", "claimGatePolicy"]),
+			],
+		}),
 	};
 	checks.contextRuntimeMarkers.status = checks.contextRuntimeMarkers.markers.every((file) => file.exists && file.markers.every((marker) => marker.present)) ? "pass" : "fail";
+	checks.runtimeParallelPlanMarkers.status = checks.runtimeParallelPlanMarkers.markers.every((file) => file.exists && file.markers.every((marker) => marker.present)) ? "pass" : "fail";
+	const releaseGateMetadata = buildReleaseGateMetadata({ checks, hardEval, contextAudit, parallelPlan, parallelPlanAudit });
+	checks.releaseGateMetadata = validateReleaseGateMetadata(releaseGateMetadata);
 	const ok = Object.values(checks).every((check) => check.status === "pass");
 	return {
 		kind: "pi-recon-autonomous-contracts",
@@ -283,6 +392,7 @@ function buildResult(root) {
 		topAutonomousReason: "Schemas and validators exist, but full independent subagent runtime, exact resume loading, and runtime-integrated repair execution still require implementation.",
 		schemas: SCHEMAS,
 		parallelPlan,
+		releaseGateMetadata,
 		checks,
 		hardEval: {
 			code: hardEvalRun.code,
@@ -306,7 +416,7 @@ function buildResult(root) {
 			stdoutSha256: parallelPlanAuditRun.stdoutSha256,
 		},
 		nextNonTestWork: [
-			"Extend the verified ReconParallelPlanV1 ingestion path into re_swarm plan output and release-gate metadata.",
+			"Persist releaseGateMetadata in CI/release artifacts and make release tooling consume it directly.",
 			"Persist ResumeContractV2 as append-only compaction-resume-ledger.jsonl and make re_context resume load exact contextPath.",
 			"Promote FailureLedgerEventV1 / RepairQueueItemV1 into re_replayer, re_autofix, re_operator, and compound-frontier outputs.",
 			"Promote ClaimLedgerEventV1 into re_supervisor and re_compiler so final reports require validated claim IDs.",
@@ -331,6 +441,8 @@ function formatMarkdown(result) {
 	lines.push("", "## Hard eval binding", "", `- verdict: ${result.hardEval.verdict}`, `- orchestration: ${result.hardEval.scores?.orchestration?.score ?? "n/a"}`, `- platform_required: ${result.hardEval.scores?.platformRequired?.score ?? "n/a"}`, `- failures: ${result.hardEval.failures}`, `- repairs: ${result.hardEval.repairs}`);
 	lines.push("", "## Parallel plan", "", `- plan_id: ${result.parallelPlan.planId}`, `- workers: ${result.parallelPlan.workers.length}`, `- merge_strategy: ${result.parallelPlan.merge.strategy}`);
 	lines.push("", "## Plan-only audit", "", `- ok: ${result.parallelPlanAudit.ok}`, `- frontier_workers: ${result.parallelPlanAudit.frontierPlan?.workerCount ?? "n/a"}`, `- preview_workers: ${result.parallelPlanAudit.planOnlyPreview?.workerCount ?? "n/a"}`, `- preview_kind: ${result.parallelPlanAudit.planOnlyPreview?.kind ?? "n/a"}`);
+	lines.push("", "## Release gate metadata");
+	for (const row of result.releaseGateMetadata) lines.push(`- ${row}`);
 	lines.push("", "## Next non-test work");
 	for (const item of result.nextNonTestWork) lines.push(`- ${item}`);
 	return `${lines.join("\n")}\n`;
@@ -343,6 +455,7 @@ function writeOutputs(root, result) {
 	writeFileSync(join(outDir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
 	writeFileSync(join(outDir, "schemas.json"), `${JSON.stringify(result.schemas, null, 2)}\n`);
 	writeFileSync(join(outDir, "parallel-plan.json"), `${JSON.stringify(result.parallelPlan, null, 2)}\n`);
+	writeFileSync(join(outDir, "release-gate-metadata.txt"), `${result.releaseGateMetadata.join("\n")}\n`);
 	writeFileSync(join(outDir, "report.md"), formatMarkdown(result));
 	return outDir;
 }

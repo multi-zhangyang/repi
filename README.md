@@ -35,6 +35,17 @@ npm run check
 PI_OFFLINE=1 ./pi-test.sh --recon --no-tools --help
 ```
 
+Offline control-plane gates used while live/provider testing is paused:
+
+```bash
+npm run audit:parallel-plan
+npm run gate:context-compact
+npm run gate:autonomy-control
+npm run gate:autonomous-contracts
+# release-grade claim gate; expected to fail while required platform gaps remain
+npm run gate:claim-release
+```
+
 Start Pi normally with the recon profile:
 
 ```bash

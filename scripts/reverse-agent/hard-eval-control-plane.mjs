@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -46,6 +46,13 @@ const TEST_COMMANDS_PAUSED = [
 	"node bench/recon-remote/real-platform/run.mjs",
 	"node bench/recon-remote/douyin-nowatermark/run.mjs",
 ];
+
+const FAILURE_REPAIR_WRITEBACK = {
+	failureLedgerPath: ".pi/evidence/failures/ledger.jsonl",
+	repairQueuePath: ".pi/evidence/repairs/queue.jsonl",
+	appendOnly: true,
+	mode: "offline-hard-eval-control-plane",
+};
 
 function sha256Bytes(data) {
 	return createHash("sha256").update(data).digest("hex");
@@ -367,14 +374,27 @@ function buildFailures({ claims, sourceArtifact }) {
 				remainingAttempts: 0,
 				exhaustedAction: "queue-paused-repair",
 			},
+			retryBudget: {
+				retryKey: signature,
+				remainingAttempts: 0,
+				exhaustedAction: "queue-paused-repair",
+			},
+			evidenceWriteback: FAILURE_REPAIR_WRITEBACK,
+			blockedConditions: [
+				{
+					reason: "liveAllowed=false",
+					unblock: "resume offline-paused live/provider testing window",
+				},
+			],
 			rollback: {
 				required: false,
 				baseline: "offline-existing-evidence-only",
 				allowlist: [],
 				criteria: [],
-				restored: null,
+				restored: false,
 			},
 		});
+		const repairPlan = repairAction(claim);
 		repairs.push({
 			repairId,
 			fromFailureId: failureId,
@@ -386,7 +406,15 @@ function buildFailures({ claims, sourceArtifact }) {
 			allowlist: [],
 			rollbackCriteria: { baseline: "offline-existing-evidence-only", mustRestore: [], verificationCommand: "" },
 			regressionGates: [claim.gate],
-			...repairAction(claim),
+			repairAction: repairPlan.action,
+			blockedConditions: [
+				{
+					reason: "liveAllowed=false",
+					unblock: "resume offline-paused live/provider testing window",
+				},
+			],
+			evidenceWriteback: FAILURE_REPAIR_WRITEBACK,
+			...repairPlan,
 		});
 	}
 	return { failures, repairs };
@@ -466,6 +494,7 @@ function buildResult(root) {
 		ledger: events,
 		failures,
 		repairQueue: repairs,
+		evidenceWriteback: FAILURE_REPAIR_WRITEBACK,
 		testCommandsPaused: TEST_COMMANDS_PAUSED,
 		sourceSummary: {
 			sameWindowVerdict: sameWindow?.verdict ?? null,
@@ -490,6 +519,12 @@ function writeOutputs(root, result) {
 	writeFileSync(join(outDir, "ledger.jsonl"), result.ledger.map((event) => JSON.stringify(event)).join("\n") + "\n");
 	writeFileSync(join(outDir, "failure-ledger.jsonl"), result.failures.map((event) => JSON.stringify(event)).join("\n") + (result.failures.length ? "\n" : ""));
 	writeFileSync(join(outDir, "repair-queue.jsonl"), result.repairQueue.map((event) => JSON.stringify(event)).join("\n") + (result.repairQueue.length ? "\n" : ""));
+	const failureLedgerPath = join(root, FAILURE_REPAIR_WRITEBACK.failureLedgerPath);
+	const repairQueuePath = join(root, FAILURE_REPAIR_WRITEBACK.repairQueuePath);
+	ensureDir(dirname(failureLedgerPath));
+	ensureDir(dirname(repairQueuePath));
+	if (result.failures.length) appendFileSync(failureLedgerPath, result.failures.map((event) => JSON.stringify(event)).join("\n") + "\n");
+	if (result.repairQueue.length) appendFileSync(repairQueuePath, result.repairQueue.map((event) => JSON.stringify(event)).join("\n") + "\n");
 	writeFileSync(join(outDir, "report.md"), formatMarkdown(result));
 	return outDir;
 }

@@ -60,6 +60,91 @@ npm run audit:parallel-plan
   并确认未设置模型/provider 时也不会创建 `agent-parallel-dogfood/<timestamp>`
   证据目录。
 
+## Runtime 集成边界：re_swarm / re_supervisor / release gate
+
+下一阶段 runtime 接入的边界是：`frontier-orchestrator` 和 `agent-dogfood`
+已经证明 `ReconParallelPlanV1` 可以被离线生成、读取和预览；但
+`re_swarm`、`re_supervisor`、release gate 仍需要把同一份计划合同贯穿到真实
+runtime artifact、claim gate 和发布元数据里。这里描述的是控制面合同，不是把
+Pi-RECON 宣称为完整顶级 autonomous red-team agent。
+
+### re_swarm 应消费和输出的字段
+
+`re_swarm plan|run|merge` 应消费 `ReconParallelPlanV1` 或包含
+`parallelPlan` 的上游 artifact，并把其中字段归一化为 runtime worker 边界：
+
+- `planId` / `source` / `target`：绑定本次 swarm 运行来源，避免跨计划合并。
+- `workers[].id|role|objective|commands|dependencies|limits`：生成
+  `worker_runtime_packets`、timeout/cancel/retry budget 和执行顺序。
+- `workers[].evidenceContract` / `mergeKeys` / `artifactGlobs`：生成
+  `planCoverage` 的覆盖项，而不是只作为文本提示。
+- `merge.strategy` / `merge.evidenceOrder` / `merge.conflictPolicy`：决定
+  `merge_digest` 如何处理冲突、过期 artifact 和 negative control。
+
+`re_swarm` 输出应至少包含：
+
+- `parallel_plan` 或 `reconParallelPlan`：原始计划摘要和 hash。
+- `planCoverage`：每个 worker、evidenceContract、mergeKey、artifactGlob 的
+  `planned / observed / covered / blocked / unresolved` 状态。
+- `worker_runtime_packets`、`worker_executions`、`worker_results`、`blocked`：
+  每行绑定 `planId`、`workerId`、stdout/stderr hash、artifact refs 和 failure refs。
+- `merge_digest`：只汇总 runtime evidence 和 coverage，不把未验证 claim 升级为 pass。
+
+边界：`planCoverage=covered` 只能证明计划项被 runtime artifact 覆盖，不能证明目标
+平台 claim 成功；平台 claim 仍必须经过 claim ledger、verifier 和 release gate。
+
+### re_supervisor 应消费和输出的字段
+
+`re_supervisor review|repair` 应消费：
+
+- `ReconParallelPlanV1` / `parallel_plan`
+- `re_swarm` 的 `planCoverage`、`worker_results`、`blocked`、`merge_digest`
+- role contract 的 `claimGatePolicy`
+- claim ledger / validation / challenge / resolution event
+
+`re_supervisor` 输出应包含：
+
+- `planCoverageReview`：指出缺失 worker、未覆盖 evidenceContract、未解析 mergeKey、
+  超时/取消/失败预算耗尽项。
+- `claimGatePolicy`：明确哪些 claim kind 可升级、哪些只能作为 observation，
+  以及 required artifact sha256、JSON query、verifier pass、adversary challenge
+  resolution 条件。
+- `claimGateResult`：按 claimId 给出 `passed / downgraded / blocked`，并列出
+  unresolved challenge 和 platform required gaps。
+- `commander_merge_queue` / `repair_queue`：把缺覆盖、冲突 claim、失败签名和
+  release-blocking gaps 转回 operator、swarm retry、autofix 或 proof-loop。
+
+边界：`re_supervisor` 可以阻止自嗨式结论，也可以产生修复队列；但在 runtime
+repair、append-only failure ledger、rollback gate 未接完前，不能宣称它已经能自动修复
+所有失败或自动完成所有平台验证。
+
+### Release-gate metadata 应承载的字段
+
+release gate 不应只看摘要文本，应消费 `planCoverage`、`claimGatePolicy`、
+claim ledger、hard-eval score split 和 autonomous contracts gate，输出
+`releaseGateMetadata`：
+
+- `planId`、`source`、`planSha256`
+- `planCoverageSummary`：workers/evidenceContracts/mergeKeys/artifactGlobs 覆盖率和
+  unresolved rows。
+- `claimGatePolicy` 与 `claimGateVerdict`：哪些 claim 被允许发布，哪些被降级或阻断。
+- `scoreSeparation`：orchestration score 与 platform claim score 分开。
+- `releaseBlockingGaps`：required platform gaps、unresolved challenges、missing artifact
+  hashes、stale runtime evidence、failed gates。
+- `controlPlaneMode`：标注是否为 offline/plan-only/no-provider/no-live，避免把控制面
+  smoke check 写成真实平台证明。
+
+仍未完成项：
+
+1. `re_swarm` runtime artifact 统一写入 `ReconParallelPlanV1` hash 和
+   `planCoverage` 明细。
+2. `re_supervisor` 把 `claimGatePolicy` 和 claim ledger 作为硬门禁，而不是旁路说明。
+3. release gate 聚合 `audit:parallel-plan`、`gate:autonomous-contracts`、
+   `audit:claim-ledger`、hard-eval score split，并生成机器可读
+   `releaseGateMetadata`。
+4. 缺覆盖、claim 冲突、failure signature 应回流到 append-only repair/failure ledger，
+   再由 operator/proof-loop 做 bounded 修复。
+
 ## 1. 并行调度 / 分片 / 专家分工
 
 已有能力：
@@ -93,6 +178,7 @@ npm run audit:parallel-plan
 - `session_compact` 会验证 resume contract，写 auto-resume telemetry，并触发 bounded resume turn。
 - `re_operator`、`re_proof_loop`、`re_knowledge_graph` 会消费 compact resume telemetry/queue。
 - `scripts/reverse-agent/context-compact-audit.mjs` 已作为独立静态 gate 检查 context pack、owned compaction、resume contract、evidence summarization 和 budget continuation。
+- `schemas/reverse-agent/context-resume-contract.schema.json` 已加固 V2 字段：`contextSha256`、artifact sha256、`idempotencyKey`、append-only ledger hash、`date-time` 与 `artifactHashes.minItems`；`gate:autonomous-contracts` 会读取真实 schema 文件确认这些不变量存在。
 
 仍需硬化：
 
@@ -117,6 +203,7 @@ npm run audit:parallel-plan
 - `re_replayer → re_autofix → re_proof_loop` 能把失败复现、compiler gaps、operator feedback 转为 repair queue。
 - `re_operator`、`re_delegate`、`re_swarm`、`re_supervisor` 已有失败预算、score decay、demotion、retry queue、evidence recapture queue 等局部闭环。
 - parallel dogfood runner 已有 role/synthesizer bounded retry。
+- `hard-eval-control-plane --write` 同时写 per-run failure/repair artifact，并追加 canonical `.pi/evidence/failures/ledger.jsonl` 与 `.pi/evidence/repairs/queue.jsonl`；failure event 带 `retryBudget/evidenceWriteback/blockedConditions`，repair item 带 `repairAction/evidenceWriteback/blockedConditions`。
 
 仍需硬化：
 
@@ -128,8 +215,8 @@ npm run audit:parallel-plan
 
 推荐非测试顺序：
 
-1. 用 `FailureLedgerEventV1 / RepairQueueItemV1` schema 写 `.pi/evidence/failures/ledger.jsonl` 和 `.pi/evidence/repairs/queue.jsonl`。
-2. 在 compound failed gates、agent role retry、replayer failed/blocked 三处写 failure event，字段必须包含 `signature`、`artifactHashes`、`budget`、`rollback`。
+1. 在 compound failed gates、agent role retry、replayer failed/blocked 三处复用同一 `FailureLedgerEventV1 / RepairQueueItemV1` 写 canonical ledger。
+2. 字段必须包含 `signature`、`artifactHashes`、`budget/retryBudget`、`rollback`、`evidenceWriteback` 和 `blockedConditions`。
 3. proof-loop 按 failure signature 去重，并把 exhausted 状态交给 operator escalate。
 4. autofix/apply 前记录 git HEAD、git status、allowlist、source artifact hash 和上一轮 passed gates。
 
@@ -139,6 +226,7 @@ npm run audit:parallel-plan
 
 - `re_verifier`、`re_compiler`、`re_supervisor` 已有 assertions、counter evidence、contradictions、conflict matrix、worker scoreboard 和 commander merge queue。
 - parallel dogfood runner 已记录 `roleGateMatrix`、`toolResultsCaptured`、`synthesizerReconciled`、`antiSelfDelusion` 等运行级验证信号。
+- `gate:claim-release` 使用 strict claim ledger validator；当前 required platform gap 存在时应失败，避免把 worker/orchestration 成功升级成 final platform pass。
 
 仍需硬化：
 
@@ -152,8 +240,8 @@ npm run audit:parallel-plan
 
 1. 在 parallel runner 输出 `contract.json + ledger.jsonl + gate.json`，角色字段必须包含 `handoffTargets` 和 `evidenceContract`。
 2. role stdout 先解析结构化 claims；未结构化输出只能作为 observation，不能升级为 final pass。
-3. hard-score 读取 claim gate，分离 orchestration 和 claim 结果。
-4. `re_supervisor / re_compiler` 复用同一 claim ledger schema。
+3. hard-score/release gate 读取 claim gate，分离 orchestration 和 claim 结果。
+4. `re_supervisor / re_compiler / re_complete` 复用同一 claim ledger schema 和 `gate:claim-release` verdict。
 
 ## 当前边界：四个能力不是“顶级 autonomous”结论
 

@@ -24,6 +24,13 @@ node scripts/reverse-agent/hard-eval-control-plane.mjs . --write
 .pi/evidence/hard-eval-control-plane/<timestamp>/report.md
 ```
 
+同时追加 canonical append-only ledger：
+
+```text
+.pi/evidence/failures/ledger.jsonl
+.pi/evidence/repairs/queue.jsonl
+```
+
 `--strict-claims` 会在 required platform claim 存在 gap 时返回非零；这个开关用于恢复 live 评测后的硬门禁，不建议在控制面开发期间默认开启。
 
 ## 输入证据
@@ -88,6 +95,11 @@ append-only claim ledger，包含：
 - B站 media/WBI gap → same-window recapture repair。
 
 repair 默认 `paused=true`。恢复 live 测试前，只能作为计划，不自动执行。
+
+failure/repair 合同字段包括：
+
+- failure: `signature`、`artifactHashes`、`budget`、`retryBudget`、`rollback`、`evidenceWriteback`、`blockedConditions`。
+- repair: `action`、`repairAction`、`expectedGates`、`preconditions`、`rollbackCriteria`、`regressionGates`、`evidenceWriteback`、`blockedConditions`。
 
 ## 评分拆分
 
@@ -188,4 +200,5 @@ The strict form is intentionally expected to fail on the current evidence until 
 ```bash
 node scripts/reverse-agent/hard-eval-control-plane.mjs . --json \
   | node scripts/reverse-agent/validate-claim-ledger.mjs --stdin --strict-claims
+npm run gate:claim-release
 ```

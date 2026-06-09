@@ -25,16 +25,23 @@
         },
         "roles": {
           "type": "array",
+          "minItems": 4,
+          "allOf": [
+            { "contains": { "type": "object", "properties": { "id": { "const": "mapper" } }, "required": ["id"] } },
+            { "contains": { "type": "object", "properties": { "id": { "const": "verifier" } }, "required": ["id"] } },
+            { "contains": { "type": "object", "properties": { "id": { "const": "adversary" } }, "required": ["id"] } },
+            { "contains": { "type": "object", "properties": { "id": { "const": "synthesizer" } }, "required": ["id"] } }
+          ],
           "items": {
             "type": "object",
             "required": ["id", "mustEmit", "allowedClaimKinds", "forbiddenClaimKinds", "handoffTargets", "evidenceContract"],
             "properties": {
               "id": { "type": "string" },
-              "mustEmit": { "type": "array", "items": { "type": "string" } },
-              "allowedClaimKinds": { "type": "array", "items": { "type": "string" } },
+              "mustEmit": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+              "allowedClaimKinds": { "type": "array", "minItems": 1, "items": { "type": "string" } },
               "forbiddenClaimKinds": { "type": "array", "items": { "type": "string" } },
               "handoffTargets": { "type": "array", "items": { "type": "string" } },
-              "evidenceContract": { "type": "array", "items": { "type": "string" } }
+              "evidenceContract": { "type": "array", "minItems": 1, "items": { "type": "string" } }
             },
             "additionalProperties": true
           }
@@ -48,6 +55,13 @@
             "eventHash": { "type": "string" },
             "requiredEventTypes": {
               "type": "array",
+              "allOf": [
+                { "contains": { "const": "artifact_handoff" } },
+                { "contains": { "const": "claim" } },
+                { "contains": { "const": "validation" } },
+                { "contains": { "const": "challenge" } },
+                { "contains": { "const": "resolution" } }
+              ],
               "items": {
                 "enum": ["artifact_handoff", "claim", "validation", "challenge", "resolution"]
               }
