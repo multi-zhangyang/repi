@@ -39,6 +39,7 @@ function inferFamily(path, obj) {
   if (obj.family) return obj.family;
   if (path.includes('/douyin-nowatermark/')) return 'douyin-nowatermark';
   if (path.includes('/agent-dogfood/')) return 'agent-dogfood';
+  if (path.includes('/proof-gate/')) return 'proof-gate';
   if (path.includes('/public-webapp/')) return obj.profile || 'public-webapp';
   return obj.profile || 'unknown';
 }
@@ -172,6 +173,20 @@ function scoreArtifact(path, obj) {
     if (checks.hardScoreMentioned && obj.scoreRun?.artifactDir) dimensions.regression_readiness = 15;
     dimensions.bundle_trace = clamp(toolCalls * 2, 8);
     evidence.push(`agent model_calls=${modelCalls} tool_calls=${toolCalls} checks=${Object.entries(checks).filter(([, v]) => v).map(([k]) => k).join(',')}`);
+  } else if (family === 'proof-gate') {
+    const gates = obj.gates || [];
+    const passed = gates.filter((item) => item.passed).length;
+    const total = gates.length || 1;
+    const allPassed = obj.verdict === 'proof-gate-passed' && passed === total;
+    dimensions.signature_rebuild = allPassed ? 20 : clamp(passed * 4, 16);
+    dimensions.signed_replay = gates.some((item) => /bilibili|agent/.test(item.name) && item.passed) ? 15 : 0;
+    dimensions.anti_bot_challenge = gates.some((item) => /xiaohongshu|douyin/.test(item.name) && item.passed) ? 15 : 0;
+    dimensions.cdn_media_probe = gates.some((item) => /bilibili|douyin/.test(item.name) && item.passed) ? 15 : 0;
+    dimensions.runtime_capture_depth = allPassed ? 12 : clamp(passed * 3, 10);
+    dimensions.exploit_chain = allPassed ? 10 : clamp(passed * 2, 8);
+    dimensions.bundle_trace = gates.some((item) => /xiaohongshu|douyin|bilibili/.test(item.name) && item.passed) ? 8 : 0;
+    dimensions.regression_readiness = obj.scoreboardArtifact ? 5 : 0;
+    evidence.push(`proof gates=${passed}/${total} mode=${obj.mode || 'unknown'} agent=${Boolean(obj.runAgent)}`);
   } else if ((obj.findings || []).length) {
     dimensions.exploit_chain = clamp((obj.findings || []).length * 2, 10);
   }

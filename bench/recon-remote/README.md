@@ -8,6 +8,7 @@ Reproducible public-network benchmark harnesses for Pi-RECON. Runtime evidence i
 | `public-webapp/` | Public webapp surface mapping and replay-safe vulnerability confirmation for profiles such as OWASP Juice Shop and Altoro Mutual/TestFire. |
 | `real-platform/` | Hard-mode real-platform reverse benchmark for Bilibili WBI/media APIs/CDN probes/self-test/browser signer trace and Xiaohongshu CDP anti-bot/API signed replay, runtime signer hooks, signer-bundle trace, replay-divergence capture. |
 | `agent-dogfood/` | Runs the Pi-RECON agent itself through `./pi-test.sh --recon` against latest remote evidence, requiring a real provider/model call, tool execution, platform coverage, and reproducible dogfood artifacts. |
+| `proof-gate/` | Cross-platform live proof gate: reruns Bilibili WBI, Xiaohongshu x-s, Douyin `a_bogus`/no-watermark, optional agent dogfood, then enforces hard-score gates. |
 
 Run each benchmark with `node <benchmark>/run.mjs --help` for usage.
 
@@ -35,3 +36,13 @@ RECON_AGENT_PROVIDER=openai RECON_AGENT_MODEL=gpt-4.1 \
 ```
 
 The dogfood harness records stdout/stderr, session metadata, model/tool evidence, hard-score linkage, and whether the agent covered Bilibili WBI, Xiaohongshu x-s, and Douyin `a_bogus`.
+
+## Proof gate
+
+Run the live cross-platform release gate:
+
+```bash
+node bench/recon-remote/proof-gate/run.mjs
+```
+
+Use `--use-latest` for a fast gate over existing evidence.
