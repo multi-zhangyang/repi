@@ -194,30 +194,34 @@ function scoreArtifact(path, obj) {
     const roleCount = safeNum((roles.length || roleRuns.length) + (synthesizer ? 1 : 0));
     const modelCalls = safeNum(totals.modelCalls);
     const toolCalls = safeNum(totals.toolCalls);
+    const toolResults = safeNum(totals.toolResults);
+    const toolResultBytes = safeNum(totals.toolResultBytes);
     const toolNames = totals.toolNames || {};
     const evidencePaths = obj.evidencePaths || {};
+    const sameWindowPath = evidencePaths.sameWindowLive || evidencePaths.bestSameWindowLive || evidencePaths.latestSameWindowLive;
     const platformPaths = [
       evidencePaths.bilibili || evidencePaths.bestBilibili || evidencePaths.latestBilibili,
       evidencePaths.xiaohongshu || evidencePaths.bestXiaohongshu || evidencePaths.latestXiaohongshu,
       evidencePaths.douyin || evidencePaths.bestDouyin || evidencePaths.latestDouyin,
     ].filter(Boolean).length;
-    if (gates.allRolesCoverPlatforms && roleCount >= 3) dimensions.signature_rebuild = 18;
+    if (gates.allRolesCoverPlatforms && gates.sameWindowCovered && sameWindowPath && roleCount >= 3) dimensions.signature_rebuild = 20;
+    else if (gates.allRolesCoverPlatforms && roleCount >= 3) dimensions.signature_rebuild = 18;
     else if (platformPaths >= 3) dimensions.signature_rebuild = 12;
     else if (platformPaths) dimensions.signature_rebuild = 6;
     if (gates.allRolesModelCalled && modelCalls >= roleCount) dimensions.signed_replay = 15;
     else if (modelCalls) dimensions.signed_replay = 8;
     if (gates.antiSelfDelusion && gates.roleSpecificPassed && synthOk) dimensions.anti_bot_challenge = 15;
     else if (roleRuns.some((role) => role.id === 'adversary')) dimensions.anti_bot_challenge = 7;
-    if (platformPaths >= 3 && gates.allRolesCiteArtifacts) dimensions.cdn_media_probe = 15;
+    if (platformPaths >= 3 && sameWindowPath && gates.allRolesCiteArtifacts) dimensions.cdn_media_probe = 15;
     else if (platformPaths >= 2) dimensions.cdn_media_probe = 9;
-    if (gates.allRolesUsedTools && gates.commandToolPresent && gates.readToolPresent && toolCalls >= roleCount * 2) dimensions.runtime_capture_depth = 15;
+    if (gates.allRolesUsedTools && gates.commandToolPresent && gates.readToolPresent && gates.childPidsCaptured && gates.monotonicClockCaptured && gates.toolResultsCaptured && toolCalls >= roleCount * 2) dimensions.runtime_capture_depth = 15;
     else if (toolCalls) dimensions.runtime_capture_depth = 8;
     if (obj.verdict === 'agent-parallel-dogfood-confirmed' && gates.strongParallelOverlap && synthOk) dimensions.exploit_chain = 15;
     else if (gates.parallelOverlap) dimensions.exploit_chain = 10;
-    dimensions.bundle_trace = clamp(Object.keys(toolNames).length * 2 + roleRuns.filter((role) => role.session?.files?.length).length + (synthTools ? 2 : 0), 10);
-    if (gates.hardScoreCovered && gates.allRolesCiteArtifacts && gates.roleSpecificPassed && synthOk) dimensions.regression_readiness = 12;
+    dimensions.bundle_trace = clamp(Object.keys(toolNames).length * 2 + roleRuns.filter((role) => role.session?.files?.length).length + roleRuns.filter((role) => role.session?.fileDigests?.length).length + (synthTools ? 2 : 0), 10);
+    if (gates.hardScoreCovered && gates.sameWindowCovered && gates.allRolesCiteArtifacts && gates.roleSpecificPassed && gates.sessionDigestsCaptured && gates.nonMockRuntimeExpected && synthOk) dimensions.regression_readiness = 12;
     else if (obj.scoreRun?.artifactDir || evidencePaths.hardScore) dimensions.regression_readiness = 7;
-    evidence.push(`parallel roles=${roleCount} synth=${synthOk} retries=${retryCount} model_calls=${modelCalls} tool_calls=${toolCalls} overlap=${parallel.overlapPairs || 0}/${parallel.maxPairs || 0} speedup=${parallel.speedup || 0} gates=${Object.entries(gates).filter(([, v]) => v).map(([k]) => k).join(',')}`);
+    evidence.push(`parallel roles=${roleCount} synth=${synthOk} retries=${retryCount} model_calls=${modelCalls} tool_calls=${toolCalls} tool_results=${toolResults} tool_result_bytes=${toolResultBytes} overlap=${parallel.overlapPairs || 0}/${parallel.maxPairs || 0} speedup=${parallel.speedup || 0} same_window=${sameWindowPath || 'none'} process=${Boolean(gates.childPidsCaptured && gates.monotonicClockCaptured)} nonmock=${Boolean(gates.nonMockRuntimeExpected)} gates=${Object.entries(gates).filter(([, v]) => v).map(([k]) => k).join(',')}`);
   } else if (family === 'same-window-live') {
     const gates = obj.gates || [];
     const gateMap = Object.fromEntries(gates.map((item) => [item.name, item]));

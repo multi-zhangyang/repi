@@ -1,6 +1,6 @@
 # Agent dogfood benchmark
 
-Runs the actual Pi-RECON agent (`./pi-test.sh --recon`) against the latest remote benchmark evidence. This is the harness for proving the agent can call a real provider/model, use tools, read evidence, run hard-score, and produce a platform-specific reverse/pentest roadmap instead of relying on external manual analysis.
+Runs the actual Pi-RECON agent (`./pi-test.sh --recon`) against the latest remote benchmark evidence. This is the harness for proving the agent can call a real provider/model, use tools, read evidence, run hard-score, understand the current `same-window-live` frontier, and produce a platform-specific reverse/pentest roadmap instead of relying on external manual analysis.
 
 ## Usage
 
@@ -32,7 +32,16 @@ RECON_AGENT_PROVIDER=openai RECON_AGENT_MODEL=gpt-4.1 \
 | `planner` | Design the next hardest benchmark with commands, gates, invariants, compact/context needs, and rollback criteria. |
 | `synthesizer` | Read worker outputs, resolve mapper/verifier/adversary/planner conflicts, and downgrade unsupported claims. |
 
-The parallel gate is intentionally stricter than the single-agent run: every role must call the model, use tools, cite `.pi/evidence/remote/...` artifacts, cover Bilibili WBI, Xiaohongshu `x-s`, and Douyin `a_bogus`, emit the standard report sections, overlap in wall-clock time for the worker phase, and pass synthesizer conflict reconciliation.
+The parallel gate is intentionally stricter than the single-agent run: every role must call the model, use tools, cite `.pi/evidence/remote/...` artifacts, cover `same-window-live`, Bilibili WBI, Xiaohongshu `x-s`, and Douyin `a_bogus`, emit the standard report sections, overlap in wall-clock time for the worker phase, and pass synthesizer conflict reconciliation.
+
+The parallel result also records a runtime audit so the dogfood proof is not just text:
+
+- child PID and `/proc/<pid>` command-line digest per worker/synthesizer;
+- wall-clock plus monotonic-clock timing and drift;
+- session JSONL file digests;
+- tool-call and tool-result counts, byte totals, error counts, and result digests;
+- redacted provider/model environment presence;
+- `--offline`, `--no-env`, mock/fake/stub environment detection.
 
 ## Environment
 
@@ -78,6 +87,19 @@ worker-summary.json
 sessions/<role>/*.jsonl
 ```
 
+Important `result.json` fields:
+
+| Field | Meaning |
+|---|---|
+| `runtimeAudit` | Redacted process/provider/mock/offline audit for the harness. |
+| `roleRuns[].pid` / `processAtSpawn` | Child process evidence captured at spawn. |
+| `roleRuns[].monotonic` | Monotonic timing evidence independent of wall-clock formatting. |
+| `roleRuns[].session.fileDigests` | JSONL evidence digests. |
+| `roleRuns[].session.toolResultDigests` | Per-tool result byte/hash evidence. |
+| `gates.childPidsCaptured` | Every role/synthesizer had process evidence. |
+| `gates.toolResultsCaptured` | Tool calls have corresponding tool-result evidence. |
+| `gates.nonMockRuntimeExpected` | No explicit offline/no-env/mock/fake/stub mode was detected. |
+
 The result classifies the run as:
 
 | Verdict | Meaning |
@@ -85,6 +107,6 @@ The result classifies the run as:
 | `agent-dogfood-confirmed` | Agent exited successfully, model output was captured, hard-score was referenced, and all three real-platform tracks were covered with the required report sections. |
 | `agent-dogfood-partial` | Agent produced model output but missed one or more gates. |
 | `agent-dogfood-failed` | Agent/model run failed or produced no usable model evidence. |
-| `agent-parallel-dogfood-confirmed` | All parallel workers plus synthesizer exited, called the model, used tools, overlapped in the worker phase, cited artifacts, covered all three platforms, and passed role-specific/conflict-reconciliation gates. |
+| `agent-parallel-dogfood-confirmed` | All parallel workers plus synthesizer exited, called the model, used tools, overlapped in the worker phase, cited artifacts, covered same-window plus all three platforms, and passed role-specific/conflict-reconciliation/process/tool-result gates. |
 | `agent-parallel-dogfood-partial` | At least one parallel role called the model and used tools, but one or more strict gates failed. |
 | `agent-parallel-dogfood-failed` | The parallel run produced no usable model/tool evidence. |

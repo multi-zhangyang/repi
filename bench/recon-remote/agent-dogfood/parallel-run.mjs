@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -18,6 +18,18 @@ const maxToolCallsHint = Number(process.env.RECON_PARALLEL_MAX_TOOL_CALLS || 4);
 const maxWordsHint = Number(process.env.RECON_PARALLEL_MAX_WORDS || 500);
 const runSynthesizer = !/^(0|false|no)$/i.test(process.env.RECON_SYNTHESIZER || '1');
 const roleRetries = Number(process.env.RECON_ROLE_RETRIES || 1);
+const authEnvKeys = [
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_OAUTH_TOKEN',
+  'OPENAI_API_KEY',
+  'AI_GATEWAY_API_KEY',
+  'OPENROUTER_API_KEY',
+  'GEMINI_API_KEY',
+  'GROQ_API_KEY',
+  'OPENCODE_API_KEY',
+];
+const endpointEnvKeys = ['ANTHROPIC_BASE_URL', 'OPENAI_BASE_URL', 'AI_GATEWAY_BASE_URL', 'OPENROUTER_BASE_URL'];
 
 if (process.argv.includes('--help') || process.argv.includes('-h') || !model) {
   console.log(`Pi-RECON parallel agent dogfood benchmark\n\nUsage:\n  RECON_AGENT_PROVIDER=openai RECON_AGENT_MODEL=gpt-4.1 node bench/recon-remote/agent-dogfood/parallel-run.mjs\n  node bench/recon-remote/agent-dogfood/parallel-run.mjs <provider> <model>\n\nPurpose:\n  Launches multiple real Pi-RECON --recon agents in parallel against the latest real-platform evidence,\n  then runs a synthesizer agent that reconciles worker disagreements. The harness gates real model calls,\n  tool calls, parallel overlap, platform coverage, artifact paths, and anti-self-delusion review.\n\nEnvironment:\n  RECON_AGENT_PROVIDER=<provider>       default: aigateway\n  RECON_AGENT_MODEL=<model>             required unless argv[3] or ANTHROPIC_MODEL is set\n  RECON_AGENT_THINKING=low\n  RECON_AGENT_TOOLS=read,grep,find,ls,bash\n  RECON_AGENT_TIMEOUT_MS=300000\n  RECON_AGENT_CMD=./pi-test.sh\n  RECON_AGENT_EXTRA_ARGS='--offline'    optional extra Pi CLI args\n  RECON_PARALLEL_ROLES=a,b              optional subset: mapper,verifier,adversary,planner\n  RECON_PARALLEL_MAX_TOOL_CALLS=4        prompt-level cap to prevent runaway workers\n  RECON_PARALLEL_MAX_WORDS=500           prompt-level output cap per worker\n  RECON_SYNTHESIZER=1                    run the sequential conflict-synthesizer; set 0 to skip\n  RECON_ROLE_RETRIES=1                   retry failed/flaky role runs before judging the gate\n\nOutput:\n  .pi/evidence/remote/agent-parallel-dogfood/<timestamp>/\n`);
@@ -28,22 +40,22 @@ const allRoles = [
   {
     id: 'mapper',
     title: 'Evidence Mapper',
-    prompt: `Role: evidence mapper. Build a precise map of the latest real-platform Pi-RECON evidence.\n\nRequired actions:\n1. Use ls/read/grep/find tools to inspect the supplied artifact paths and the latest hard-score artifact.\n2. Identify the decisive fields for Bilibili WBI/per-page CID, Xiaohongshu x-s/signed replay, and Douyin a_bogus/structured replay.\n3. Separate live-runtime evidence from stale, inferred, or weak evidence.\n4. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n5. Do not edit files.`,
+    prompt: `Role: evidence mapper. Build a precise map of the latest real-platform Pi-RECON evidence.\n\nRequired actions:\n1. Use ls/read/grep/find tools to inspect the supplied artifact paths, latest hard-score artifact, and same-window-live artifact first.\n2. Identify the decisive fields for Bilibili WBI/per-page CID, Xiaohongshu x-s/signed replay, Douyin a_bogus/structured replay, and same-window freshness/gaps.\n3. Separate live same-window runtime evidence from stale, inferred, or weak evidence.\n4. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n5. Do not edit files.`,
   },
   {
     id: 'verifier',
     title: 'Command Verifier',
-    prompt: `Role: command verifier. Prove or disprove the claims by executing local verification commands.\n\nRequired actions:\n1. Execute: node bench/recon-remote/hard-score.mjs\n2. Use read/grep/ls/bash to verify concrete result.json fields for Bilibili, Xiaohongshu, and Douyin.\n3. Report exact commands, exit status when visible, artifact paths, and the decisive field/value pairs.\n4. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n5. Do not edit files.`,
+    prompt: `Role: command verifier. Prove or disprove the claims by executing local verification commands.\n\nRequired actions:\n1. Execute: node bench/recon-remote/hard-score.mjs\n2. Use read/grep/ls/bash to verify concrete result.json fields for same-window-live, Bilibili, Xiaohongshu, and Douyin.\n3. Report exact commands, exit status when visible, artifact paths, and the decisive field/value pairs.\n4. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n5. Do not edit files.`,
   },
   {
     id: 'adversary',
     title: 'Anti-Self-Delusion Auditor',
-    prompt: `Role: adversarial auditor. Your job is to attack the benchmark's confidence and find self-delusion.\n\nRequired actions:\n1. Use read/grep/ls/find tools to inspect latest scoreboard and artifacts.\n2. For Bilibili, Xiaohongshu, and Douyin, say what is strongly proven, what is only inferred, and what is missing.\n3. Explicitly flag stale verdicts, weak evidence, indirect proof, or any gap that would make a top-tier agent claim invalid.\n4. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n5. Do not edit files.`,
+    prompt: `Role: adversarial auditor. Your job is to attack the benchmark's confidence and find self-delusion.\n\nRequired actions:\n1. Use read/grep/ls/find tools to inspect latest scoreboard, same-window-live result, and platform artifacts.\n2. For Bilibili, Xiaohongshu, and Douyin, say what is strongly proven, what is only inferred, and what is missing.\n3. Explicitly flag stale verdicts, weak evidence, indirect proof, contradictions, null/empty proof, or any gap that would make a top-tier agent claim invalid. If a stale artifact conflicts with the same-window result, call it stale and do not overrule live same-window evidence.\n4. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n5. Do not edit files.`,
   },
   {
     id: 'planner',
     title: 'Hard Frontier Planner',
-    prompt: `Role: hard frontier planner. Design the next hardest benchmark step for a top-tier reverse/pentest agent.\n\nRequired actions:\n1. Use read/grep/ls tools to inspect current score/evidence before proposing work.\n2. Propose a concrete multi-agent benchmark plan that raises difficulty without self-delusion.\n3. Include commands, pass/fail gates, artifact invariants, context/compact requirements, and rollback criteria.\n4. Cover Bilibili WBI/per-page CID, Xiaohongshu x-s, Douyin a_bogus/no-watermark transform, and Pi-RECON agent orchestration.\n5. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n6. Do not edit files.`,
+    prompt: `Role: hard frontier planner. Design the next hardest benchmark step for a top-tier reverse/pentest agent.\n\nRequired actions:\n1. Use read/grep/ls tools to inspect current score/evidence before proposing work, including same-window-live.\n2. Propose a concrete multi-agent benchmark plan that raises difficulty without self-delusion.\n3. Include commands, pass/fail gates, artifact invariants, context/compact requirements, and rollback criteria.\n4. Cover same-window freshness, Bilibili WBI/per-page CID, Xiaohongshu x-s, Douyin a_bogus/no-watermark transform, and Pi-RECON agent orchestration.\n5. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n6. Do not edit files.`,
   },
 ];
 const roles = roleFilter.length ? allRoles.filter((role) => roleFilter.includes(role.id)) : allRoles;
@@ -58,6 +70,79 @@ function redact(value) {
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, 'sk-<redacted>')
     .replace(/(api[_-]?key|auth[_-]?token|authorization|bearer)(["'\s:=]+)([A-Za-z0-9_.\-\/+=]{12,})/gi, '$1$2<redacted>')
     .replace(/(ANTHROPIC_AUTH_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|GEMINI_API_KEY|OPENROUTER_API_KEY|AI_GATEWAY_API_KEY)=\S+/g, '$1=<redacted>');
+}
+function truthyEnvFlag(value) { return /^(1|true|yes|on)$/i.test(String(value || '')); }
+function publicEnvPresence(keys) {
+  return Object.fromEntries(keys.map((key) => [key, process.env[key] ? { set: true, length: String(process.env[key]).length } : { set: false, length: 0 }]));
+}
+function publicEndpointEnv(keys) {
+  return Object.fromEntries(keys.map((key) => {
+    const value = process.env[key] || '';
+    if (!value) return [key, { set: false }];
+    try {
+      const url = new URL(value);
+      return [key, { set: true, protocol: url.protocol, host: url.host }];
+    } catch {
+      return [key, { set: true, sha256: sha256(value).slice(0, 16), length: value.length }];
+    }
+  }));
+}
+function mockOfflineEnvSnapshot() {
+  const interesting = Object.entries(process.env)
+    .filter(([key]) => /(^PI_OFFLINE$|(^|_)OFFLINE($|_)|(^|_)MOCK($|_)|(^|_)FAKE($|_)|NO_NETWORK|NO_MODEL|STUB|FIXTURE)/i.test(key))
+    .map(([key, value]) => [key, redact(value).slice(0, 160)]);
+  return Object.fromEntries(interesting);
+}
+function processProbe(pid) {
+  if (!pid || !existsSync(`/proc/${pid}`)) return { pid: pid || null, exists: false };
+  const readProc = (name) => {
+    try { return readFileSync(`/proc/${pid}/${name}`); } catch { return Buffer.alloc(0); }
+  };
+  const cmdline = readProc('cmdline');
+  const comm = readProc('comm').toString('utf8').trim();
+  const stat = readProc('stat').toString('utf8');
+  const statParts = stat.split(/\s+/);
+  return {
+    pid,
+    exists: true,
+    argv0: cmdline.toString('utf8').split('\0').filter(Boolean)[0] || '',
+    cmdlineBytes: cmdline.length,
+    cmdlineSha256: sha256(cmdline).slice(0, 24),
+    comm,
+    ppid: Number(statParts[3] || 0) || null,
+  };
+}
+async function fileDigest(path) {
+  if (!path || !existsSync(path)) return null;
+  const buffer = await readFile(path).catch(() => null);
+  if (!buffer) return null;
+  return { path: rel(path), bytes: buffer.length, sha256: sha256(buffer).slice(0, 24) };
+}
+async function runtimeAudit() {
+  const offlineRequested = extraArgs.includes('--offline') || truthyEnvFlag(process.env.PI_OFFLINE);
+  const noEnvRequested = extraArgs.includes('--no-env');
+  const mockOfflineEnv = mockOfflineEnvSnapshot();
+  const mockEnvDetected = Object.keys(mockOfflineEnv).some((key) => !/^PI_RECON_REPLAY/i.test(key));
+  return {
+    harnessPid: process.pid,
+    harnessPpid: process.ppid,
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    cwd: repoRoot,
+    agentCmd,
+    agentCmdDigest: await fileDigest(agentCmd.startsWith('/') ? agentCmd : join(repoRoot, agentCmd)),
+    extraArgs: extraArgs.map(redact),
+    providerConfigured: Boolean(provider),
+    modelConfigured: Boolean(model),
+    authEnvPresence: publicEnvPresence(authEnvKeys),
+    endpointEnv: publicEndpointEnv(endpointEnvKeys),
+    offlineRequested,
+    noEnvRequested,
+    mockOfflineEnv,
+    mockEnvDetected,
+    nonMockRuntimeExpected: Boolean(provider && model && !offlineRequested && !noEnvRequested && !mockEnvDetected),
+  };
 }
 async function walk(dir, out = []) {
   if (!existsSync(dir)) return out;
@@ -82,7 +167,11 @@ async function latestResultPath(predicate) {
 function run(cmd, args, options = {}) {
   return new Promise((resolve) => {
     const started = Date.now();
+    const startedMonoNs = process.hrtime.bigint();
+    const argvSha256 = sha256(JSON.stringify([cmd, ...args])).slice(0, 24);
     const child = spawn(cmd, args, { cwd: repoRoot, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], shell: false });
+    const childPid = child.pid || null;
+    const processAtSpawn = processProbe(childPid);
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {
@@ -93,33 +182,134 @@ function run(cmd, args, options = {}) {
     child.stderr.on('data', (chunk) => { stderr += String(chunk); });
     child.on('close', (code, signal) => {
       clearTimeout(timer);
-      resolve({ cmd, args, code, signal, startedAt: new Date(started).toISOString(), endedAt: new Date().toISOString(), elapsedMs: Date.now() - started, stdout, stderr });
+      const endedMonoNs = process.hrtime.bigint();
+      const elapsedMs = Date.now() - started;
+      resolve({
+        cmd,
+        args,
+        argvSha256,
+        pid: childPid,
+        parentPid: process.pid,
+        processAtSpawn,
+        code,
+        signal,
+        startedAt: new Date(started).toISOString(),
+        endedAt: new Date().toISOString(),
+        elapsedMs,
+        monotonic: {
+          startedNs: startedMonoNs.toString(),
+          endedNs: endedMonoNs.toString(),
+          elapsedMs: Number((endedMonoNs - startedMonoNs) / 1000000n),
+          driftMs: Math.abs(elapsedMs - Number((endedMonoNs - startedMonoNs) / 1000000n)),
+        },
+        stdout,
+        stderr,
+      });
     });
     child.on('error', (error) => {
       clearTimeout(timer);
-      resolve({ cmd, args, code: 'error', signal: null, startedAt: new Date(started).toISOString(), endedAt: new Date().toISOString(), elapsedMs: Date.now() - started, stdout, stderr, error: error.message });
+      const endedMonoNs = process.hrtime.bigint();
+      const elapsedMs = Date.now() - started;
+      resolve({
+        cmd,
+        args,
+        argvSha256,
+        pid: childPid,
+        parentPid: process.pid,
+        processAtSpawn,
+        code: 'error',
+        signal: null,
+        startedAt: new Date(started).toISOString(),
+        endedAt: new Date().toISOString(),
+        elapsedMs,
+        monotonic: {
+          startedNs: startedMonoNs.toString(),
+          endedNs: endedMonoNs.toString(),
+          elapsedMs: Number((endedMonoNs - startedMonoNs) / 1000000n),
+          driftMs: Math.abs(elapsedMs - Number((endedMonoNs - startedMonoNs) / 1000000n)),
+        },
+        stdout,
+        stderr,
+        error: error.message,
+      });
     });
   });
 }
 async function parseSessions(jsonlPaths) {
-  const summary = { files: jsonlPaths.map(rel), messages: 0, modelCalls: 0, toolCalls: 0, toolNames: {}, providers: {}, models: {}, usageTokens: 0 };
+  const summary = {
+    files: jsonlPaths.map(rel),
+    fileDigests: [],
+    sessionIds: [],
+    sessionCwds: {},
+    firstTimestamp: '',
+    lastTimestamp: '',
+    messages: 0,
+    modelCalls: 0,
+    modelResponseIds: [],
+    stopReasons: {},
+    toolCalls: 0,
+    toolCallDigests: [],
+    toolResults: 0,
+    toolResultErrors: 0,
+    toolResultBytes: 0,
+    toolResultDigests: [],
+    toolNames: {},
+    toolResultNames: {},
+    providers: {},
+    models: {},
+    usageTokens: 0,
+  };
   for (const path of jsonlPaths) {
     const text = await readFile(path, 'utf8').catch(() => '');
+    summary.fileDigests.push({ path: rel(path), bytes: Buffer.byteLength(text), sha256: sha256(text).slice(0, 24) });
     for (const line of text.split(/\n/)) {
       const obj = safeJson(line);
       if (!obj) continue;
+      if (obj.timestamp) {
+        summary.firstTimestamp = summary.firstTimestamp ? [summary.firstTimestamp, obj.timestamp].sort()[0] : obj.timestamp;
+        summary.lastTimestamp = summary.lastTimestamp ? [summary.lastTimestamp, obj.timestamp].sort().at(-1) : obj.timestamp;
+      }
+      if (obj.type === 'session') {
+        if (obj.id) summary.sessionIds.push(obj.id);
+        if (obj.cwd) summary.sessionCwds[obj.cwd] = (summary.sessionCwds[obj.cwd] || 0) + 1;
+      }
       if (obj.type === 'message' && obj.message) {
         summary.messages += 1;
         if (obj.message.provider || obj.message.model) {
           summary.modelCalls += 1;
           if (obj.message.provider) summary.providers[obj.message.provider] = (summary.providers[obj.message.provider] || 0) + 1;
           if (obj.message.model) summary.models[obj.message.model] = (summary.models[obj.message.model] || 0) + 1;
+          if (obj.message.responseId) summary.modelResponseIds.push(String(obj.message.responseId).slice(0, 80));
+          if (obj.message.stopReason) summary.stopReasons[obj.message.stopReason] = (summary.stopReasons[obj.message.stopReason] || 0) + 1;
           if (obj.message.usage?.totalTokens) summary.usageTokens += Number(obj.message.usage.totalTokens) || 0;
+        }
+        if (obj.message.role === 'toolResult') {
+          const toolName = obj.message.toolName || 'unknown';
+          const contentText = (obj.message.content || []).map((part) => part.text || '').join('\n');
+          const bytes = Buffer.byteLength(contentText);
+          summary.toolResults += 1;
+          summary.toolResultBytes += bytes;
+          if (obj.message.isError) summary.toolResultErrors += 1;
+          summary.toolResultNames[toolName] = (summary.toolResultNames[toolName] || 0) + 1;
+          summary.toolResultDigests.push({
+            id: obj.message.toolCallId || '',
+            name: toolName,
+            isError: Boolean(obj.message.isError),
+            bytes,
+            sha256: sha256(contentText).slice(0, 24),
+          });
         }
         for (const part of obj.message.content || []) {
           if (part.type === 'toolCall') {
             summary.toolCalls += 1;
             summary.toolNames[part.name || 'unknown'] = (summary.toolNames[part.name || 'unknown'] || 0) + 1;
+            const argsText = typeof part.arguments === 'string' ? part.arguments : JSON.stringify(part.arguments || {});
+            summary.toolCallDigests.push({
+              id: part.id || '',
+              name: part.name || 'unknown',
+              argumentBytes: Buffer.byteLength(argsText),
+              argumentSha256: sha256(argsText).slice(0, 24),
+            });
           }
         }
       }
@@ -133,6 +323,7 @@ function matchCount(text, patterns) { return patterns.filter((re) => re.test(tex
 function outputChecks(role, output, session, code) {
   const sectionsOk = hasAll(output, [/Outcome/i, /Key Evidence/i, /Verification/i, /Next Step/i]);
   const platformsOk = hasAll(output, [/Bilibili|B站|WBI/i, /Xiaohongshu|小红书|XHS|x-s/i, /Douyin|抖音|a_bogus/i]);
+  const sameWindowMentioned = /same-window-live|same_window|spanMs|frontierGaps/i.test(output);
   const hardScoreMentioned = /hard-score|scoreboard|bench\/recon-remote\/hard-score/i.test(output);
   const artifactPathsOk = /\.pi\/evidence\/remote\//.test(output);
   const modelCalled = session.modelCalls > 0;
@@ -140,13 +331,13 @@ function outputChecks(role, output, session, code) {
   const roleSpecific = role.id === 'verifier'
     ? hasAnyTool(session, ['bash']) && /node bench\/recon-remote\/hard-score\.mjs|hard-score/i.test(output)
     : role.id === 'adversary'
-      ? /gap|missing|not proven|not verified|stale|weak|indirect|self-delusion|自嗨|缺口|不足|未证明|未验证|陈旧|间接/i.test(output)
+      ? /gap|missing|not proven|not verified|stale|weak|indirect|contradict|null|empty|override|downgrad|self-delusion|自嗨|缺口|不足|未证明|未验证|陈旧|间接|矛盾|空|降级/i.test(output)
       : role.id === 'planner'
         ? /command|gate|invariant|pass\/fail|rollback|命令|门禁|不变量|回滚/i.test(output)
         : role.id === 'synthesizer'
           ? matchCount(output, [/mapper/i, /verifier/i, /adversary/i, /planner/i]) >= 3 && /conflict|disagreement|reconcile|overrule|synthesi[sz]e|accepted|rejected|downgrad|冲突|分歧|调和|采纳|驳回|降级|综合/i.test(output)
           : hasAnyTool(session, ['read', 'ls', 'grep', 'find', 'bash']);
-  return { exitOk: code === 0, modelCalled, toolUsed, sectionsOk, platformsOk, hardScoreMentioned, artifactPathsOk, roleSpecific };
+  return { exitOk: code === 0, modelCalled, toolUsed, sectionsOk, platformsOk, sameWindowMentioned, hardScoreMentioned, artifactPathsOk, roleSpecific };
 }
 function overlapStats(runs) {
   const intervals = runs.map((run) => ({ start: Date.parse(run.startedAt), end: Date.parse(run.endedAt), elapsedMs: run.elapsedMs })).filter((x) => Number.isFinite(x.start) && Number.isFinite(x.end));
@@ -176,6 +367,7 @@ const outDir = join(repoRoot, '.pi', 'evidence', 'remote', 'agent-parallel-dogfo
 await mkdir(outDir, { recursive: true });
 const sessionRoot = join(outDir, 'sessions');
 await mkdir(sessionRoot, { recursive: true });
+const audit = await runtimeAudit();
 
 const scoreRun = await run('node', ['bench/recon-remote/hard-score.mjs'], { timeoutMs: 60000 });
 const scoreJson = safeJson(scoreRun.stdout);
@@ -189,6 +381,8 @@ function bestFamilyArtifact(family) {
 }
 const evidencePaths = {
   hardScore: scoreArtifactDir,
+  bestSameWindowLive: bestFamilyArtifact('same-window-live'),
+  latestSameWindowLive: rel(await latestResultPath((path) => path.includes('/same-window-live/'))),
   bestBilibili: bestFamilyArtifact('bilibili-video'),
   latestBilibili: rel(await latestResultPath((path) => path.includes('/real-platform/bilibili-video/'))),
   bestXiaohongshu: bestFamilyArtifact('xiaohongshu-note'),
@@ -198,12 +392,12 @@ const evidencePaths = {
   frontierMatrix: rel(await latestResultPath((path) => path.includes('/frontier-matrix/'))),
   latestAgentDogfood: rel(await latestResultPath((path) => path.includes('/agent-dogfood/'))),
 };
-const sharedContext = `\n\nShared authoritative evidence paths:\n${JSON.stringify(evidencePaths, null, 2)}\n\nEvidence order: live runtime behavior > network traffic > actively served assets > process config > persisted artifacts/source/comments. Do not claim success unless the artifact fields prove it. If evidence is missing or indirect, say so.\n`;
+const sharedContext = `\n\nShared authoritative evidence paths:\n${JSON.stringify(evidencePaths, null, 2)}\n\nEvidence order: live same-window runtime behavior > platform runtime artifact fields > network traffic > actively served assets > process config > persisted artifacts/source/comments. Treat same-window-live as the current release frontier: if older platform artifacts conflict with it, explicitly classify the older artifact as stale instead of overuling the fresher same-window proof. Do not claim success unless the artifact fields prove it. If evidence is missing or indirect, say so.\n`;
 const boundedWork = `\n\nOperational bounds for this parallel worker:\n- Use at most ${maxToolCallsHint} tool calls unless a required command fails.\n- Keep the final answer under ${maxWordsHint} words.\n- Stop immediately after the Next Step section; do not continue exploring once the required gates are covered.\n- Prefer decisive jq/grep/read checks over broad recursive inspection.\n`;
-const requiredCitations = `\n\nRequired citations for every role:\n- Mention the hard-score or scoreboard artifact path explicitly.\n- Mention at least one .pi/evidence/remote artifact path for each platform family: Bilibili, Xiaohongshu, and Douyin.\n`;
+const requiredCitations = `\n\nRequired citations for every role:\n- Mention the hard-score or scoreboard artifact path explicitly.\n- Mention the same-window-live artifact path explicitly.\n- Mention at least one .pi/evidence/remote artifact path for each platform family: Bilibili, Xiaohongshu, and Douyin.\n`;
 
 function strictRunPassed(runResult) {
-  return Boolean(runResult?.checks?.exitOk && runResult?.checks?.modelCalled && runResult?.checks?.toolUsed && runResult?.checks?.sectionsOk && runResult?.checks?.platformsOk && runResult?.checks?.hardScoreMentioned && runResult?.checks?.artifactPathsOk && runResult?.checks?.roleSpecific);
+  return Boolean(runResult?.checks?.exitOk && runResult?.checks?.modelCalled && runResult?.checks?.toolUsed && runResult?.checks?.sectionsOk && runResult?.checks?.platformsOk && runResult?.checks?.sameWindowMentioned && runResult?.checks?.hardScoreMentioned && runResult?.checks?.artifactPathsOk && runResult?.checks?.roleSpecific);
 }
 
 async function withRetries(label, launcher) {
@@ -215,9 +409,14 @@ async function withRetries(label, launcher) {
       attempt,
       code: last.code,
       signal: last.signal,
+      pid: last.pid,
+      argvSha256: last.argvSha256,
       elapsedMs: last.elapsedMs,
+      monotonic: last.monotonic,
       stdoutBytes: last.stdoutBytes,
       stderrBytes: last.stderrBytes,
+      sessionFiles: last.session?.files || [],
+      toolResults: last.session?.toolResults || 0,
       checks: last.checks,
       stderrTail: last.stderrTail,
     });
@@ -255,6 +454,11 @@ async function launchRole(role, attempt = 0) {
     command: redact(`${agentCmd} ${args.map((arg) => JSON.stringify(arg)).join(' ')}`),
     code: runResult.code,
     signal: runResult.signal,
+    pid: runResult.pid,
+    parentPid: runResult.parentPid,
+    argvSha256: runResult.argvSha256,
+    processAtSpawn: runResult.processAtSpawn,
+    monotonic: runResult.monotonic,
     startedAt: runResult.startedAt,
     endedAt: runResult.endedAt,
     elapsedMs: runResult.elapsedMs,
@@ -282,7 +486,7 @@ async function launchSynthesizer(workerSummaryPath, workerRuns, attempt = 0) {
     stderr: `${rel(outDir)}/${run.id}.stderr.txt`,
   }]));
   const retryHint = attempt ? `\n\nRetry attempt ${attempt}: the previous synthesizer attempt did not satisfy the harness gates. Mention at least three worker role names and explicitly accept/reject/downgrade disputed claims.\n` : '';
-  const prompt = `Role: conflict synthesizer. You are the sequential supervisor after the parallel Pi-RECON workers.\n\nRequired actions:\n1. Use tools to read ${workerSummaryPath} and inspect the worker outputs: ${JSON.stringify(workerOutputPaths)}.\n2. Reconcile mapper/verifier/adversary/planner disagreements. Explicitly say which claims are accepted, rejected, or downgraded.\n3. Use the evidence order to resolve conflicts: live runtime > network traffic > served assets > config > persisted artifacts/source/comments.\n4. Cover Bilibili WBI/per-page CID, Xiaohongshu x-s/signed replay, Douyin a_bogus/no-watermark transform, and Pi-RECON orchestration.\n5. Cite the hard-score/scoreboard artifact plus at least one .pi/evidence/remote artifact path per platform.\n6. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n7. Do not edit files.${retryHint}${boundedWork}${requiredCitations}`;
+  const prompt = `Role: conflict synthesizer. You are the sequential supervisor after the parallel Pi-RECON workers.\n\nRequired actions:\n1. Use tools to read ${workerSummaryPath} and inspect the worker outputs: ${JSON.stringify(workerOutputPaths)}.\n2. Reconcile mapper/verifier/adversary/planner disagreements. Explicitly say which claims are accepted, rejected, or downgraded.\n3. Use the evidence order to resolve conflicts: live same-window runtime > platform runtime artifacts > network traffic > served assets > config > persisted artifacts/source/comments.\n4. Cover same-window-live freshness/gaps, Bilibili WBI/per-page CID, Xiaohongshu x-s/signed replay, Douyin a_bogus/no-watermark transform, and Pi-RECON orchestration.\n5. Cite the hard-score/scoreboard artifact, same-window-live artifact, and at least one .pi/evidence/remote artifact path per platform.\n6. Output exactly these sections: Outcome / Key Evidence / Verification / Next Step.\n7. Do not edit files.${retryHint}${boundedWork}${requiredCitations}`;
   const args = [
     '--recon',
     '--provider', provider,
@@ -307,6 +511,11 @@ async function launchSynthesizer(workerSummaryPath, workerRuns, attempt = 0) {
     command: redact(`${agentCmd} ${args.map((arg) => JSON.stringify(arg)).join(' ')}`),
     code: runResult.code,
     signal: runResult.signal,
+    pid: runResult.pid,
+    parentPid: runResult.parentPid,
+    argvSha256: runResult.argvSha256,
+    processAtSpawn: runResult.processAtSpawn,
+    monotonic: runResult.monotonic,
     startedAt: runResult.startedAt,
     endedAt: runResult.endedAt,
     elapsedMs: runResult.elapsedMs,
@@ -338,6 +547,9 @@ await writeFile(join(outDir, 'worker-summary.json'), `${JSON.stringify({
     title: role.title,
     code: role.code,
     signal: role.signal,
+    pid: role.pid,
+    processAtSpawn: role.processAtSpawn,
+    monotonic: role.monotonic,
     elapsedMs: role.elapsedMs,
     session: role.session,
     checks: role.checks,
@@ -353,12 +565,16 @@ const totals = allRuns.reduce((acc, role) => {
   acc.messages += role.session.messages;
   acc.modelCalls += role.session.modelCalls;
   acc.toolCalls += role.session.toolCalls;
+  acc.toolResults += role.session.toolResults;
+  acc.toolResultErrors += role.session.toolResultErrors;
+  acc.toolResultBytes += role.session.toolResultBytes;
   acc.usageTokens += role.session.usageTokens;
   for (const [name, count] of Object.entries(role.session.toolNames || {})) acc.toolNames[name] = (acc.toolNames[name] || 0) + count;
+  for (const [name, count] of Object.entries(role.session.toolResultNames || {})) acc.toolResultNames[name] = (acc.toolResultNames[name] || 0) + count;
   for (const [name, count] of Object.entries(role.session.providers || {})) acc.providers[name] = (acc.providers[name] || 0) + count;
   for (const [name, count] of Object.entries(role.session.models || {})) acc.models[name] = (acc.models[name] || 0) + count;
   return acc;
-}, { messages: 0, modelCalls: 0, toolCalls: 0, usageTokens: 0, toolNames: {}, providers: {}, models: {} });
+}, { messages: 0, modelCalls: 0, toolCalls: 0, toolResults: 0, toolResultErrors: 0, toolResultBytes: 0, usageTokens: 0, toolNames: {}, toolResultNames: {}, providers: {}, models: {} });
 const gateNames = ['exitOk', 'modelCalled', 'toolUsed', 'sectionsOk', 'platformsOk', 'hardScoreMentioned', 'artifactPathsOk', 'roleSpecific'];
 const roleGateMatrix = Object.fromEntries(allRuns.map((role) => [role.id, role.checks]));
 const gates = {
@@ -367,6 +583,7 @@ const gates = {
   allRolesUsedTools: allRuns.every((role) => role.checks.toolUsed),
   allRolesStructured: allRuns.every((role) => role.checks.sectionsOk),
   allRolesCoverPlatforms: allRuns.every((role) => role.checks.platformsOk),
+  sameWindowCovered: allRuns.every((role) => role.checks.sameWindowMentioned),
   allRolesCiteArtifacts: allRuns.every((role) => role.checks.artifactPathsOk),
   hardScoreCovered: allRuns.every((role) => role.checks.hardScoreMentioned),
   roleSpecificPassed: allRuns.every((role) => role.checks.roleSpecific),
@@ -380,6 +597,11 @@ const gates = {
   synthesizerModelCalled: !runSynthesizer || Boolean(synthesizerRun?.checks.modelCalled),
   synthesizerUsedTools: !runSynthesizer || Boolean(synthesizerRun?.checks.toolUsed),
   synthesizerReconciled: !runSynthesizer || Boolean(synthesizerRun?.checks.roleSpecific),
+  childPidsCaptured: allRuns.every((role) => Number(role.pid || 0) > 0 && role.processAtSpawn?.exists),
+  monotonicClockCaptured: allRuns.every((role) => Number(role.monotonic?.elapsedMs || 0) >= 0 && Number(role.monotonic?.driftMs || 0) < 5000),
+  toolResultsCaptured: totals.toolCalls > 0 && totals.toolResults >= totals.toolCalls && allRuns.every((role) => role.session.toolCalls === 0 || role.session.toolResults >= role.session.toolCalls),
+  sessionDigestsCaptured: allRuns.every((role) => (role.session.fileDigests || []).length > 0 && (role.session.fileDigests || []).every((item) => item.sha256 && item.bytes > 0)),
+  nonMockRuntimeExpected: audit.nonMockRuntimeExpected,
 };
 const confirmed = Object.values(gates).every(Boolean);
 const partial = totals.modelCalls > 0 && allRuns.some((role) => role.checks.toolUsed);
@@ -398,11 +620,16 @@ const result = {
   thinking,
   tools: tools.split(',').map((x) => x.trim()).filter(Boolean),
   bounds: { maxToolCallsHint, maxWordsHint, roleRetries },
+  runtimeAudit: audit,
   roles: roles.map(({ id, title }) => ({ id, title })),
   synthesizer: runSynthesizer ? { id: 'synthesizer', title: 'Conflict Synthesizer' } : null,
   evidencePaths,
   scoreRun: {
     code: scoreRun.code,
+    pid: scoreRun.pid,
+    argvSha256: scoreRun.argvSha256,
+    processAtSpawn: scoreRun.processAtSpawn,
+    monotonic: scoreRun.monotonic,
     elapsedMs: scoreRun.elapsedMs,
     artifactDir: scoreJson?.artifactDir || '',
     stdoutSha256: sha256(scoreRun.stdout).slice(0, 24),
@@ -436,19 +663,21 @@ const md = [
   '',
   '## Outcome',
   `- roles=${roles.map((role) => role.id).join(',')}${synthesizerRun ? ',synthesizer' : ''}`,
-  `- model_calls=${totals.modelCalls} tool_calls=${totals.toolCalls} tool_names=${JSON.stringify(totals.toolNames)}`,
+  `- model_calls=${totals.modelCalls} tool_calls=${totals.toolCalls} tool_results=${totals.toolResults} tool_result_bytes=${totals.toolResultBytes} tool_names=${JSON.stringify(totals.toolNames)}`,
   `- parallel_overlap_pairs=${parallel.overlapPairs}/${parallel.maxPairs} speedup=${parallel.speedup}`,
   `- synthesizer=${synthesizerRun ? `exit=${synthesizerRun.code} model_calls=${synthesizerRun.session.modelCalls} tool_calls=${synthesizerRun.session.toolCalls}` : 'disabled'}`,
+  `- runtime_audit non_mock_expected=${audit.nonMockRuntimeExpected} offline=${audit.offlineRequested} no_env=${audit.noEnvRequested} mock_env=${audit.mockEnvDetected} agent_cmd_sha=${audit.agentCmdDigest?.sha256 || 'none'}`,
   '',
   '## Key Evidence',
   `- hard_score_artifact=${evidencePaths.hardScore || 'none'} code=${scoreRun.code}`,
+  `- same_window_live=${evidencePaths.bestSameWindowLive || evidencePaths.latestSameWindowLive || 'none'}`,
   `- best_bilibili=${evidencePaths.bestBilibili || 'none'}`,
   `- best_xiaohongshu=${evidencePaths.bestXiaohongshu || 'none'}`,
   `- best_douyin=${evidencePaths.bestDouyin || 'none'}`,
   `- gates=${JSON.stringify(gates)}`,
   '',
   '## Verification',
-  ...allRuns.map((role) => `- ${role.id}: exit=${role.code} elapsed_ms=${role.elapsedMs} model_calls=${role.session.modelCalls} tool_calls=${role.session.toolCalls} checks=${JSON.stringify(role.checks)}`),
+  ...allRuns.map((role) => `- ${role.id}: pid=${role.pid} exit=${role.code} elapsed_ms=${role.elapsedMs} mono_ms=${role.monotonic?.elapsedMs} model_calls=${role.session.modelCalls} tool_calls=${role.session.toolCalls} tool_results=${role.session.toolResults} session_sha=${role.session.fileDigests?.[0]?.sha256 || 'none'} checks=${JSON.stringify(role.checks)}`),
   '',
   '## Next Step',
   ...result.nextActions.map((item) => `- ${item}`),
@@ -463,5 +692,12 @@ console.log(JSON.stringify({
   roles: roles.map((role) => role.id).concat(synthesizerRun ? ['synthesizer'] : []),
   totals,
   parallel,
+  runtimeAudit: {
+    nonMockRuntimeExpected: audit.nonMockRuntimeExpected,
+    offlineRequested: audit.offlineRequested,
+    noEnvRequested: audit.noEnvRequested,
+    mockEnvDetected: audit.mockEnvDetected,
+    agentCmdSha256: audit.agentCmdDigest?.sha256 || '',
+  },
   gates,
 }, null, 2));
