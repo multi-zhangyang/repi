@@ -218,6 +218,42 @@ function scoreArtifact(path, obj) {
     if (gates.hardScoreCovered && gates.allRolesCiteArtifacts && gates.roleSpecificPassed && synthOk) dimensions.regression_readiness = 12;
     else if (obj.scoreRun?.artifactDir || evidencePaths.hardScore) dimensions.regression_readiness = 7;
     evidence.push(`parallel roles=${roleCount} synth=${synthOk} retries=${retryCount} model_calls=${modelCalls} tool_calls=${toolCalls} overlap=${parallel.overlapPairs || 0}/${parallel.maxPairs || 0} speedup=${parallel.speedup || 0} gates=${Object.entries(gates).filter(([, v]) => v).map(([k]) => k).join(',')}`);
+  } else if (family === 'same-window-live') {
+    const gates = obj.gates || [];
+    const gateMap = Object.fromEntries(gates.map((item) => [item.name, item]));
+    const passed = (name) => Boolean(gateMap[name]?.passed);
+    const frontierGaps = obj.frontierGaps || [];
+    const spanMs = safeNum(obj.spanMs);
+    if (passed('bilibili_wbi_per_page_cid')) dimensions.signature_rebuild += 8;
+    if (passed('xiaohongshu_xs_signed_trace')) dimensions.signature_rebuild += 6;
+    if (passed('douyin_abogus_structured_replay')) dimensions.signature_rebuild += 6;
+    dimensions.signature_rebuild = clamp(dimensions.signature_rebuild, 20);
+    if (passed('xiaohongshu_target_note_2xx')) dimensions.signed_replay += 7;
+    if (passed('douyin_abogus_structured_replay')) dimensions.signed_replay += 6;
+    if (passed('bilibili_wbi_per_page_cid')) dimensions.signed_replay += 2;
+    dimensions.signed_replay = clamp(dimensions.signed_replay, 15);
+    if (passed('xiaohongshu_xs_signed_trace')) dimensions.anti_bot_challenge += 5;
+    if (passed('xiaohongshu_challenge_boundary')) dimensions.anti_bot_challenge += 4;
+    if (passed('douyin_cookie_boundary')) dimensions.anti_bot_challenge += 4;
+    if (passed('bilibili_wbi_per_page_cid')) dimensions.anti_bot_challenge += 2;
+    dimensions.anti_bot_challenge = clamp(dimensions.anti_bot_challenge, 15);
+    if (passed('bilibili_cdn_range_or_body_proof')) dimensions.cdn_media_probe += 8;
+    else if (passed('bilibili_cdn_head_fallback')) dimensions.cdn_media_probe += 4;
+    if (passed('douyin_nowatermark_byte_proof')) dimensions.cdn_media_probe += 7;
+    dimensions.cdn_media_probe = clamp(dimensions.cdn_media_probe, 15);
+    if (passed('same_window_artifacts_exist')) dimensions.runtime_capture_depth += 5;
+    if (passed('same_window_span')) dimensions.runtime_capture_depth += 5;
+    if (passed('same_window_fresh')) dimensions.runtime_capture_depth += 5;
+    dimensions.runtime_capture_depth = clamp(dimensions.runtime_capture_depth, 15);
+    if (obj.verdict === 'same-window-live-passed') dimensions.exploit_chain = 15;
+    else if (['bilibili_wbi_per_page_cid', 'xiaohongshu_xs_signed_trace', 'douyin_abogus_structured_replay'].filter(passed).length >= 2) dimensions.exploit_chain = 9;
+    else if (gates.some((item) => item.passed)) dimensions.exploit_chain = 4;
+    dimensions.bundle_trace = clamp((passed('xiaohongshu_xs_signed_trace') ? 4 : 0) + (passed('douyin_abogus_structured_replay') ? 3 : 0) + (passed('bilibili_wbi_per_page_cid') ? 3 : 0), 10);
+    dimensions.regression_readiness = obj.hardScoreArtifact ? 5 : 0;
+    if (obj.mode === 'live-rerun') dimensions.regression_readiness += 3;
+    if (Array.isArray(frontierGaps)) dimensions.regression_readiness += 2;
+    dimensions.regression_readiness = clamp(dimensions.regression_readiness, 10);
+    evidence.push(`same-window mode=${obj.mode || 'unknown'} span_ms=${spanMs} passed=${gates.filter((item) => item.passed).length}/${gates.length} gaps=${frontierGaps.map((gap) => gap.name).join(',') || 'none'}`);
   } else if (family === 'agent-dogfood') {
     const checks = obj.checks || {};
     const modelCalls = safeNum(obj.session?.modelCalls);
@@ -261,7 +297,10 @@ function scoreArtifact(path, obj) {
   }
 
   const rawScore = Object.values(dimensions).reduce((a, b) => a + b, 0);
-  const score = clamp(rawScore, maxPossibleScore);
+  let score = clamp(rawScore, maxPossibleScore);
+  if (family === 'same-window-live' && obj.verdict !== 'same-window-live-passed') {
+    score = Math.min(score, 89);
+  }
   return {
     artifact: path,
     time: evidenceTime(path),

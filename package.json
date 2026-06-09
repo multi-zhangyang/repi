@@ -21,6 +21,7 @@
 		"profile:tui": "node scripts/profile-coding-agent-node.mjs --mode tui",
 		"profile:rpc": "node scripts/profile-coding-agent-node.mjs --mode rpc",
 		"gate:frontier-matrix": "node bench/recon-remote/frontier-matrix/run.mjs --strict",
+		"gate:same-window-live": "node bench/recon-remote/same-window-live/run.mjs --strict",
 		"gate:agent-parallel": "node bench/recon-remote/agent-dogfood/parallel-run.mjs",
 		"gate:context-compact": "node scripts/reverse-agent/context-compact-audit.mjs .",
 		"test": "npm run test --workspaces --if-present",
