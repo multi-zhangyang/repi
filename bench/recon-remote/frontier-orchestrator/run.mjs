@@ -51,6 +51,22 @@ const caseCatalog = [
     purpose: 'WBI self-test, signer/bundle trace, signed request count, media probe.',
   },
   {
+    id: 'bilibili_media_cdn_boundary',
+    platform: 'bilibili',
+    polarity: 'positive',
+    difficulty: 86,
+    agentLane: 'signed media/CDN boundary',
+    purpose: 'Derived WBI media boundary over reachable DASH media, backup media, HTTP status, and host-class diversity.',
+  },
+  {
+    id: 'bilibili_multipage_wbi_container',
+    platform: 'bilibili',
+    polarity: 'positive',
+    difficulty: 84,
+    agentLane: 'multi-page WBI container',
+    purpose: 'Default p=2 multi-page target with WBI signed DASH playurl, WBI media candidates, reachable media, and host diversity.',
+  },
+  {
     id: 'xhs_search_negative',
     platform: 'xiaohongshu',
     polarity: 'negative',
@@ -140,10 +156,11 @@ function run(cmd, args, { env = {}, timeoutMs = 900000 } = {}) {
     });
   });
 }
-function commandFor(caseIds, { live = false, strict = false } = {}) {
+function commandFor(caseIds, { live = false, strict = false, fresh = false } = {}) {
   const args = [matrixRunner];
   if (live) args.push('--live');
   if (strict) args.push('--strict');
+  if (fresh) args.push('--fresh');
   return {
     env: { RECON_MATRIX_CASES: caseIds.join(',') },
     args,
@@ -167,7 +184,7 @@ function ensureControls(order, maxCases) {
   return uniq(limited);
 }
 function selectBalanced(maxCases) {
-  const order = ['xhs_auto_discovery', 'xhs_discovery_hit_rate', 'douyin_structured_api', 'douyin_cookie_boundary', 'bilibili_wbi_runtime', 'xhs_search_negative'];
+  const order = ['xhs_auto_discovery', 'xhs_discovery_hit_rate', 'douyin_structured_api', 'douyin_cookie_boundary', 'bilibili_wbi_runtime', 'bilibili_media_cdn_boundary', 'bilibili_multipage_wbi_container', 'xhs_search_negative'];
   return ensureControls(order, maxCases);
 }
 function selectCases({ explicitCases, strategy, maxCases, latest }) {
@@ -184,6 +201,8 @@ function selectCases({ explicitCases, strategy, maxCases, latest }) {
 function decisiveEvidence(row) {
   const ev = row?.evidence || {};
   if (row?.id === 'bilibili_wbi_runtime') return `verdict=${ev.verdict || 'n/a'} selfTest=${ev.selfTest} signedReqs=${ev.signedReqs || 0} signerEvents=${ev.signerEvents || 0} bundleHints=${ev.bundleHints || 0} media=${ev.media || 0}`;
+  if (row?.id === 'bilibili_media_cdn_boundary') return `verdict=${ev.verdict || 'n/a'} reachableMedia=${ev.reachableMedia || 0}/${ev.total || 0} hostClassCount=${ev.hostClassCount || 0} hasBackup=${ev.hasBackup} signedReqs=${ev.signedReqs || 0}`;
+  if (row?.id === 'bilibili_multipage_wbi_container') return `verdict=${ev.verdict || 'n/a'} pages=${ev.pages || 0} targetPage=${ev.targetPage || 0} wbiCandidates=${ev.wbiCandidateCount || 0} reachableMedia=${ev.reachableMedia || 0} hostClassCount=${ev.hostClassCount || 0}`;
   if (row?.id === 'xhs_auto_discovery') return `verdict=${ev.verdict || 'n/a'} endpoint=${ev.bestEndpoint || 'n/a'} method=${ev.bestMethod || 'n/a'} status=${ev.bestStatus || 'n/a'} noteItemCount=${ev.noteItemCount || 0} candidates=${ev.candidates || 0}`;
   if (row?.id === 'xhs_discovery_hit_rate') return `verdict=${ev.verdict || 'n/a'} hitRate=${ev.hitRate ?? 'n/a'} successful=${ev.successful || 0}/${ev.attempted || 0} tokenized=${ev.tokenizedCandidateCount || 0}/${ev.candidateCount || 0}`;
   if (row?.id === 'xhs_search_negative') {
@@ -221,6 +240,7 @@ function summarizeMatrix(matrixPath, result, selectedCaseIds, runMeta = null) {
     matrixMaxScore: result?.matrixMaxScore || 0,
     matrixPercent: result?.matrixPercent || 0,
     generatedAt: result?.generatedAt || '',
+    freshness: result?.freshness || null,
     matrixArtifact: matrixPath || (result?.artifactDir ? `${result.artifactDir}/result.json` : ''),
     selectedCases: selectedCaseIds,
     positives: rows.filter((row) => row.polarity === 'positive'),
@@ -247,6 +267,7 @@ function makePlan(selectedCases, options, latest) {
     selectedCases,
     strict: options.strict,
     live: options.live,
+    fresh: options.fresh,
     matrixCommand: commandFor(selectedCases, options).shell,
     shardCount: shards.length,
     shards,
@@ -256,6 +277,7 @@ function makePlan(selectedCases, options, latest) {
       'Each shard keeps only its matrix result path, decisive evidence line, and failed next action.',
       'Final merge reads frontier-matrix/result.json instead of replaying full stdout/stderr into context.',
       'Negative controls stay separate from positive replay cases to prevent generic 2xx inflation.',
+      'Strict/fresh matrix runs reject stale latest-evidence artifacts instead of carrying old green results forward.',
     ],
   };
 }
@@ -265,7 +287,7 @@ function printMarkdown(output) {
       '# Pi-RECON Frontier Orchestrator Plan',
       '',
       '## Outcome',
-      `- strategy=${output.strategy} live=${output.live} strict=${output.strict}`,
+      `- strategy=${output.strategy} live=${output.live} strict=${output.strict} fresh=${output.fresh}`,
       `- selected=${output.selectedCases.join(',')}`,
       '',
       '## Key Evidence',
@@ -286,6 +308,7 @@ function printMarkdown(output) {
     '',
     '## Outcome',
     `- verdict=${output.verdict} score=${output.matrixScore}/${output.matrixMaxScore} percent=${output.matrixPercent}% grade=${output.grade}`,
+    `- freshness=${output.freshness ? `enabled=${output.freshness.enabled} passed=${output.freshness.passed} max_age_hours=${output.freshness.maxArtifactAgeHours}` : 'n/a'}`,
     `- matrix_artifact=${output.matrixArtifact || 'missing'}`,
     '',
     '## Key Evidence',
@@ -322,6 +345,7 @@ if (unknown.length) {
 const options = {
   live: hasFlag('live') || process.env.RECON_ORCH_LIVE === '1',
   strict: hasFlag('strict') || process.env.RECON_ORCH_STRICT === '1',
+  fresh: hasFlag('fresh') || process.env.RECON_ORCH_FRESH === '1',
   plan: hasFlag('plan') || hasFlag('dry-run'),
   summarizeLatest: hasFlag('summarize-latest') || hasFlag('latest'),
   json: hasFlag('json') || optionValue('format', process.env.RECON_ORCH_FORMAT || '') === 'json',

@@ -16,6 +16,12 @@ Run the hardest selected matrix cases and summarize:
 node bench/recon-remote/frontier-orchestrator/run.mjs --live --strict
 ```
 
+Reject stale latest-evidence artifacts during a non-live merge:
+
+```bash
+node bench/recon-remote/frontier-orchestrator/run.mjs --strict --fresh
+```
+
 Compact the latest matrix artifact without rerunning browsers:
 
 ```bash
@@ -58,7 +64,10 @@ Each shard command is a normal `frontier-matrix` invocation with `RECON_MATRIX_C
 node bench/recon-remote/frontier-orchestrator/run.mjs --summarize-latest
 ```
 
-Current catalog tracks Bilibili runtime WBI, XHS auto-discovery, XHS discovery hit-rate, XHS search negative-control, Douyin structured API replay, and Douyin cookie-boundary replay divergence.
+Current catalog tracks Bilibili runtime WBI, Bilibili signed media/CDN boundary,
+Bilibili multi-page WBI container, XHS auto-discovery, XHS discovery hit-rate,
+XHS search negative-control, Douyin structured API replay, and Douyin
+cookie-boundary replay divergence.
 
 The summary intentionally keeps only compact context:
 
@@ -66,5 +75,7 @@ The summary intentionally keeps only compact context:
 - positive replay samples separated from negative controls;
 - concrete `result.json` artifact paths;
 - failed-case next actions with rerun commands.
+- freshness status so stale latest-evidence runs do not look like current
+  capability.
 
 This makes compacting easier: agents do not need to carry full browser stdout/stderr, raw request bodies, or historical matrix logs in context.

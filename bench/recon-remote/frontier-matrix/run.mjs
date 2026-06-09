@@ -7,13 +7,27 @@ import { spawn } from 'node:child_process';
 
 const repoRoot = resolve(process.env.RECON_REPO_ROOT || '.');
 const evidenceRoot = join(repoRoot, '.pi', 'evidence', 'remote');
+function argValue(name, fallback = '') {
+  const prefix = `--${name}=`;
+  const inline = process.argv.find((arg) => arg.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+  const idx = process.argv.indexOf(`--${name}`);
+  if (idx >= 0 && process.argv[idx + 1] && !process.argv[idx + 1].startsWith('--')) return process.argv[idx + 1];
+  return fallback;
+}
 const live = process.argv.includes('--live') || process.env.RECON_MATRIX_LIVE === '1';
 const strict = process.argv.includes('--strict') || process.env.RECON_MATRIX_STRICT === '1';
+const allowStaleEvidence = process.argv.includes('--allow-stale-evidence') || process.env.RECON_MATRIX_ALLOW_STALE_EVIDENCE === '1' || process.env.RECON_EVIDENCE_ALLOW_STALE === '1';
+const freshnessDisabled = allowStaleEvidence || process.env.RECON_MATRIX_FRESHNESS === '0' || process.env.RECON_MATRIX_FRESH === '0' || process.env.RECON_EVIDENCE_FRESHNESS === '0';
+const freshnessEnabled = !freshnessDisabled && (process.argv.includes('--fresh') || process.env.RECON_MATRIX_FRESHNESS === '1' || process.env.RECON_MATRIX_FRESH === '1' || process.env.RECON_EVIDENCE_FRESHNESS === '1' || strict);
+const maxArtifactAgeHours = Number(argValue('max-artifact-age-hours', process.env.RECON_MATRIX_MAX_ARTIFACT_AGE_HOURS || process.env.RECON_EVIDENCE_MAX_AGE_HOURS || 24));
+const maxArtifactAgeMs = Number(argValue('max-artifact-age-ms', process.env.RECON_MATRIX_MAX_ARTIFACT_AGE_MS || process.env.RECON_EVIDENCE_MAX_AGE_MS || maxArtifactAgeHours * 60 * 60 * 1000));
+const maxClockSkewMs = Number(argValue('max-clock-skew-ms', process.env.RECON_MATRIX_MAX_CLOCK_SKEW_MS || process.env.RECON_EVIDENCE_MAX_CLOCK_SKEW_MS || 300000));
 const timeoutMs = Number(process.env.RECON_MATRIX_TIMEOUT_MS || 900000);
 const selectedCaseIds = new Set(String(process.env.RECON_MATRIX_CASES || '').split(',').map((x) => x.trim()).filter(Boolean));
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`Pi-RECON real frontier matrix\n\nUsage:\n  node bench/recon-remote/frontier-matrix/run.mjs\n  node bench/recon-remote/frontier-matrix/run.mjs --live\n  node bench/recon-remote/frontier-matrix/run.mjs --live --strict\n\nPurpose:\n  Evaluates multiple live real-platform cases instead of relying on one latest artifact:\n  - Bilibili runtime WBI positive case\n  - Xiaohongshu auto-discovery target note/feed positive case\n  - Xiaohongshu auto-discovery hit-rate/provenance positive case\n  - Xiaohongshu search-notes permission negative-control case\n  - Douyin a_bogus structured API replay positive case\n  - Douyin no-cookie replay divergence negative-control case\n  - Frontier strict aggregate gate\n\nEnvironment:\n  RECON_MATRIX_LIVE=1\n  RECON_MATRIX_STRICT=1\n  RECON_MATRIX_CASES=bilibili_wbi_runtime,xhs_auto_discovery,xhs_discovery_hit_rate,xhs_search_negative,douyin_structured_api,douyin_cookie_boundary\n  RECON_MATRIX_TIMEOUT_MS=900000\n\nOutput:\n  .pi/evidence/remote/frontier-matrix/<timestamp>/\n`);
+  console.log(`Pi-RECON real frontier matrix\n\nUsage:\n  node bench/recon-remote/frontier-matrix/run.mjs\n  node bench/recon-remote/frontier-matrix/run.mjs --live\n  node bench/recon-remote/frontier-matrix/run.mjs --live --strict\n  node bench/recon-remote/frontier-matrix/run.mjs --strict --fresh\n\nPurpose:\n  Evaluates multiple live real-platform cases instead of relying on one latest artifact:\n  - Bilibili runtime WBI positive case\n  - Bilibili signed media/CDN boundary positive case\n  - Bilibili multi-page container WBI/media positive case\n  - Xiaohongshu auto-discovery target note/feed positive case\n  - Xiaohongshu auto-discovery hit-rate/provenance positive case\n  - Xiaohongshu search-notes permission negative-control case\n  - Douyin a_bogus structured API replay positive case\n  - Douyin no-cookie replay divergence negative-control case\n  - Frontier strict aggregate gate\n  - Freshness gate to prevent stale latest-evidence self-hype\n\nEnvironment:\n  RECON_MATRIX_LIVE=1\n  RECON_MATRIX_STRICT=1\n  RECON_MATRIX_FRESHNESS=1       Enforce max artifact age. Strict mode enables this unless disabled.\n  RECON_MATRIX_FRESH=1           Alias for RECON_MATRIX_FRESHNESS.\n  RECON_MATRIX_MAX_ARTIFACT_AGE_HOURS=24\n  RECON_MATRIX_MAX_ARTIFACT_AGE_MS=<ms>\n  RECON_MATRIX_MAX_CLOCK_SKEW_MS=300000\n  RECON_MATRIX_CASES=bilibili_wbi_runtime,bilibili_media_cdn_boundary,bilibili_multipage_wbi_container,xhs_auto_discovery,xhs_discovery_hit_rate,xhs_search_negative,douyin_structured_api,douyin_cookie_boundary\n  RECON_MATRIX_TIMEOUT_MS=900000\n\nOutput:\n  .pi/evidence/remote/frontier-matrix/<timestamp>/\n`);
   process.exit(0);
 }
 
@@ -22,6 +36,90 @@ function sha256(value) { return createHash('sha256').update(value).digest('hex')
 function safeJson(text, fallback = null) { try { return JSON.parse(text); } catch { return fallback; } }
 function rel(path) { return String(path || '').replace(`${repoRoot}/`, ''); }
 function evidenceTime(path) { return basename(dirname(path)); }
+function parseEvidenceTimestamp(value) {
+  const raw = String(value || '');
+  const hyphen = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/);
+  const iso = hyphen ? `${hyphen[1]}T${hyphen[2]}:${hyphen[3]}:${hyphen[4]}.${hyphen[5]}Z` : raw;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : 0;
+}
+function artifactTimestampFromPath(path) {
+  const match = String(path || '').match(/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)/);
+  return match ? match[1] : evidenceTime(path || '');
+}
+function timestampSource(path, obj = null) {
+  const candidates = [
+    ['generatedAt', obj?.generatedAt],
+    ['artifactDir', artifactTimestampFromPath(obj?.artifactDir || '')],
+    ['path', artifactTimestampFromPath(path || '')],
+  ];
+  for (const [source, value] of candidates) {
+    const ms = parseEvidenceTimestamp(value);
+    if (ms) return { source, value, ms };
+  }
+  const full = path ? (path.startsWith('/') ? path : join(repoRoot, path)) : '';
+  if (full) {
+    try {
+      const st = statSync(full);
+      return { source: 'mtime', value: new Date(st.mtimeMs).toISOString(), ms: st.mtimeMs };
+    } catch {}
+  }
+  return { source: 'missing', value: '', ms: 0 };
+}
+function artifactFreshness(path, obj = null, consumer = '') {
+  const stamp = timestampSource(path, obj);
+  const ageMs = stamp.ms ? Date.now() - stamp.ms : null;
+  const missing = !path || !existsSync(path.startsWith('/') ? path : join(repoRoot, path));
+  const futureSkew = ageMs !== null && ageMs < -maxClockSkewMs;
+  const stale = freshnessEnabled && (missing || ageMs === null || futureSkew || ageMs > maxArtifactAgeMs);
+  return {
+    consumer,
+    enabled: freshnessEnabled,
+    fresh: !stale,
+    stale,
+    missing,
+    artifact: rel(path || ''),
+    profile: obj?.profile || obj?.family || '',
+    mode: obj?.mode || '',
+    timeSource: stamp.source,
+    artifactTime: stamp.value || '',
+    ageMs,
+    maxAgeMs: maxArtifactAgeMs,
+    maxAgeHours: Number((maxArtifactAgeMs / 3600000).toFixed(4)),
+    maxClockSkewMs,
+  };
+}
+async function freshnessForArtifact(consumer, path) {
+  const obj = await readJson(path);
+  return artifactFreshness(path, obj, consumer);
+}
+async function buildFreshnessReport(scenarioResults, frontierObj) {
+  const rows = [];
+  const seen = new Set();
+  const add = async (consumer, artifact) => {
+    if (!artifact) return;
+    const key = `${consumer}:${artifact}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push(await freshnessForArtifact(consumer, artifact));
+  };
+  for (const row of scenarioResults) await add(`frontier-matrix:${row.id}`, row.artifact);
+  for (const [name, artifact] of Object.entries(frontierObj?.artifacts || {})) await add(`frontier-gate:${name}`, artifact);
+  const staleRows = rows.filter((row) => row.stale);
+  return {
+    enabled: freshnessEnabled,
+    enforced: freshnessEnabled,
+    allowStaleEvidence,
+    referenceTime: new Date().toISOString(),
+    maxAgeMs: maxArtifactAgeMs,
+    maxArtifactAgeHours: Number((maxArtifactAgeMs / 3600000).toFixed(4)),
+    maxClockSkewMs,
+    passed: !freshnessEnabled || staleRows.length === 0,
+    staleCount: staleRows.length,
+    rows,
+    staleArtifacts: staleRows.map((row) => ({ consumer: row.consumer, artifact: row.artifact, artifactTime: row.artifactTime, ageMs: row.ageMs, timeSource: row.timeSource, missing: row.missing })),
+  };
+}
 function redact(value) {
   return String(value || '')
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, 'sk-<redacted>')
@@ -141,6 +239,60 @@ function douyinStructuredOk(obj) {
   const replayed = obj?.runtimeApiReplay?.bestReplayedStructuredApi || obj?.signatureSurface?.runtimeReplayedStructuredApi;
   return Boolean(replayed && Number(replayed.status || 0) >= 200 && Number(replayed.status || 0) < 300 && replayed.structured?.structured);
 }
+function bilibiliMediaBoundary(obj) {
+  const matrix = obj?.mediaProbeMatrix || {};
+  const byKind = matrix.byKind || {};
+  const byStatus = matrix.byStatus || {};
+  const hostClasses = matrix.hostClasses || {};
+  const hostClassNames = Object.entries(hostClasses).filter(([, count]) => Number(count || 0) > 0).map(([name]) => name);
+  const statusNames = Object.entries(byStatus).filter(([, count]) => Number(count || 0) > 0).map(([name]) => name);
+  const signedReqs = obj?.signatureTrace?.signedRequestCount || 0;
+  const reachable = Number(matrix.reachableMedia || 0);
+  const hasDashVideo = Number(byKind['dash-video'] || 0) >= 1;
+  const hasBackup = Object.entries(byKind).some(([name, count]) => /backup/i.test(name) && Number(count || 0) >= 1);
+  const hasReachableStatus = statusNames.some((status) => ['200', '206'].includes(String(status)));
+  const hostDiversity = hostClassNames.length >= 2;
+  const passed = Boolean(
+    obj?.wbiRegression?.selfTest?.ok
+    && obj?.wbiRegression?.signedEndpoint
+    && signedReqs >= 1
+    && reachable >= 4
+    && hasDashVideo
+    && hasBackup
+    && hostDiversity
+    && hasReachableStatus
+  );
+  return { passed, matrix, byKind, byStatus, hostClasses, hostClassNames, statusNames, signedReqs, reachable, hasDashVideo, hasBackup, hostDiversity, hasReachableStatus };
+}
+function bilibiliMultipageContainer(obj) {
+  const pages = Number(obj?.pagelist?.pages || 0);
+  const playurls = Array.isArray(obj?.playurls) ? obj.playurls : [];
+  const matrix = obj?.mediaProbeMatrix || {};
+  const hostClasses = matrix.hostClasses || {};
+  const hostClassCount = Object.values(hostClasses).filter((count) => Number(count || 0) > 0).length;
+  const signedDashPlayurl = playurls.find((item) => item?.signed && Number(item.code || 0) === 0 && item.hasDash);
+  const mediaCandidates = Array.isArray(obj?.mediaCandidates) ? obj.mediaCandidates : [];
+  const wbiCandidates = mediaCandidates.filter((item) => item.source === 'wbi-playurl');
+  const wbiKinds = [...new Set(wbiCandidates.map((item) => item.kind).filter(Boolean))];
+  const targetPage = (() => {
+    try { return Number(new URL(obj?.target || '').searchParams.get('p') || 1); } catch { return 1; }
+  })();
+  const passed = Boolean(
+    obj?.profile === 'bilibili-video'
+    && obj?.verdict === 'bilibili-wbi-media-api-confirmed'
+    && pages >= 2
+    && targetPage >= 2
+    && obj?.wbiRegression?.selfTest?.ok
+    && obj?.wbiRegression?.signedEndpoint
+    && signedDashPlayurl
+    && wbiCandidates.length >= 2
+    && wbiKinds.includes('dash-video')
+    && wbiKinds.includes('dash-audio')
+    && Number(matrix.reachableMedia || 0) >= 2
+    && hostClassCount >= 2
+  );
+  return { passed, pages, targetPage, signedDashPlayurl, wbiCandidateCount: wbiCandidates.length, wbiKinds, reachableMedia: Number(matrix.reachableMedia || 0), hostClassCount, hostClasses };
+}
 function douyinCookieBoundary(obj) {
   const replay = obj?.runtimeApiReplay || {};
   const attempts = Array.isArray(replay.attempts) ? replay.attempts : [];
@@ -163,7 +315,7 @@ function douyinCookieBoundary(obj) {
   return { passed, observed, exact, noCookie, attempts };
 }
 function summarizeScenario(id, weight, obj, artifact, command, runItem) {
-  const common = { id, weight, artifact, command, run: runItem ? { code: runItem.run?.code, signal: runItem.run?.signal, elapsedMs: runItem.run?.elapsedMs, stdoutSha256: sha256(runItem.run?.stdout || '').slice(0, 24), stderrSha256: sha256(runItem.run?.stderr || '').slice(0, 24), stdoutTail: redact(runItem.run?.stdout || '').slice(-1000), stderrTail: redact(runItem.run?.stderr || '').slice(-1000) } : undefined };
+  const common = { id, weight, artifact, freshness: artifactFreshness(artifact, obj, id), command, run: runItem ? { code: runItem.run?.code, signal: runItem.run?.signal, elapsedMs: runItem.run?.elapsedMs, stdoutSha256: sha256(runItem.run?.stdout || '').slice(0, 24), stderrSha256: sha256(runItem.run?.stderr || '').slice(0, 24), stdoutTail: redact(runItem.run?.stdout || '').slice(-1000), stderrTail: redact(runItem.run?.stderr || '').slice(-1000) } : undefined };
   if (!obj) return { ...common, passed: false, score: 0, evidence: { reason: 'artifact missing' } };
   if (id === 'bilibili_wbi_runtime') {
     const signerEvents = obj.signatureTrace?.signerLog?.length || 0;
@@ -171,6 +323,14 @@ function summarizeScenario(id, weight, obj, artifact, command, runItem) {
     const signedReqs = obj.signatureTrace?.signedRequestCount || 0;
     const passed = Boolean(obj.wbiRegression?.selfTest?.ok && obj.wbiRegression?.signedEndpoint && signedReqs >= 1 && (signerEvents >= 1 || bundleHints >= 1));
     return { ...common, passed, score: passed ? weight : Math.min(weight - 1, (obj.wbiRegression?.selfTest?.ok ? 8 : 0) + Math.min(8, signedReqs * 3 + signerEvents + bundleHints * 2)), evidence: { verdict: obj.verdict, selfTest: obj.wbiRegression?.selfTest?.ok, signedEndpoint: obj.wbiRegression?.signedEndpoint, signerEvents, bundleHints, signedReqs, media: obj.mediaProbeMatrix?.reachableMedia || 0 } };
+  }
+  if (id === 'bilibili_media_cdn_boundary') {
+    const boundary = bilibiliMediaBoundary(obj);
+    return { ...common, passed: boundary.passed, score: boundary.passed ? weight : Math.min(weight - 1, (boundary.reachable >= 4 ? 3 : 0) + (boundary.hostDiversity ? 2 : 0) + (boundary.hasBackup ? 2 : 0) + (boundary.signedReqs >= 1 ? 2 : 0)), evidence: { verdict: obj.verdict, reachableMedia: boundary.reachable, total: boundary.matrix.total || 0, byKind: boundary.byKind, byStatus: boundary.byStatus, hostClasses: boundary.hostClasses, hostClassCount: boundary.hostClassNames.length, signedReqs: boundary.signedReqs, wbiSelfTest: obj.wbiRegression?.selfTest?.ok, signedEndpoint: obj.wbiRegression?.signedEndpoint, hasDashVideo: boundary.hasDashVideo, hasBackup: boundary.hasBackup, hasReachableStatus: boundary.hasReachableStatus } };
+  }
+  if (id === 'bilibili_multipage_wbi_container') {
+    const multi = bilibiliMultipageContainer(obj);
+    return { ...common, passed: multi.passed, score: multi.passed ? weight : Math.min(weight - 1, (multi.pages >= 2 ? 2 : 0) + (multi.targetPage >= 2 ? 1 : 0) + (multi.signedDashPlayurl ? 2 : 0) + (multi.wbiCandidateCount >= 2 ? 2 : 0) + (multi.hostClassCount >= 2 ? 1 : 0) + (multi.reachableMedia >= 2 ? 1 : 0)), evidence: { verdict: obj.verdict, target: obj.target || '', pages: multi.pages, targetPage: multi.targetPage, cid: obj.cid || null, wbiSelfTest: obj.wbiRegression?.selfTest?.ok, signedEndpoint: obj.wbiRegression?.signedEndpoint, signedDashPlayurl: Boolean(multi.signedDashPlayurl), wbiCandidateCount: multi.wbiCandidateCount, wbiKinds: multi.wbiKinds, reachableMedia: multi.reachableMedia, hostClassCount: multi.hostClassCount, hostClasses: multi.hostClasses } };
   }
   if (id === 'xhs_auto_discovery') {
     const best = obj.xhsReplay?.bestTargetNote2xxSignedReplay || null;
@@ -212,6 +372,21 @@ const scenarios = [
     env: { RECON_BROWSER: '1', RECON_TIMEOUT_MS: '45000', RECON_QUIET_MS: '5000', RECON_PROBE_LIMIT: '4' },
     timeoutMs: 180000,
     latest: (obj) => obj.profile === 'bilibili-video',
+  },
+  {
+    id: 'bilibili_media_cdn_boundary',
+    weight: 10,
+    derivedFrom: 'bilibili_wbi_runtime',
+    command: ['node', ['bench/recon-remote/real-platform/run.mjs', process.env.RECON_MATRIX_BILI_URL || 'https://www.bilibili.com/video/BV1odL76QE6B', 'bilibili-video']],
+    latest: (obj) => obj.profile === 'bilibili-video',
+  },
+  {
+    id: 'bilibili_multipage_wbi_container',
+    weight: 10,
+    command: ['node', ['bench/recon-remote/real-platform/run.mjs', process.env.RECON_MATRIX_BILI_MULTIPAGE_URL || 'https://www.bilibili.com/video/BV1Ee9EBnEfo?p=2', 'bilibili-video']],
+    env: { RECON_BROWSER: '1', RECON_TIMEOUT_MS: '45000', RECON_QUIET_MS: '5000', RECON_PROBE_LIMIT: '4' },
+    timeoutMs: 180000,
+    latest: (obj) => obj.profile === 'bilibili-video' && Number(obj.pagelist?.pages || 0) >= 2,
   },
   {
     id: 'xhs_auto_discovery',
@@ -277,8 +452,19 @@ for (const scenario of liveScenarios) {
   await writeFile(join(outDir, `${scenario.id}.stderr.txt`), redact(runResult.stderr || ''));
 }
 
-const frontierRun = await run('node', ['bench/recon-remote/frontier-gate/run.mjs', '--strict'], { timeoutMs: 120000 });
-runs.push({ id: 'frontier_strict', scenario: { id: 'frontier_strict', weight: 10, command: ['node', ['bench/recon-remote/frontier-gate/run.mjs', '--strict']] }, run: frontierRun });
+const frontierArgs = ['bench/recon-remote/frontier-gate/run.mjs', '--strict'];
+if (freshnessEnabled) frontierArgs.push('--fresh');
+if (allowStaleEvidence) frontierArgs.push('--allow-stale-evidence');
+const frontierRun = await run('node', frontierArgs, {
+  timeoutMs: 120000,
+  env: {
+    RECON_EVIDENCE_MAX_AGE_MS: String(maxArtifactAgeMs),
+    RECON_EVIDENCE_MAX_CLOCK_SKEW_MS: String(maxClockSkewMs),
+    ...(freshnessEnabled ? { RECON_EVIDENCE_FRESHNESS: '1' } : {}),
+    ...(allowStaleEvidence ? { RECON_EVIDENCE_ALLOW_STALE: '1' } : {}),
+  },
+});
+runs.push({ id: 'frontier_strict', scenario: { id: 'frontier_strict', weight: 10, command: ['node', frontierArgs] }, run: frontierRun });
 await writeFile(join(outDir, 'frontier_strict.stdout.txt'), redact(frontierRun.stdout || ''));
 await writeFile(join(outDir, 'frontier_strict.stderr.txt'), redact(frontierRun.stderr || ''));
 
@@ -292,11 +478,13 @@ for (const scenario of activeScenarios) {
 }
 const frontierArtifact = artifactFromRun(runs.find((item) => item.id === 'frontier_strict'));
 const frontierObj = await readJson(frontierArtifact);
-scenarioResults.push(summarizeScenario('frontier_strict', 10, frontierObj, frontierArtifact, 'node bench/recon-remote/frontier-gate/run.mjs --strict', runs.find((item) => item.id === 'frontier_strict')));
+scenarioResults.push(summarizeScenario('frontier_strict', 10, frontierObj, frontierArtifact, `node ${frontierArgs.join(' ')}`, runs.find((item) => item.id === 'frontier_strict')));
+const freshness = await buildFreshnessReport(scenarioResults, frontierObj);
 
 const matrixScore = scenarioResults.reduce((sum, row) => sum + Math.min(row.weight, row.score), 0);
 const matrixMaxScore = scenarioResults.reduce((sum, row) => sum + row.weight, 0);
-const passed = scenarioResults.every((row) => row.passed);
+const freshnessPassed = freshness.passed;
+const passed = scenarioResults.every((row) => row.passed) && freshnessPassed;
 const matrixPercent = matrixMaxScore ? Number(((matrixScore / matrixMaxScore) * 100).toFixed(2)) : 0;
 const grade = matrixPercent >= 90 ? 'elite' : matrixPercent >= 75 ? 'advanced' : matrixPercent >= 55 ? 'solid' : matrixPercent >= 35 ? 'basic' : 'weak';
 const result = {
@@ -307,13 +495,17 @@ const result = {
   artifactDir: rel(outDir),
   mode: live ? 'live-rerun' : 'latest-evidence',
   strict,
+  freshness,
   elapsedMs: Date.now() - started,
   matrixScore,
   matrixMaxScore,
   matrixPercent,
   grade,
   scenarios: scenarioResults,
-  nextActions: scenarioResults.filter((row) => !row.passed).map((row) => `${row.id}: inspect ${row.artifact || 'missing artifact'} and rerun ${row.command}`),
+  nextActions: [
+    ...scenarioResults.filter((row) => !row.passed).map((row) => `${row.id}: inspect ${row.artifact || 'missing artifact'} and rerun ${row.command}`),
+    ...(!freshnessPassed ? ['freshness: rerun with --live --strict or increase RECON_MATRIX_MAX_ARTIFACT_AGE_HOURS only for forensic replay'] : []),
+  ],
 };
 await writeFile(join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
 const md = [
@@ -323,6 +515,7 @@ const md = [
   `mode: ${result.mode}`,
   `matrix_score: ${matrixScore}/${matrixMaxScore} (${result.matrixPercent}%)`,
   `grade: ${grade}`,
+  `freshness: enabled=${result.freshness.enabled} passed=${result.freshness.passed} max_age_hours=${result.freshness.maxArtifactAgeHours}`,
   `artifact_dir: ${rel(outDir)}`,
   '',
   '## Scenarios',
@@ -335,5 +528,5 @@ const md = [
   '',
 ].join('\n');
 await writeFile(join(outDir, 'artifact.md'), md);
-console.log(JSON.stringify({ verdict: result.verdict, artifactDir: result.artifactDir, mode: result.mode, matrixScore, matrixMaxScore, matrixPercent: result.matrixPercent, grade, scenarios: scenarioResults.map(({ id, passed, score, weight }) => ({ id, passed, score: Math.min(score, weight), weight })) }, null, 2));
+console.log(JSON.stringify({ verdict: result.verdict, artifactDir: result.artifactDir, mode: result.mode, matrixScore, matrixMaxScore, matrixPercent: result.matrixPercent, grade, freshness: { enabled: freshness.enabled, passed: freshness.passed, staleCount: freshness.staleCount }, scenarios: scenarioResults.map(({ id, passed, score, weight }) => ({ id, passed, score: Math.min(score, weight), weight })) }, null, 2));
 process.exit(strict && !passed ? 1 : 0);

@@ -7,9 +7,23 @@ import { spawn } from 'node:child_process';
 
 const repoRoot = resolve(process.env.RECON_REPO_ROOT || '.');
 const evidenceRoot = join(repoRoot, '.pi', 'evidence', 'remote');
+function argValue(name, fallback = '') {
+  const prefix = `--${name}=`;
+  const inline = process.argv.find((arg) => arg.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+  const idx = process.argv.indexOf(`--${name}`);
+  if (idx >= 0 && process.argv[idx + 1] && !process.argv[idx + 1].startsWith('--')) return process.argv[idx + 1];
+  return fallback;
+}
 const timeoutMs = Number(process.env.RECON_FRONTIER_TIMEOUT_MS || 900000);
 const live = process.argv.includes('--live') || process.env.RECON_FRONTIER_LIVE === '1';
 const strict = process.argv.includes('--strict') || process.env.RECON_FRONTIER_STRICT === '1';
+const allowStaleEvidence = process.argv.includes('--allow-stale-evidence') || process.env.RECON_FRONTIER_ALLOW_STALE_EVIDENCE === '1' || process.env.RECON_EVIDENCE_ALLOW_STALE === '1';
+const freshnessDisabled = allowStaleEvidence || process.env.RECON_FRONTIER_FRESHNESS === '0' || process.env.RECON_FRONTIER_FRESH === '0' || process.env.RECON_EVIDENCE_FRESHNESS === '0';
+const freshnessEnabled = !freshnessDisabled && (process.argv.includes('--fresh') || process.env.RECON_FRONTIER_FRESHNESS === '1' || process.env.RECON_FRONTIER_FRESH === '1' || process.env.RECON_EVIDENCE_FRESHNESS === '1' || strict);
+const maxArtifactAgeHours = Number(argValue('max-artifact-age-hours', process.env.RECON_FRONTIER_MAX_ARTIFACT_AGE_HOURS || process.env.RECON_EVIDENCE_MAX_AGE_HOURS || 24));
+const maxArtifactAgeMs = Number(argValue('max-artifact-age-ms', process.env.RECON_FRONTIER_MAX_ARTIFACT_AGE_MS || process.env.RECON_EVIDENCE_MAX_AGE_MS || maxArtifactAgeHours * 60 * 60 * 1000));
+const maxClockSkewMs = Number(argValue('max-clock-skew-ms', process.env.RECON_FRONTIER_MAX_CLOCK_SKEW_MS || process.env.RECON_EVIDENCE_MAX_CLOCK_SKEW_MS || 300000));
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   console.log(`Pi-RECON frontier gate\n\nUsage:\n  node bench/recon-remote/frontier-gate/run.mjs\n  node bench/recon-remote/frontier-gate/run.mjs --live\n  node bench/recon-remote/frontier-gate/run.mjs --strict\n\nPurpose:\n  Measures the next frontier beyond proof-gate: Douyin a_bogus rebuild/structured 2xx API,\n  Xiaohongshu x-s 2xx signed replay, Bilibili runtime WBI signer bundle trace, and agent\n  frontier planning. Non-strict mode exits 0 with verdict frontier-incomplete so it can track\n  hard gaps without pretending they are solved.\n\nEnvironment:\n  RECON_FRONTIER_LIVE=1          Rerun live proof-gate before assessment\n  RECON_FRONTIER_STRICT=1        Exit nonzero unless all frontier gates pass\n  RECON_FRONTIER_TIMEOUT_MS=900000\n\nOutput:\n  .pi/evidence/remote/frontier-gate/<timestamp>/\n`);
@@ -21,6 +35,80 @@ function sha256(value) { return createHash('sha256').update(value).digest('hex')
 function safeJson(text, fallback = null) { try { return JSON.parse(text); } catch { return fallback; } }
 function rel(path) { return String(path || '').replace(`${repoRoot}/`, ''); }
 function evidenceTime(path) { return basename(dirname(path)); }
+function parseEvidenceTimestamp(value) {
+  const raw = String(value || '');
+  const hyphen = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/);
+  const iso = hyphen ? `${hyphen[1]}T${hyphen[2]}:${hyphen[3]}:${hyphen[4]}.${hyphen[5]}Z` : raw;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : 0;
+}
+function artifactTimestampFromPath(path) {
+  const match = String(path || '').match(/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)/);
+  return match ? match[1] : evidenceTime(path || '');
+}
+function timestampSource(path, obj = null) {
+  const candidates = [
+    ['generatedAt', obj?.generatedAt],
+    ['artifactDir', artifactTimestampFromPath(obj?.artifactDir || '')],
+    ['path', artifactTimestampFromPath(path || '')],
+  ];
+  for (const [source, value] of candidates) {
+    const ms = parseEvidenceTimestamp(value);
+    if (ms) return { source, value, ms };
+  }
+  const full = path ? (path.startsWith('/') ? path : join(repoRoot, path)) : '';
+  if (full) {
+    try {
+      const st = statSync(full);
+      return { source: 'mtime', value: new Date(st.mtimeMs).toISOString(), ms: st.mtimeMs };
+    } catch {}
+  }
+  return { source: 'missing', value: '', ms: 0 };
+}
+async function freshnessForArtifact(consumer, path) {
+  const obj = await readJson(path);
+  const stamp = timestampSource(path, obj);
+  const ageMs = stamp.ms ? Date.now() - stamp.ms : null;
+  const missing = !path || !existsSync(path.startsWith('/') ? path : join(repoRoot, path));
+  const futureSkew = ageMs !== null && ageMs < -maxClockSkewMs;
+  const stale = freshnessEnabled && (missing || ageMs === null || futureSkew || ageMs > maxArtifactAgeMs);
+  return {
+    consumer,
+    enabled: freshnessEnabled,
+    fresh: !stale,
+    stale,
+    missing,
+    artifact: rel(path || ''),
+    profile: obj?.profile || obj?.family || '',
+    mode: obj?.mode || '',
+    timeSource: stamp.source,
+    artifactTime: stamp.value || '',
+    ageMs,
+    maxAgeMs: maxArtifactAgeMs,
+    maxAgeHours: Number((maxArtifactAgeMs / 3600000).toFixed(4)),
+    maxClockSkewMs,
+  };
+}
+async function buildFreshnessReport(artifacts) {
+  const rows = [];
+  for (const [consumer, artifact] of Object.entries(artifacts || {})) {
+    if (artifact) rows.push(await freshnessForArtifact(`frontier-gate:${consumer}`, artifact));
+  }
+  const staleRows = rows.filter((row) => row.stale);
+  return {
+    enabled: freshnessEnabled,
+    enforced: freshnessEnabled,
+    allowStaleEvidence,
+    referenceTime: new Date().toISOString(),
+    maxAgeMs: maxArtifactAgeMs,
+    maxArtifactAgeHours: Number((maxArtifactAgeMs / 3600000).toFixed(4)),
+    maxClockSkewMs,
+    passed: !freshnessEnabled || staleRows.length === 0,
+    staleCount: staleRows.length,
+    rows,
+    staleArtifacts: staleRows.map((row) => ({ consumer: row.consumer, artifact: row.artifact, artifactTime: row.artifactTime, ageMs: row.ageMs, timeSource: row.timeSource, missing: row.missing })),
+  };
+}
 function familyOf(path, obj = {}) {
   if (obj.profile) return obj.profile;
   if (path.includes('/douyin-nowatermark/')) return 'douyin-nowatermark';
@@ -202,6 +290,16 @@ const douyin = latest.get('douyin-nowatermark')?.obj || null;
 const agent = latest.get('agent-dogfood')?.obj || null;
 const proofLive = latest.get('proof-gate:live-rerun')?.obj || null;
 const proofLatest = latest.get('proof-gate:latest-only')?.obj || null;
+const artifactRefs = {
+  bilibili: latest.get('bilibili-video')?.path || '',
+  xiaohongshu: selectedXhs?.path || '',
+  xiaohongshuLatest: latestXhs?.path || '',
+  douyin: latest.get('douyin-nowatermark')?.path || '',
+  agentDogfood: latest.get('agent-dogfood')?.path || '',
+  proofGateLive: latest.get('proof-gate:live-rerun')?.path || '',
+  proofGateLatest: latest.get('proof-gate:latest-only')?.path || '',
+};
+const freshness = await buildFreshnessReport(artifactRefs);
 
 const gates = [];
 const biliSignerEvents = bili?.signatureTrace?.signerLog?.length || 0;
@@ -291,7 +389,7 @@ gates.push(pass(
 
 const frontierScore = gates.reduce((sum, gate) => sum + Math.min(gate.weight, gate.score), 0);
 const frontierMaxScore = gates.reduce((sum, gate) => sum + gate.weight, 0);
-const passed = gates.every((gate) => gate.passed);
+const passed = gates.every((gate) => gate.passed) && freshness.passed;
 const grade = frontierScore >= 90 ? 'elite' : frontierScore >= 75 ? 'advanced' : frontierScore >= 55 ? 'solid' : frontierScore >= 35 ? 'basic' : 'weak';
 const dimensions = {
   signature_rebuild: Math.min(20, Math.round((gates[0].score / gates[0].weight) * 8 + (gates[2].score / gates[2].weight) * 12)),
@@ -311,6 +409,7 @@ const result = {
   artifactDir: rel(outDir),
   mode: live ? 'live-rerun' : 'latest-evidence',
   strict,
+  freshness,
   elapsedMs: Date.now() - started,
   frontierScore,
   frontierMaxScore,
@@ -318,15 +417,7 @@ const result = {
   grade,
   dimensions,
   gates,
-  artifacts: {
-    bilibili: latest.get('bilibili-video')?.path || '',
-    xiaohongshu: selectedXhs?.path || '',
-    xiaohongshuLatest: latestXhs?.path || '',
-    douyin: latest.get('douyin-nowatermark')?.path || '',
-    agentDogfood: latest.get('agent-dogfood')?.path || '',
-    proofGateLive: latest.get('proof-gate:live-rerun')?.path || '',
-    proofGateLatest: latest.get('proof-gate:latest-only')?.path || '',
-  },
+  artifacts: artifactRefs,
   runs: runs.map((item) => ({
     label: item.label,
     code: item.run.code,
@@ -338,7 +429,10 @@ const result = {
     stdoutTail: redact(item.run.stdout || '').slice(-2000),
     stderrTail: redact(item.run.stderr || '').slice(-1000),
   })),
-  nextActions: gates.filter((gate) => !gate.passed).map((gate) => `${gate.name}: ${gate.nextCommand}`),
+  nextActions: [
+    ...gates.filter((gate) => !gate.passed).map((gate) => `${gate.name}: ${gate.nextCommand}`),
+    ...(!freshness.passed ? ['freshness: rerun frontier/proof/dogfood live artifacts or use --allow-stale-evidence only for forensic replay'] : []),
+  ],
 };
 await writeFile(join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
 const md = [
@@ -348,6 +442,7 @@ const md = [
   `mode: ${result.mode}`,
   `frontier_score: ${frontierScore}/${frontierMaxScore} (${result.frontierPercent}%)`,
   `grade: ${grade}`,
+  `freshness: enabled=${freshness.enabled} passed=${freshness.passed} max_age_hours=${freshness.maxArtifactAgeHours}`,
   `artifact_dir: ${rel(outDir)}`,
   '',
   '## Gates',
@@ -360,5 +455,5 @@ const md = [
   '',
 ].join('\n');
 await writeFile(join(outDir, 'artifact.md'), md);
-console.log(JSON.stringify({ verdict: result.verdict, artifactDir: result.artifactDir, mode: result.mode, frontierScore, frontierMaxScore, frontierPercent: result.frontierPercent, grade, gates: gates.map(({ name, passed, score, weight }) => ({ name, passed, score: Math.min(score, weight), weight })) }, null, 2));
+console.log(JSON.stringify({ verdict: result.verdict, artifactDir: result.artifactDir, mode: result.mode, frontierScore, frontierMaxScore, frontierPercent: result.frontierPercent, grade, freshness: { enabled: freshness.enabled, passed: freshness.passed, staleCount: freshness.staleCount }, gates: gates.map(({ name, passed, score, weight }) => ({ name, passed, score: Math.min(score, weight), weight })) }, null, 2));
 process.exit(strict && !passed ? 1 : 0);

@@ -22,6 +22,14 @@ Fail the process unless every frontier gate passes:
 node bench/recon-remote/frontier-gate/run.mjs --strict
 ```
 
+Strict mode also enforces evidence freshness by default. Use `--fresh` to make
+that explicit and tune the window with `RECON_FRONTIER_MAX_ARTIFACT_AGE_HOURS`
+or `RECON_FRONTIER_MAX_ARTIFACT_AGE_MS`:
+
+```bash
+node bench/recon-remote/frontier-gate/run.mjs --strict --fresh
+```
+
 ## Gates
 
 | Gate | Frontier requirement |
@@ -31,6 +39,7 @@ node bench/recon-remote/frontier-gate/run.mjs --strict
 | `douyin_abogus_rebuild_structured_api` | `a_bogus`/`msToken` observed + runtime signed fetch anchored + independently replayed browser-captured aweme API returns structured 2xx JSON |
 | `agent_frontier_gap_reasoning` | Dogfood agent made real model/tool calls and named frontier gaps/next commands across Bili/XHS/Douyin |
 | `cross_platform_live_binding` | Latest live proof-gate passed with rows bound to artifacts from the same invocation |
+| `freshness` | All referenced Bili/XHS/Douyin/dogfood/proof artifacts are inside the configured age window |
 
 `frontier-incomplete` is a useful result: it means the harness found real high-difficulty gaps instead of inflating the score. Use `--strict` only when this is promoted to a release-blocking target.
 
