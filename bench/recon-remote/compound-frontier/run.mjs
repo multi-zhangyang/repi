@@ -23,6 +23,10 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 
 function timestamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
+function eventHash(event) {
+  const { eventHash: _eventHash, ...withoutHash } = event;
+  return sha256(JSON.stringify(withoutHash));
+}
 function safeJson(text, fallback = null) { try { return JSON.parse(text); } catch { return fallback; } }
 function rel(path) { return String(path || '').replace(`${repoRoot}/`, ''); }
 function fullPath(path) { return String(path || '').startsWith('/') ? String(path) : join(repoRoot, String(path || '')); }
@@ -87,6 +91,21 @@ async function readJson(path) {
   if (!existsSync(full)) return null;
   return safeJson(await readFile(full, 'utf8'));
 }
+async function fileMeta(path, tier = 'runtime_artifact') {
+  if (!path) return { path: '', exists: false, tier };
+  const full = fullPath(path);
+  const relative = rel(full);
+  if (!existsSync(full)) return { path: relative, exists: false, tier };
+  const st = statSync(full);
+  return {
+    path: relative,
+    exists: true,
+    tier,
+    bytes: st.size,
+    mtime: new Date(st.mtimeMs).toISOString(),
+    sha256: sha256(await readFile(full)),
+  };
+}
 async function latestResult(globPart) {
   const candidates = [];
   for (const path of (await walk(join(repoRoot, '.pi', 'evidence', 'remote'))).filter((p) => p.includes(globPart))) {
@@ -122,6 +141,136 @@ function gate(name, passed, evidence, required, severity = 'required') {
 function gateMap(gates = []) { return Object.fromEntries(gates.map((item) => [item.name, item])); }
 function scoreRow(scoreboard, family) { return (scoreboard?.rows || []).find((row) => row.family === family) || null; }
 function samePath(a, b) { return rel(fullPath(a)) === rel(fullPath(b)); }
+function appendCompoundClaimLedgerEvent(events, event) {
+  const prevHash = events.at(-1)?.eventHash || '0'.repeat(64);
+  const row = { kind: 'ClaimLedgerEventV1', seq: events.length + 1, prevHash, timestamp: new Date().toISOString(), source: 'compound-frontier', ...event };
+  row.eventHash = eventHash(row);
+  events.push(row);
+  return row;
+}
+function compoundClaimLedgerHashChainOk(events) {
+  let prevHash = '0'.repeat(64);
+  for (const row of events) {
+    if (row.prevHash !== prevHash || row.eventHash !== eventHash(row)) return false;
+    prevHash = row.eventHash;
+  }
+  return events.length > 0;
+}
+const requiredClaimLedgerTypes = ['artifact_handoff', 'claim', 'validation', 'challenge', 'resolution'];
+function compoundRuntimeClaimLedgerOk(events) {
+  return compoundClaimLedgerHashChainOk(events) && requiredClaimLedgerTypes.every((type) => events.some((event) => event.type === type));
+}
+async function buildCompoundClaimLedgerEvents({
+  artifacts,
+  ageRows,
+  gates,
+  failedGates,
+  verdict,
+  mode,
+  resultPath,
+  claimLedgerPath,
+  failureLedgerPath,
+  repairQueuePath,
+  failureRepair,
+  hardScoreArtifact,
+  contextCompactSummary,
+}) {
+  // ClaimLedgerEventV1 runtime rows: artifact_handoff -> claim -> validation -> challenge -> resolution.
+  const events = [];
+  const upstreamMetas = [
+    await fileMeta(artifacts.sameWindow, 'same_window_live'),
+    await fileMeta(artifacts.agentParallel, 'runtime_artifact'),
+    await fileMeta(hardScoreArtifact, 'runtime_artifact'),
+  ].filter((item) => item.path);
+  const outputRefs = {
+    resultPath,
+    claimLedgerPath,
+    failureLedgerPath,
+    repairQueuePath,
+  };
+  const gateRows = gates.map((item) => ({
+    name: item.name,
+    passed: Boolean(item.passed),
+    severity: item.severity,
+    required: item.required,
+  }));
+  const failedNames = failedGates.map((gap) => gap.name);
+  const claimId = 'compound-frontier.bound_runtime_claim';
+  appendCompoundClaimLedgerEvent(events, {
+    type: 'artifact_handoff',
+    role: 'compound-frontier',
+    scope: 'compound-frontier:offline-bound',
+    mode,
+    artifactRefs: upstreamMetas.map((item) => item.path),
+    artifactHashes: upstreamMetas.filter((item) => item.exists && item.sha256).map((item) => ({ path: item.path, sha256: item.sha256 })),
+    outputRefs,
+    ageRows,
+  });
+  appendCompoundClaimLedgerEvent(events, {
+    type: 'claim',
+    claimId,
+    role: 'compound-frontier',
+    scope: 'compound-frontier',
+    status: failedNames.length ? 'gap' : 'proven',
+    statement: failedNames.length
+      ? `compound-frontier has unresolved gates: ${failedNames.join(', ')}.`
+      : 'compound-frontier bound artifacts, gates, result metadata, and failure/repair outputs without unresolved required gates.',
+    evidenceRefs: [
+      resultPath,
+      claimLedgerPath,
+      failureLedgerPath,
+      repairQueuePath,
+      artifacts.sameWindow,
+      artifacts.agentParallel,
+      hardScoreArtifact,
+    ].filter(Boolean),
+    gateRefs: gateRows.map((item) => item.name),
+    resultBinding: {
+      verdict,
+      mode,
+      artifactDir: rel(outDir),
+      resultPath,
+    },
+  });
+  appendCompoundClaimLedgerEvent(events, {
+    type: 'validation',
+    claimId,
+    role: 'compound-frontier-verifier',
+    result: failedNames.length ? 'fail' : 'pass',
+    checks: Object.fromEntries(gateRows.map((item) => [item.name, item.passed])),
+    failedGates: failedNames,
+    contextCompactSummary: contextCompactSummary || null,
+    evidenceRefs: [resultPath, claimLedgerPath, artifacts.sameWindow, artifacts.agentParallel].filter(Boolean),
+  });
+  appendCompoundClaimLedgerEvent(events, {
+    type: 'challenge',
+    claimId,
+    role: 'compound-frontier-adversary',
+    scope: 'compound-frontier',
+    challenge: failedNames.length
+      ? `do not promote compound frontier while required gates remain failed: ${failedNames.join(', ')}`
+      : 'no required gate failed; retain adversarial challenge row to make the runtime ledger complete and auditable',
+    evidenceRefs: [resultPath, failureLedgerPath, repairQueuePath].filter(Boolean),
+  });
+  appendCompoundClaimLedgerEvent(events, {
+    type: 'resolution',
+    claimId,
+    role: 'compound-frontier-synthesizer',
+    result: failedNames.length ? 'repair_queued' : 'accepted',
+    resolution: failedNames.length
+      ? 'failureRepair keeps the compound claim downgraded until queued gates are repaired and rerun'
+      : 'compound claim is accepted for the bound/offline evidence snapshot',
+    failureRepairBinding: {
+      failureLedgerPath,
+      repairQueuePath,
+      failureLedgerEventCount: failureRepair.failureLedgerEvents.length,
+      repairQueueCount: failureRepair.repairQueue.length,
+      failureRepairWriteback: failureRepair.failureRepairWriteback,
+    },
+    evidenceRefs: [failureLedgerPath, repairQueuePath, ...failureRepair.failureLedgerEvents.map((event) => event.id)].filter(Boolean),
+  });
+  return events;
+}
 
 const outDir = join(repoRoot, '.pi', 'evidence', 'remote', 'compound-frontier', timestamp());
 await mkdir(outDir, { recursive: true });
@@ -215,27 +364,116 @@ if (live) {
   gates.push(gate('compound_live_rerun_mode', Boolean(runs.sameWindow && runs.sameWindow.code === 0 && (!runAgent || runs.agentParallel?.code === 0)), { sameWindowRun: summarizeRun('same-window', runs.sameWindow), agentRun: summarizeRun('agent-parallel', runs.agentParallel) }, 'live mode reran same-window and agent-parallel commands successfully'));
 }
 
-const requiredGates = gates.filter((item) => item.severity !== 'supporting');
-const passedRequired = requiredGates.every((item) => item.passed);
-const failedGates = gates.filter((item) => !item.passed).map((item) => ({ name: item.name, severity: item.severity, required: item.required, evidence: item.evidence }));
-const verdict = passedRequired ? 'compound-frontier-passed' : gates.some((item) => item.passed) ? 'compound-frontier-gaps' : 'compound-frontier-failed';
-const failureRepair = failureRepairFromGaps({
+const mode = live ? 'live-rerun' : 'latest-bound';
+const claimLedgerPath = rel(join(outDir, 'claim-ledger.jsonl'));
+const resultPath = rel(join(outDir, 'result.json'));
+const failureLedgerPath = rel(join(outDir, 'failure-ledger.jsonl'));
+const repairQueuePath = rel(join(outDir, 'repair-queue.jsonl'));
+const hardScoreArtifact = hardScoreRun?.json?.artifactDir ? `${hardScoreRun.json.artifactDir}/scoreboard.json` : '';
+const failedGateRows = () => gates
+  .filter((item) => !item.passed)
+  .map((item) => ({ name: item.name, severity: item.severity, required: item.required, evidence: item.evidence }));
+const requiredGatesPassed = () => gates.filter((item) => item.severity !== 'supporting').every((item) => item.passed);
+const gateVerdict = (requiredPassed) => (requiredPassed ? 'compound-frontier-passed' : gates.some((item) => item.passed) ? 'compound-frontier-gaps' : 'compound-frontier-failed');
+const makeFailureRepair = (gaps, requiredPassed) => failureRepairFromGaps({
   root: repoRoot,
   source: 'compound-frontier',
-  gaps: failedGates,
+  gaps,
   category: 'contract_gap',
-  status: passedRequired ? 'repaired' : 'repair_queued',
+  status: requiredPassed ? 'repaired' : 'repair_queued',
   attempt: 1,
   maxAttempts: live ? 2 : 1,
   commands: ['node bench/recon-remote/compound-frontier/run.mjs --live --strict'],
   artifacts: Object.values(artifacts).filter(Boolean),
-  expectedArtifacts: [rel(outDir), artifacts.sameWindow, artifacts.agentParallel].filter(Boolean),
+  expectedArtifacts: [rel(outDir), artifacts.sameWindow, artifacts.agentParallel, claimLedgerPath, failureLedgerPath, repairQueuePath].filter(Boolean),
   liveAllowed: live,
   providerAllowed: runAgent && live,
   paused: !live,
   unblock: 'rerun compound frontier with --live --strict after required evidence is allowed',
   verificationCommand: 'npm run gate:compound-frontier',
 });
+
+let passedRequired = requiredGatesPassed();
+let failedGates = failedGateRows();
+let verdict = gateVerdict(passedRequired);
+let failureRepair = makeFailureRepair(failedGates, passedRequired);
+let claimLedgerEvents = await buildCompoundClaimLedgerEvents({
+  artifacts,
+  ageRows,
+  gates,
+  failedGates,
+  verdict,
+  mode,
+  resultPath,
+  claimLedgerPath,
+  failureLedgerPath,
+  repairQueuePath,
+  failureRepair,
+  hardScoreArtifact,
+  contextCompactSummary: compactAudit?.summary || null,
+});
+let runtimeClaimLedgerCaptured = compoundRuntimeClaimLedgerOk(claimLedgerEvents);
+const claimLedgerGate = gate(
+  'runtimeClaimLedgerCaptured',
+  runtimeClaimLedgerCaptured,
+  {
+    claimLedgerPath,
+    claimLedgerEventCount: claimLedgerEvents.length,
+    claimLedgerTipHash: claimLedgerEvents.at(-1)?.eventHash || '',
+    requiredEventTypes: requiredClaimLedgerTypes,
+    eventTypes: [...new Set(claimLedgerEvents.map((event) => event.type))],
+    hashChainOk: compoundClaimLedgerHashChainOk(claimLedgerEvents),
+    resultPath,
+    failureLedgerPath,
+    repairQueuePath,
+    failureRepair: {
+      failureLedgerEventCount: failureRepair.failureLedgerEvents.length,
+      repairQueueCount: failureRepair.repairQueue.length,
+    },
+  },
+  'ClaimLedgerEventV1-style runtime claim ledger hash chain covers artifact_handoff, claim, validation, challenge, and resolution',
+);
+gates.push(claimLedgerGate);
+passedRequired = requiredGatesPassed();
+failedGates = failedGateRows();
+verdict = gateVerdict(passedRequired);
+failureRepair = makeFailureRepair(failedGates, passedRequired);
+claimLedgerEvents = await buildCompoundClaimLedgerEvents({
+  artifacts,
+  ageRows,
+  gates,
+  failedGates,
+  verdict,
+  mode,
+  resultPath,
+  claimLedgerPath,
+  failureLedgerPath,
+  repairQueuePath,
+  failureRepair,
+  hardScoreArtifact,
+  contextCompactSummary: compactAudit?.summary || null,
+});
+runtimeClaimLedgerCaptured = compoundRuntimeClaimLedgerOk(claimLedgerEvents);
+claimLedgerGate.passed = runtimeClaimLedgerCaptured;
+claimLedgerGate.evidence = {
+  claimLedgerPath,
+  claimLedgerEventCount: claimLedgerEvents.length,
+  claimLedgerTipHash: claimLedgerEvents.at(-1)?.eventHash || '',
+  requiredEventTypes: requiredClaimLedgerTypes,
+  eventTypes: [...new Set(claimLedgerEvents.map((event) => event.type))],
+  hashChainOk: compoundClaimLedgerHashChainOk(claimLedgerEvents),
+  resultPath,
+  failureLedgerPath,
+  repairQueuePath,
+  failureRepair: {
+    failureLedgerEventCount: failureRepair.failureLedgerEvents.length,
+    repairQueueCount: failureRepair.repairQueue.length,
+  },
+};
+passedRequired = requiredGatesPassed();
+failedGates = failedGateRows();
+verdict = gateVerdict(passedRequired);
+failureRepair = makeFailureRepair(failedGates, passedRequired);
 const result = {
   target: 'Compound frontier live-swarm: same-window real platforms + parallel Pi-RECON dogfood + context compact',
   profile: 'compound-frontier',
@@ -244,7 +482,7 @@ const result = {
   startedAt,
   endedAt: new Date().toISOString(),
   artifactDir: rel(outDir),
-  mode: live ? 'live-rerun' : 'latest-bound',
+  mode,
   strict,
   useLatest,
   maxArtifactAgeMs,
@@ -252,6 +490,11 @@ const result = {
   ageRows,
   gates,
   failedGates,
+  claimLedgerPath,
+  claimLedgerEventCount: claimLedgerEvents.length,
+  claimLedgerTipHash: claimLedgerEvents.at(-1)?.eventHash || '',
+  runtimeClaimLedgerCaptured,
+  claimLedgerEvents,
   failureLedgerEvents: failureRepair.failureLedgerEvents,
   repairQueue: failureRepair.repairQueue,
   failureRepairWriteback: failureRepair.failureRepairWriteback,
@@ -271,6 +514,7 @@ const result = {
     ? failedGates.map((gap) => `close ${gap.name}: ${gap.required}`)
     : ['promote gate:compound-frontier as release frontier gate', 'rerun with --live before release tags', 'raise next frontier to cross-platform target discovery and compact-resume replay'],
 };
+await writeFile(join(outDir, 'claim-ledger.jsonl'), `${claimLedgerEvents.map((event) => JSON.stringify(event)).join('\n')}${claimLedgerEvents.length ? '\n' : ''}`);
 await writeFile(join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
 await writeFile(join(outDir, 'failure-ledger.jsonl'), `${failureRepair.failureLedgerEvents.map((event) => JSON.stringify(event)).join('\n')}${failureRepair.failureLedgerEvents.length ? '\n' : ''}`);
 await writeFile(join(outDir, 'repair-queue.jsonl'), `${failureRepair.repairQueue.map((item) => JSON.stringify(item)).join('\n')}${failureRepair.repairQueue.length ? '\n' : ''}`);
@@ -291,6 +535,7 @@ const md = [
   `same_window: ${artifacts.sameWindow || 'none'}`,
   `agent_parallel: ${artifacts.agentParallel || 'none'}`,
   `hard_score: ${hardScoreRun?.json?.artifactDir || 'none'}`,
+  `runtime_claim_ledger: ${claimLedgerPath} events=${claimLedgerEvents.length} captured=${runtimeClaimLedgerCaptured}`,
   '',
   '## Gates',
   '| Gate | Passed | Required | Evidence |',
@@ -305,5 +550,16 @@ const md = [
   '',
 ].join('\n');
 await writeFile(join(outDir, 'artifact.md'), md);
-console.log(JSON.stringify({ verdict, artifactDir: rel(outDir), mode: result.mode, failedGates: failedGates.map((gap) => gap.name), gates: gates.map(({ name, passed }) => ({ name, passed })), hardScoreArtifact: hardScoreRun?.json?.artifactDir || '' }, null, 2));
+console.log(JSON.stringify({
+  verdict,
+  artifactDir: rel(outDir),
+  mode: result.mode,
+  failedGates: failedGates.map((gap) => gap.name),
+  gates: gates.map(({ name, passed }) => ({ name, passed })),
+  claimLedgerPath,
+  claimLedgerEventCount: claimLedgerEvents.length,
+  claimLedgerTipHash: claimLedgerEvents.at(-1)?.eventHash || '',
+  runtimeClaimLedgerCaptured,
+  hardScoreArtifact: hardScoreRun?.json?.artifactDir || '',
+}, null, 2));
 process.exit(strict && !passedRequired ? 1 : 0);

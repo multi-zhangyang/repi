@@ -944,6 +944,27 @@ type ReconParallelPlanV1 = {
 	};
 };
 
+type SwarmClaimLedgerEventV1 = {
+	kind: "ClaimLedgerEventV1";
+	seq: number;
+	prevHash: string;
+	eventHash: string;
+	timestamp: string;
+	source: "re_swarm";
+	type: "artifact_handoff" | "claim" | "validation" | "challenge" | "resolution";
+	claimId?: string;
+	workerId?: string;
+	role?: string;
+	scope?: string;
+	status?: "proven" | "gap" | "pending" | "blocked" | "pass" | "fail" | "accepted" | "queued_repair";
+	statement?: string;
+	challenge?: string;
+	resolution?: string;
+	evidenceRefs: string[];
+	artifactHashes?: FailureRepairArtifactHash[];
+	metadata?: Record<string, unknown>;
+};
+
 type SwarmArtifact = {
 	timestamp: string;
 	missionId?: string;
@@ -968,6 +989,11 @@ type SwarmArtifact = {
 	parallelPlan?: ReconParallelPlanV1;
 	planCoverage: string[];
 	releaseGateMetadata: string[];
+	claimLedger: SwarmClaimLedgerEventV1[];
+	claimLedgerPath?: string;
+	claimLedgerEventCount: number;
+	claimLedgerTipHash?: string;
+	runtimeClaimLedgerCaptured: boolean;
 	sourceArtifacts: string[];
 };
 
@@ -13608,6 +13634,280 @@ function swarmReleaseGateMetadata(plan?: ReconParallelPlanV1): string[] {
 	];
 }
 
+function swarmClaimLedgerEventHash(event: SwarmClaimLedgerEventV1): string {
+	const { eventHash: _eventHash, ...withoutHash } = event;
+	return createHash("sha256").update(JSON.stringify(withoutHash)).digest("hex");
+}
+
+function appendSwarmClaimLedgerEvent(
+	events: SwarmClaimLedgerEventV1[],
+	event: Omit<SwarmClaimLedgerEventV1, "kind" | "seq" | "prevHash" | "eventHash" | "timestamp" | "source">,
+	timestamp: string,
+): SwarmClaimLedgerEventV1 {
+	const row: SwarmClaimLedgerEventV1 = {
+		kind: "ClaimLedgerEventV1",
+		seq: events.length + 1,
+		prevHash: events.at(-1)?.eventHash ?? "0".repeat(64),
+		eventHash: "",
+		timestamp,
+		source: "re_swarm",
+		...event,
+	};
+	row.eventHash = swarmClaimLedgerEventHash(row);
+	events.push(row);
+	return row;
+}
+
+function swarmClaimLedgerHashChainOk(events: SwarmClaimLedgerEventV1[]): boolean {
+	let prevHash = "0".repeat(64);
+	for (const event of events) {
+		if (event.kind !== "ClaimLedgerEventV1" || event.prevHash !== prevHash) return false;
+		if (event.eventHash !== swarmClaimLedgerEventHash(event)) return false;
+		prevHash = event.eventHash;
+	}
+	return events.length > 0;
+}
+
+function buildSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmClaimLedgerEventV1[] {
+	const events: SwarmClaimLedgerEventV1[] = [];
+	const timestamp = swarm.timestamp;
+	const planId = swarm.parallelPlan?.planId ?? "missing";
+	const scope = swarm.target ?? swarm.missionId ?? swarm.route ?? "re_swarm";
+	appendSwarmClaimLedgerEvent(
+		events,
+		{
+			type: "artifact_handoff",
+			claimId: `${planId}:artifact_handoff`,
+			workerId: "re_swarm",
+			role: "swarm",
+			scope,
+			statement: "re_swarm emitted ReconParallelPlanV1-bound worker runtime packets and merge contract.",
+			evidenceRefs: [
+				swarm.delegationArtifact,
+				...(swarm.parallelPlan?.merge.expectedArtifacts ?? []),
+				...swarm.sourceArtifacts,
+			].filter((item): item is string => Boolean(item)),
+			artifactHashes: runtimeArtifactHashes([swarm.delegationArtifact, ...swarm.sourceArtifacts]),
+			metadata: {
+				mode: swarm.mode,
+				planId,
+				workerCount: swarm.workers.length,
+				executionCount: swarm.executions.length,
+				mergeStrategy: swarm.parallelPlan?.merge.strategy ?? "missing",
+			},
+		},
+		timestamp,
+	);
+	for (const worker of swarm.workers) {
+		const executions = swarm.executions.filter((execution) => execution.workerId === worker.id);
+		const blocked = executions.filter((execution) => execution.status === "blocked");
+		const coverageRows = swarm.coverageMatrix.filter((row) => row.includes(`worker=${worker.id}`));
+		const missingCoverageRows = coverageRows.filter((row) => /status=missing/i.test(row));
+		const auditRows = swarm.executionAudit.filter((row) => row.includes(`worker=${worker.id}`));
+		const claimPassed = executions.length > 0 && blocked.length === 0 && missingCoverageRows.length === 0;
+		const claimId = `${planId}:worker:${slug(worker.id).slice(0, 48)}`;
+		appendSwarmClaimLedgerEvent(
+			events,
+			{
+				type: "artifact_handoff",
+				claimId,
+				workerId: worker.id,
+				role: worker.worker,
+				scope,
+				statement: "worker packet handoff binds commands, dependencies, merge keys, and evidence contract before execution.",
+				evidenceRefs: [swarm.delegationArtifact, ...worker.sourceArtifacts].filter((item): item is string => Boolean(item)),
+				artifactHashes: runtimeArtifactHashes([swarm.delegationArtifact, ...worker.sourceArtifacts]),
+				metadata: {
+					objective: worker.objective,
+					commands: worker.commands,
+					dependencies: worker.dependencies,
+					mergeKeys: worker.mergeKeys,
+					evidenceContract: worker.evidenceContract,
+				},
+			},
+			timestamp,
+		);
+		appendSwarmClaimLedgerEvent(
+			events,
+			{
+				type: "claim",
+				claimId,
+				workerId: worker.id,
+				role: worker.worker,
+				scope,
+				status: claimPassed ? "proven" : executions.length ? "gap" : "pending",
+				statement: claimPassed
+					? "worker claim is artifact-backed and coverage-complete for this swarm run."
+					: "worker claim is not promotable until runtime execution, coverage, and repair gates close.",
+				evidenceRefs: [
+					swarm.delegationArtifact,
+					...worker.sourceArtifacts,
+					...executions.flatMap((execution) => execution.sourceArtifacts),
+				].filter((item): item is string => Boolean(item)),
+				artifactHashes: runtimeArtifactHashes([
+					swarm.delegationArtifact,
+					...worker.sourceArtifacts,
+					...executions.flatMap((execution) => execution.sourceArtifacts),
+				]),
+				metadata: {
+					workerStatus: worker.status,
+					executions: executions.length,
+					blocked: blocked.length,
+					coverageRows: coverageRows.length,
+					missingCoverageRows: missingCoverageRows.length,
+				},
+			},
+			timestamp,
+		);
+		appendSwarmClaimLedgerEvent(
+			events,
+			{
+				type: "validation",
+				claimId,
+				workerId: worker.id,
+				role: "supervisor",
+				scope,
+				status: claimPassed ? "pass" : "fail",
+				statement: "runtime coverage validation checks execution status, blocked rows, and evidence-contract coverage.",
+				evidenceRefs: [swarm.delegationArtifact, ...worker.sourceArtifacts].filter((item): item is string => Boolean(item)),
+				metadata: {
+					auditRows,
+					coverageRows,
+					missingCoverageRows,
+					blockedCommands: blocked.map((execution) => execution.command),
+				},
+			},
+			timestamp,
+		);
+		if (!claimPassed) {
+			const reason =
+				executions.length === 0
+					? "pending_execution"
+					: blocked.length
+						? "blocked_execution"
+						: "missing_evidence_contract";
+			appendSwarmClaimLedgerEvent(
+				events,
+				{
+					type: "challenge",
+					claimId,
+					workerId: worker.id,
+					role: "adversary",
+					scope,
+					status: "blocked",
+					challenge: `worker claim challenged: ${reason}`,
+					evidenceRefs: [swarm.delegationArtifact, ...worker.sourceArtifacts].filter((item): item is string => Boolean(item)),
+					metadata: {
+						reason,
+						blockedRows: blocked.map((execution) => truncateMiddle(execution.output.replace(/\s+/g, " "), 240)),
+						missingCoverageRows,
+					},
+				},
+				timestamp,
+			);
+			appendSwarmClaimLedgerEvent(
+				events,
+				{
+					type: "resolution",
+					claimId,
+					workerId: worker.id,
+					role: "re_swarm",
+					scope,
+					status: "queued_repair",
+					resolution: "claim remains downgraded; retryQueue and supervisor repair must close before final promotion.",
+					evidenceRefs: [swarm.claimLedgerPath, ...swarm.retryQueue].filter((item): item is string => Boolean(item)),
+					metadata: {
+						retryQueue: swarm.retryQueue.filter((row) => row.includes(`worker=${worker.id}`)),
+						next: `re_swarm run ${swarm.target ?? "<target>"} 1 1 && re_supervisor repair ${swarm.target ?? "<target>"}`,
+					},
+				},
+				timestamp,
+			);
+		}
+	}
+	for (const collision of swarm.collisionMatrix) {
+		const claimId = `${planId}:collision:${createHash("sha256").update(collision).digest("hex").slice(0, 12)}`;
+		appendSwarmClaimLedgerEvent(
+			events,
+			{
+				type: "challenge",
+				claimId,
+				workerId: "collision_matrix",
+				role: "adversary",
+				scope,
+				status: "blocked",
+				challenge: `merge conflict requires supervisor arbitration: ${collision}`,
+				evidenceRefs: [swarm.delegationArtifact, ...swarm.sourceArtifacts].filter((item): item is string => Boolean(item)),
+			},
+			timestamp,
+		);
+		appendSwarmClaimLedgerEvent(
+			events,
+			{
+				type: "resolution",
+				claimId,
+				workerId: "collision_matrix",
+				role: "supervisor",
+				scope,
+				status: "queued_repair",
+				resolution: "collision is preserved for re_supervisor review; final claim promotion is blocked until conflict is resolved.",
+				evidenceRefs: [swarm.claimLedgerPath, "re_supervisor review"].filter((item): item is string => Boolean(item)),
+			},
+			timestamp,
+		);
+	}
+	if (!events.some((event) => event.type === "challenge")) {
+		appendSwarmClaimLedgerEvent(
+			events,
+			{
+				type: "challenge",
+				claimId: `${planId}:final_promotion_policy`,
+				workerId: "re_swarm",
+				role: "adversary",
+				scope,
+				status: "accepted",
+				challenge: "no unresolved worker challenge in this swarm artifact; retain final-promotion adversary gate.",
+				evidenceRefs: [swarm.claimLedgerPath, swarm.delegationArtifact].filter((item): item is string => Boolean(item)),
+			},
+			timestamp,
+		);
+		appendSwarmClaimLedgerEvent(
+			events,
+			{
+				type: "resolution",
+				claimId: `${planId}:final_promotion_policy`,
+				workerId: "re_swarm",
+				role: "supervisor",
+				scope,
+				status: "accepted",
+				resolution: "role claims may only promote after supervisor claimGatePolicy and strict claim marker pass.",
+				evidenceRefs: [swarm.claimLedgerPath, "gate:claim-release", "re_supervisor review"].filter((item): item is string => Boolean(item)),
+			},
+			timestamp,
+		);
+	}
+	return events;
+}
+
+function refreshSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmArtifact {
+	const claimLedger = buildSwarmRuntimeClaimLedger(swarm);
+	const runtimeClaimLedgerCaptured =
+		swarmClaimLedgerHashChainOk(claimLedger) &&
+		(["artifact_handoff", "claim", "validation", "challenge", "resolution"] as const).every((type) =>
+			claimLedger.some((event) => event.type === type),
+		);
+	return {
+		...swarm,
+		claimLedger,
+		claimLedgerEventCount: claimLedger.length,
+		claimLedgerTipHash: claimLedger.at(-1)?.eventHash,
+		runtimeClaimLedgerCaptured,
+		sourceArtifacts: Array.from(
+			new Set([...swarm.sourceArtifacts, swarm.claimLedgerPath].filter((item): item is string => Boolean(item))),
+		).slice(0, 48),
+	};
+}
+
 function buildSwarm(options: { target?: string; task?: string; mode?: "plan" | "run" | "merge" } = {}): SwarmArtifact {
 	ensureReconStorage();
 	const { delegate, path: delegationArtifact } = latestOrBuildDelegate(options);
@@ -13709,6 +14009,9 @@ function buildSwarm(options: { target?: string; task?: string; mode?: "plan" | "
 		parallelPlan,
 		planCoverage: basePlanCoverage,
 		releaseGateMetadata,
+		claimLedger: [],
+		claimLedgerEventCount: 0,
+		runtimeClaimLedgerCaptured: false,
 		sourceArtifacts: Array.from(
 			new Set([
 				delegationArtifact,
@@ -13719,11 +14022,11 @@ function buildSwarm(options: { target?: string; task?: string; mode?: "plan" | "
 	};
 	const auditFields = deriveSwarmAuditFields(swarm);
 	const swarmWithAudit = { ...swarm, ...auditFields };
-	return {
+	return refreshSwarmRuntimeClaimLedger({
 		...swarmWithAudit,
 		planCoverage: swarmPlanCoverage(swarmWithAudit),
 		releaseGateMetadata: swarmReleaseGateMetadata(swarmWithAudit.parallelPlan),
-	};
+	});
 }
 
 function sanitizeSwarmCommand(command: string): string {
@@ -13971,7 +14274,7 @@ function refreshSwarmRunDerivedFields(swarm: SwarmArtifact): SwarmArtifact {
 			"re_context pack",
 		]),
 	).slice(0, 18);
-	return {
+	return refreshSwarmRuntimeClaimLedger({
 		...swarm,
 		workers,
 		blocked,
@@ -13984,7 +14287,7 @@ function refreshSwarmRunDerivedFields(swarm: SwarmArtifact): SwarmArtifact {
 		sourceArtifacts: Array.from(
 			new Set([...swarm.sourceArtifacts, ...swarm.executions.flatMap((execution) => execution.sourceArtifacts)]),
 		).slice(0, 48),
-	};
+	});
 }
 
 async function runSwarm(
@@ -14085,6 +14388,19 @@ function formatSwarm(swarm: SwarmArtifact, path?: string): string {
 		...(swarm.planCoverage.length ? swarm.planCoverage.map((item) => `- ${item}`) : ["- none"]),
 		"release_gate_metadata:",
 		...(swarm.releaseGateMetadata.length ? swarm.releaseGateMetadata.map((item) => `- ${item}`) : ["- none"]),
+		"runtime_claim_ledger:",
+		`- path=${swarm.claimLedgerPath ?? "pending"}`,
+		`- events=${swarm.claimLedgerEventCount}`,
+		`- tip_hash=${swarm.claimLedgerTipHash ?? "none"}`,
+		`- hash_chain=${swarm.runtimeClaimLedgerCaptured ? "pass" : "fail"}`,
+		...(swarm.claimLedger.length
+			? swarm.claimLedger
+					.slice(0, 10)
+					.map(
+						(event) =>
+							`- seq=${event.seq} type=${event.type} claim=${event.claimId ?? "none"} status=${event.status ?? "n/a"} hash=${event.eventHash.slice(0, 16)}`,
+					)
+			: ["- none"]),
 		`next_swarm_command: ${
 			swarm.mode === "merge"
 				? "re_supervisor review"
@@ -14104,6 +14420,13 @@ function writeSwarmArtifact(swarm: SwarmArtifact): string {
 	const path = join(
 		evidenceSwarmsDir(),
 		`${swarm.timestamp.replace(/[:.]/g, "-")}-${slug(swarm.route ?? "swarm")}-${swarm.mode}.md`,
+	);
+	swarm.claimLedgerPath = path.replace(/\.md$/i, "-claim-ledger.jsonl");
+	Object.assign(swarm, refreshSwarmRuntimeClaimLedger(swarm));
+	writeFileSync(
+		swarm.claimLedgerPath,
+		`${swarm.claimLedger.map((event) => JSON.stringify(event)).join("\n")}${swarm.claimLedger.length ? "\n" : ""}`,
+		"utf-8",
 	);
 	writeFileSync(
 		path,
@@ -14171,7 +14494,7 @@ function writeSwarmArtifact(swarm: SwarmArtifact): string {
 	appendEvidence({
 		kind: swarm.mode === "run" ? "runtime" : "artifact",
 		title: `swarm-${swarm.mode} ${swarm.missionId ?? "no-mission"}`,
-		fact: `Built swarm ${swarm.mode} with ${swarm.workers.length} worker runtime packet(s), ${swarm.executions.length} execution(s), ${swarm.parallelGroups.length} parallel group(s), ${swarm.collisionMatrix.length} collision(s), ${swarm.blocked.length} blocked, audit=${swarm.executionAudit.length}, retries=${swarm.retryQueue.length}, parallel_plan=${swarm.parallelPlan?.planId ?? "missing"}, plan_coverage=${swarm.planCoverage.length}, release_gate_metadata=${swarm.releaseGateMetadata.length}`,
+		fact: `Built swarm ${swarm.mode} with ${swarm.workers.length} worker runtime packet(s), ${swarm.executions.length} execution(s), ${swarm.parallelGroups.length} parallel group(s), ${swarm.collisionMatrix.length} collision(s), ${swarm.blocked.length} blocked, audit=${swarm.executionAudit.length}, retries=${swarm.retryQueue.length}, parallel_plan=${swarm.parallelPlan?.planId ?? "missing"}, plan_coverage=${swarm.planCoverage.length}, release_gate_metadata=${swarm.releaseGateMetadata.length}, runtime_claim_ledger=${swarm.claimLedgerEventCount} hash_chain=${swarm.runtimeClaimLedgerCaptured ? "pass" : "fail"}`,
 		command: `re_swarm ${swarm.mode}`,
 		path,
 		verify: `cat ${path}`,

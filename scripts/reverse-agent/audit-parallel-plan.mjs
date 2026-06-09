@@ -306,11 +306,7 @@ function validateDogfoodRuntimeManifestMarkers(root) {
 		"runtimeManifestFile",
 		"subagentRuntimeManifests",
 		"subagentRuntimeManifestsCaptured",
-		"buildRuntimeClaimLedgerEvents",
-		"claim-ledger.jsonl",
-		"ClaimLedgerEventV1",
-		"runtimeClaimLedgerCaptured",
-		];
+	];
 	const rows = markers.map((marker) => ({ marker, present: text.includes(marker) }));
 	const missing = rows.filter((row) => !row.present).map((row) => row.marker);
 	return status(missing.length === 0, {
@@ -319,6 +315,67 @@ function validateDogfoodRuntimeManifestMarkers(root) {
 		markerCount: markers.length,
 		missing,
 		rows,
+	});
+}
+
+function readStaticMarkers(root, relativePath, markers) {
+	const full = join(root, relativePath);
+	const text = existsSync(full) ? readFileSync(full, "utf8") : "";
+	const rows = markers.map((marker) => ({ marker, present: text.includes(marker) }));
+	return {
+		path: relativePath,
+		exists: existsSync(full),
+		rows,
+		missing: rows.filter((row) => !row.present).map((row) => row.marker),
+	};
+}
+
+function validateRuntimeClaimLedgerMarkers(root) {
+	const shared = ["ClaimLedgerEventV1", "claim-ledger.jsonl", "runtimeClaimLedgerCaptured", "artifact_handoff", "claim", "validation", "challenge", "resolution"];
+	const files = [
+		readStaticMarkers(root, DOGFOOD_RUNNER, ["buildRuntimeClaimLedgerEvents", ...shared]),
+		readStaticMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", [
+			"SwarmClaimLedgerEventV1",
+			"appendSwarmClaimLedgerEvent",
+			"buildSwarmRuntimeClaimLedger",
+			"swarmClaimLedgerHashChainOk",
+			"claimLedgerPath",
+			"claimLedgerEventCount",
+			"claimLedgerTipHash",
+			...shared,
+		]),
+		readStaticMarkers(root, ".pi/extensions/reverse-pentest-core.ts", [
+			"SwarmClaimLedgerEventV1",
+			"appendSwarmClaimLedgerEvent",
+			"buildSwarmRuntimeClaimLedger",
+			"swarmClaimLedgerHashChainOk",
+			"claimLedgerPath",
+			"claimLedgerEventCount",
+			"claimLedgerTipHash",
+			...shared,
+		]),
+		readStaticMarkers(root, "bench/recon-remote/compound-frontier/run.mjs", [
+			"appendCompoundClaimLedgerEvent",
+			"buildCompoundClaimLedgerEvents",
+			"claimLedgerEvents",
+			"claimLedgerPath",
+			"claimLedgerEventCount",
+			"claimLedgerTipHash",
+			...shared,
+		]),
+	];
+	const sources = {
+		agentDogfood: files[0].exists && files[0].missing.length === 0 ? "pass" : "fail",
+		reSwarmCore: files[1].exists && files[1].missing.length === 0 ? "pass" : "fail",
+		reSwarmExtension: files[2].exists && files[2].missing.length === 0 ? "pass" : "fail",
+		compoundFrontier: files[3].exists && files[3].missing.length === 0 ? "pass" : "fail",
+	};
+	const ok = Object.values(sources).every((item) => item === "pass");
+	return status(ok, {
+		staticOnly: true,
+		sources,
+		sourceList: "agent-dogfood,re_swarm,compound-frontier",
+		files,
 	});
 }
 
@@ -354,7 +411,8 @@ function formatMarkdown(result) {
 		`- no_new_agent_dogfood_dir: ${result.checks.planOnlyNoEvidenceDir.noEvidenceDirCreated}`,
 		`- invalid_plan_failure_repair: ${result.checks.planOnlyFailureRepair.status}`,
 		`- subagent_runtime_manifest_static: ${result.checks.dogfoodRuntimeManifest.status}`,
-		`- runtime_claim_ledger_static: ${result.checks.dogfoodRuntimeManifest.status}`,
+		`- runtime_claim_ledger_static: ${result.checks.runtimeClaimLedger.status}`,
+		`- runtime_claim_ledger_sources: ${result.checks.runtimeClaimLedger.sourceList || "missing"}`,
 		"",
 		"## Verification",
 		`- RECON_AGENT_MODEL/ANTHROPIC_MODEL were removed from the child environment.`,
@@ -436,6 +494,7 @@ function buildResult(root) {
 	const planOnlyCheck = validatePlanOnlyOutput(planOnlyRun.json, planOnlyRun, frontierPlan, beforeDirs, afterDirs);
 	const planOnlyFailureRepairCheck = validatePlanOnlyFailureRepair(invalidPlanRun, invalidBeforeDirs, invalidAfterDirs);
 	const dogfoodRuntimeManifestCheck = validateDogfoodRuntimeManifestMarkers(resolvedRoot);
+	const runtimeClaimLedgerCheck = validateRuntimeClaimLedgerMarkers(resolvedRoot);
 	const checks = {
 		frontierPlan: frontierCheck,
 		reconParallelPlanV1: status(frontierCheck.status === "pass", {
@@ -465,6 +524,7 @@ function buildResult(root) {
 		planOnlyOutput: planOnlyCheck,
 		planOnlyFailureRepair: planOnlyFailureRepairCheck,
 		dogfoodRuntimeManifest: dogfoodRuntimeManifestCheck,
+		runtimeClaimLedger: runtimeClaimLedgerCheck,
 	};
 	const ok = Object.values(checks).every((check) => check.status === "pass");
 	return {

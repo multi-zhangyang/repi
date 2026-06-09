@@ -269,6 +269,7 @@ function buildReleaseGateMetadata({ checks, hardEval, contextAudit, parallelPlan
 		checks.claimLedger?.status === "pass" && hardEval?.gate?.requiredPlatformClaimsValidated === true
 			? "pass"
 			: "blocked";
+	const runtimeClaimSources = checks.runtimeClaimLedgerMarkers?.sources ?? {};
 	const releaseBlockingGaps = [
 		...failedChecks.map((name) => `check:${name}`),
 		...requiredPlatformGaps.map((name) => `required_platform_gap:${name}`),
@@ -289,6 +290,9 @@ function buildReleaseGateMetadata({ checks, hardEval, contextAudit, parallelPlan
 		`release_gate.role_contract=${checks.roleContract?.status ?? "missing"}`,
 		`release_gate.claim_ledger=${checks.claimLedger?.status ?? "missing"}`,
 		`release_gate.runtime_claim_ledger=${checks.runtimeClaimLedgerMarkers?.status ?? "missing"}`,
+		"release_gate.runtime_claim_ledger_sources=agent-dogfood,re_swarm,compound-frontier",
+		`release_gate.runtime_claim_ledger_re_swarm=${runtimeClaimSources.reSwarm === "pass" ? "pass" : "fail"}`,
+		`release_gate.runtime_claim_ledger_compound=${runtimeClaimSources.compoundFrontier === "pass" ? "pass" : "fail"}`,
 		`release_gate.runtime_parallel_plan_markers=${checks.runtimeParallelPlanMarkers?.status ?? "missing"}`,
 		`release_gate.score_separation=orchestration:${hardEval?.scores?.orchestration?.score ?? "missing"}/platform_required:${hardEval?.scores?.platformRequired?.score ?? "missing"}/platform_all:${hardEval?.scores?.platformAll?.score ?? "missing"}`,
 		`release_gate.claim_gate_verdict=${claimGateVerdict}`,
@@ -314,6 +318,9 @@ function validateReleaseGateMetadata(rows) {
 		"release_gate.failure_repair_schema=",
 		"release_gate.failure_repair_fixture=",
 		"release_gate.runtime_claim_ledger=",
+		"release_gate.runtime_claim_ledger_sources=",
+		"release_gate.runtime_claim_ledger_re_swarm=",
+		"release_gate.runtime_claim_ledger_compound=",
 		"release_gate.score_separation=",
 		"release_gate.release_blocking_gaps=",
 		"release_gate.orchestration_score_never_implies_platform_success=true",
@@ -388,6 +395,7 @@ function buildResult(root) {
 			planOnlyNoEvidenceDir: parallelPlanAudit?.checks?.planOnlyNoEvidenceDir?.status ?? "missing",
 			planOnlyFailureRepair: parallelPlanAudit?.checks?.planOnlyFailureRepair?.status ?? "missing",
 			dogfoodRuntimeManifest: parallelPlanAudit?.checks?.dogfoodRuntimeManifest?.status ?? "missing",
+			runtimeClaimLedger: parallelPlanAudit?.checks?.runtimeClaimLedger?.status ?? "missing",
 			stdoutSha256: parallelPlanAuditRun.stdoutSha256,
 		}),
 		resumeContractV2Schema: validateResumeContractSchema(),
@@ -420,15 +428,28 @@ function buildResult(root) {
 			],
 		}),
 		runtimeClaimLedgerMarkers: passFail(true, {
+			sources: {
+				agentDogfood: "pending",
+				reSwarm: "pending",
+				compoundFrontier: "pending",
+			},
 			markers: [
-				readMarkers(root, "bench/recon-remote/agent-dogfood/parallel-run.mjs", ["ClaimLedgerEventV1", "buildRuntimeClaimLedgerEvents", "claim-ledger.jsonl", "runtimeClaimLedgerCaptured", "artifact_handoff", "challenge", "resolution"]),
-				readMarkers(root, "scripts/reverse-agent/audit-parallel-plan.mjs", ["dogfoodRuntimeManifest", "runtimeClaimLedgerCaptured", "claim-ledger.jsonl"]),
+				readMarkers(root, "bench/recon-remote/agent-dogfood/parallel-run.mjs", ["ClaimLedgerEventV1", "buildRuntimeClaimLedgerEvents", "claim-ledger.jsonl", "runtimeClaimLedgerCaptured", "artifact_handoff", "claim", "validation", "challenge", "resolution"]),
+				readMarkers(root, "packages/coding-agent/src/core/recon-profile.ts", ["SwarmClaimLedgerEventV1", "appendSwarmClaimLedgerEvent", "buildSwarmRuntimeClaimLedger", "swarmClaimLedgerHashChainOk", "claimLedgerPath", "claimLedgerEventCount", "claimLedgerTipHash", "runtimeClaimLedgerCaptured", "claim-ledger.jsonl", "artifact_handoff", "claim", "validation", "challenge", "resolution"]),
+				readMarkers(root, ".pi/extensions/reverse-pentest-core.ts", ["SwarmClaimLedgerEventV1", "appendSwarmClaimLedgerEvent", "buildSwarmRuntimeClaimLedger", "swarmClaimLedgerHashChainOk", "claimLedgerPath", "claimLedgerEventCount", "claimLedgerTipHash", "runtimeClaimLedgerCaptured", "claim-ledger.jsonl", "artifact_handoff", "claim", "validation", "challenge", "resolution"]),
+				readMarkers(root, "bench/recon-remote/compound-frontier/run.mjs", ["ClaimLedgerEventV1", "appendCompoundClaimLedgerEvent", "buildCompoundClaimLedgerEvents", "claim-ledger.jsonl", "claimLedgerEvents", "claimLedgerPath", "claimLedgerEventCount", "claimLedgerTipHash", "runtimeClaimLedgerCaptured", "artifact_handoff", "claim", "validation", "challenge", "resolution"]),
+				readMarkers(root, "scripts/reverse-agent/audit-parallel-plan.mjs", ["runtimeClaimLedger", "runtime_claim_ledger_sources", "agent-dogfood,re_swarm,compound-frontier"]),
 			],
 		}),
 	};
 	checks.contextRuntimeMarkers.status = checks.contextRuntimeMarkers.markers.every((file) => file.exists && file.markers.every((marker) => marker.present)) ? "pass" : "fail";
 	checks.runtimeParallelPlanMarkers.status = checks.runtimeParallelPlanMarkers.markers.every((file) => file.exists && file.markers.every((marker) => marker.present)) ? "pass" : "fail";
 	checks.runtimeFailureRepairMarkers.status = checks.runtimeFailureRepairMarkers.markers.every((file) => file.exists && file.markers.every((marker) => marker.present)) ? "pass" : "fail";
+	checks.runtimeClaimLedgerMarkers.sources = {
+		agentDogfood: checks.runtimeClaimLedgerMarkers.markers[0]?.exists && checks.runtimeClaimLedgerMarkers.markers[0]?.markers.every((marker) => marker.present) ? "pass" : "fail",
+		reSwarm: checks.runtimeClaimLedgerMarkers.markers.slice(1, 3).every((file) => file.exists && file.markers.every((marker) => marker.present)) ? "pass" : "fail",
+		compoundFrontier: checks.runtimeClaimLedgerMarkers.markers[3]?.exists && checks.runtimeClaimLedgerMarkers.markers[3]?.markers.every((marker) => marker.present) ? "pass" : "fail",
+	};
 	checks.runtimeClaimLedgerMarkers.status = checks.runtimeClaimLedgerMarkers.markers.every((file) => file.exists && file.markers.every((marker) => marker.present)) ? "pass" : "fail";
 	const releaseGateMetadata = buildReleaseGateMetadata({ checks, hardEval, contextAudit, parallelPlan, parallelPlanAudit });
 	checks.releaseGateMetadata = validateReleaseGateMetadata(releaseGateMetadata);
@@ -443,7 +464,7 @@ function buildResult(root) {
 		currentLevel: ok ? "professional reverse/pentest organization with machine-readable control contracts" : "contract gaps",
 		topAutonomousDefinition: false,
 		topAutonomousReason:
-			"Schemas, validators, ReconParallelPlanV1, agent-dogfood subagent runtime manifests + runtime ClaimLedgerEventV1 rows, exact context resume markers/negative fixtures, strict FailureLedgerEventV1/RepairQueueItemV1 fixture + deterministic duplicate rejection, runtime failure/repair ledger hooks, compound/role retry failure-repair outputs, and strict claim final-path gates exist; generic re_swarm independent subagent runtime and cross-session resume fixtures remain optional hardening.",
+			"Schemas, validators, ReconParallelPlanV1, agent-dogfood subagent runtime manifests plus agent-dogfood / re_swarm / compound runtime ClaimLedgerEventV1 rows, exact context resume markers/negative fixtures, strict FailureLedgerEventV1/RepairQueueItemV1 fixture + deterministic duplicate rejection, runtime failure/repair ledger hooks, compound/role retry failure-repair outputs, and strict claim final-path gates exist; generic re_swarm independent subagent runtime and cross-session resume fixtures remain optional hardening.",
 		schemas: SCHEMAS,
 		parallelPlan,
 		releaseGateMetadata,
@@ -473,7 +494,7 @@ function buildResult(root) {
 			"Keep gate:claim-release marker consumption wired through supervisor/compiler/complete and promote pass markers only after required gaps close.",
 			"Harden ResumeContractV2 with cross-session/multi-compact negative fixtures and operator/proof-loop ledger state writeback.",
 			"Promote FailureLedgerEventV1 / RepairQueueItemV1 strict validator into independent sub-agent/session runtime regression gates.",
-			"Extend ClaimLedgerEventV1 from agent-dogfood runtime into generic re_swarm/compound independent sub-agent/session outputs.",
+			"Wire re_swarm/compound runtime ClaimLedgerEventV1 rows into strict validator regression gates and supervisor/compiler/complete claim-promotion coverage.",
 		],
 	};
 }

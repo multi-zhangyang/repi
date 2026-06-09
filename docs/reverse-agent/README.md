@@ -243,7 +243,7 @@ scripts/reverse-agent/install-global-profile.sh /root/pi-diy/pi
 
 ## Swarm multi-agent orchestration
 
-`/re-swarm plan|show|run|merge [target] [max-workers] [max-commands]` / `re_swarm` 是 specialist delegation 之上的多专家运行组织层：读取 `delegation_artifact`，生成 `swarm_plan` 与 `swarm_artifact`，输出 `worker_runtime_packets`、run-mode `worker_executions`、`worker_results`、`blocked`、`merge_digest`、`parallel_groups`、`merge_protocol`、`collision_matrix`、`evidence_contract`、`commander_next_actions`、`handoff_digest`、`next_swarm_command`，artifact 写入 `.pi/evidence/swarms/*.md`，`run` 模式写入 `memory/swarm-run-board.md`，`merge` 模式优先读取最近 run artifact 并保留 runtime `workerResults` / `blocked` / `mergeDigest` 到 `memory/swarm-board.md`，并更新 `swarm_plan_ready` gate。
+`/re-swarm plan|show|run|merge [target] [max-workers] [max-commands]` / `re_swarm` 是 specialist delegation 之上的多专家运行组织层：读取 `delegation_artifact`，生成 `swarm_plan` 与 `swarm_artifact`，输出 `worker_runtime_packets`、run-mode `worker_executions`、`worker_results`、`blocked`、`merge_digest`、`parallel_groups`、`merge_protocol`、`collision_matrix`、`evidence_contract`、`commander_next_actions`、`handoff_digest`、`claimLedger`、`claimLedgerPath`、`claimLedgerEventCount`、`claimLedgerTipHash`、`runtimeClaimLedgerCaptured`、`next_swarm_command`，artifact 写入 `.pi/evidence/swarms/*.md`，runtime claim ledger 写入 `.pi/evidence/swarms/*claim-ledger.jsonl`，`run` 模式写入 `memory/swarm-run-board.md`，`merge` 模式优先读取最近 run artifact 并保留 runtime `workerResults` / `blocked` / `mergeDigest` 到 `memory/swarm-board.md`，并更新 `swarm_plan_ready` gate。
 
 ## Supervisor critic
 
@@ -276,10 +276,10 @@ agent-dogfood 以 `--plan-json --plan-only` 预览；runtime 层已经让 `re_sw
   `controlPlaneMode=offline|plan-only|no-provider|no-live` 等字段，防止把
   orchestration smoke check 写成真实平台成功。
 
-当前状态：`re_swarm` 已写入 `planCoverage` / `releaseGateMetadata`，`re_supervisor`
+当前状态：`re_swarm` 已写入 `planCoverage` / `releaseGateMetadata` / runtime ClaimLedgerEventV1，`re_supervisor`
 已把 `claimGatePolicy` / `claimGateResult` 变成硬门禁，`gate:claim-release` 已生成机器可读
 strict marker，failure/repair ledger 已接收 runtime failed|blocked rows 并回流 operator /
-proof-loop；agent-dogfood 已写 per-attempt subagent runtime manifest 和 runtime claim-ledger hash chain，compound/role retry 已输出 canonical failure/repair rows。通用 re_swarm 独立子会话 runtime、更多 cross-session/multi-compact 负例和 compound runtime claim ledger 属于可选继续硬化项，不影响当前专业组织 agent 使用。
+proof-loop；agent-dogfood 已写 per-attempt subagent runtime manifest 和 runtime claim-ledger hash chain；re_swarm 与 compound-frontier 也已输出 runtime ClaimLedgerEventV1 hash chain；compound/role retry 已输出 canonical failure/repair rows。通用 re_swarm 独立子会话 runtime、更多 cross-session/multi-compact 负例和 runtime ledger regression wiring 属于继续硬化项，不影响当前专业组织 agent 使用。
 
 ## Reflection/evolution 闭环
 
