@@ -63,6 +63,17 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - AutonomousRuntimeBatchV1 strict gate：`schemas/reverse-agent/autonomous-runtime-contract.schema.json` 与 `fixtures/reverse-agent/autonomous-runtime-contract.fixture.json` 覆盖 subagent runtime manifest、parallel shard state、compact resume transition、repair budget 和 runtime claim promotion；`npm run gate:autonomous-runtime` 会拒绝 duplicate subagent attempt、非法 resume transition 和 loose claim-gate 字段。
 - runtime ClaimLedgerEventV1：agent-dogfood、re_swarm 与 compound-frontier 统一输出 `artifact_handoff → claim → validation → challenge → resolution` 哈希链；agent-dogfood 每个 role / synthesizer attempt 会输出 `*.runtime-manifest.json`，re_swarm run 为每个 worker 写 `SubagentRuntimeManifestV1`、stdout/stderr sha256、sessionDir、toolCallDigest 与 `*-subagent-runtime-manifests.json`，compound-frontier 同步写 `claim-ledger.jsonl`；`npm run gate:runtime-claim-ledger` 会把最新 runtime ledger 适配进 `validate-claim-ledger.mjs` 的 strict validator，缺失 live runtime artifact 明确标为 `missing_runtime_artifact`，防止 role/worker/compound claim 只停留在叙述层。
 
+
+### 3. 授权任务误拒绝控制
+
+REPI 不是在普通 Pi 外面包一层提示词，而是在内置 `re_kernel` 中加入 `authorized_task_bias`、`public_target_no_auto_refusal` 和 `scope_gap_to_passive_mapping`：
+
+- 用户说明是 CTF、靶场、自有资产、客户授权、测试环境或漏洞研究时，默认进入 `execution-first` 执行链，不反复索要授权证明。
+- 目标看起来像公网域名、品牌站或生产系统时，不自动停在拒绝；先做被动 `re_map`、请求/路由观察、live browser plan、证据缺口记录。
+- scope、账号、测试窗口不完整时，不输出 narrative-only；生成 `authorization_context_missing` / `auth_context_gap`、`bounded_plan`、`operator_queue`，最多问一个会改变执行路径的问题。
+
+这部分由源码 `packages/coding-agent/src/core/recon-profile.ts`、文件型镜像 `repi-profile/extensions/reverse-pentest-core.ts` 和 `repi-profile/SYSTEM.md` 同步承载，并由 harness marker 检查，防止回退成“只会拒绝/只会解释”。
+
 ## 环境要求
 
 建议环境：

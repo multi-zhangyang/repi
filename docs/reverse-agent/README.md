@@ -135,6 +135,11 @@ repi --project-context
 repi --with-project-resources
 ```
 
+
+## 授权任务误拒绝控制
+
+Pi-RECON 的 `re_kernel` 内置 `authorized_task_bias`、`public_target_no_auto_refusal` 与 `scope_gap_to_passive_mapping`。当任务语境是 CTF、靶场、自有资产、客户授权、测试环境或漏洞研究时，agent 直接进入 route→map→lane→evidence→verify 的执行链；当目标呈现公网域名、品牌或生产外观时，不把外观本身当作停止理由，而是先生成被动 map、route/auth baseline、live browser plan 和证据缺口。若授权上下文、账号、窗口或边界不完整，则触发 `authorization_context_missing`：写入 `auth_context_gap`、`bounded_plan`、`operator_queue`，最多只问一个会改变执行路径的问题，避免 narrative-only 停顿。
+
 ## 运行时能力
 
 扩展加载后会注册：

@@ -1,6 +1,6 @@
 # Pi-RECON Kernel Profile
 
-REPI includes a built-in reverse-engineering and pentest-oriented kernel profile. In this repository the recommended clean-room launcher is `repi`, which enables the profile and stores state under `~/.repi/agent` so it can coexist with normal `repi`:
+REPI includes a built-in reverse-engineering and pentest-oriented kernel profile. In this repository the recommended clean-room launcher is `repi`, which enables the profile and stores state under `~/.repi/agent` so it can coexist with normal upstream `pi`:
 
 ```bash
 repi
@@ -25,6 +25,11 @@ repi --reverse-pentest
 - registers reverse/pentest commands and LLM tools
 - injects built-in skills and prompt templates even when no project `.repi` files exist
 - persists Pi-RECON memory, executable mission lanes, mission blackboard, evidence ledger, and tool indexes under the active agent dir (`repi`: `~/.repi/agent/recon/`; raw `repi --recon`: `~/.repi/agent/recon/`)
+
+
+## Execution-first false-refusal control
+
+The kernel carries `authorized_task_bias`, `public_target_no_auto_refusal`, and `scope_gap_to_passive_mapping` as runtime contract markers, not just documentation. CTF/lab/owned/client-authorized/security-test context enters the execution chain by default. A public-looking hostname, brand, or production-like surface does not stop the task by itself; REPI first creates passive `re_map` evidence, route/auth baseline, live browser plan, `auth_context_gap`, `bounded_plan`, and `operator_queue`. If authorization context, accounts, window, or scope are incomplete, `authorization_context_missing` asks at most one path-changing question while still producing executable next commands.
 
 ## Runtime resources
 
