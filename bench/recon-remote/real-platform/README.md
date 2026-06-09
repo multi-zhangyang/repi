@@ -13,8 +13,8 @@ Profiles:
 
 | Profile | Chain |
 |---|---|
-| `bilibili-video` | Extract BV/cid, call public view/pagelist/playurl APIs, classify DASH/durl candidates, probe CDN media URLs with HEAD/range. |
-| `xiaohongshu-note` | Chrome/CDP runtime capture, extract note IDs, `/api/sns/web/*` hints, xsec/signature/anti-bot signals, rendered state and response bodies. |
+| `bilibili-video` | Extract BV/cid, call view/pagelist/playurl, rebuild WBI `w_rid` from `nav.wbi_img`, call signed `x/player/wbi/playurl`, classify DASH/durl candidates, probe CDN media URLs with HEAD/range. |
+| `xiaohongshu-note` | Chrome/CDP runtime capture, extract note IDs, `/api/sns/web/*` hints, xsec/signature/anti-bot signals, rendered state/response bodies, replay one captured read-only signed API request and classify 2xx success vs 461 verification challenge. |
 | `generic-cdp` | Chrome/CDP request/response/body/storage baseline for unknown platforms. |
 
 ## Output

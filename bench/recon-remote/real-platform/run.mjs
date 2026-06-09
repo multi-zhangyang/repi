@@ -22,6 +22,7 @@ if (!target || target === '--help' || target === '-h') {
 
 function timestamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
+function md5(value) { return createHash('md5').update(value).digest('hex'); }
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function slug(value) { return String(value || 'x').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 120) || 'x'; }
 function unique(items) { return [...new Set(items.filter(Boolean))]; }
@@ -53,7 +54,7 @@ function requestHeaders(extra = {}) {
 function sanitizeHeaders(headers = {}) {
   const out = {};
   for (const [key, value] of Object.entries(headers || {})) {
-    if (/cookie|authorization|token|session|csrf|xsrf|buvid|sid|a1/i.test(key)) out[key] = '<redacted>';
+    if (/cookie|authorization|token|session|csrf|xsrf|buvid|sid|a1|^x-s$|^x-t$|^x-s-common$|^x-b3-traceid$|^x-xray-traceid$/i.test(key)) out[key] = '<redacted>';
     else out[key] = value;
   }
   return out;
@@ -140,6 +141,33 @@ function collectBiliMedia(playJson) {
   return out.filter((x) => x.url);
 }
 
+
+const biliMixinKeyEncTab = [
+  46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
+  27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
+  37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
+  22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+];
+
+function biliWbiKeys(navJson) {
+  const imgUrl = navJson?.data?.wbi_img?.img_url || '';
+  const subUrl = navJson?.data?.wbi_img?.sub_url || '';
+  const imgKey = imgUrl.split('/').pop()?.split('.')[0] || '';
+  const subKey = subUrl.split('/').pop()?.split('.')[0] || '';
+  const raw = imgKey + subKey;
+  const mixinKey = biliMixinKeyEncTab.map((index) => raw[index] || '').join('').slice(0, 32);
+  return { imgKey, subKey, mixinKey };
+}
+
+function signBiliWbi(params, mixinKey, wts = Math.floor(Date.now() / 1000)) {
+  const filtered = { ...params, wts };
+  const normalized = {};
+  for (const key of Object.keys(filtered).sort()) normalized[key] = String(filtered[key]).replace(/[!'()*]/g, '');
+  const query = new URLSearchParams(normalized).toString();
+  const wRid = md5(query + mixinKey);
+  return { query: `${query}&w_rid=${wRid}`, wRid, wts };
+}
+
 async function runBilibili(url, outDir) {
   const page = await fetchText(url.toString(), { headers: { referer: 'https://www.bilibili.com/' } });
   let finalUrl = url.toString();
@@ -149,21 +177,31 @@ async function runBilibili(url, outDir) {
   const bvid = extractBvid(finalUrl) || extractBvid(page.text);
   if (!bvid) return { verdict: 'missing-bvid', page };
   const referer = `https://www.bilibili.com/video/${bvid}/`;
+  const nav = await fetchJson('https://api.bilibili.com/x/web-interface/nav', { headers: { referer: 'https://www.bilibili.com/' } });
+  const wbiKeys = biliWbiKeys(nav.json);
   const view = await fetchJson(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, { headers: { referer } });
   const pagelist = await fetchJson(`https://api.bilibili.com/x/player/pagelist?bvid=${encodeURIComponent(bvid)}`, { headers: { referer } });
   const cid = view.json?.data?.cid || pagelist.json?.data?.[0]?.cid;
   const playurls = [];
+  let wbiPlayurl = null;
   if (cid) {
     for (const fnval of [4048, 80, 16, 0]) {
       const api = `https://api.bilibili.com/x/player/playurl?bvid=${encodeURIComponent(bvid)}&cid=${encodeURIComponent(cid)}&qn=80&fnval=${fnval}&fourk=1`;
-      playurls.push({ fnval, ...(await fetchJson(api, { headers: { referer } })) });
+      playurls.push({ fnval, signed: false, ...(await fetchJson(api, { headers: { referer } })) });
+    }
+    if (wbiKeys.mixinKey) {
+      const signed = signBiliWbi({ bvid, cid, qn: 80, fnval: 4048, fourk: 1 }, wbiKeys.mixinKey);
+      const api = `https://api.bilibili.com/x/player/wbi/playurl?${signed.query}`;
+      wbiPlayurl = { fnval: 4048, signed: true, wts: signed.wts, wRidSha256: sha256(signed.wRid).slice(0, 16), ...(await fetchJson(api, { headers: { referer } })) };
+      playurls.push(wbiPlayurl);
     }
   }
-  const media = unique(playurls.flatMap((p) => collectBiliMedia(p.json).map((m) => JSON.stringify(m)))).map((x) => JSON.parse(x));
+  const media = unique(playurls.flatMap((p) => collectBiliMedia(p.json).map((m) => JSON.stringify({ ...m, source: p.signed ? 'wbi-playurl' : 'playurl', fnval: p.fnval })))).map((x) => JSON.parse(x));
   const probes = [];
   for (const item of media.slice(0, probeLimit)) probes.push({ ...item, url: redactUrl(item.url), probe: await probeUrl(item.url, { referer, origin: 'https://www.bilibili.com' }) });
   const strong = probes.filter((p) => p.probe.classification.media && p.probe.classification.reachable);
-  const verdict = view.json?.code === 0 && playurls.some((p) => p.json?.code === 0) && strong.length ? 'bilibili-media-api-confirmed' : media.length ? 'bilibili-media-candidates-needs-replay' : 'bilibili-no-media-candidate';
+  const wbiOk = wbiPlayurl?.json?.code === 0;
+  const verdict = view.json?.code === 0 && wbiOk && strong.length ? 'bilibili-wbi-media-api-confirmed' : view.json?.code === 0 && playurls.some((p) => p.json?.code === 0) && strong.length ? 'bilibili-media-api-confirmed' : media.length ? 'bilibili-media-candidates-needs-replay' : 'bilibili-no-media-candidate';
   return {
     verdict,
     bvid,
@@ -172,12 +210,13 @@ async function runBilibili(url, outDir) {
     title: view.json?.data?.title,
     owner: view.json?.data?.owner ? { mid: '<redacted>', name: view.json.data.owner.name } : undefined,
     page: { status: page.status, bytes: page.bytes, sha256: page.sha256, finalUrl: redactUrl(finalUrl) },
+    nav: { status: nav.status, code: nav.json?.code, hasWbiImg: Boolean(wbiKeys.imgKey && wbiKeys.subKey), imgKey: wbiKeys.imgKey ? '<derived>' : '', subKey: wbiKeys.subKey ? '<derived>' : '', mixinKeySha256: wbiKeys.mixinKey ? sha256(wbiKeys.mixinKey).slice(0, 16) : '' },
     view: { status: view.status, code: view.json?.code, bytes: view.bytes },
     pagelist: { status: pagelist.status, code: pagelist.json?.code, pages: pagelist.json?.data?.length || 0 },
-    playurls: playurls.map((p) => ({ fnval: p.fnval, status: p.status, code: p.json?.code, quality: p.json?.data?.quality, accept_quality: p.json?.data?.accept_quality, accept_description: p.json?.data?.accept_description, hasDash: Boolean(p.json?.data?.dash), durlCount: p.json?.data?.durl?.length || 0 })),
+    playurls: playurls.map((p) => ({ fnval: p.fnval, signed: Boolean(p.signed), status: p.status, code: p.json?.code, quality: p.json?.data?.quality, accept_quality: p.json?.data?.accept_quality, accept_description: p.json?.data?.accept_description, hasDash: Boolean(p.json?.data?.dash), durlCount: p.json?.data?.durl?.length || 0, wts: p.wts, wRidSha256: p.wRidSha256 })),
     mediaCandidates: media.slice(0, 80).map((m) => ({ ...m, url: redactUrl(m.url) })),
     probes,
-    nextActions: ['bind playurl API + media HEAD/range probes into re_replayer', 'diff fnval=4048/80/16/0 media capability', 'capture browser/CDP if API code changes or WBI gates appear'],
+    nextActions: ['bind unsigned+WBI playurl API and media HEAD/range probes into re_replayer', 'diff fnval=4048/80/16/0 media capability', 'monitor nav wbi_img/mixin-key drift and w_rid rebuild'],
   };
 }
 
@@ -240,7 +279,7 @@ function cdpClient(wsUrl, artifact) {
       return;
     }
     const p = msg.params || {};
-    if (msg.method === 'Network.requestWillBeSent') artifact.requests.push({ id: p.requestId, type: p.type, method: p.request?.method, url: redactUrl(p.request?.url), headers: sanitizeHeaders(p.request?.headers || {}), initiator: p.initiator?.type });
+    if (msg.method === 'Network.requestWillBeSent') artifact.requests.push({ id: p.requestId, type: p.type, method: p.request?.method, url: redactUrl(p.request?.url), rawUrl: p.request?.url, headers: sanitizeHeaders(p.request?.headers || {}), replayHeaders: p.request?.headers || {}, initiator: p.initiator?.type });
     if (msg.method === 'Network.responseReceived') artifact.responses.push({ id: p.requestId, type: p.type, url: redactUrl(p.response?.url), status: p.response?.status, mimeType: p.response?.mimeType, headers: sanitizeHeaders(p.response?.headers || {}) });
     if (msg.method === 'Network.loadingFailed') artifact.failures.push({ id: p.requestId, type: p.type, errorText: p.errorText });
   };
@@ -307,6 +346,44 @@ async function captureCdp(url, outDir) {
   return artifact;
 }
 
+
+function stripRuntimeSecrets(cdp) {
+  return {
+    ...cdp,
+    requests: (cdp.requests || []).map(({ rawUrl, replayHeaders, ...request }) => request),
+  };
+}
+
+async function replayXhsReadOnly(cdp) {
+  const seed = (cdp.requests || []).find((request) => request.method === 'GET' && /\/api\/sns\/h5\/v1\/note_info/i.test(request.rawUrl || request.url || ''))
+    || (cdp.requests || []).find((request) => request.method === 'GET' && /\/api\/sns\/web\//i.test(request.rawUrl || request.url || ''));
+  if (!seed) return { attempted: false, reason: 'no read-only XHS API GET seed captured' };
+  const headers = { ...(seed.replayHeaders || {}) };
+  for (const key of Object.keys(headers)) if (/^(host|content-length|accept-encoding|connection|sec-fetch-|cookie)$/i.test(key)) delete headers[key];
+  try {
+    const response = await fetch(seed.rawUrl || seed.url, { method: 'GET', redirect: 'manual', headers });
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const text = buffer.subarray(0, 1200).toString('utf8');
+    const parsed = safeJsonParse(text, {});
+    const headerNames = Object.keys(headers).sort();
+    return {
+      attempted: true,
+      url: redactUrl(seed.rawUrl || seed.url),
+      status: response.status,
+      headers: sanitizeHeaders(Object.fromEntries(response.headers.entries())),
+      bytes: buffer.length,
+      sha256: sha256(buffer).slice(0, 24),
+      jsonCode: parsed?.code,
+      success: parsed?.success,
+      headerNames,
+      signedHeaderNames: headerNames.filter((name) => /^x-s$|^x-t$|^x-s-common$|^x-b3-traceid|^x-xray-traceid/i.test(name)),
+      bodyHead: text.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '<redacted.jwt>'),
+    };
+  } catch (error) {
+    return { attempted: true, url: redactUrl(seed.rawUrl || seed.url), status: 'error', error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 function analyzeXhs(url, cdp) {
   const text = [cdp.storage?.html || '', JSON.stringify(cdp.storage || {}), ...(cdp.bodies || []).map((b) => b.text || ''), ...(cdp.requests || []).map((r) => r.url || ''), ...(cdp.responses || []).map((r) => r.url || '')].join('\n');
   const noteIds = unique([String(url).match(/explore\/([0-9a-f]{24})/i)?.[1], ...[...text.matchAll(/(?:note_id|noteId|id)["']?\s*[:=]\s*["']?([0-9a-f]{24})/gi)].map((m) => m[1]), ...[...text.matchAll(/explore\/([0-9a-f]{24})/gi)].map((m) => m[1])]);
@@ -320,14 +397,23 @@ function analyzeXhs(url, cdp) {
 
 async function runXhs(url, outDir) {
   const cdp = await captureCdp(url, outDir);
-  await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(cdp, null, 2)}\n`);
-  if (cdp.storage?.html) await writeFile(join(outDir, 'browser.html'), cdp.storage.html);
-  return { ...analyzeXhs(url, cdp), browserArtifact: join(outDir, 'browser.json'), nextActions: ['classify /api/sns/web/* endpoints and required x-s/x-t/x-s-common headers', 'extract note id/xsec_token from rendered state', 'replay read-only endpoints with captured header shape if present'] };
+  const xhsReplay = await replayXhsReadOnly(cdp);
+  const safeCdp = stripRuntimeSecrets(cdp);
+  await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(safeCdp, null, 2)}\n`);
+  if (safeCdp.storage?.html) await writeFile(join(outDir, 'browser.html'), safeCdp.storage.html);
+  const analysis = analyzeXhs(url, cdp);
+  const replayStatus = Number(xhsReplay.status);
+  const verdict = xhsReplay.attempted && replayStatus >= 200 && replayStatus < 300
+    ? 'xhs-note-signed-api-replay-confirmed'
+    : xhsReplay.attempted && (replayStatus === 461 || xhsReplay.headers?.verifytype)
+      ? 'xhs-signed-api-challenge-reproduced'
+      : analysis.verdict;
+  return { ...analysis, verdict, xhsReplay, browserArtifact: join(outDir, 'browser.json'), nextActions: ['classify /api/sns/web/* endpoints and required x-s/x-t/x-s-common headers', 'extract note id/xsec_token from rendered state', 'replay read-only endpoints with captured header shape if present'] };
 }
 
 async function runGeneric(url, outDir) {
   const cdp = await captureCdp(url, outDir);
-  await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(cdp, null, 2)}\n`);
+  await writeFile(join(outDir, 'browser.json'), `${JSON.stringify(stripRuntimeSecrets(cdp), null, 2)}\n`);
   return { verdict: cdp.responses?.length ? 'generic-cdp-captured' : 'generic-cdp-no-response', browser: { requests: cdp.requests.length, responses: cdp.responses.length, bodies: cdp.bodies.length, failures: cdp.failures.length, errors: cdp.errors }, browserArtifact: join(outDir, 'browser.json'), nextActions: ['inspect browser.json for APIs, signatures, storage, websocket anchors'] };
 }
 
@@ -355,23 +441,28 @@ const md = [
   ...(profile === 'bilibili-video' ? [
     `- bvid=${result.bvid || 'none'} aid=${result.aid || 'none'} cid=${result.cid || 'none'}`,
     `- title=${result.title || 'none'}`,
-    `- view_code=${result.view?.code} playurl_profiles=${(result.playurls || []).map((p) => `${p.fnval}:${p.code}:q${p.quality}`).join(', ')}`,
+    `- view_code=${result.view?.code} nav_code=${result.nav?.code} wbi_img=${result.nav?.hasWbiImg} wbi_mixin_sha=${result.nav?.mixinKeySha256 || 'none'}`,
+    `- playurl_profiles=${(result.playurls || []).map((p) => `${p.signed ? 'wbi-' : ''}${p.fnval}:${p.code}:q${p.quality}`).join(', ')}`,
     `- media_candidates=${result.mediaCandidates?.length || 0} reachable_media_probes=${(result.probes || []).filter((p) => p.probe.classification.media && p.probe.classification.reachable).length}`,
   ] : profile === 'xiaohongshu-note' ? [
     `- note_ids=${result.noteIds?.join(', ') || 'none'}`,
     `- web_api_hints=${result.webApiHints?.length || 0}`,
     `- anti_bot_signals=${result.antiBotSignals?.join(', ') || 'none'}`,
     `- browser=${JSON.stringify(result.browser)}`,
+    `- signed_replay=${result.xhsReplay?.attempted ? `${result.xhsReplay.status} code=${result.xhsReplay.jsonCode ?? 'none'} signed_headers=${(result.xhsReplay.signedHeaderNames || []).join(',')}` : 'not-attempted'}`,
   ] : [`- browser=${JSON.stringify(result.browser)}`]),
   '',
   '## Probe / API Matrix',
   ...(profile === 'bilibili-video'
     ? [
-        ...(result.playurls || []).map((p) => `- playurl fnval=${p.fnval} status=${p.status} code=${p.code} quality=${p.quality} dash=${p.hasDash} durl=${p.durlCount}`),
+        ...(result.playurls || []).map((p) => `- playurl${p.signed ? '-wbi' : ''} fnval=${p.fnval} status=${p.status} code=${p.code} quality=${p.quality} dash=${p.hasDash} durl=${p.durlCount} wts=${p.wts || ''} wRidSha256=${p.wRidSha256 || ''}`),
         ...(result.probes || []).slice(0, 20).map((p) => `- media ${p.kind} id=${p.id || ''} reachable=${p.probe.classification.reachable} media=${p.probe.classification.media} url=${redactUrl(p.url)}`),
       ]
     : profile === 'xiaohongshu-note'
-      ? (result.webApiHints || []).slice(0, 30).map((u) => `- ${u}`)
+      ? [
+          ...(result.xhsReplay?.attempted ? [`- signed-replay status=${result.xhsReplay.status} jsonCode=${result.xhsReplay.jsonCode ?? 'none'} success=${result.xhsReplay.success ?? 'none'} signedHeaders=${(result.xhsReplay.signedHeaderNames || []).join(',')} url=${result.xhsReplay.url}`] : []),
+          ...(result.webApiHints || []).slice(0, 30).map((u) => `- ${u}`),
+        ]
       : []),
   '',
   '## Verification',
