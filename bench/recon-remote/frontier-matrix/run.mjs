@@ -13,7 +13,7 @@ const timeoutMs = Number(process.env.RECON_MATRIX_TIMEOUT_MS || 900000);
 const selectedCaseIds = new Set(String(process.env.RECON_MATRIX_CASES || '').split(',').map((x) => x.trim()).filter(Boolean));
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`Pi-RECON real frontier matrix\n\nUsage:\n  node bench/recon-remote/frontier-matrix/run.mjs\n  node bench/recon-remote/frontier-matrix/run.mjs --live\n  node bench/recon-remote/frontier-matrix/run.mjs --live --strict\n\nPurpose:\n  Evaluates multiple live real-platform cases instead of relying on one latest artifact:\n  - Bilibili runtime WBI positive case\n  - Xiaohongshu auto-discovery target note/feed positive case\n  - Xiaohongshu search-notes permission negative-control case\n  - Douyin a_bogus structured API replay positive case\n  - Frontier strict aggregate gate\n\nEnvironment:\n  RECON_MATRIX_LIVE=1\n  RECON_MATRIX_STRICT=1\n  RECON_MATRIX_CASES=bilibili_wbi_runtime,xhs_auto_discovery,xhs_search_negative,douyin_structured_api\n  RECON_MATRIX_TIMEOUT_MS=900000\n\nOutput:\n  .pi/evidence/remote/frontier-matrix/<timestamp>/\n`);
+  console.log(`Pi-RECON real frontier matrix\n\nUsage:\n  node bench/recon-remote/frontier-matrix/run.mjs\n  node bench/recon-remote/frontier-matrix/run.mjs --live\n  node bench/recon-remote/frontier-matrix/run.mjs --live --strict\n\nPurpose:\n  Evaluates multiple live real-platform cases instead of relying on one latest artifact:\n  - Bilibili runtime WBI positive case\n  - Xiaohongshu auto-discovery target note/feed positive case\n  - Xiaohongshu auto-discovery hit-rate/provenance positive case\n  - Xiaohongshu search-notes permission negative-control case\n  - Douyin a_bogus structured API replay positive case\n  - Douyin no-cookie replay divergence negative-control case\n  - Frontier strict aggregate gate\n\nEnvironment:\n  RECON_MATRIX_LIVE=1\n  RECON_MATRIX_STRICT=1\n  RECON_MATRIX_CASES=bilibili_wbi_runtime,xhs_auto_discovery,xhs_discovery_hit_rate,xhs_search_negative,douyin_structured_api,douyin_cookie_boundary\n  RECON_MATRIX_TIMEOUT_MS=900000\n\nOutput:\n  .pi/evidence/remote/frontier-matrix/<timestamp>/\n`);
   process.exit(0);
 }
 
@@ -102,9 +102,65 @@ function xhsSearchNegativeOk(obj) {
   const loginMissing = challenge.some((item) => item.endpointClass === 'web-search-notes' && item.challengeKind === 'loginMissing');
   return Boolean(obj?.xhsReplay?.attempted && !xhsTargetOk(obj) && permissionDenied && loginMissing && obj?.verdict !== 'xhs-note-signed-api-replay-confirmed' && obj?.verdict !== 'xhs-auto-discovery-target-note-replay-confirmed');
 }
+function xhsDiscoveryHitRate(obj) {
+  const discovery = obj?.xhsDiscovery || {};
+  const candidates = Array.isArray(discovery.candidates) ? discovery.candidates : [];
+  const attempts = Array.isArray(discovery.attempts) ? discovery.attempts : [];
+  const tokenizedCandidates = candidates.filter((candidate) => (
+    candidate?.noteId
+    && candidate?.hasXsecToken
+    && /xiaohongshu\.com\/explore\//i.test(candidate.redactedUrl || candidate.url || '')
+    && candidate.source
+  ));
+  const successfulAttempts = attempts.filter((attempt) => (
+    attempt?.bestTargetNote2xx
+    && Number(attempt.status || attempt.replayStatus || 0) >= 200
+    && Number(attempt.status || attempt.replayStatus || 0) < 300
+    && Number(attempt.noteItemCount || 0) >= 1
+    && Array.isArray(attempt.signedHeaderNames)
+    && attempt.signedHeaderNames.length >= 2
+    && Number(attempt.signerEvents || 0) >= 1
+    && Number(attempt.bundleHints || 0) >= 1
+  ));
+  const hitRate = attempts.length ? successfulAttempts.length / attempts.length : 0;
+  const minHitRate = Number(process.env.RECON_MATRIX_XHS_DISCOVERY_MIN_HIT_RATE || 1);
+  const passed = Boolean(
+    obj?.verdict === 'xhs-auto-discovery-target-note-replay-confirmed'
+    && discovery.enabled
+    && discovery.attempted
+    && candidates.length >= 1
+    && tokenizedCandidates.length >= 1
+    && attempts.length >= 1
+    && successfulAttempts.length >= 1
+    && hitRate >= minHitRate
+    && xhsTargetOk(obj)
+  );
+  return { passed, hitRate, minHitRate, candidates, tokenizedCandidates, attempts, successfulAttempts };
+}
 function douyinStructuredOk(obj) {
   const replayed = obj?.runtimeApiReplay?.bestReplayedStructuredApi || obj?.signatureSurface?.runtimeReplayedStructuredApi;
   return Boolean(replayed && Number(replayed.status || 0) >= 200 && Number(replayed.status || 0) < 300 && replayed.structured?.structured);
+}
+function douyinCookieBoundary(obj) {
+  const replay = obj?.runtimeApiReplay || {};
+  const attempts = Array.isArray(replay.attempts) ? replay.attempts : [];
+  const observed = replay.observedStructuredApi || obj?.signatureSurface?.runtimeObservedStructuredApi || {};
+  const exact = replay.bestReplayedStructuredApi || obj?.signatureSurface?.runtimeReplayedStructuredApi || attempts.find((attempt) => attempt.variant === 'exact-cookie' && attempt.structured?.structured);
+  const noCookie = attempts.find((attempt) => (
+    attempt.variant === 'no-cookie'
+    && Number(attempt.status || 0) >= 200
+    && Number(attempt.status || 0) < 300
+    && !attempt.structured?.structured
+    && Number(attempt.structured?.awemeCount || 0) === 0
+    && (
+      Number(attempt.bytes || 0) === 0
+      || Boolean(attempt.divergence?.observedBodySha256 && attempt.divergence?.replayBodySha256 && attempt.divergence.observedBodySha256 !== attempt.divergence.replayBodySha256)
+    )
+  ));
+  const exactOk = Boolean(exact && Number(exact.status || 0) >= 200 && Number(exact.status || 0) < 300 && exact.structured?.structured && Number(exact.structured?.awemeCount || 0) >= 1);
+  const observedOk = Boolean(observed?.structured?.structured && Number(observed.structured?.awemeCount || 0) >= 1);
+  const passed = Boolean(replay.attempted && observedOk && exactOk && noCookie && douyinStructuredOk(obj));
+  return { passed, observed, exact, noCookie, attempts };
 }
 function summarizeScenario(id, weight, obj, artifact, command, runItem) {
   const common = { id, weight, artifact, command, run: runItem ? { code: runItem.run?.code, signal: runItem.run?.signal, elapsedMs: runItem.run?.elapsedMs, stdoutSha256: sha256(runItem.run?.stdout || '').slice(0, 24), stderrSha256: sha256(runItem.run?.stderr || '').slice(0, 24), stdoutTail: redact(runItem.run?.stdout || '').slice(-1000), stderrTail: redact(runItem.run?.stderr || '').slice(-1000) } : undefined };
@@ -121,6 +177,12 @@ function summarizeScenario(id, weight, obj, artifact, command, runItem) {
     const passed = Boolean(obj.verdict === 'xhs-auto-discovery-target-note-replay-confirmed' && xhsTargetOk(obj) && obj.xhsDiscovery?.candidateCount >= 1 && obj.xhsDiscovery?.attempts?.some((item) => item.bestTargetNote2xx));
     return { ...common, passed, score: passed ? weight : Math.min(weight - 1, (obj.xhsDiscovery?.candidateCount ? 8 : 0) + (xhsTargetOk(obj) ? 14 : 0) + Math.min(5, Math.floor((obj.signatureTrace?.signerLog?.length || 0) / 10))), evidence: { verdict: obj.verdict, candidates: obj.xhsDiscovery?.candidateCount || 0, attempts: obj.xhsDiscovery?.attempts?.length || 0, effectiveTarget: obj.effectiveTarget || '', bestEndpoint: best?.endpointClass || '', bestMethod: best?.method || '', bestStatus: best?.status || null, noteItemCount: best?.structured?.noteItemCount || 0, signerEvents: obj.signatureTrace?.signerLog?.length || 0 } };
   }
+  if (id === 'xhs_discovery_hit_rate') {
+    const stats = xhsDiscoveryHitRate(obj);
+    const attempted = stats.attempts.length;
+    const successful = stats.successfulAttempts.length;
+    return { ...common, passed: stats.passed, score: stats.passed ? weight : Math.min(weight - 1, (stats.tokenizedCandidates.length ? 4 : 0) + (successful ? 4 : 0) + (xhsTargetOk(obj) ? 3 : 0)), evidence: { verdict: obj.verdict, candidateCount: stats.candidates.length, tokenizedCandidateCount: stats.tokenizedCandidates.length, attempted, successful, hitRate: Number(stats.hitRate.toFixed(4)), minHitRate: stats.minHitRate, candidateSources: [...new Set(stats.tokenizedCandidates.map((candidate) => candidate.source).filter(Boolean))].slice(0, 8), signedHeaderEvidence: stats.successfulAttempts.map((attempt) => ({ endpoint: attempt.endpointClass, method: attempt.method, status: attempt.status || attempt.replayStatus, noteItemCount: attempt.noteItemCount || 0, signedHeaderCount: attempt.signedHeaderNames?.length || 0, signerEvents: attempt.signerEvents || 0, bundleHints: attempt.bundleHints || 0 })).slice(0, 4) } };
+  }
   if (id === 'xhs_search_negative') {
     const passed = xhsSearchNegativeOk(obj);
     const searchRows = (obj.xhsReplay?.challengeMatrix || []).filter((item) => item.endpointClass === 'web-search-notes').slice(0, 8);
@@ -130,6 +192,10 @@ function summarizeScenario(id, weight, obj, artifact, command, runItem) {
     const replayed = obj.runtimeApiReplay?.bestReplayedStructuredApi || obj.signatureSurface?.runtimeReplayedStructuredApi;
     const passed = douyinStructuredOk(obj);
     return { ...common, passed, score: passed ? weight : Math.min(weight - 1, (obj.runtimeApiReplay?.attempted ? 8 : 0) + (obj.runtimeApiReplay?.observedStructuredApi ? 8 : 0)), evidence: { verdict: obj.verdict, replayedStructuredApi2xx: passed, variant: replayed?.variant || '', status: replayed?.status || null, awemeCount: replayed?.structured?.awemeCount || 0, signals: obj.signatureSurface?.signals?.length || 0, bundles: obj.signatureSurface?.bundleHints?.length || 0 } };
+  }
+  if (id === 'douyin_cookie_boundary') {
+    const boundary = douyinCookieBoundary(obj);
+    return { ...common, passed: boundary.passed, score: boundary.passed ? weight : Math.min(weight - 1, (boundary.observed?.structured?.structured ? 3 : 0) + (boundary.exact?.structured?.structured ? 4 : 0) + (boundary.noCookie ? 3 : 0)), evidence: { verdict: obj.verdict, replayAttempted: obj.runtimeApiReplay?.attempted, observedStructured: Boolean(boundary.observed?.structured?.structured), exactCookieStructured: Boolean(boundary.exact?.structured?.structured), exactCookieStatus: boundary.exact?.status || null, exactCookieAwemeCount: boundary.exact?.structured?.awemeCount || 0, noCookieStatus: boundary.noCookie?.status || null, noCookieBytes: boundary.noCookie?.bytes ?? null, noCookieStructured: Boolean(boundary.noCookie?.structured?.structured), noCookieAwemeCount: boundary.noCookie?.structured?.awemeCount || 0, noCookieDiverged: Boolean(boundary.noCookie?.divergence?.observedBodySha256 && boundary.noCookie?.divergence?.replayBodySha256 && boundary.noCookie.divergence.observedBodySha256 !== boundary.noCookie.divergence.replayBodySha256), attemptVariants: boundary.attempts.map((attempt) => attempt.variant).slice(0, 8) } };
   }
   if (id === 'frontier_strict') {
     const passed = obj.verdict === 'frontier-passed' && (obj.gates || []).every((gate) => gate.passed);
@@ -156,6 +222,13 @@ const scenarios = [
     latest: (obj) => obj.profile === 'xiaohongshu-note' && obj.verdict === 'xhs-auto-discovery-target-note-replay-confirmed',
   },
   {
+    id: 'xhs_discovery_hit_rate',
+    weight: 10,
+    derivedFrom: 'xhs_auto_discovery',
+    command: ['node', ['bench/recon-remote/real-platform/run.mjs', process.env.RECON_MATRIX_XHS_DISCOVERY_URL || 'https://www.xhs-download.org/zh', 'xiaohongshu-note']],
+    latest: (obj) => obj.profile === 'xiaohongshu-note' && obj.verdict === 'xhs-auto-discovery-target-note-replay-confirmed',
+  },
+  {
     id: 'xhs_search_negative',
     weight: 15,
     command: ['node', ['bench/recon-remote/real-platform/run.mjs', process.env.RECON_MATRIX_XHS_SEARCH_URL || 'https://www.xiaohongshu.com/search_result?keyword=%E7%BE%8E%E9%A3%9F', 'xiaohongshu-note']],
@@ -171,15 +244,31 @@ const scenarios = [
     timeoutMs: 180000,
     latest: (obj) => obj.profile === 'douyin-nowatermark' || obj.target?.includes('douyin.com'),
   },
+  {
+    id: 'douyin_cookie_boundary',
+    weight: 10,
+    derivedFrom: 'douyin_structured_api',
+    command: ['node', ['bench/recon-remote/douyin-nowatermark/run.mjs', process.env.RECON_MATRIX_DOUYIN_URL || 'https://www.douyin.com/video/7636072173723945829']],
+    latest: (obj) => obj.profile === 'douyin-nowatermark' || obj.target?.includes('douyin.com'),
+  },
 ];
 const activeScenarios = scenarios.filter((scenario) => !selectedCaseIds.size || selectedCaseIds.has(scenario.id));
+const scenarioById = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
+const liveScenarios = [];
+const liveScenarioIds = new Set();
+for (const scenario of activeScenarios) {
+  const sourceScenario = scenario.derivedFrom ? scenarioById.get(scenario.derivedFrom) : scenario;
+  if (!sourceScenario?.command || liveScenarioIds.has(sourceScenario.id)) continue;
+  liveScenarios.push(sourceScenario);
+  liveScenarioIds.add(sourceScenario.id);
+}
 const outDir = join(evidenceRoot, 'frontier-matrix', timestamp());
 await mkdir(outDir, { recursive: true });
 const started = Date.now();
 const runs = [];
 const entriesBefore = await latestArtifacts();
 
-for (const scenario of activeScenarios) {
+for (const scenario of liveScenarios) {
   if (!live) continue;
   const [cmd, args] = scenario.command;
   const runResult = await run(cmd, args, { timeoutMs: scenario.timeoutMs, env: scenario.env });
@@ -196,7 +285,7 @@ await writeFile(join(outDir, 'frontier_strict.stderr.txt'), redact(frontierRun.s
 const entriesAfter = await latestArtifacts();
 const scenarioResults = [];
 for (const scenario of activeScenarios) {
-  const runItem = runs.find((item) => item.id === scenario.id);
+  const runItem = runs.find((item) => item.id === scenario.id) || (scenario.derivedFrom ? runs.find((item) => item.id === scenario.derivedFrom) : null);
   const artifact = live ? artifactFromRun(runItem) : findLatest(entriesBefore, scenario.latest)?.path || '';
   const obj = await readJson(artifact || findLatest(entriesAfter, scenario.latest)?.path || '');
   scenarioResults.push(summarizeScenario(scenario.id, scenario.weight, obj, artifact || findLatest(entriesAfter, scenario.latest)?.path || '', `${scenario.command[0]} ${scenario.command[1].join(' ')}`, runItem));
@@ -208,7 +297,8 @@ scenarioResults.push(summarizeScenario('frontier_strict', 10, frontierObj, front
 const matrixScore = scenarioResults.reduce((sum, row) => sum + Math.min(row.weight, row.score), 0);
 const matrixMaxScore = scenarioResults.reduce((sum, row) => sum + row.weight, 0);
 const passed = scenarioResults.every((row) => row.passed);
-const grade = matrixScore >= 90 ? 'elite' : matrixScore >= 75 ? 'advanced' : matrixScore >= 55 ? 'solid' : matrixScore >= 35 ? 'basic' : 'weak';
+const matrixPercent = matrixMaxScore ? Number(((matrixScore / matrixMaxScore) * 100).toFixed(2)) : 0;
+const grade = matrixPercent >= 90 ? 'elite' : matrixPercent >= 75 ? 'advanced' : matrixPercent >= 55 ? 'solid' : matrixPercent >= 35 ? 'basic' : 'weak';
 const result = {
   target: 'Real-platform hardest frontier matrix: Bilibili + Xiaohongshu positives/negative + Douyin + frontier strict',
   profile: 'frontier-matrix',
@@ -220,7 +310,7 @@ const result = {
   elapsedMs: Date.now() - started,
   matrixScore,
   matrixMaxScore,
-  matrixPercent: Number(((matrixScore / matrixMaxScore) * 100).toFixed(2)),
+  matrixPercent,
   grade,
   scenarios: scenarioResults,
   nextActions: scenarioResults.filter((row) => !row.passed).map((row) => `${row.id}: inspect ${row.artifact || 'missing artifact'} and rerun ${row.command}`),

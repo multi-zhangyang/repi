@@ -2051,6 +2051,16 @@ const required = [
   [".pi/prompts/decision.md", "autonomousLaneDemotionRows"],
   [".pi/prompts/chain.md", "autonomous budget ledger update"],
   [".pi/prompts/chain.md", "historical_score_decay"],
+
+  ["scripts/reverse-agent/context-compact-audit.mjs", "CONTEXT_COMPACT_REQUIREMENTS"],
+  ["scripts/reverse-agent/context-compact-audit.mjs", "context_compact_audit"],
+  ["scripts/reverse-agent/context-compact-audit.mjs", "context_pack"],
+  ["scripts/reverse-agent/context-compact-audit.mjs", "owned_compaction_provider"],
+  ["scripts/reverse-agent/context-compact-audit.mjs", "resume_contract_continuation"],
+  ["scripts/reverse-agent/context-compact-audit.mjs", "evidence_summarization"],
+  ["scripts/reverse-agent/context-compact-audit.mjs", "budget_continuation"],
+  ["docs/reverse-agent/README.md", "Context compact harness 自检"],
+  ["docs/reverse-agent/README.md", "context-compact-audit.mjs"],
 ];
 
 const failures = [];

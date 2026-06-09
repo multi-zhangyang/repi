@@ -1,0 +1,388 @@
+#!/usr/bin/env node
+import { readFile, readdir } from 'node:fs/promises';
+import { existsSync, statSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+
+const repoRoot = resolve(process.env.RECON_REPO_ROOT || '.');
+const evidenceRoot = join(repoRoot, '.pi', 'evidence', 'remote');
+const matrixRunner = 'bench/recon-remote/frontier-matrix/run.mjs';
+const argv = process.argv.slice(2);
+
+const caseCatalog = [
+  {
+    id: 'xhs_auto_discovery',
+    platform: 'xiaohongshu',
+    polarity: 'positive',
+    difficulty: 98,
+    agentLane: 'signed replay + discovery',
+    purpose: 'Seed page -> tokenized note discovery -> target note/feed signed 2xx replay.',
+  },
+  {
+    id: 'xhs_discovery_hit_rate',
+    platform: 'xiaohongshu',
+    polarity: 'positive',
+    difficulty: 96,
+    agentLane: 'discovery quality + provenance',
+    purpose: 'Derived hit-rate/provenance gate over tokenized XHS auto-discovery attempts.',
+  },
+  {
+    id: 'douyin_structured_api',
+    platform: 'douyin',
+    polarity: 'positive',
+    difficulty: 94,
+    agentLane: 'runtime anti-bot replay',
+    purpose: 'Observed structured aweme API plus independent a_bogus/msToken replay evidence.',
+  },
+  {
+    id: 'douyin_cookie_boundary',
+    platform: 'douyin',
+    polarity: 'negative',
+    difficulty: 92,
+    agentLane: 'cookie boundary verifier',
+    purpose: 'No-cookie replay may be HTTP 200 but must remain structurally empty/divergent while exact-cookie replay is structured.',
+  },
+  {
+    id: 'bilibili_wbi_runtime',
+    platform: 'bilibili',
+    polarity: 'positive',
+    difficulty: 88,
+    agentLane: 'runtime signer trace',
+    purpose: 'WBI self-test, signer/bundle trace, signed request count, media probe.',
+  },
+  {
+    id: 'xhs_search_negative',
+    platform: 'xiaohongshu',
+    polarity: 'negative',
+    difficulty: 82,
+    agentLane: 'negative-control verifier',
+    purpose: 'Search/notes permission/login boundary must not inflate into target note/feed success.',
+  },
+];
+const catalogById = new Map(caseCatalog.map((item) => [item.id, item]));
+
+function hasFlag(name) { return argv.includes(`--${name}`); }
+function optionValue(name, fallback = '') {
+  const prefix = `--${name}=`;
+  const inline = argv.find((item) => item.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+  const idx = argv.indexOf(`--${name}`);
+  if (idx >= 0 && argv[idx + 1] && !argv[idx + 1].startsWith('--')) return argv[idx + 1];
+  return fallback;
+}
+function csv(value) { return String(value || '').split(',').map((item) => item.trim()).filter(Boolean); }
+function uniq(items) { return [...new Set(items.filter(Boolean))]; }
+function safeJson(text, fallback = null) { try { return JSON.parse(text); } catch { return fallback; } }
+function positiveNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+function evidenceTime(path) { return basename(dirname(path)); }
+function rel(path) { return String(path || '').replace(`${repoRoot}/`, ''); }
+function redact(value) {
+  return String(value || '')
+    .replace(/sk-[A-Za-z0-9_-]{12,}/g, 'sk-<redacted>')
+    .replace(/(api[_-]?key|auth[_-]?token|authorization|bearer)(["'\s:=]+)([A-Za-z0-9_.\-/+=]{12,})/gi, '$1$2<redacted>')
+    .replace(/(ANTHROPIC_AUTH_TOKEN|OPENAI_API_KEY|GEMINI_API_KEY|OPENROUTER_API_KEY|AI_GATEWAY_API_KEY)=\S+/g, '$1=<redacted>')
+    .replace(/([?&](?:w_rid|wts|xsec_token|xsec_source|web_session|a1|b1|msToken|a_bogus|token|buvid|SESSDATA|bili_jct|sign|t)=)[^&\s"']+/gi, '$1<redacted>');
+}
+
+async function walkResults(dir, out = []) {
+  if (!existsSync(dir)) return out;
+  for (const name of await readdir(dir)) {
+    const full = join(dir, name);
+    let st;
+    try { st = statSync(full); } catch { continue; }
+    if (st.isDirectory()) await walkResults(full, out);
+    else if (name === 'result.json') out.push(full);
+  }
+  return out;
+}
+async function readJson(path) {
+  if (!path) return null;
+  const full = path.startsWith('/') ? path : join(repoRoot, path);
+  return safeJson(await readFile(full, 'utf8').catch(() => ''));
+}
+async function latestMatrixArtifact() {
+  const paths = await walkResults(join(evidenceRoot, 'frontier-matrix'));
+  return paths.sort((a, b) => evidenceTime(b).localeCompare(evidenceTime(a)))[0] || '';
+}
+async function latestMatrixResult() {
+  const path = await latestMatrixArtifact();
+  const obj = await readJson(path);
+  return obj ? { path: rel(path), obj } : null;
+}
+function parseMatrixStdout(stdout) {
+  const direct = safeJson(stdout);
+  if (direct) return direct;
+  const match = String(stdout || '').match(/\{[\s\S]*\}\s*$/);
+  return match ? safeJson(match[0]) : null;
+}
+function run(cmd, args, { env = {}, timeoutMs = 900000 } = {}) {
+  return new Promise((resolveRun) => {
+    const started = Date.now();
+    const child = spawn(cmd, args, { cwd: repoRoot, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'], shell: false });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      try { child.kill('SIGTERM'); } catch {}
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 1500).unref?.();
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => { stdout += String(chunk); });
+    child.stderr.on('data', (chunk) => { stderr += String(chunk); });
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      resolveRun({ code, signal, elapsedMs: Date.now() - started, stdout, stderr });
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      resolveRun({ code: 'error', signal: null, elapsedMs: Date.now() - started, stdout, stderr, error: error.message });
+    });
+  });
+}
+function commandFor(caseIds, { live = false, strict = false } = {}) {
+  const args = [matrixRunner];
+  if (live) args.push('--live');
+  if (strict) args.push('--strict');
+  return {
+    env: { RECON_MATRIX_CASES: caseIds.join(',') },
+    args,
+    shell: `RECON_MATRIX_CASES=${caseIds.join(',')} node ${args.join(' ')}`,
+  };
+}
+function shardCases(caseIds, shardCount) {
+  const count = Math.max(1, Math.min(Number(shardCount) || 1, caseIds.length || 1));
+  const shards = Array.from({ length: count }, () => []);
+  for (let idx = 0; idx < caseIds.length; idx += 1) shards[idx % count].push(caseIds[idx]);
+  return shards.filter((items) => items.length);
+}
+function ensureControls(order, maxCases) {
+  const selected = uniq(order).filter((id) => catalogById.has(id));
+  if (!Number.isFinite(maxCases) || maxCases <= 0 || maxCases >= selected.length) return selected;
+  const limited = selected.slice(0, maxCases);
+  if (maxCases >= 2 && !limited.some((id) => catalogById.get(id)?.polarity === 'negative')) {
+    const negative = selected.find((id) => catalogById.get(id)?.polarity === 'negative');
+    if (negative) limited[limited.length - 1] = negative;
+  }
+  return uniq(limited);
+}
+function selectBalanced(maxCases) {
+  const order = ['xhs_auto_discovery', 'xhs_discovery_hit_rate', 'douyin_structured_api', 'douyin_cookie_boundary', 'bilibili_wbi_runtime', 'xhs_search_negative'];
+  return ensureControls(order, maxCases);
+}
+function selectCases({ explicitCases, strategy, maxCases, latest }) {
+  if (explicitCases.length) return ensureControls(explicitCases, maxCases);
+  if (strategy === 'quick') return ensureControls(['xhs_auto_discovery', 'xhs_search_negative'], maxCases);
+  if (strategy === 'balanced') return selectBalanced(maxCases);
+  const hardest = [...caseCatalog].sort((a, b) => b.difficulty - a.difficulty).map((item) => item.id);
+  if (strategy === 'failed-first') {
+    const failed = (latest?.obj?.scenarios || []).filter((row) => catalogById.has(row.id) && !row.passed).map((row) => row.id);
+    return ensureControls([...failed, ...hardest], maxCases);
+  }
+  return ensureControls(hardest, maxCases);
+}
+function decisiveEvidence(row) {
+  const ev = row?.evidence || {};
+  if (row?.id === 'bilibili_wbi_runtime') return `verdict=${ev.verdict || 'n/a'} selfTest=${ev.selfTest} signedReqs=${ev.signedReqs || 0} signerEvents=${ev.signerEvents || 0} bundleHints=${ev.bundleHints || 0} media=${ev.media || 0}`;
+  if (row?.id === 'xhs_auto_discovery') return `verdict=${ev.verdict || 'n/a'} endpoint=${ev.bestEndpoint || 'n/a'} method=${ev.bestMethod || 'n/a'} status=${ev.bestStatus || 'n/a'} noteItemCount=${ev.noteItemCount || 0} candidates=${ev.candidates || 0}`;
+  if (row?.id === 'xhs_discovery_hit_rate') return `verdict=${ev.verdict || 'n/a'} hitRate=${ev.hitRate ?? 'n/a'} successful=${ev.successful || 0}/${ev.attempted || 0} tokenized=${ev.tokenizedCandidateCount || 0}/${ev.candidateCount || 0}`;
+  if (row?.id === 'xhs_search_negative') {
+    const rows = (ev.searchRows || []).map((item) => `${item.variant}:${item.challengeKind || item.jsonCode || item.status}`).join(',');
+    return `verdict=${ev.verdict || 'n/a'} bestTargetNote2xx=${ev.bestTargetNote2xx} searchBoundary=[${rows || 'n/a'}]`;
+  }
+  if (row?.id === 'douyin_structured_api') return `verdict=${ev.verdict || 'n/a'} replay2xx=${ev.replayedStructuredApi2xx} status=${ev.status || 'n/a'} awemeCount=${ev.awemeCount || 0} signals=${ev.signals || 0} bundles=${ev.bundles || 0}`;
+  if (row?.id === 'douyin_cookie_boundary') return `verdict=${ev.verdict || 'n/a'} observedStructured=${ev.observedStructured} exactAwemeCount=${ev.exactCookieAwemeCount || 0} noCookieStatus=${ev.noCookieStatus || 'n/a'} noCookieStructured=${ev.noCookieStructured} noCookieDiverged=${ev.noCookieDiverged}`;
+  if (row?.id === 'frontier_strict') return `verdict=${ev.verdict || 'n/a'} frontierScore=${ev.frontierScore || 'n/a'} grade=${ev.grade || 'n/a'}`;
+  return JSON.stringify(ev);
+}
+function summarizeMatrix(matrixPath, result, selectedCaseIds, runMeta = null) {
+  const rows = (result?.scenarios || []).map((row) => {
+    const meta = catalogById.get(row.id) || { platform: 'aggregate', polarity: 'aggregate', difficulty: 0, agentLane: 'aggregate gate', purpose: 'Aggregate frontier strict gate.' };
+    return {
+      id: row.id,
+      platform: meta.platform,
+      polarity: meta.polarity,
+      difficulty: meta.difficulty,
+      agentLane: meta.agentLane,
+      passed: Boolean(row.passed),
+      score: Math.min(Number(row.score || 0), Number(row.weight || 0)),
+      weight: Number(row.weight || 0),
+      artifact: row.artifact || '',
+      command: row.command || '',
+      decisive: decisiveEvidence(row),
+    };
+  });
+  const failed = rows.filter((row) => !row.passed);
+  return {
+    mode: 'summary',
+    verdict: result?.verdict || 'frontier-matrix-missing',
+    grade: result?.grade || 'unknown',
+    matrixScore: result?.matrixScore || 0,
+    matrixMaxScore: result?.matrixMaxScore || 0,
+    matrixPercent: result?.matrixPercent || 0,
+    generatedAt: result?.generatedAt || '',
+    matrixArtifact: matrixPath || (result?.artifactDir ? `${result.artifactDir}/result.json` : ''),
+    selectedCases: selectedCaseIds,
+    positives: rows.filter((row) => row.polarity === 'positive'),
+    negatives: rows.filter((row) => row.polarity === 'negative'),
+    aggregate: rows.filter((row) => row.polarity === 'aggregate'),
+    evidencePaths: rows.map((row) => row.artifact).filter(Boolean),
+    compactContext: rows.map((row) => `${row.id}:${row.passed ? 'PASS' : 'FAIL'}:${row.artifact || 'missing'}:${row.decisive}`),
+    run: runMeta,
+    nextActions: failed.length
+      ? failed.map((row) => `${row.id}: inspect ${row.artifact || 'missing artifact'}; rerun ${row.command || commandFor([row.id]).shell}`)
+      : ['matrix clean: raise max-cases/live strict cadence, or shard by platform for parallel dogfood review'],
+  };
+}
+function makePlan(selectedCases, options, latest) {
+  const shards = shardCases(selectedCases, options.shards).map((cases, idx) => ({
+    id: `agent-${idx + 1}`,
+    cases,
+    lane: cases.map((id) => `${id}:${catalogById.get(id)?.agentLane || 'unknown'}`),
+    command: commandFor(cases, options).shell,
+  }));
+  return {
+    mode: 'plan',
+    strategy: options.strategy,
+    selectedCases,
+    strict: options.strict,
+    live: options.live,
+    matrixCommand: commandFor(selectedCases, options).shell,
+    shardCount: shards.length,
+    shards,
+    latestMatrixArtifact: latest?.path || '',
+    caseNotes: selectedCases.map((id) => ({ id, ...catalogById.get(id) })),
+    contextPolicy: [
+      'Each shard keeps only its matrix result path, decisive evidence line, and failed next action.',
+      'Final merge reads frontier-matrix/result.json instead of replaying full stdout/stderr into context.',
+      'Negative controls stay separate from positive replay cases to prevent generic 2xx inflation.',
+    ],
+  };
+}
+function printMarkdown(output) {
+  if (output.mode === 'plan') {
+    console.log([
+      '# Pi-RECON Frontier Orchestrator Plan',
+      '',
+      '## Outcome',
+      `- strategy=${output.strategy} live=${output.live} strict=${output.strict}`,
+      `- selected=${output.selectedCases.join(',')}`,
+      '',
+      '## Key Evidence',
+      `- latest_matrix=${output.latestMatrixArtifact || 'none'}`,
+      `- matrix_command=\`${output.matrixCommand}\``,
+      '',
+      '## Verification',
+      ...output.shards.map((shard) => `- ${shard.id}: ${shard.cases.join(',')} -> \`${shard.command}\``),
+      '',
+      '## Next Step',
+      '- Run the matrix command, or dispatch shard commands to parallel agents and merge with `--summarize-latest`.',
+      '',
+    ].join('\n'));
+    return;
+  }
+  console.log([
+    '# Pi-RECON Frontier Orchestrator Summary',
+    '',
+    '## Outcome',
+    `- verdict=${output.verdict} score=${output.matrixScore}/${output.matrixMaxScore} percent=${output.matrixPercent}% grade=${output.grade}`,
+    `- matrix_artifact=${output.matrixArtifact || 'missing'}`,
+    '',
+    '## Key Evidence',
+    '- Positive samples:',
+    ...(output.positives.length ? output.positives.map((row) => `  - ${row.id}: passed=${row.passed} score=${row.score}/${row.weight} artifact=${row.artifact || 'missing'} evidence=${row.decisive}`) : ['  - none']),
+    '- Negative samples:',
+    ...(output.negatives.length ? output.negatives.map((row) => `  - ${row.id}: passed=${row.passed} score=${row.score}/${row.weight} artifact=${row.artifact || 'missing'} evidence=${row.decisive}`) : ['  - none']),
+    '- Aggregate:',
+    ...(output.aggregate.length ? output.aggregate.map((row) => `  - ${row.id}: passed=${row.passed} score=${row.score}/${row.weight} evidence=${row.decisive}`) : ['  - none']),
+    '',
+    '## Verification',
+    ...output.evidencePaths.map((path) => `- ${path}`),
+    '',
+    '## Next Step',
+    ...output.nextActions.map((item) => `- ${item}`),
+    '',
+  ].join('\n'));
+}
+function usage() {
+  console.log(`Pi-RECON frontier orchestrator\n\nUsage:\n  node bench/recon-remote/frontier-orchestrator/run.mjs --plan\n  node bench/recon-remote/frontier-orchestrator/run.mjs --live --strict\n  node bench/recon-remote/frontier-orchestrator/run.mjs --summarize-latest --json\n\nModes:\n  default            Select cases, run frontier-matrix, summarize positive/negative evidence.\n  --plan             Print selected cases and per-agent shard commands only; no evidence writes.\n  --summarize-latest Read latest frontier-matrix result and compact it; no matrix run.\n\nSelection:\n  --strategy=hardest|failed-first|balanced|quick   default: hardest\n  --cases=<a,b>                                  explicit matrix case ids\n  --max-cases=N                                  default: all known cases\n  --shards=N                                     emit parallel-agent shard commands\n\nExecution:\n  --live              Pass --live to frontier-matrix.\n  --strict            Pass --strict and exit non-zero when the matrix fails.\n  --timeout-ms=N      default: RECON_ORCH_TIMEOUT_MS or 900000\n  --json              Emit JSON instead of markdown.\n\nKnown cases:\n${caseCatalog.map((item) => `  - ${item.id} (${item.polarity}, ${item.platform}, difficulty=${item.difficulty})`).join('\n')}\n`);
+}
+
+if (hasFlag('help') || hasFlag('h')) {
+  usage();
+  process.exit(0);
+}
+
+const explicitCases = csv(optionValue('cases', process.env.RECON_ORCH_CASES || ''));
+const unknown = explicitCases.filter((id) => !catalogById.has(id));
+if (unknown.length) {
+  console.error(`Unknown frontier matrix case(s): ${unknown.join(', ')}`);
+  process.exit(2);
+}
+const options = {
+  live: hasFlag('live') || process.env.RECON_ORCH_LIVE === '1',
+  strict: hasFlag('strict') || process.env.RECON_ORCH_STRICT === '1',
+  plan: hasFlag('plan') || hasFlag('dry-run'),
+  summarizeLatest: hasFlag('summarize-latest') || hasFlag('latest'),
+  json: hasFlag('json') || optionValue('format', process.env.RECON_ORCH_FORMAT || '') === 'json',
+  strategy: optionValue('strategy', process.env.RECON_ORCH_STRATEGY || 'hardest'),
+  maxCases: positiveNumber(optionValue('max-cases', process.env.RECON_ORCH_MAX_CASES || String(caseCatalog.length)), caseCatalog.length),
+  shards: positiveNumber(optionValue('shards', process.env.RECON_ORCH_SHARDS || '1'), 1),
+  timeoutMs: positiveNumber(optionValue('timeout-ms', process.env.RECON_ORCH_TIMEOUT_MS || '900000'), 900000),
+};
+if (!['hardest', 'failed-first', 'balanced', 'quick'].includes(options.strategy)) {
+  console.error(`Unknown strategy: ${options.strategy}`);
+  process.exit(2);
+}
+
+const latest = await latestMatrixResult();
+const selectedCases = selectCases({ explicitCases, strategy: options.strategy, maxCases: options.maxCases, latest });
+if (!selectedCases.length) {
+  console.error('No matrix cases selected.');
+  process.exit(2);
+}
+
+if (options.plan) {
+  const plan = makePlan(selectedCases, options, latest);
+  if (options.json) console.log(JSON.stringify(plan, null, 2));
+  else printMarkdown(plan);
+  process.exit(0);
+}
+
+let matrixPath = latest?.path || '';
+let matrixObj = latest?.obj || null;
+let runMeta = null;
+if (!options.summarizeLatest) {
+  const cmd = commandFor(selectedCases, options);
+  const runResult = await run('node', cmd.args, { env: cmd.env, timeoutMs: options.timeoutMs });
+  const stdoutJson = parseMatrixStdout(runResult.stdout);
+  matrixPath = stdoutJson?.artifactDir ? `${stdoutJson.artifactDir}/result.json` : '';
+  matrixObj = await readJson(matrixPath);
+  if (!matrixObj) {
+    const fallback = await latestMatrixResult();
+    matrixPath = fallback?.path || matrixPath;
+    matrixObj = fallback?.obj || matrixObj;
+  }
+  runMeta = {
+    command: cmd.shell,
+    code: runResult.code,
+    signal: runResult.signal,
+    elapsedMs: runResult.elapsedMs,
+    stdoutTail: redact(runResult.stdout).slice(-1200),
+    stderrTail: redact(runResult.stderr).slice(-1200),
+  };
+  if (!matrixObj) {
+    console.error(JSON.stringify({ verdict: 'frontier-orchestrator-failed', reason: 'matrix result missing', run: runMeta }, null, 2));
+    process.exit(1);
+  }
+}
+
+if (!matrixObj) {
+  console.error('No frontier-matrix result found. Run with --live or run frontier-matrix first.');
+  process.exit(1);
+}
+const summary = summarizeMatrix(matrixPath, matrixObj, selectedCases, runMeta);
+if (options.json) console.log(JSON.stringify(summary, null, 2));
+else printMarkdown(summary);
+const failed = summary.verdict !== 'frontier-matrix-passed' || [...summary.positives, ...summary.negatives, ...summary.aggregate].some((row) => !row.passed);
+process.exit(options.strict && failed ? 1 : 0);
