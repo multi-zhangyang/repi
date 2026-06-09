@@ -9,11 +9,17 @@ while [ -L "$SOURCE" ]; do
 done
 ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
+# REPI is the independent Pi-RECON product entrypoint. It never owns the
+# upstream `pi` command and keeps all runtime state in ~/.repi/agent.
 export PI_CODING_AGENT_APP_NAME="repi"
 export PI_CODING_AGENT_CONFIG_DIR=".repi"
 export REPI_CODING_AGENT_DIR="${REPI_CODING_AGENT_DIR:-${REPI_AGENT_DIR:-$HOME/.repi/agent}}"
 export REPI_CODING_AGENT_SESSION_DIR="${REPI_CODING_AGENT_SESSION_DIR:-$REPI_CODING_AGENT_DIR/sessions}"
 export PI_RECON_PRIMARY=1
+export PI_RECON_PRODUCT=1
+export PI_SKIP_VERSION_CHECK="${PI_SKIP_VERSION_CHECK:-1}"
+export PI_SKIP_PACKAGE_UPDATE_CHECK="${PI_SKIP_PACKAGE_UPDATE_CHECK:-1}"
+export PI_TELEMETRY="${PI_TELEMETRY:-0}"
 
 ARGS=(--recon --no-extensions --no-skills --no-prompt-templates --no-approve --no-context-files)
 USER_ARGS=()
@@ -35,6 +41,14 @@ for arg in "$@"; do
     *) USER_ARGS+=("$arg") ;;
   esac
 done
+
+case "${USER_ARGS[0]:-}" in
+  install|remove|uninstall|update|list|config)
+    # Package/config subcommands must stay at argv[0]; otherwise the CLI would
+    # see --recon first and treat the command as a chat message.
+    ARGS=()
+    ;;
+esac
 
 node "$ROOT/scripts/reverse-agent/init-repi-profile.mjs" "$ROOT"
 

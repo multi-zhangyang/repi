@@ -9,17 +9,17 @@
 1. **源码内核入口**：`packages/coding-agent/src/core/recon-profile.ts` + CLI `--recon` / `--reverse-pentest`。这是内置 profile：直接接入 resource loader、inline extension factory、system prompt、append prompt、skill/prompt 注入、记忆和工具索引；`repi` 默认使用这一层。
 2. **文件型 profile 镜像**：`.pi/SYSTEM.md`、`.pi/APPEND_SYSTEM.md`、`.pi/extensions/reverse-pentest-core.ts`、`.pi/skills/*`、`.pi/prompts/*`。这是兼容/迁移材料，不再默认塞进普通 `pi` 的 `~/.pi/agent`。
 
-优先把 `pi` 本身切成 Pi-RECON 入口：
+优先使用独立产品入口 `repi`，不要接管普通 `pi`：
 
 ```bash
 cd /root/pi-diy/pi
-npm run install:recon-pi
+npm run install:repi
 hash -r
-pi
-pi -p "分析这个 ELF 的许可证校验逻辑"
-
-# repi 仍保留为可选别名；开发调试才直接使用源码 pi-test 入口
 repi
+repi -p "分析这个 ELF 的许可证校验逻辑"
+
+# 普通 pi 仍由 upstream Pi 提供；开发调试才直接使用源码 pi-test 入口
+pi --help
 ./pi-test.sh --recon
 ```
 
@@ -74,21 +74,23 @@ Pi-RECON 在 `packages/coding-agent/src/core/recon-profile.ts`、`.pi/SYSTEM.md`
 | `bench/recon-remote/hard-score.mjs` | 跨平台 hard-score 评测器：按 signature_rebuild、signed_replay、anti_bot_challenge、cdn_media_probe、runtime_capture_depth、exploit_chain、bundle_trace、regression_readiness 对最新公网证据打分 |
 | `scripts/reverse-agent/refresh-tool-index.sh` | 离线刷新工具索引脚本 |
 | `scripts/reverse-agent/verify-profile.mjs` | 配置完整性验证脚本 |
-| `pi` | Pi-RECON 主启动器；安装后输入 `pi` 就启动逆向 / 渗透 agent，默认使用 `~/.repi/agent` 并自动启用 `--recon` |
-| `repi` | Pi-RECON 可选别名，默认使用同一 `~/.repi/agent` |
-| `scripts/reverse-agent/install-recon-pi.sh` | 把 PATH 上的 `pi` 切到 `/root/pi-diy/pi/pi`，旧 upstream pi 记录为 `pi-upstream.<timestamp>` |
-| `scripts/reverse-agent/assert-pi-recon-primary.mjs` | 验证 `pi` 已经是 Pi-RECON 主入口且不会出现旧 model/API/collision/global-tools 报错 |
-| `scripts/reverse-agent/install-repi.sh` | 安装 `/usr/local/bin/repi` 可选别名并初始化 `~/.repi/agent` |
+| `pi` | 非拥有型兼容 shim；不会启动 Pi-RECON，只会转交给 PATH 中的原版 Pi，找不到则提示使用 `repi` |
+| `repi` | Pi-RECON 独立产品入口，默认使用 `~/.repi/agent` 并自动启用 `--recon` 隔离参数 |
+| `scripts/reverse-agent/install-repi.sh` | 安装 `/usr/local/bin/repi`，初始化 `~/.repi/agent`，不会覆盖/删除普通 `pi` |
+| `scripts/reverse-agent/install-recon-pi.sh` | 兼容旧命令名；已废弃，现在只会转而安装 `repi`，不会接管 `pi` |
+| `scripts/reverse-agent/assert-repi-product.mjs` | 验证 `repi` 是产品入口、`pi` 未被本仓库声明、repi help 不泄漏 upstream Pi update/pi.dev changelog 文案 |
+| `scripts/reverse-agent/assert-pi-recon-primary.mjs` | 兼容旧 gate 名；实际转到 `assert-repi-product.mjs` |
 | `scripts/reverse-agent/clean-global-pi-recon.sh` | 清理旧版写入 `~/.pi/agent` 的 Pi-RECON 文件型 profile，移动到备份目录 |
 | `scripts/reverse-agent/install-global-profile.sh` | 兼容旧命令名；现在默认写入 `~/.repi/agent` |
 
 
-## 主启动器 pi
 
-当前推荐入口就是 `pi`：安装脚本会把旧 upstream `pi` 从命令路径移开；全局 npm 包移动为 `pi-coding-agent.upstream-backup.<timestamp>`，bin 入口备份为 `pi-upstream.<timestamp>`，输入 `pi` 直接进入 Pi-RECON。运行时仍是独立 profile；默认不会复制旧 `~/.pi/agent` 的 auth/models：
+## 主启动器 repi
+
+当前推荐入口就是 `repi`。它是 Pi-RECON 的独立产品命令；普通 `pi` 保留给 upstream Pi。运行时默认不会复制旧 `~/.pi/agent` 的 auth/models：
 
 ```text
-command: pi
+command: repi
 agent dir: ~/.repi/agent
 storage: ~/.repi/agent/recon/
 normal pi dir: ~/.pi/agent
@@ -99,11 +101,11 @@ legacy import: disabled by default
 
 ```bash
 cd /root/pi-diy/pi
-npm run install:recon-pi
+npm run install:repi
 hash -r
-pi --offline --help
-pi --offline --list-models
-npm run gate:pi-recon-primary
+repi --offline --help
+repi --offline --list-models
+npm run gate:repi-product
 ```
 
 默认隔离参数：
@@ -115,19 +117,19 @@ npm run gate:pi-recon-primary
 如需把已有普通 `pi` 的登录态一次性复制到 `repi`，显式执行：
 
 ```bash
-pi --import-pi-auth --offline --list-models
+repi --import-pi-auth --offline --list-models
 ```
 
 这是单向复制到 `~/.repi/agent`，不会修改 `~/.pi/agent`。需要加载项目 AGENTS/CLAUDE 和项目 `.pi/settings.json` 时使用：
 
 ```bash
-pi --project-context
+repi --project-context
 ```
 
 需要恢复普通 Pi 的完整资源发现时使用：
 
 ```bash
-pi --with-project-resources
+repi --with-project-resources
 ```
 
 ## 运行时能力
@@ -218,24 +220,24 @@ scripts/reverse-agent/verify-profile.mjs /root/pi-diy/pi
 # 刷新工具索引
 scripts/reverse-agent/refresh-tool-index.sh /root/pi-diy/pi
 
-# 推荐：把 pi 本身切成 Pi-RECON 逆向 agent
-npm run install:recon-pi
+# 推荐：安装 repi 作为 Pi-RECON 独立入口
+npm run install:repi
 hash -r
 
 # 如以前装过旧全局 profile，清理旧污染到备份目录
 scripts/reverse-agent/clean-global-pi-recon.sh
 
-# 验证 pi 已经是 Pi-RECON，不应再出现 model pattern、API key、collision、Global tools 报错
-npm run gate:pi-recon-primary
+# 验证 repi 已经可用，不应再出现 model pattern、API key、collision、Global tools 报错
+npm run gate:repi-product
 npm run gate:repi-isolation
 
 # 启动 Pi-RECON（交互模式）
-pi
+repi
 
 # 源码调试入口仍保留
 ./pi-test.sh --recon
 
-# 在 Pi 内可用
+# 在 REPI 内可用
 /re-tools refresh
 /re-route 分析这个 ELF 的校验逻辑
 /re-map ./challenge 3
@@ -555,8 +557,5 @@ Failure/repair 合同现在同时保留机器字段和人类可读别名：
 ## Harness 自检层
 
 - `re_harness` / `/re-harness quick|full|install|show` 生成 `harness_artifact`，聚合 `install_readiness`、`reverse_capability_guards`、`regression_guards`、注册工具/命令矩阵和 evidence/memory/tool-index 可写性。
-- 开发或魔改后执行 `re_harness full`；运行 `npm run install:recon-pi` 后，旧 upstream
-  `pi` 全局包与默认 `~/.pi` profile 会被清掉，PATH 里的 `pi` 应只解析到本仓库
-  Pi-RECON 启动器；随后执行 `hash -r`、`pi --offline --help`、
-  `npm run gate:pi-recon-primary` 与 `/re-harness install`。
+- 开发或魔改后执行 `re_harness full`；运行 `npm run install:repi` 后，只安装/刷新 `repi`，普通 `pi` 仍归 upstream Pi；随后执行 `hash -r`、`repi --offline --help`、`npm run gate:repi-product` 与 `/re-harness install`。
 - `reverse_capability_guards` 会守住 re_native_runtime、re_web_authz_state、re_mobile_runtime、re_exploit_lab、re_proof_loop、re_autopilot、re_knowledge_graph、compact_resume_case_memory、compact_resume_repair_from_case_memory、compact_resume_success_skip_low_value_lane、operator_command_floor、proof_exit_criteria、specialist_runtime_planner，避免安装/自检优化削弱逆向渗透能力。

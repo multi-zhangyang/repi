@@ -4,7 +4,7 @@
 
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import chalk from "chalk";
-import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "../config.ts";
+import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR, IS_REPI_PRODUCT } from "../config.ts";
 import type { ExtensionFlag } from "../core/extensions/types.ts";
 
 export type Mode = "text" | "json" | "rpc";
@@ -230,6 +230,12 @@ export function printHelp(extensionFlags?: ExtensionFlag[]): void {
 					})
 					.join("\n")}\n`
 			: "";
+	const updateCommandLine = IS_REPI_PRODUCT
+		? `  ${APP_NAME} update [source]          Update installed extension packages`
+		: `  ${APP_NAME} update [source|self|pi]   Update pi and installed extensions`;
+	const shareViewerLine = IS_REPI_PRODUCT
+		? `  PI_SHARE_VIEWER_URL              - Base URL for /share command (default: https://gist.github.com/<gist-id>)`
+		: `  PI_SHARE_VIEWER_URL              - Base URL for /share command (default: https://pi.dev/session/)`;
 	console.log(`${chalk.bold(APP_NAME)} - ${description}
 
 ${reconBanner}
@@ -241,7 +247,7 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} install <source> [-l]     Install extension source and add to settings
   ${APP_NAME} remove <source> [-l]      Remove extension source from settings
   ${APP_NAME} uninstall <source> [-l]   Alias for remove
-  ${APP_NAME} update [source|self|pi]   Update pi and installed extensions
+${updateCommandLine}
   ${APP_NAME} list [--approve|--no-approve]
                                  List installed extensions from settings
   ${APP_NAME} config [--no-approve]
@@ -391,7 +397,7 @@ ${chalk.bold("Environment Variables:")}
   PI_PACKAGE_DIR                   - Override package directory (for Nix/Guix store paths)
   PI_OFFLINE                       - Disable startup network operations when set to 1/true/yes
   PI_TELEMETRY                     - Override install telemetry when set to 1/true/yes or 0/false/no
-  PI_SHARE_VIEWER_URL              - Base URL for /share command (default: https://pi.dev/session/)
+${shareViewerLine}
 
 ${chalk.bold("Built-in Tool Names:")}
   read   - Read file contents

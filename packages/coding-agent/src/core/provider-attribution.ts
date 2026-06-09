@@ -1,4 +1,5 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { APP_NAME, IS_REPI_PRODUCT } from "../config.ts";
 import type { SettingsManager } from "./settings-manager.ts";
 import { isInstallTelemetryEnabled } from "./telemetry.ts";
 
@@ -42,6 +43,12 @@ function getDefaultAttributionHeaders(
 	}
 
 	if (isOpenRouterModel(model)) {
+		if (IS_REPI_PRODUCT) {
+			return {
+				"X-OpenRouter-Title": APP_NAME,
+				"X-OpenRouter-Categories": "cli-agent",
+			};
+		}
 		return {
 			"HTTP-Referer": "https://pi.dev",
 			"X-OpenRouter-Title": "pi",
@@ -51,13 +58,13 @@ function getDefaultAttributionHeaders(
 
 	if (isNvidiaNimModel(model)) {
 		return {
-			"X-BILLING-INVOKE-ORIGIN": "Pi",
+			"X-BILLING-INVOKE-ORIGIN": IS_REPI_PRODUCT ? "repi" : "Pi",
 		};
 	}
 
 	if (isCloudflareModel(model)) {
 		return {
-			"User-Agent": "pi-coding-agent",
+			"User-Agent": IS_REPI_PRODUCT ? "repi-coding-agent" : "pi-coding-agent",
 		};
 	}
 
@@ -73,7 +80,7 @@ function getSessionHeaders(model: Model<Api>, sessionId: string | undefined): Re
 	) {
 		return undefined;
 	}
-	return { "x-opencode-session": sessionId, "x-opencode-client": "pi" };
+	return { "x-opencode-session": sessionId, "x-opencode-client": IS_REPI_PRODUCT ? APP_NAME : "pi" };
 }
 
 export function mergeProviderAttributionHeaders(

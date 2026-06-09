@@ -150,6 +150,12 @@ const forbiddenPatterns = [
 	/collision:/i,
 	/Global tools\/ directory contains custom tools/i,
 	/reverse-pentest-core.*skipped/i,
+	/update \[source\|self\|pi\]/i,
+	/Update pi/i,
+	/\bpi update/i,
+	/Update Available/i,
+	/pi\.dev\/changelog/i,
+	/default:\s*https:\/\/pi\.dev\/session/i,
 ];
 for (const pattern of forbiddenPatterns) {
 	if (pattern.test(combined)) fail("repi leaked normal pi profile warning/error", { pattern: String(pattern) });

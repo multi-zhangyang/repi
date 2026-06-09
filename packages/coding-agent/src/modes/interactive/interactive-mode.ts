@@ -57,6 +57,7 @@ import {
 	getDebugLogPath,
 	getDocsPath,
 	getShareViewerUrl,
+	IS_REPI_PRODUCT,
 	VERSION,
 } from "../../config.ts";
 import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
@@ -742,19 +743,22 @@ export class InteractiveMode {
 	async run(): Promise<void> {
 		await this.init();
 
-		// Start version check asynchronously
-		checkForNewPiVersion(this.version).then((newRelease) => {
-			if (newRelease) {
-				this.showNewVersionNotification(newRelease);
-			}
-		});
+		if (!IS_REPI_PRODUCT) {
+			// Start upstream Pi version check asynchronously. repi is an independent product
+			// and must not show pi.dev / pi update prompts.
+			checkForNewPiVersion(this.version).then((newRelease) => {
+				if (newRelease) {
+					this.showNewVersionNotification(newRelease);
+				}
+			});
 
-		// Start package update check asynchronously
-		this.checkForPackageUpdates().then((updates) => {
-			if (updates.length > 0) {
-				this.showPackageUpdateNotification(updates);
-			}
-		});
+			// Start package update check asynchronously for upstream Pi only.
+			this.checkForPackageUpdates().then((updates) => {
+				if (updates.length > 0) {
+					this.showPackageUpdateNotification(updates);
+				}
+			});
+		}
 
 		// Check tmux keyboard setup asynchronously
 		this.checkTmuxKeyboardSetup().then((warning) => {
@@ -815,7 +819,7 @@ export class InteractiveMode {
 	}
 
 	private async checkForPackageUpdates(): Promise<string[]> {
-		if (process.env.PI_OFFLINE) {
+		if (IS_REPI_PRODUCT || process.env.PI_SKIP_PACKAGE_UPDATE_CHECK || process.env.PI_OFFLINE) {
 			return [];
 		}
 
@@ -884,6 +888,10 @@ export class InteractiveMode {
 	 * Only shows new entries since last seen version, skips for resumed sessions.
 	 */
 	private getChangelogForDisplay(): string | undefined {
+		if (IS_REPI_PRODUCT) {
+			return undefined;
+		}
+
 		// Skip changelog for resumed/continued sessions (already have messages)
 		if (this.session.state.messages.length > 0) {
 			return undefined;
@@ -911,7 +919,7 @@ export class InteractiveMode {
 	}
 
 	private reportInstallTelemetry(version: string): void {
-		if (process.env.PI_OFFLINE) {
+		if (IS_REPI_PRODUCT || process.env.PI_OFFLINE) {
 			return;
 		}
 
@@ -3674,6 +3682,7 @@ export class InteractiveMode {
 	}
 
 	showNewVersionNotification(release: LatestPiRelease): void {
+		if (IS_REPI_PRODUCT) return;
 		const action = theme.fg("accent", `${APP_NAME} update`);
 		const updateInstruction = theme.fg("muted", `New version ${release.version} is available. Run `) + action;
 		const changelogUrl = "https://pi.dev/changelog";
@@ -3703,6 +3712,7 @@ export class InteractiveMode {
 	}
 
 	showPackageUpdateNotification(packages: string[]): void {
+		if (IS_REPI_PRODUCT) return;
 		const action = theme.fg("accent", `${APP_NAME} update`);
 		const updateInstruction = theme.fg("muted", "Package updates are available. Run ") + action;
 		const packageLines = packages.map((pkg) => `- ${pkg}`).join("\n");
@@ -5320,6 +5330,19 @@ export class InteractiveMode {
 	}
 
 	private handleChangelogCommand(): void {
+		if (IS_REPI_PRODUCT) {
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(new DynamicBorder());
+			this.chatContainer.addChild(new Text(theme.bold(theme.fg("accent", "Pi-RECON Changelog")), 1, 0));
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(
+				new Text("repi is served from this repository. Use git log or README.md for local release notes.", 1, 1),
+			);
+			this.chatContainer.addChild(new DynamicBorder());
+			this.ui.requestRender();
+			return;
+		}
+
 		const changelogPath = getChangelogPath();
 		const allEntries = parseChangelog(changelogPath);
 

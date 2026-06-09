@@ -8,6 +8,7 @@ import {
 	getPackageDir,
 	getSelfUpdateCommand,
 	getSelfUpdateUnavailableInstruction,
+	IS_REPI_PRODUCT,
 	PACKAGE_NAME,
 	type SelfUpdateCommand,
 	VERSION,
@@ -74,7 +75,9 @@ function getPackageCommandUsage(command: PackageCommand): string {
 		case "remove":
 			return `${APP_NAME} remove <source> [-l] [--approve|--no-approve]`;
 		case "update":
-			return `${APP_NAME} update [source|self|pi] [--self] [--extensions] [--extension <source>] [--approve|--no-approve] [--force]`;
+			return IS_REPI_PRODUCT
+				? `${APP_NAME} update [source] [--extensions] [--extension <source>] [--approve|--no-approve]`
+				: `${APP_NAME} update [source|self|pi] [--self] [--extensions] [--extension <source>] [--approve|--no-approve] [--force]`;
 		case "list":
 			return `${APP_NAME} list [--approve|--no-approve]`;
 	}
@@ -125,20 +128,23 @@ Examples:
 			console.log(`${chalk.bold("Usage:")}
   ${getPackageCommandUsage("update")}
 
-Update pi and installed packages.
+${IS_REPI_PRODUCT ? "Update installed extension packages." : "Update pi and installed packages."}
 
 Options:
-  --self                  Update pi only
-  --extensions            Update installed packages only
-  --extension <source>    Update one package only
+${
+	IS_REPI_PRODUCT
+		? "  --extensions            Update installed packages only\n  --extension <source>    Update one package only"
+		: "  --self                  Update pi only\n  --extensions            Update installed packages only\n  --extension <source>    Update one package only"
+}
   -a, --approve           Trust project-local files for this command
   -na, --no-approve       Ignore project-local files for this command
-  --force                 Reinstall pi even if the current version is latest
-
+${IS_REPI_PRODUCT ? "" : "  --force                 Reinstall pi even if the current version is latest\n"}
 Short forms:
-  ${APP_NAME} update                Update pi and all extensions
-  ${APP_NAME} update <source>       Update one package
-  ${APP_NAME} update pi             Update pi only (self works as alias to pi)
+${
+	IS_REPI_PRODUCT
+		? `  ${APP_NAME} update                Update all installed packages\n  ${APP_NAME} update <source>       Update one package`
+		: `  ${APP_NAME} update                Update pi and all extensions\n  ${APP_NAME} update <source>       Update one package\n  ${APP_NAME} update pi             Update pi only (self works as alias to pi)`
+}
 `);
 			return;
 
@@ -276,7 +282,7 @@ function parsePackageCommand(args: string[]): PackageCommandOptions | undefined 
 			}
 			updateTarget = { type: "extensions", source: extensionFlagSource };
 		} else if (source) {
-			const sourceIsSelf = source === "self" || source === "pi";
+			const sourceIsSelf = source === "self" || source === (IS_REPI_PRODUCT ? "repi" : "pi");
 			if (sourceIsSelf) {
 				updateTarget = extensionsFlag ? { type: "all" } : { type: "self" };
 			} else {
@@ -293,7 +299,7 @@ function parsePackageCommand(args: string[]): PackageCommandOptions | undefined 
 		} else if (extensionsFlag) {
 			updateTarget = { type: "extensions" };
 		} else {
-			updateTarget = { type: "all" };
+			updateTarget = IS_REPI_PRODUCT ? { type: "extensions" } : { type: "all" };
 		}
 	}
 
@@ -327,7 +333,7 @@ function printSelfUpdateUnavailable(npmCommand?: string[], updatePackageName = P
 	const entrypoint = process.argv[1];
 	if (entrypoint) {
 		console.error("");
-		console.error(`Location of pi executable: ${entrypoint}`);
+		console.error(`Location of ${APP_NAME} executable: ${entrypoint}`);
 	}
 }
 
@@ -578,7 +584,16 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 			}
 
 			case "update": {
-				const target = options.updateTarget ?? { type: "all" };
+				const target = options.updateTarget ?? (IS_REPI_PRODUCT ? { type: "extensions" } : { type: "all" });
+				if (IS_REPI_PRODUCT && updateTargetIncludesSelf(target)) {
+					console.error(
+						chalk.red(
+							`${APP_NAME} self-update is not bundled. Update this checkout with git pull / npm install, and keep upstream pi separate.`,
+						),
+					);
+					process.exitCode = 1;
+					return true;
+				}
 				if (updateTargetIncludesExtensions(target)) {
 					const updateSource = target.type === "extensions" ? target.source : undefined;
 					await packageManager.update(updateSource);
