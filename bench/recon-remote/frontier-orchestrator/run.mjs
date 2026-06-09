@@ -67,6 +67,14 @@ const caseCatalog = [
     purpose: 'Default p=2 multi-page target with WBI signed DASH playurl, WBI media candidates, reachable media, and host diversity.',
   },
   {
+    id: 'bilibili_per_page_cid_boundary',
+    platform: 'bilibili',
+    polarity: 'positive',
+    difficulty: 90,
+    agentLane: 'per-page CID boundary',
+    purpose: 'Derived p=2 boundary requiring selected page/CID, pagelist row CID, result CID, WBI playurl, and media probes to bind to the same non-first page.',
+  },
+  {
     id: 'xhs_search_negative',
     platform: 'xiaohongshu',
     polarity: 'negative',
@@ -184,7 +192,7 @@ function ensureControls(order, maxCases) {
   return uniq(limited);
 }
 function selectBalanced(maxCases) {
-  const order = ['xhs_auto_discovery', 'xhs_discovery_hit_rate', 'douyin_structured_api', 'douyin_cookie_boundary', 'bilibili_wbi_runtime', 'bilibili_media_cdn_boundary', 'bilibili_multipage_wbi_container', 'xhs_search_negative'];
+  const order = ['xhs_auto_discovery', 'xhs_discovery_hit_rate', 'douyin_structured_api', 'douyin_cookie_boundary', 'bilibili_wbi_runtime', 'bilibili_per_page_cid_boundary', 'bilibili_media_cdn_boundary', 'bilibili_multipage_wbi_container', 'xhs_search_negative'];
   return ensureControls(order, maxCases);
 }
 function selectCases({ explicitCases, strategy, maxCases, latest }) {
@@ -203,6 +211,7 @@ function decisiveEvidence(row) {
   if (row?.id === 'bilibili_wbi_runtime') return `verdict=${ev.verdict || 'n/a'} selfTest=${ev.selfTest} signedReqs=${ev.signedReqs || 0} signerEvents=${ev.signerEvents || 0} bundleHints=${ev.bundleHints || 0} media=${ev.media || 0}`;
   if (row?.id === 'bilibili_media_cdn_boundary') return `verdict=${ev.verdict || 'n/a'} reachableMedia=${ev.reachableMedia || 0}/${ev.total || 0} hostClassCount=${ev.hostClassCount || 0} hasBackup=${ev.hasBackup} signedReqs=${ev.signedReqs || 0}`;
   if (row?.id === 'bilibili_multipage_wbi_container') return `verdict=${ev.verdict || 'n/a'} pages=${ev.pages || 0} targetPage=${ev.targetPage || 0} wbiCandidates=${ev.wbiCandidateCount || 0} reachableMedia=${ev.reachableMedia || 0} hostClassCount=${ev.hostClassCount || 0}`;
+  if (row?.id === 'bilibili_per_page_cid_boundary') return `verdict=${ev.verdict || 'n/a'} requestedPage=${ev.requestedPage || 0} selectedPage=${ev.selectedPage || 0} selectedCid=${ev.selectedCid || 'n/a'} cidMatchesRow=${ev.cidMatchesRequestedRow} differsFirst=${ev.cidDiffersFromFirst}`;
   if (row?.id === 'xhs_auto_discovery') return `verdict=${ev.verdict || 'n/a'} endpoint=${ev.bestEndpoint || 'n/a'} method=${ev.bestMethod || 'n/a'} status=${ev.bestStatus || 'n/a'} noteItemCount=${ev.noteItemCount || 0} candidates=${ev.candidates || 0}`;
   if (row?.id === 'xhs_discovery_hit_rate') return `verdict=${ev.verdict || 'n/a'} hitRate=${ev.hitRate ?? 'n/a'} successful=${ev.successful || 0}/${ev.attempted || 0} tokenized=${ev.tokenizedCandidateCount || 0}/${ev.candidateCount || 0}`;
   if (row?.id === 'xhs_search_negative') {

@@ -43,6 +43,7 @@ RECON_MATRIX_CASES=xhs_auto_discovery,xhs_search_negative \
 | `bilibili_wbi_runtime` | Positive Bilibili runtime WBI signer/bundle/signed-request evidence. |
 | `bilibili_media_cdn_boundary` | Derived positive Bilibili signed media/CDN boundary: WBI signed playurl, reachable DASH media, backup media, reachable HTTP status, and multiple host classes. |
 | `bilibili_multipage_wbi_container` | Positive Bilibili multi-page container case: default `?p=2` target, multi-page pagelist, WBI signed DASH playurl, WBI media candidates, reachable media, and host-class diversity. |
+| `bilibili_per_page_cid_boundary` | Derived hard Bilibili per-page boundary: requested `?p=2`, selected page/CID, pagelist row CID, result CID, WBI signed playurl, and media probes must all bind to the same non-first page. |
 | `xhs_auto_discovery` | Positive Xiaohongshu seed-page discovery: extract tokenized note URL, chain into XHS, replay target note/feed signed 2xx. |
 | `xhs_discovery_hit_rate` | Derived positive Xiaohongshu discovery quality gate: tokenized candidate provenance, attempted candidates, signed-header evidence, and configurable hit rate (`RECON_MATRIX_XHS_DISCOVERY_MIN_HIT_RATE`, default `1`). |
 | `xhs_search_negative` | Negative-control Xiaohongshu search case: `search/notes` permission/login boundaries must not count as target note/feed success. |

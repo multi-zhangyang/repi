@@ -65,9 +65,9 @@ node bench/recon-remote/frontier-orchestrator/run.mjs --summarize-latest
 ```
 
 Current catalog tracks Bilibili runtime WBI, Bilibili signed media/CDN boundary,
-Bilibili multi-page WBI container, XHS auto-discovery, XHS discovery hit-rate,
-XHS search negative-control, Douyin structured API replay, and Douyin
-cookie-boundary replay divergence.
+Bilibili multi-page WBI container, Bilibili per-page CID boundary, XHS
+auto-discovery, XHS discovery hit-rate, XHS search negative-control, Douyin
+structured API replay, and Douyin cookie-boundary replay divergence.
 
 The summary intentionally keeps only compact context:
 

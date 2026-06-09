@@ -10,7 +10,7 @@ Reproducible public-network benchmark harnesses for Pi-RECON. Runtime evidence i
 | `agent-dogfood/` | Runs the Pi-RECON agent itself through `./pi-test.sh --recon` against latest remote evidence, requiring a real provider/model call, tool execution, platform coverage, and reproducible dogfood artifacts. |
 | `proof-gate/` | Cross-platform live proof gate: reruns Bilibili WBI, Xiaohongshu x-s, Douyin `a_bogus`/no-watermark, optional agent dogfood, then enforces hard-score gates. |
 | `frontier-gate/` | Stricter frontier tracker for Bili runtime WBI bundle trace, XHS 2xx signed replay, Douyin `a_bogus` structured API replay, and dogfood frontier reasoning. |
-| `frontier-matrix/` | Multi-scenario hardest frontier matrix: Bili runtime WBI/media/CDN/multi-page positives, XHS auto-discovery positive, XHS search permission negative control, Douyin structured API positive, Douyin cookie-boundary negative control, freshness, and aggregate frontier strict gate. |
+| `frontier-matrix/` | Multi-scenario hardest frontier matrix: Bili runtime WBI/media/CDN/per-page-CID positives, XHS auto-discovery positive, XHS search permission negative control, Douyin structured API positive, Douyin cookie-boundary negative control, freshness, and aggregate frontier strict gate. |
 | `frontier-orchestrator/` | Lightweight dogfood dispatcher over `frontier-matrix`: selects hardest cases, emits shard commands for parallel agents, and compacts positive/negative evidence summaries. |
 
 Run each benchmark with `node <benchmark>/run.mjs --help` for usage.

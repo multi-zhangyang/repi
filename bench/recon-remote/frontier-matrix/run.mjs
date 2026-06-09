@@ -27,7 +27,7 @@ const timeoutMs = Number(process.env.RECON_MATRIX_TIMEOUT_MS || 900000);
 const selectedCaseIds = new Set(String(process.env.RECON_MATRIX_CASES || '').split(',').map((x) => x.trim()).filter(Boolean));
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`Pi-RECON real frontier matrix\n\nUsage:\n  node bench/recon-remote/frontier-matrix/run.mjs\n  node bench/recon-remote/frontier-matrix/run.mjs --live\n  node bench/recon-remote/frontier-matrix/run.mjs --live --strict\n  node bench/recon-remote/frontier-matrix/run.mjs --strict --fresh\n\nPurpose:\n  Evaluates multiple live real-platform cases instead of relying on one latest artifact:\n  - Bilibili runtime WBI positive case\n  - Bilibili signed media/CDN boundary positive case\n  - Bilibili multi-page container WBI/media positive case\n  - Xiaohongshu auto-discovery target note/feed positive case\n  - Xiaohongshu auto-discovery hit-rate/provenance positive case\n  - Xiaohongshu search-notes permission negative-control case\n  - Douyin a_bogus structured API replay positive case\n  - Douyin no-cookie replay divergence negative-control case\n  - Frontier strict aggregate gate\n  - Freshness gate to prevent stale latest-evidence self-hype\n\nEnvironment:\n  RECON_MATRIX_LIVE=1\n  RECON_MATRIX_STRICT=1\n  RECON_MATRIX_FRESHNESS=1       Enforce max artifact age. Strict mode enables this unless disabled.\n  RECON_MATRIX_FRESH=1           Alias for RECON_MATRIX_FRESHNESS.\n  RECON_MATRIX_MAX_ARTIFACT_AGE_HOURS=24\n  RECON_MATRIX_MAX_ARTIFACT_AGE_MS=<ms>\n  RECON_MATRIX_MAX_CLOCK_SKEW_MS=300000\n  RECON_MATRIX_CASES=bilibili_wbi_runtime,bilibili_media_cdn_boundary,bilibili_multipage_wbi_container,xhs_auto_discovery,xhs_discovery_hit_rate,xhs_search_negative,douyin_structured_api,douyin_cookie_boundary\n  RECON_MATRIX_TIMEOUT_MS=900000\n\nOutput:\n  .pi/evidence/remote/frontier-matrix/<timestamp>/\n`);
+  console.log(`Pi-RECON real frontier matrix\n\nUsage:\n  node bench/recon-remote/frontier-matrix/run.mjs\n  node bench/recon-remote/frontier-matrix/run.mjs --live\n  node bench/recon-remote/frontier-matrix/run.mjs --live --strict\n  node bench/recon-remote/frontier-matrix/run.mjs --strict --fresh\n\nPurpose:\n  Evaluates multiple live real-platform cases instead of relying on one latest artifact:\n  - Bilibili runtime WBI positive case\n  - Bilibili signed media/CDN boundary positive case\n  - Bilibili multi-page container WBI/media positive case\n  - Bilibili per-page CID boundary positive case\n  - Xiaohongshu auto-discovery target note/feed positive case\n  - Xiaohongshu auto-discovery hit-rate/provenance positive case\n  - Xiaohongshu search-notes permission negative-control case\n  - Douyin a_bogus structured API replay positive case\n  - Douyin no-cookie replay divergence negative-control case\n  - Frontier strict aggregate gate\n  - Freshness gate to prevent stale latest-evidence self-hype\n\nEnvironment:\n  RECON_MATRIX_LIVE=1\n  RECON_MATRIX_STRICT=1\n  RECON_MATRIX_FRESHNESS=1       Enforce max artifact age. Strict mode enables this unless disabled.\n  RECON_MATRIX_FRESH=1           Alias for RECON_MATRIX_FRESHNESS.\n  RECON_MATRIX_MAX_ARTIFACT_AGE_HOURS=24\n  RECON_MATRIX_MAX_ARTIFACT_AGE_MS=<ms>\n  RECON_MATRIX_MAX_CLOCK_SKEW_MS=300000\n  RECON_MATRIX_CASES=bilibili_wbi_runtime,bilibili_media_cdn_boundary,bilibili_multipage_wbi_container,bilibili_per_page_cid_boundary,xhs_auto_discovery,xhs_discovery_hit_rate,xhs_search_negative,douyin_structured_api,douyin_cookie_boundary\n  RECON_MATRIX_TIMEOUT_MS=900000\n\nOutput:\n  .pi/evidence/remote/frontier-matrix/<timestamp>/\n`);
   process.exit(0);
 }
 
@@ -293,6 +293,36 @@ function bilibiliMultipageContainer(obj) {
   );
   return { passed, pages, targetPage, signedDashPlayurl, wbiCandidateCount: wbiCandidates.length, wbiKinds, reachableMedia: Number(matrix.reachableMedia || 0), hostClassCount, hostClasses };
 }
+function bilibiliPerPageCidBoundary(obj) {
+  const selected = obj?.pageBoundary || obj?.pagelist?.selected || {};
+  const rows = Array.isArray(obj?.pagelist?.rows) ? obj.pagelist.rows : [];
+  const requestedPage = Number(selected.requestedPage || obj?.requestedPage || 1);
+  const selectedPage = Number(selected.selectedPage || obj?.selectedPage || 0);
+  const selectedCid = selected.selectedCid || obj?.selectedCid || obj?.cid || null;
+  const firstCid = selected.firstCid || rows[0]?.cid || null;
+  const requestedRow = rows.find((row) => Number(row.page) === requestedPage) || rows[Math.max(0, requestedPage - 1)] || null;
+  const signedDashPlayurl = (obj?.playurls || []).find((item) => item?.signed && Number(item.code || 0) === 0 && item.hasDash);
+  const cidMatchesRequestedRow = Boolean(requestedRow?.cid && selectedCid && String(requestedRow.cid) === String(selectedCid));
+  const cidMatchesResult = Boolean(selectedCid && obj?.cid && String(selectedCid) === String(obj.cid));
+  const cidDiffersFromFirst = Boolean(selected.cidDiffersFromFirst || (selectedCid && firstCid && String(selectedCid) !== String(firstCid)));
+  const passed = Boolean(
+    obj?.profile === 'bilibili-video'
+    && obj?.verdict === 'bilibili-wbi-media-api-confirmed'
+    && Number(obj?.pagelist?.pages || selected.pageCount || 0) >= 2
+    && requestedPage >= 2
+    && selectedPage === requestedPage
+    && selected.pageMatchesRequest !== false
+    && selectedCid
+    && cidMatchesRequestedRow
+    && cidMatchesResult
+    && cidDiffersFromFirst
+    && obj?.wbiRegression?.selfTest?.ok
+    && obj?.wbiRegression?.signedEndpoint
+    && signedDashPlayurl
+    && Number(obj?.mediaProbeMatrix?.reachableMedia || 0) >= 2
+  );
+  return { passed, requestedPage, selectedPage, selectedCid, firstCid, requestedRow, cidMatchesRequestedRow, cidMatchesResult, cidDiffersFromFirst, signedDashPlayurl, rowSample: rows.slice(0, 5) };
+}
 function douyinCookieBoundary(obj) {
   const replay = obj?.runtimeApiReplay || {};
   const attempts = Array.isArray(replay.attempts) ? replay.attempts : [];
@@ -331,6 +361,10 @@ function summarizeScenario(id, weight, obj, artifact, command, runItem) {
   if (id === 'bilibili_multipage_wbi_container') {
     const multi = bilibiliMultipageContainer(obj);
     return { ...common, passed: multi.passed, score: multi.passed ? weight : Math.min(weight - 1, (multi.pages >= 2 ? 2 : 0) + (multi.targetPage >= 2 ? 1 : 0) + (multi.signedDashPlayurl ? 2 : 0) + (multi.wbiCandidateCount >= 2 ? 2 : 0) + (multi.hostClassCount >= 2 ? 1 : 0) + (multi.reachableMedia >= 2 ? 1 : 0)), evidence: { verdict: obj.verdict, target: obj.target || '', pages: multi.pages, targetPage: multi.targetPage, cid: obj.cid || null, wbiSelfTest: obj.wbiRegression?.selfTest?.ok, signedEndpoint: obj.wbiRegression?.signedEndpoint, signedDashPlayurl: Boolean(multi.signedDashPlayurl), wbiCandidateCount: multi.wbiCandidateCount, wbiKinds: multi.wbiKinds, reachableMedia: multi.reachableMedia, hostClassCount: multi.hostClassCount, hostClasses: multi.hostClasses } };
+  }
+  if (id === 'bilibili_per_page_cid_boundary') {
+    const boundary = bilibiliPerPageCidBoundary(obj);
+    return { ...common, passed: boundary.passed, score: boundary.passed ? weight : Math.min(weight - 1, (boundary.requestedPage >= 2 ? 2 : 0) + (boundary.selectedPage === boundary.requestedPage ? 3 : 0) + (boundary.cidMatchesRequestedRow ? 3 : 0) + (boundary.cidDiffersFromFirst ? 2 : 0) + (boundary.signedDashPlayurl ? 2 : 0)), evidence: { verdict: obj.verdict, target: obj.target || '', requestedPage: boundary.requestedPage, selectedPage: boundary.selectedPage, selectedCid: boundary.selectedCid, resultCid: obj.cid || null, firstCid: boundary.firstCid, requestedRow: boundary.requestedRow, cidMatchesRequestedRow: boundary.cidMatchesRequestedRow, cidMatchesResult: boundary.cidMatchesResult, cidDiffersFromFirst: boundary.cidDiffersFromFirst, pageMatchesRequest: obj.pageBoundary?.pageMatchesRequest ?? obj.pagelist?.selected?.pageMatchesRequest, wbiSelfTest: obj.wbiRegression?.selfTest?.ok, signedEndpoint: obj.wbiRegression?.signedEndpoint, signedDashPlayurl: Boolean(boundary.signedDashPlayurl), reachableMedia: obj.mediaProbeMatrix?.reachableMedia || 0, rowSample: boundary.rowSample } };
   }
   if (id === 'xhs_auto_discovery') {
     const best = obj.xhsReplay?.bestTargetNote2xxSignedReplay || null;
@@ -387,6 +421,13 @@ const scenarios = [
     env: { RECON_BROWSER: '1', RECON_TIMEOUT_MS: '45000', RECON_QUIET_MS: '5000', RECON_PROBE_LIMIT: '4' },
     timeoutMs: 180000,
     latest: (obj) => obj.profile === 'bilibili-video' && Number(obj.pagelist?.pages || 0) >= 2,
+  },
+  {
+    id: 'bilibili_per_page_cid_boundary',
+    weight: 15,
+    derivedFrom: 'bilibili_multipage_wbi_container',
+    command: ['node', ['bench/recon-remote/real-platform/run.mjs', process.env.RECON_MATRIX_BILI_MULTIPAGE_URL || 'https://www.bilibili.com/video/BV1Ee9EBnEfo?p=2', 'bilibili-video']],
+    latest: (obj) => obj.profile === 'bilibili-video' && Number(obj.pagelist?.pages || 0) >= 2 && Number(obj.pageBoundary?.requestedPage || obj.requestedPage || 1) >= 2,
   },
   {
     id: 'xhs_auto_discovery',

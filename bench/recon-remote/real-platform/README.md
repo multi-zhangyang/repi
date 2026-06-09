@@ -15,7 +15,7 @@ Profiles:
 
 | Profile | Chain |
 |---|---|
-| `bilibili-video` | Extract BV/cid, call view/pagelist/playurl, rebuild WBI `w_rid` from `nav.wbi_img`, call signed `x/player/wbi/playurl`, classify DASH/durl candidates, probe CDN media URLs with HEAD/range, emit media probe matrix and deterministic WBI signer self-test. With `RECON_BROWSER=1` or `RECON_BILI_CDP=1`, also captures Chrome/CDP runtime, browser-emitted WBI signed requests, signer stack events, external JS bundle hints, and buvid/media URL runtime drift. |
+| `bilibili-video` | Extract BV, parse `?p=` page selection, call view/pagelist/playurl, bind selected page/CID back to `pagelist.rows`, rebuild WBI `w_rid` from `nav.wbi_img`, call signed `x/player/wbi/playurl`, classify DASH/durl candidates, probe CDN media URLs with HEAD/range, emit media probe matrix and deterministic WBI signer self-test. With `RECON_BROWSER=1` or `RECON_BILI_CDP=1`, also captures Chrome/CDP runtime, browser-emitted WBI signed requests, signer stack events, external JS bundle hints, and buvid/media URL runtime drift. |
 | `xiaohongshu-note` | Chrome/CDP runtime capture, extract note IDs, `/api/sns/web/*` hints, xsec/signature/anti-bot signals, rendered state/response bodies, signer bundle snippets, signed request timeline, runtime signer events, trigger bounded runtime probes for note/feed/search modules, replay a ranked ladder of captured signed GET/POST API requests with no-cookie and exact-cookie variants, classify generic signed 2xx web replay separately from eligible target note/feed/search-notes 2xx vs 461 verification/risk challenges, and emit first-divergence evidence. With `RECON_XHS_AUTO_DISCOVER=1`, it can start from a public seed page, extract tokenized `xiaohongshu.com/explore/<note>` candidates from HTML/JSON/headers/POST bodies, then chain into XHS and replay the discovered target. |
 | `generic-cdp` | Chrome/CDP request/response/body/storage baseline and generic signature/header bundle trace for unknown platforms. |
 
@@ -42,6 +42,11 @@ browser.html       # when rendered HTML is available
 ## Bilibili runtime frontier evidence
 
 The Bilibili profile does not stop at offline `w_rid` reconstruction. In browser mode it injects fetch/XHR/header/storage/cookie/crypto hooks, observes real player WBI requests such as `x/player/wbi/playurl`, records signer stack anchors from loaded player bundles, and fetches referenced JS bundles for signer-term snippets. This is the evidence consumed by `frontier-gate` for `bilibili_runtime_wbi_bundle_trace`.
+
+For multi-page videos, the profile now records `requestedPage`, `selectedPage`,
+`selectedCid`, `pagelist.rows[]`, and `pageBoundary`. A `?p=2` run must prove
+that the selected CID equals the page-2 pagelist row and differs from the first
+page/view CID before the frontier matrix accepts the per-page CID boundary.
 
 
 ## Xiaohongshu replay ladder

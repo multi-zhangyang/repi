@@ -142,6 +142,48 @@ function extractBvid(text) {
   return String(text || '').match(/BV[0-9A-Za-z]{10}/)?.[0] || '';
 }
 
+function requestedBiliPage(url) {
+  try {
+    const parsed = new URL(String(url || ''));
+    const page = Number(parsed.searchParams.get('p') || parsed.searchParams.get('page') || 1);
+    return Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function summarizeBiliPageRows(rows = []) {
+  return rows.map((row, index) => ({
+    page: Number(row?.page || index + 1),
+    cid: row?.cid,
+    part: typeof row?.part === 'string' ? row.part.slice(0, 120) : row?.part,
+    duration: row?.duration,
+  })).filter((row) => row.cid || row.page).slice(0, 120);
+}
+
+function selectBiliPage(rows = [], requestedPage = 1, viewCid = null) {
+  const normalized = summarizeBiliPageRows(rows);
+  const byPage = normalized.find((row) => Number(row.page) === Number(requestedPage));
+  const byIndex = normalized[Math.max(0, Number(requestedPage || 1) - 1)] || null;
+  const selected = byPage || byIndex || normalized.find((row) => Number(row.cid) === Number(viewCid)) || normalized[0] || null;
+  const first = normalized[0] || null;
+  return {
+    requestedPage,
+    pageCount: normalized.length,
+    selectedPage: selected?.page || null,
+    selectedCid: selected?.cid || null,
+    selectedPart: selected?.part || '',
+    selectedDuration: selected?.duration || null,
+    firstPage: first?.page || null,
+    firstCid: first?.cid || null,
+    viewCid: viewCid || null,
+    pageMatchesRequest: Boolean(selected && Number(selected.page) === Number(requestedPage)),
+    cidDiffersFromFirst: Boolean(selected?.cid && first?.cid && String(selected.cid) !== String(first.cid)),
+    cidDiffersFromView: Boolean(selected?.cid && viewCid && String(selected.cid) !== String(viewCid)),
+    rows: normalized,
+  };
+}
+
 function collectBiliMedia(playJson) {
   const data = playJson?.data || playJson?.result || {};
   const out = [];
@@ -229,12 +271,15 @@ async function runBilibili(url, outDir) {
   }
   const bvid = extractBvid(finalUrl) || extractBvid(page.text);
   if (!bvid) return { verdict: 'missing-bvid', page };
-  const referer = `https://www.bilibili.com/video/${bvid}/`;
+  const targetPage = requestedBiliPage(finalUrl || url.toString());
+  const referer = `https://www.bilibili.com/video/${bvid}${targetPage > 1 ? `?p=${targetPage}` : '/'}`;
   const nav = await fetchJson('https://api.bilibili.com/x/web-interface/nav', { headers: { referer: 'https://www.bilibili.com/' } });
   const wbiKeys = biliWbiKeys(nav.json);
   const view = await fetchJson(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, { headers: { referer } });
   const pagelist = await fetchJson(`https://api.bilibili.com/x/player/pagelist?bvid=${encodeURIComponent(bvid)}`, { headers: { referer } });
-  const cid = view.json?.data?.cid || pagelist.json?.data?.[0]?.cid;
+  const pageRows = Array.isArray(pagelist.json?.data) ? pagelist.json.data : (Array.isArray(view.json?.data?.pages) ? view.json.data.pages : []);
+  const pageBoundary = selectBiliPage(pageRows, targetPage, view.json?.data?.cid || null);
+  const cid = pageBoundary.selectedCid || view.json?.data?.cid || pagelist.json?.data?.[0]?.cid;
   const playurls = [];
   let wbiPlayurl = null;
   if (cid) {
@@ -286,12 +331,46 @@ async function runBilibili(url, outDir) {
     bvid,
     aid: view.json?.data?.aid,
     cid,
+    requestedPage: targetPage,
+    selectedPage: pageBoundary.selectedPage,
+    selectedCid: pageBoundary.selectedCid,
     title: view.json?.data?.title,
     owner: view.json?.data?.owner ? { mid: '<redacted>', name: view.json.data.owner.name } : undefined,
     page: { status: page.status, bytes: page.bytes, sha256: page.sha256, finalUrl: redactUrl(finalUrl) },
     nav: { status: nav.status, code: nav.json?.code, hasWbiImg: Boolean(wbiKeys.imgKey && wbiKeys.subKey), imgKey: wbiKeys.imgKey ? '<derived>' : '', subKey: wbiKeys.subKey ? '<derived>' : '', mixinKeySha256: wbiKeys.mixinKey ? sha256(wbiKeys.mixinKey).slice(0, 16) : '' },
     view: { status: view.status, code: view.json?.code, bytes: view.bytes },
-    pagelist: { status: pagelist.status, code: pagelist.json?.code, pages: pagelist.json?.data?.length || 0 },
+    pagelist: {
+      status: pagelist.status,
+      code: pagelist.json?.code,
+      pages: pageBoundary.pageCount,
+      selected: {
+        requestedPage: pageBoundary.requestedPage,
+        selectedPage: pageBoundary.selectedPage,
+        selectedCid: pageBoundary.selectedCid,
+        selectedPart: pageBoundary.selectedPart,
+        selectedDuration: pageBoundary.selectedDuration,
+        firstPage: pageBoundary.firstPage,
+        firstCid: pageBoundary.firstCid,
+        viewCid: pageBoundary.viewCid,
+        pageMatchesRequest: pageBoundary.pageMatchesRequest,
+        cidDiffersFromFirst: pageBoundary.cidDiffersFromFirst,
+        cidDiffersFromView: pageBoundary.cidDiffersFromView,
+      },
+      rows: pageBoundary.rows,
+    },
+    pageBoundary: {
+      requestedPage: pageBoundary.requestedPage,
+      pageCount: pageBoundary.pageCount,
+      selectedPage: pageBoundary.selectedPage,
+      selectedCid: pageBoundary.selectedCid,
+      selectedPart: pageBoundary.selectedPart,
+      selectedDuration: pageBoundary.selectedDuration,
+      firstCid: pageBoundary.firstCid,
+      viewCid: pageBoundary.viewCid,
+      pageMatchesRequest: pageBoundary.pageMatchesRequest,
+      cidDiffersFromFirst: pageBoundary.cidDiffersFromFirst,
+      cidDiffersFromView: pageBoundary.cidDiffersFromView,
+    },
     playurls: playurls.map((p) => ({ fnval: p.fnval, signed: Boolean(p.signed), status: p.status, code: p.json?.code, quality: p.json?.data?.quality, accept_quality: p.json?.data?.accept_quality, accept_description: p.json?.data?.accept_description, hasDash: Boolean(p.json?.data?.dash), durlCount: p.json?.data?.durl?.length || 0, wts: p.wts, wRidSha256: p.wRidSha256 })),
     mediaCandidates: media.slice(0, 80).map((m) => ({ ...m, url: redactUrl(m.url) })),
     probes,
@@ -300,7 +379,7 @@ async function runBilibili(url, outDir) {
     browser,
     signatureTrace,
     browserArtifact,
-    nextActions: ['bind unsigned+WBI playurl API and media HEAD/range probes into re_replayer', 'diff fnval=4048/80/16/0 media capability', 'rerun with RECON_BROWSER=1 to capture browser WBI/buvid runtime drift if browser is absent', 'monitor nav wbi_img/mixin-key drift and w_rid rebuild'],
+    nextActions: ['bind unsigned+WBI playurl API and media HEAD/range probes into re_replayer', 'diff fnval=4048/80/16/0 media capability', 'for multi-page targets verify pageBoundary.selectedCid against pagelist.rows before trusting media evidence', 'rerun with RECON_BROWSER=1 to capture browser WBI/buvid runtime drift if browser is absent', 'monitor nav wbi_img/mixin-key drift and w_rid rebuild'],
   };
 }
 
@@ -1356,15 +1435,16 @@ const md = [
   `verdict: ${result.verdict}`,
   `artifact_dir: ${outDir}`,
   '',
-  '## Key Evidence',
-  ...(profile === 'bilibili-video' ? [
-    `- bvid=${result.bvid || 'none'} aid=${result.aid || 'none'} cid=${result.cid || 'none'}`,
-    `- title=${result.title || 'none'}`,
+	  '## Key Evidence',
+	  ...(profile === 'bilibili-video' ? [
+	    `- bvid=${result.bvid || 'none'} aid=${result.aid || 'none'} cid=${result.cid || 'none'} requested_page=${result.requestedPage || 1} selected_page=${result.selectedPage || ''} selected_cid=${result.selectedCid || ''}`,
+	    `- title=${result.title || 'none'}`,
     `- view_code=${result.view?.code} nav_code=${result.nav?.code} wbi_img=${result.nav?.hasWbiImg} wbi_mixin_sha=${result.nav?.mixinKeySha256 || 'none'}`,
     `- playurl_profiles=${(result.playurls || []).map((p) => `${p.signed ? 'wbi-' : ''}${p.fnval}:${p.code}:q${p.quality}`).join(', ')}`,
-    `- media_candidates=${result.mediaCandidates?.length || 0} reachable_media_probes=${(result.probes || []).filter((p) => p.probe.classification.media && p.probe.classification.reachable).length}`,
-    `- wbi_selftest=${result.wbiRegression?.selfTest?.ok} media_probe_matrix=${JSON.stringify(result.mediaProbeMatrix || {})}`,
-    `- browser=${result.browser ? JSON.stringify(result.browser) : 'not-run'} signature_trace bundles=${result.signatureTrace?.bundleHints?.length || 0} signer_events=${result.signatureTrace?.signerLog?.length || 0}`,
+	    `- media_candidates=${result.mediaCandidates?.length || 0} reachable_media_probes=${(result.probes || []).filter((p) => p.probe.classification.media && p.probe.classification.reachable).length}`,
+	    `- wbi_selftest=${result.wbiRegression?.selfTest?.ok} media_probe_matrix=${JSON.stringify(result.mediaProbeMatrix || {})}`,
+	    `- page_boundary=${JSON.stringify(result.pageBoundary || {})}`,
+	    `- browser=${result.browser ? JSON.stringify(result.browser) : 'not-run'} signature_trace bundles=${result.signatureTrace?.bundleHints?.length || 0} signer_events=${result.signatureTrace?.signerLog?.length || 0}`,
   ] : profile === 'xiaohongshu-note' ? [
     `- note_ids=${result.noteIds?.join(', ') || 'none'}`,
     `- web_api_hints=${result.webApiHints?.length || 0}`,
@@ -1378,8 +1458,9 @@ const md = [
   '',
   '## Probe / API Matrix',
   ...(profile === 'bilibili-video'
-    ? [
-        ...(result.playurls || []).map((p) => `- playurl${p.signed ? '-wbi' : ''} fnval=${p.fnval} status=${p.status} code=${p.code} quality=${p.quality} dash=${p.hasDash} durl=${p.durlCount} wts=${p.wts || ''} wRidSha256=${p.wRidSha256 || ''}`),
+	    ? [
+	        `- pagelist selected=${JSON.stringify(result.pagelist?.selected || {})} rows=${(result.pagelist?.rows || []).slice(0, 5).map((row) => `${row.page}:${row.cid}:${row.part || ''}`).join(' | ')}`,
+	        ...(result.playurls || []).map((p) => `- playurl${p.signed ? '-wbi' : ''} fnval=${p.fnval} status=${p.status} code=${p.code} quality=${p.quality} dash=${p.hasDash} durl=${p.durlCount} wts=${p.wts || ''} wRidSha256=${p.wRidSha256 || ''}`),
         ...(result.signatureTrace?.bundleHints || []).slice(0, 12).map((hint) => `- signer-bundle hits=${hint.hits.join(',')} len=${hint.length || 0} sha=${hint.sha256 || ''} url=${hint.url}`),
         ...(result.signatureTrace?.signerLog || []).slice(0, 20).map((item) => `- signer-event kind=${item.kind} key=${item.key || ''} url=${item.url || ''}`),
         ...(result.probes || []).slice(0, 20).map((p) => `- media ${p.kind} id=${p.id || ''} reachable=${p.probe.classification.reachable} media=${p.probe.classification.media} url=${redactUrl(p.url)}`),
@@ -1405,4 +1486,4 @@ const md = [
   '',
 ].join('\n');
 await writeFile(join(outDir, 'artifact.md'), md);
-console.log(JSON.stringify({ target: result.target, profile, verdict: result.verdict, artifactDir: outDir, key: profile === 'bilibili-video' ? { bvid: result.bvid, cid: result.cid, mediaProbes: result.probes?.length || 0 } : result.browser }, null, 2));
+console.log(JSON.stringify({ target: result.target, profile, verdict: result.verdict, artifactDir: outDir, key: profile === 'bilibili-video' ? { bvid: result.bvid, cid: result.cid, requestedPage: result.requestedPage, selectedPage: result.selectedPage, selectedCid: result.selectedCid, mediaProbes: result.probes?.length || 0 } : result.browser }, null, 2));
