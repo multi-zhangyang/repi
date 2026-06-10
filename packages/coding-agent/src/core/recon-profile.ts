@@ -4330,8 +4330,11 @@ function structuredMemoryCommandCandidates(
 	const query = `${mission.route.domain} ${lane.name} ${mission.task} ${target ?? ""}`;
 	const hits = searchMemoryEvents(query, { route: mission.route.domain, target, limit: 8 });
 	const candidates: MemoryCommandCandidate[] = [];
+	const caseMemory = latestCaseMemoryBySignature();
 	for (const hit of hits) {
 		if (!memoryRouteMatches(hit.event.route, mission.route.domain)) continue;
+		const caseRow = caseMemory.get(hit.event.caseSignature);
+		if (caseRow && caseRow.quality.failureCount > caseRow.quality.reuseCount) continue;
 		if (hit.event.quality.confidence < 0.45 || hit.event.outcome === "failure") continue;
 		for (const [index, command] of hit.event.commands.entries()) {
 			const normalized = normalizeHistoricalCommand(command, hit.event.target === "<none>" ? undefined : hit.event.target, target);
@@ -7979,6 +7982,7 @@ async function runLaneCommandPack(
 	const result = await pi.exec("bash", ["-lc", script], { timeout: 120000 });
 	const analysis = analyzeLaneRun(effectivePack, result);
 	const artifactPath = writeLaneRunArtifact({ pack: effectivePack, runnable, script, result, analysis });
+	const memoryFeedbackEvents = appendMemoryReuseFeedback(effectivePack, result, analysis, artifactPath);
 	const evidence = appendEvidence({
 		kind: "runtime",
 		title: `lane-run ${effectivePack.lane} exit ${result.code}`,
@@ -8016,6 +8020,9 @@ async function runLaneCommandPack(
 		`exit: ${result.code}`,
 		`evidence_artifact: ${artifactPath}`,
 		`evidence_ledger: ${evidence.timestamp} ${evidence.title}`,
+		memoryFeedbackEvents.length
+			? `memory_reuse_feedback: ${memoryFeedbackEvents.map((event) => `${event.id}:${event.outcome}:${event.caseSignature}`).join(", ")}`
+			: "",
 		missionUpdate.message,
 		formatLaneRunAnalysis(analysis),
 		result.stdout.trim() ? ["stdout:", "```", truncateMiddle(result.stdout.trim(), 8000), "```"].join("\n") : "",
@@ -23341,6 +23348,12 @@ function readCaseMemoryRows(): CaseMemoryV1[] {
 	return jsonlRecords(caseMemoryPath(), isCaseMemory);
 }
 
+function latestCaseMemoryBySignature(): Map<string, CaseMemoryV1> {
+	const rows = new Map<string, CaseMemoryV1>();
+	for (const row of readCaseMemoryRows()) rows.set(row.caseSignature, row);
+	return rows;
+}
+
 function memoryEventSignature(input: Pick<MemoryEventInput, "task" | "route" | "target" | "domainTags">): string {
 	const tags = uniqueNonEmpty(input.domainTags ?? [], 24)
 		.map((item) => item.toLowerCase())
@@ -23388,6 +23401,98 @@ function writeCaseMemorySnapshot(event: MemoryEventV1): CaseMemoryV1 {
 	};
 	appendText(caseMemoryPath(), `${JSON.stringify(row)}\n`);
 	return row;
+}
+
+type MemoryReuseFeedbackReference = {
+	eventId: string;
+	caseSignature?: string;
+	score?: number;
+	commands: string[];
+};
+
+function memoryReuseFeedbackReferences(pack: LaneCommandPack): MemoryReuseFeedbackReference[] {
+	const refs = new Map<string, MemoryReuseFeedbackReference>();
+	for (const command of pack.commands) {
+		const eventId =
+			/^memory-event:(mem:[a-f0-9]+):/i.exec(command.label)?.[1] ??
+			/structured memory event\s+(mem:[a-f0-9]+)/i.exec(command.evidence)?.[1];
+		if (!eventId) continue;
+		const caseSignature = /\bcase=([a-f0-9]{12,64})\b/i.exec(command.evidence)?.[1];
+		const score = Number(/\bscore=([0-9]+(?:\.[0-9]+)?)\b/i.exec(command.evidence)?.[1]);
+		const ref = refs.get(eventId) ?? {
+			eventId,
+			caseSignature,
+			score: Number.isFinite(score) ? score : undefined,
+			commands: [],
+		};
+		ref.caseSignature ??= caseSignature;
+		if (Number.isFinite(score)) ref.score = Math.max(ref.score ?? 0, score);
+		if (!ref.commands.includes(command.command)) ref.commands.push(command.command);
+		refs.set(eventId, ref);
+	}
+	return Array.from(refs.values()).slice(0, 8);
+}
+
+function appendMemoryReuseFeedback(
+	pack: LaneCommandPack,
+	result: { code: number; stdout: string; stderr: string; killed?: boolean },
+	analysis: LaneRunAnalysis,
+	artifactPath: string,
+): MemoryEventV1[] {
+	const refs = memoryReuseFeedbackReferences(pack);
+	if (refs.length === 0) return [];
+	const events = readMemoryEvents();
+	const byId = new Map(events.map((event) => [event.id, event]));
+	const strongReuse = result.code === 0 && !result.killed && analysis.critic.verdict === "strong";
+	const usableReuse = result.code === 0 && !result.killed && analysis.critic.verdict !== "weak";
+	const outcome: MemoryOutcome = result.killed ? "blocked" : usableReuse ? "success" : "failure";
+	const verdict = analysis.critic.verdict;
+	return refs.flatMap((ref) => {
+		const original = byId.get(ref.eventId);
+		const caseSignature = ref.caseSignature ?? original?.caseSignature;
+		if (!caseSignature) return [];
+		const commands = uniqueNonEmpty(ref.commands, 12);
+		const event = appendMemoryEvent({
+			source: "operator",
+			task: `memory reuse feedback ${pack.route}/${pack.lane}`,
+			route: pack.route,
+			target: pack.target,
+			domainTags: uniqueNonEmpty([
+				"memory-feedback",
+				"memory-reuse",
+				`reuse-${outcome}`,
+				...(original?.domainTags ?? []),
+			], 24),
+			caseSignature,
+			outcome,
+			lessons: [
+				usableReuse
+					? `Historical memory event ${ref.eventId} was reused in ${pack.route}/${pack.lane} with evidence verdict ${verdict}.`
+					: `Historical memory event ${ref.eventId} was reused in ${pack.route}/${pack.lane} but produced ${verdict} evidence or nonzero execution.`,
+			],
+			failurePatterns:
+				outcome === "success"
+					? []
+					: [
+							`memory_reuse_feedback_failed event=${ref.eventId} exit=${result.code} verdict=${verdict} deficits=${analysis.critic.deficits.slice(0, 4).join(" | ")}`,
+						],
+			reuseRules:
+				outcome === "success"
+					? [
+							`memory_reuse_feedback_promote event=${ref.eventId} route=${pack.route} lane=${pack.lane} when target shape and artifacts match.`,
+						]
+					: [
+							`memory_reuse_feedback_demote event=${ref.eventId} route=${pack.route} lane=${pack.lane} until a stronger verifier closes the deficits.`,
+						],
+			commands,
+			artifactPaths: [artifactPath],
+			confidence: strongReuse ? 0.88 : usableReuse ? 0.72 : 0.34,
+			replayVerified: strongReuse,
+			playbookCandidate: strongReuse,
+			verifierRuleCandidate: usableReuse,
+		});
+		return [event];
+	});
 }
 
 function appendMemoryEvent(input: MemoryEventInput): MemoryEventV1 {
@@ -23487,6 +23592,7 @@ function memoryRouteMatches(eventRoute: string | undefined, route: string | unde
 function searchMemoryEvents(query?: string, options?: { route?: string; target?: string; limit?: number }): MemoryRetrievalHit[] {
 	ensureReconStorage();
 	const events = readMemoryEvents();
+	const caseMemory = latestCaseMemoryBySignature();
 	const queryTokens = uniqueNonEmpty((query ?? "").toLowerCase().split(/[^a-z0-9一-鿿]+/), 24).filter(
 		(token) => token.length >= 2,
 	);
@@ -23518,6 +23624,23 @@ function searchMemoryEvents(query?: string, options?: { route?: string; target?:
 		const decay = Math.min(25, ageDays * 0.08 + event.quality.decay * 12 + event.quality.failureCount * 4);
 		score += event.quality.confidence * 10 + (event.quality.replayVerified ? 8 : 0) + event.quality.reuseCount * 2;
 		score -= decay;
+		const caseRow = caseMemory.get(event.caseSignature);
+		if (caseRow) {
+			const caseReuseBoost = Math.min(12, caseRow.quality.reuseCount * 1.5);
+			const caseFailurePenalty = Math.min(18, caseRow.quality.failureCount * 3 + caseRow.quality.decay * 10);
+			if (caseReuseBoost > 0) {
+				score += caseReuseBoost;
+				reasons.push("case-memory-feedback:reuse");
+			}
+			if (caseRow.quality.replayVerified && !event.quality.replayVerified) {
+				score += 3;
+				reasons.push("case-memory-feedback:verified");
+			}
+			if (caseFailurePenalty > 0) {
+				score -= caseFailurePenalty;
+				reasons.push("case-memory-feedback:penalty");
+			}
+		}
 		if (event.outcome === "success") score += 6;
 		if (event.outcome === "blocked" || event.outcome === "failure") score -= event.outcome === "failure" ? 10 : 8;
 		if (score <= 0 || (queryTokens.length > 0 && !reasons.some((reason) => reason.startsWith("token:")))) return [];
