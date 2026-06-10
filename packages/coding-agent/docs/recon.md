@@ -76,6 +76,7 @@ The built-in profile creates these resources on demand:
 | Operation artifacts | `~/.repi/agent/recon/evidence/operations/*.md` | `re_operation plan|run` operation queue and phase runner |
 | Delegation artifacts | `~/.repi/agent/recon/evidence/delegations/*.md` | `re_delegate plan|merge` specialist worker packets, evidence contracts, adaptive_routing_hints, worker_promotion_queue, case_memory_migrations, and merge queues |
 | Swarm artifacts | `~/.repi/agent/recon/evidence/swarms/*.md` | `re_swarm plan|run|merge` multi-specialist worker_runtime_packets plus run-mode worker_executions, worker_results, blocked rows, merge_digest, parallel_groups, merge_protocol, collision_matrix, commander_next_actions, and merge-mode runtime digest retention |
+| Worker child sessions | `.repi-harness/evidence/child-sessions/*` | `WorkerChildSessionRuntimeBatchV1` hard-eval artifacts: isolated `repi --recon` child session transcript/stdout/stderr hashes, provider runtime env refs, timeout/cancel, retryBudget, pool bridge, and claim validation |
 | Supervisor artifacts | `~/.repi/agent/recon/evidence/supervisor/*.md` | `re_supervisor review|repair` worker/swarm critic output, swarm_artifact, repair queue, commander_merge_queue, and priority queue |
 | Reflection artifacts | `~/.repi/agent/recon/evidence/reflections/*.md` | `re_reflect plan|write` reflection_cycle artifacts tied to field journal, evolution log, and playbooks |
 | Context pack artifacts | `~/.repi/agent/recon/evidence/contexts/*.md` | `re_context pack|resume` context_pack artifacts with resume_brief, artifact_index, repair queue including commander_merge_queue, commander_merge_budget, worker_scoreboard, and next_operator_commands |
@@ -280,6 +281,8 @@ repi /identity "AD kerberos ldap bloodhound"
 ## Swarm multi-agent orchestration
 
 `/re-swarm plan|show|run|merge [target] [max-workers] [max-commands]` / `re_swarm` consumes `delegation_plan` / `delegation_artifact` and emits `swarm_plan`, `swarm_artifact`, `worker_runtime_packets`, run-mode `worker_executions`, `worker_results`, `blocked`, `merge_digest`, plus `parallel_groups`, `merge_protocol`, `collision_matrix`, `evidence_contract`, `commander_next_actions`, and `next_swarm_command`; it closes `swarm_plan_ready`, writes `memory/swarm-run-board.md` in run mode, and in merge mode reads the latest run artifact so runtime `workerResults` / `blocked` / `mergeDigest` survive into `memory/swarm-board.md`.
+
+Worker runtime hard-eval now has two layers: `WorkerRuntimePoolV1` (`npm run gate:worker-runtime-pool`) validates concurrency/resource/timeout/retry/claim-aware merge semantics, while `WorkerChildSessionRuntimeBatchV1` (`npm run gate:worker-child-session`) validates the optional independent child-session/provider runtime contract. Child sessions must launch through `repi --recon` with an isolated `.repi` home, provider credentials as env refs, update/telemetry disabled, transcript/stdout/stderr hashes, timeout/cancel, retryBudget, pool bridge, and claim ledger validation.
 
 ## Supervisor critic
 

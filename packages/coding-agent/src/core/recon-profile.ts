@@ -1121,6 +1121,214 @@ function verifyWorkerRuntimePool(pool: WorkerRuntimePoolV1): { ok: boolean; erro
 	return { ok: errors.length === 0, errors: uniqueNonEmpty(errors, 80), evidenceContract: workerRuntimePoolEvidenceContract() };
 }
 
+type WorkerChildSessionProviderFormat = "openai-compatible" | "anthropic-compatible" | "local-openai";
+
+type WorkerChildSessionRuntimeStatus =
+	| "queued"
+	| "running"
+	| "passed"
+	| "failed"
+	| "timeout"
+	| "cancelled"
+	| "exhausted";
+
+type WorkerChildSessionLaunchPolicyV1 = {
+	command: "repi";
+	args: string[];
+	cwd: string;
+	isolatedHome: string;
+	profileDir: string;
+	timeoutMs: number;
+	cancelSignal: "SIGTERM";
+	killAfterMs: number;
+	importPiAuth: false;
+	updateChecksDisabled: true;
+	telemetryDisabled: true;
+	envAllowlist: string[];
+	envDenylist: string[];
+};
+
+type WorkerChildSessionRuntimeV1 = {
+	sessionId: string;
+	workerId: string;
+	packetId: string;
+	attempt: number;
+	maxAttempts: number;
+	provider: {
+		format: WorkerChildSessionProviderFormat;
+		name: string;
+		modelId: string;
+		baseUrlRef: string;
+		apiKeyRef: string;
+		contextWindow: number;
+		maxTokens: number;
+	};
+	runtime: {
+		status: WorkerChildSessionRuntimeStatus;
+		pid?: number | null;
+		sessionDir: string;
+		transcriptPath: string;
+		stdoutPath: string;
+		stderrPath: string;
+		startedAt: string;
+		endedAt: string;
+		exitCode?: number | null;
+		signal?: string | null;
+		cancelledAt?: string;
+	};
+	hashes: {
+		transcriptSha256: string;
+		stdoutSha256: string;
+		stderrSha256: string;
+		toolCallDigest: string;
+	};
+	resourceLease: WorkerRuntimePoolWorkerV1["resourceLease"];
+	retryBudget: SwarmRuntimeRetryBudget;
+	poolBridge: {
+		poolId: string;
+		mergeKey: string;
+		claimRefs: string[];
+		workerRuntimePoolStatus: WorkerRuntimePoolWorkerV1["status"];
+	};
+	failureRepairRefs: string[];
+};
+
+type WorkerChildSessionClaimLedgerEventV1 = Omit<SwarmClaimLedgerEventV1, "source"> & {
+	source: "re_swarm" | "worker-child-session";
+};
+
+type WorkerChildSessionRuntimeBatchV1 = {
+	kind: "WorkerChildSessionRuntimeBatchV1";
+	schemaVersion: 1;
+	batchId: string;
+	poolId: string;
+	resourceBudget: WorkerRuntimePoolV1["resourceBudget"];
+	launchPolicy: WorkerChildSessionLaunchPolicyV1;
+	sessions: WorkerChildSessionRuntimeV1[];
+	claimLedgerEvents: WorkerChildSessionClaimLedgerEventV1[];
+	poolBridge: {
+		kind: "WorkerRuntimePoolV1Bridge";
+		poolId: string;
+		workerIds: string[];
+		claimAwareMerge: boolean;
+		childSessionRuntimeCaptured: boolean;
+	};
+};
+
+function workerChildSessionLaunchPolicy(options?: {
+	cwd?: string;
+	isolatedHome?: string;
+	timeoutMs?: number;
+}): WorkerChildSessionLaunchPolicyV1 {
+	const isolatedHome = options?.isolatedHome ?? join(reconDir(), "runtime", "child-session-home", ".repi", "agent");
+	return {
+		command: "repi",
+		args: ["--recon", "--offline", "--project-context", "--worker-runtime"],
+		cwd: options?.cwd ?? process.cwd(),
+		isolatedHome,
+		profileDir: isolatedHome,
+		timeoutMs: Math.max(1000, Math.min(120000, Math.floor(options?.timeoutMs ?? 30000))),
+		cancelSignal: "SIGTERM",
+		killAfterMs: 3000,
+		importPiAuth: false,
+		updateChecksDisabled: true,
+		telemetryDisabled: true,
+		envAllowlist: [
+			"HOME",
+			"PATH",
+			"REPI_PRODUCT",
+			"REPI_OFFLINE",
+			"REPI_SKIP_VERSION_CHECK",
+			"OPENAI_COMPAT_BASE_URL",
+			"OPENAI_COMPAT_API_KEY",
+			"ANTHROPIC_COMPAT_BASE_URL",
+			"ANTHROPIC_COMPAT_API_KEY",
+			"LOCAL_OPENAI_BASE_URL",
+			"LOCAL_OPENAI_API_KEY",
+		],
+		envDenylist: ["GITHUB_TOKEN", "GITHUB_TOKEN_FOR_PUSH", "ANTHROPIC_AUTH_TOKEN", "NPM_TOKEN"],
+	};
+}
+
+function workerChildSessionToWorkerRuntimePoolBridge(batch: WorkerChildSessionRuntimeBatchV1): WorkerRuntimePoolV1 {
+	return {
+		kind: "WorkerRuntimePoolV1",
+		schemaVersion: 1,
+		poolId: batch.poolId,
+		maxConcurrency: Math.max(1, Math.min(8, batch.sessions.length || 1)),
+		timeoutMs: batch.launchPolicy.timeoutMs,
+		cancelOnTimeout: true,
+		resourceBudget: batch.resourceBudget,
+		workers: batch.sessions.map((session) => ({
+			workerId: session.workerId,
+			role: session.provider.format,
+			route: session.provider.name,
+			packetId: session.packetId,
+			attempt: session.attempt,
+			maxAttempts: session.maxAttempts,
+			retryBudget: session.retryBudget,
+			resourceLease: session.resourceLease,
+			timeoutMs: batch.launchPolicy.timeoutMs,
+			status: session.poolBridge.workerRuntimePoolStatus,
+			startedAt: session.runtime.startedAt,
+			endedAt: session.runtime.endedAt,
+			cancelledAt: session.runtime.cancelledAt,
+			sessionDir: session.runtime.sessionDir,
+			stdoutPath: session.runtime.stdoutPath,
+			stderrPath: session.runtime.stderrPath,
+			stdoutSha256: session.hashes.stdoutSha256,
+			stderrSha256: session.hashes.stderrSha256,
+			toolCallDigest: session.hashes.toolCallDigest,
+			mergeKey: session.poolBridge.mergeKey,
+			claimRefs: session.poolBridge.claimRefs,
+		})),
+		parallelGroups: [
+			{
+				groupId: `${batch.batchId}:child-sessions`,
+				workers: batch.sessions.map((session) => session.workerId),
+				dependsOn: [],
+				maxConcurrency: Math.max(1, Math.min(8, batch.sessions.length || 1)),
+			},
+		],
+		mergeProtocol: {
+			strategy: "claim-aware merge",
+			evidenceContract: workerRuntimePoolEvidenceContract(),
+			conflicts: [],
+		},
+		claimLedgerEvents: batch.claimLedgerEvents.filter((event) => event.source === "re_swarm") as SwarmClaimLedgerEventV1[],
+	};
+}
+
+function verifyWorkerChildSessionRuntimeBatch(batch: WorkerChildSessionRuntimeBatchV1): { ok: boolean; errors: string[] } {
+	const errors: string[] = [];
+	if (batch.launchPolicy.command !== "repi") errors.push("child_session_command_not_repi");
+	if (!batch.launchPolicy.args.includes("--recon")) errors.push("child_session_missing_recon_arg");
+	if (!batch.launchPolicy.isolatedHome.includes(".repi") || batch.launchPolicy.isolatedHome.includes("/.pi/"))
+		errors.push("child_session_isolated_home_invalid");
+	if (batch.launchPolicy.importPiAuth !== false) errors.push("child_session_import_pi_auth_not_false");
+	if (!batch.launchPolicy.updateChecksDisabled) errors.push("child_session_update_checks_not_disabled");
+	for (const secret of ["GITHUB_TOKEN", "GITHUB_TOKEN_FOR_PUSH", "ANTHROPIC_AUTH_TOKEN"]) {
+		if (batch.launchPolicy.envAllowlist.includes(secret)) errors.push(`child_session_secret_allowed:${secret}`);
+		if (!batch.launchPolicy.envDenylist.includes(secret)) errors.push(`child_session_secret_not_denied:${secret}`);
+	}
+	const sessionDirs = new Set<string>();
+	for (const session of batch.sessions) {
+		if (!session.provider.apiKeyRef.startsWith("$")) errors.push(`child_session_literal_api_key:${session.sessionId}`);
+		if (!session.provider.baseUrlRef.startsWith("$")) errors.push(`child_session_literal_base_url:${session.sessionId}`);
+		if (sessionDirs.has(session.runtime.sessionDir)) errors.push(`child_session_duplicate_session_dir:${session.sessionId}`);
+		sessionDirs.add(session.runtime.sessionDir);
+		if (!session.poolBridge?.poolId || session.poolBridge.poolId !== batch.poolId)
+			errors.push(`child_session_missing_pool_bridge:${session.sessionId}`);
+		if (session.retryBudget.remaining !== Math.max(0, session.maxAttempts - session.attempt))
+			errors.push(`child_session_retry_remaining_inconsistent:${session.sessionId}`);
+		if (session.retryBudget.exhausted && ["queued", "running"].includes(session.runtime.status))
+			errors.push(`child_session_exhausted_still_running:${session.sessionId}`);
+		if (session.runtime.status === "timeout" && !session.runtime.cancelledAt)
+			errors.push(`child_session_timeout_without_cancel:${session.sessionId}`);
+	}
+	return { ok: errors.length === 0, errors: uniqueNonEmpty(errors, 80) };
+}
+
 type ReconParallelPlanWorkerV1 = {
 	id: string;
 	role: string;

@@ -384,16 +384,29 @@ const REQUIREMENTS = [
 					"claim-aware merge",
 				],
 			},
+			{
+				id: "worker_child_session_runtime_contract_gate",
+				description: "WorkerChildSessionRuntimeBatchV1 hard-eval 把 worker pool 推进到独立 REPI child session/provider runtime 合同。",
+				files: ["scripts/reverse-agent/worker-child-session-gate.mjs", "fixtures/reverse-agent/worker-child-session.fixture.json"],
+				markers: [
+					"WorkerChildSessionRuntimeBatchV1",
+					"isolated_home_invalid",
+					"secret_allowed",
+					"apiKeyRef_not_env_ref",
+					"timeout_without_cancel",
+					"childSessionRuntimeCaptured",
+				],
+			},
 		],
 		hardeningNeeded: [
-			"把 WorkerRuntimePoolV1 离线 hard-eval 接入真实 child session/provider runtime，形成 live timeout/cancel/resource lease 回归证据。",
+			"把 WorkerChildSessionRuntimeBatchV1 从离线合同升级到真实 child process/provider runtime 回归证据。",
 			"把 worker merge 从文本摘要升级为 structured claim merge，并在 supervisor 前阻断缺证据或冲突 claim；离线 duplicate mergeKey 负例已由 gate:worker-runtime-pool 保护。",
-			"把 re_swarm command-level SubagentRuntimeManifestV1 继续升级为可选独立 Pi child session/provider runtime。",
+			"把 re_swarm command-level SubagentRuntimeManifestV1 默认桥接到 WorkerRuntimePoolV1 / WorkerChildSessionRuntimeBatchV1，而不是仅作为旁路 manifest。",
 		],
 		recommendedWork: [
 			"保持 npm run audit:parallel-plan 作为 frontier --plan 与 dogfood --plan-only 的离线 smoke gate。",
 			"保持 gate:claim-release --write-marker 作为 release gate marker，并让 supervisor/compiler/complete 消费最新 marker。",
-			"让 agent-dogfood 与 re_swarm 的 sub-agent runtime manifest 继续和 planId/source/worker merge keys、failure signature 关联。",
+			"让 agent-dogfood 与 re_swarm 的 sub-agent runtime manifest 继续和 planId/source/worker merge keys、failure signature、childSessionRuntimeCaptured 关联。",
 		],
 	},
 	{

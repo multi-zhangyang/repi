@@ -579,6 +579,14 @@ npm run gate:worker-runtime-pool
 
 它验证 `WorkerRuntimePoolV1` 的 `maxConcurrency`、resource lease、timeout/cancel、retryBudget、stdout/stderr hash、claim refs、append-only claim ledger 与 claim-aware merge。负例包含超并发、timeout 未 cancel、duplicate mergeKey 未解决、retry budget 不一致、claim 缺 validation、stdout hash drift、exhausted 后继续 retry。这个 gate 先以离线 fixture 保护调度语义，后续可把同一合同接入真实独立 child session/provider runtime。
 
+Worker child-session runtime contract 进一步约束“独立子代理/模型运行态”：
+
+```bash
+npm run gate:worker-child-session
+```
+
+它验证 `WorkerChildSessionRuntimeBatchV1`：child worker 必须通过 `repi --recon` 进入独立 `isolatedHome` / `.repi` profile，provider 配置只能引用环境变量，不能把真实 key 写入 artifact；默认不导入 `.pi` auth，不开启 update/telemetry；每个 child session 需要 transcript/stdout/stderr hash、toolCallDigest、timeout/cancel、retryBudget、pool bridge 和 `artifact_handoff → claim → validation → challenge → resolution` claim ledger。负例覆盖 `pi` 命令污染、共享 `.pi` home、secret allowlist、literal api key、transcript hash drift、timeout 未 cancel、exhausted 还 running、缺 pool bridge 和 claim 缺 validation。
+
 `scripts/reverse-agent/autonomous-runtime-contracts.mjs . --strict` 验证 autonomous runtime strict fixture：subagent manifest、parallel shard state、compact resume transition、repair budget 与 runtime claim promotion gate。`scripts/reverse-agent/autonomous-contracts.mjs . --strict` 会把该 gate 纳入总控制合同，并继续聚合 `ReconParallelPlanV1`、`ResumeContractV2`、`FailureLedgerEventV1/RepairQueueItemV1`、`RoleContractV1/ClaimLedgerEventV1`。常用入口：
 
 ```bash
