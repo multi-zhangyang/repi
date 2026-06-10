@@ -2189,6 +2189,7 @@ type MemoryEventV1 = {
 	commands: string[];
 	artifacts: MemoryArtifactHash[];
 	artifactHashes: MemoryArtifactHash[];
+	memoryScope?: MemoryScopeV1;
 	quality: MemoryQuality;
 	promotion: {
 		playbookCandidate: boolean;
@@ -2197,6 +2198,18 @@ type MemoryEventV1 = {
 	};
 	prevHash: string;
 	entryHash: string;
+};
+
+type MemoryScopeV1 = {
+	kind: "repi-memory-scope";
+	schemaVersion: 1;
+	missionId?: string;
+	sessionId: string;
+	cwd: string;
+	workspaceRoot: string;
+	branchId: string;
+	route?: string;
+	target?: string;
 };
 
 type CaseMemoryV1 = {
@@ -2464,6 +2477,36 @@ type MemoryFeedbackClosureReportV1 = {
 	demotionRequiredEventIds: string[];
 	pendingFeedbackEventIds: string[];
 	orphanFeedbackEventIds: string[];
+	requiredGates: string[];
+};
+
+type MemoryScopeIsolationVerdict = "allow" | "warn" | "block";
+
+type MemoryScopeIsolationRowV1 = {
+	kind: "repi-memory-scope-isolation-row";
+	schemaVersion: 1;
+	eventId: string;
+	caseSignature: string;
+	eventScope?: MemoryScopeV1;
+	currentScope: MemoryScopeV1;
+	verdict: MemoryScopeIsolationVerdict;
+	reasons: string[];
+	blocksInjection: boolean;
+	recommendedAction: "allow" | "retain" | "quarantine" | "manual-review";
+};
+
+type MemoryScopeIsolationReportV1 = {
+	kind: "repi-memory-scope-isolation-report";
+	schemaVersion: 1;
+	generatedAt: string;
+	MemoryScopeIsolationV1: true;
+	scopeIsolationReportPath: string;
+	eventCount: number;
+	currentScope: MemoryScopeV1;
+	rows: MemoryScopeIsolationRowV1[];
+	blockedEventIds: string[];
+	warnEventIds: string[];
+	allowedEventIds: string[];
 	requiredGates: string[];
 };
 
@@ -3292,6 +3335,10 @@ function memoryFeedbackClosureReportPath(): string {
 	return memoryPath("feedback-closure-report.json");
 }
 
+function memoryScopeIsolationReportPath(): string {
+	return memoryPath("scope-isolation-report.json");
+}
+
 function memoryVectorIndexPath(): string {
 	return memoryPath("vector-index.json");
 }
@@ -3536,6 +3583,10 @@ function ensureReconStorage(): void {
 		[
 			memoryFeedbackClosureReportPath(),
 			`${JSON.stringify({ kind: "repi-memory-feedback-closure-report", schemaVersion: 1, MemoryFeedbackClosureV1: true, rows: [] }, null, 2)}\n`,
+		],
+		[
+			memoryScopeIsolationReportPath(),
+			`${JSON.stringify({ kind: "repi-memory-scope-isolation-report", schemaVersion: 1, MemoryScopeIsolationV1: true, rows: [] }, null, 2)}\n`,
 		],
 		[
 			memoryVectorIndexPath(),
@@ -17302,11 +17353,12 @@ function contextEvidenceRank(kind: string): string {
 }
 
 function contextSourceCommand(kind: string): string {
-	if (/^memory_(?:events|case_memory|retrieval|store|snapshot|usefulness|feedback|vector|distillation|quarantine|semantic|contradiction|injection|sedimentation|supervisor|lifecycle)/i.test(kind)) {
+	if (/^memory_(?:events|case_memory|retrieval|store|snapshot|usefulness|feedback|scope|vector|distillation|quarantine|semantic|contradiction|injection|sedimentation|supervisor|lifecycle)/i.test(kind)) {
 		if (/store_report/i.test(kind)) return "re_memory verify";
 		if (/store_snapshot/i.test(kind)) return "re_memory snapshot";
 		if (/usefulness/i.test(kind)) return "re_memory eval";
 		if (/feedback/i.test(kind)) return "re_memory feedback";
+		if (/scope/i.test(kind)) return "re_memory scope";
 		if (/vector/i.test(kind)) return "re_memory vector";
 		if (/distillation|quarantine/i.test(kind)) return "re_memory distill";
 		if (/semantic|contradiction|injection|sedimentation/i.test(kind)) return "re_memory sediment";
@@ -17356,6 +17408,21 @@ function contextSessionId(mission?: MissionState): string {
 
 function contextBranchId(): string {
 	return process.env.REPI_BRANCH_ID ?? process.env.GIT_BRANCH ?? process.env.BRANCH_NAME ?? "workspace";
+}
+
+function currentMemoryScope(options?: { route?: string; target?: string; mission?: MissionState | null }): MemoryScopeV1 {
+	const mission = options?.mission === undefined ? readCurrentMission() : options.mission;
+	return {
+		kind: "repi-memory-scope",
+		schemaVersion: 1,
+		missionId: mission?.id,
+		sessionId: contextSessionId(mission ?? undefined),
+		cwd: process.cwd(),
+		workspaceRoot: process.cwd(),
+		branchId: contextBranchId(),
+		route: options?.route,
+		target: options?.target,
+	};
 }
 
 function contextPackHashPayload(pack: ContextPackArtifact): unknown {
@@ -17428,6 +17495,7 @@ function contextArtifactIndex(): ContextArtifactIndexEntry[] {
 		["memory_store_snapshot", existingPath(memoryStoreSnapshotPath())],
 		["memory_usefulness_eval", existingPath(memoryUsefulnessEvalReportPath())],
 		["memory_feedback_closure", existingPath(memoryFeedbackClosureReportPath())],
+		["memory_scope_isolation", existingPath(memoryScopeIsolationReportPath())],
 		["memory_vector_index", existingPath(memoryVectorIndexPath())],
 		["memory_vector_search", existingPath(memoryVectorSearchReportPath())],
 		["memory_distillation_report", existingPath(memoryDistillationReportPath())],
@@ -24017,6 +24085,9 @@ function buildMemoryDigest(): string {
 		"<memory_feedback_closure>",
 		truncateMiddle(readText(memoryFeedbackClosureReportPath()), 1800),
 		"</memory_feedback_closure>",
+		"<memory_scope_isolation>",
+		truncateMiddle(readText(memoryScopeIsolationReportPath()), 1800),
+		"</memory_scope_isolation>",
 		"<memory_vector_search>",
 		truncateMiddle(readText(memoryVectorSearchReportPath()), 1800),
 		"</memory_vector_search>",
@@ -25499,6 +25570,7 @@ function appendMemoryEventTransaction(input: MemoryEventInput): {
 		const task = input.task ?? mission?.task ?? "manual memory";
 		const route = input.route ?? mission?.route.domain ?? "manual";
 		const target = input.target;
+		const memoryScope = currentMemoryScope({ route, target, mission });
 		const domainTags = uniqueNonEmpty([route, input.source, ...(input.domainTags ?? [])], 24);
 		const artifactHashes = uniqueNonEmpty(input.artifactPaths ?? [], 80);
 		const artifacts = uniqueNonEmpty([...(input.artifacts ?? []).map((item) => item.path), ...artifactHashes], 80);
@@ -25532,6 +25604,7 @@ function appendMemoryEventTransaction(input: MemoryEventInput): {
 			commands: uniqueNonEmpty(input.commands ?? [], 40),
 			artifacts: mergedArtifacts,
 			artifactHashes: mergedArtifacts,
+			memoryScope,
 			quality: {
 				confidence: clamp01(input.confidence, 0.65),
 				replayVerified: Boolean(input.replayVerified),
@@ -26821,11 +26894,23 @@ function buildMemorySemanticIndex(options?: { route?: string; target?: string; n
 	const distillation = distillMemoryPatterns({ route: options?.route, target: options?.target, now: options?.now });
 	const contamination = detectMemoryContamination(events, { now: options?.now });
 	const quarantineByCase = new Map(contamination.map((finding) => [finding.caseSignature, finding]));
+	const scopeIsolation = buildMemoryScopeIsolationReport({ route: options?.route, target: options?.target, events });
+	const scopeByEvent = new Map(scopeIsolation.rows.map((row) => [row.eventId, row]));
 	const entries = events
 		.map((event) => {
 			const caseRow = caseMemory.get(event.caseSignature);
 			const finding = quarantineByCase.get(event.caseSignature);
 			const graded = memorySedimentationGrade({ event, caseRow, finding, patterns: distillation.patterns, now: options?.now });
+			const scopeRow = scopeByEvent.get(event.id);
+			const scopeBlocked = scopeRow?.blocksInjection === true;
+			const action: MemorySedimentationAction = scopeBlocked ? "quarantine" : graded.action;
+			const blockers = uniqueNonEmpty(
+				[
+					...graded.blockers,
+					...(scopeRow?.reasons.map((reason) => `scope_isolation:${reason}`) ?? []),
+				],
+				16,
+			);
 			const verifierRefs = memoryVerifierRefs(event);
 			const claimRefs = memoryClaimRefs(event);
 			const entry: MemorySemanticIndexEntryV1 = {
@@ -26843,8 +26928,8 @@ function buildMemorySemanticIndex(options?: { route?: string; target?: string; n
 				verifierRefs,
 				claimRefs,
 				grade: graded.grade,
-				action: graded.action,
-				blockers: graded.blockers,
+				action,
+				blockers,
 				reuseSummary: truncateMiddle(caseRow?.summary || uniqueNonEmpty([event.lessons[0], event.reuseRules[0], event.task], 3).join(" | "), 420),
 			};
 			return entry;
@@ -27106,6 +27191,129 @@ function formatMemoryFeedbackClosure(report = buildMemoryFeedbackClosureReport()
 					.map(
 						(row) =>
 							`- event=${row.eventId} status=${row.feedbackStatus} injection=${row.injectionAction} grade=${row.injectionGrade.toFixed(1)} feedback=${row.feedbackEventIds.length} blockers=${row.blockers.join(",") || "none"}`,
+					)
+			: ["- none"]),
+		"required_gates:",
+		...report.requiredGates.map((gate) => `- ${gate}`),
+	].join("\n");
+}
+
+function memoryEventScope(event: MemoryEventV1): MemoryScopeV1 | undefined {
+	return event.memoryScope;
+}
+
+function memoryScopeIsolationRow(
+	event: MemoryEventV1,
+	currentScope: MemoryScopeV1,
+): MemoryScopeIsolationRowV1 {
+	const eventScope = memoryEventScope(event);
+	const reasons = uniqueNonEmpty(
+		[
+			!eventScope ? "legacy_memory_scope_missing" : undefined,
+			eventScope?.workspaceRoot && eventScope.workspaceRoot !== currentScope.workspaceRoot
+				? "cross_workspace_contamination"
+				: undefined,
+			eventScope?.sessionId && eventScope.sessionId !== currentScope.sessionId ? "cross_session_contamination" : undefined,
+			eventScope?.branchId && eventScope.branchId !== currentScope.branchId ? "cross_branch_contamination" : undefined,
+			currentScope.target &&
+			eventScope?.target &&
+			memoryTargetScope(eventScope.target) &&
+			memoryTargetScope(currentScope.target) &&
+			memoryTargetScope(eventScope.target) !== memoryTargetScope(currentScope.target)
+				? "cross_target_contamination"
+				: undefined,
+			currentScope.route && eventScope?.route && !memoryRouteMatches(eventScope.route, currentScope.route)
+				? "cross_route_contamination"
+				: undefined,
+		],
+		12,
+	);
+	const hardBlock = reasons.some((reason) => /cross_(?:workspace|target|route)_contamination/.test(reason));
+	const verdict: MemoryScopeIsolationVerdict = hardBlock
+		? "block"
+		: reasons.some((reason) => /cross_(?:session|branch)_contamination|legacy_memory_scope_missing/.test(reason))
+			? "warn"
+			: "allow";
+	return {
+		kind: "repi-memory-scope-isolation-row",
+		schemaVersion: 1,
+		eventId: event.id,
+		caseSignature: event.caseSignature,
+		eventScope,
+		currentScope,
+		verdict,
+		reasons,
+		blocksInjection: verdict === "block",
+		recommendedAction:
+			verdict === "block"
+				? "quarantine"
+				: verdict === "warn"
+					? reasons.includes("legacy_memory_scope_missing")
+						? "manual-review"
+						: "retain"
+					: "allow",
+	};
+}
+
+function buildMemoryScopeIsolationReport(options?: {
+	route?: string;
+	target?: string;
+	events?: MemoryEventV1[];
+	write?: boolean;
+}): MemoryScopeIsolationReportV1 {
+	ensureReconStorage();
+	const events = options?.events ?? readMemoryEvents();
+	const currentScope = currentMemoryScope({ route: options?.route, target: options?.target });
+	const rows = events.map((event) => memoryScopeIsolationRow(event, currentScope));
+	const report: MemoryScopeIsolationReportV1 = {
+		kind: "repi-memory-scope-isolation-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		MemoryScopeIsolationV1: true,
+		scopeIsolationReportPath: memoryScopeIsolationReportPath(),
+		eventCount: events.length,
+		currentScope,
+		rows,
+		blockedEventIds: rows.filter((row) => row.verdict === "block").map((row) => row.eventId),
+		warnEventIds: rows.filter((row) => row.verdict === "warn").map((row) => row.eventId),
+		allowedEventIds: rows.filter((row) => row.verdict === "allow").map((row) => row.eventId),
+		requiredGates: [
+			"MemoryScopeIsolationV1",
+			"scope_filter_by_mission_session_workspace_target",
+			"cross_session_contamination_negative",
+			"cross_workspace_contamination_blocks_injection",
+			"cross_target_contamination_blocks_injection",
+			"legacy_memory_scope_requires_manual_review",
+			"scope_isolation_report_in_context_pack",
+		],
+	};
+	if (options?.write !== false) writeFileAtomic(memoryScopeIsolationReportPath(), `${JSON.stringify(report, null, 2)}\n`);
+	return report;
+}
+
+function formatMemoryScopeIsolation(report = buildMemoryScopeIsolationReport()): string {
+	return [
+		"memory_scope_isolation:",
+		`MemoryScopeIsolationV1=${report.MemoryScopeIsolationV1}`,
+		`events=${report.eventCount}`,
+		`current_session=${report.currentScope.sessionId}`,
+		`current_workspace=${report.currentScope.workspaceRoot}`,
+		`current_target=${report.currentScope.target ?? "none"}`,
+		`blocked=${report.blockedEventIds.length}`,
+		`warn=${report.warnEventIds.length}`,
+		`allowed=${report.allowedEventIds.length}`,
+		`report=${report.scopeIsolationReportPath}`,
+		"blocked_event_ids:",
+		...(report.blockedEventIds.length ? report.blockedEventIds.map((id) => `- ${id}`) : ["- none"]),
+		"warn_event_ids:",
+		...(report.warnEventIds.length ? report.warnEventIds.map((id) => `- ${id}`) : ["- none"]),
+		"rows:",
+		...(report.rows.length
+			? report.rows
+					.slice(0, 16)
+					.map(
+						(row) =>
+							`- event=${row.eventId} verdict=${row.verdict} action=${row.recommendedAction} reasons=${row.reasons.join(",") || "none"}`,
 					)
 			: ["- none"]),
 		"required_gates:",
@@ -27934,6 +28142,13 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 				sendDisplayMessage(pi, "REPI Memory Feedback Closure", formatMemoryFeedbackClosure(report));
 				return;
 			}
+			if (trimmed === "scope" || trimmed === "scope-isolation" || trimmed.startsWith("scope ")) {
+				const target = trimmed.replace(/^scope(?:-isolation)?\s*/i, "").trim() || undefined;
+				const report = buildMemoryScopeIsolationReport({ target });
+				updateMissionGate("memory_checked", report.blockedEventIds.length ? "blocked" : "done", `MemoryScopeIsolationV1 blocked=${report.blockedEventIds.length}`);
+				sendDisplayMessage(pi, "REPI Memory Scope Isolation", formatMemoryScopeIsolation(report));
+				return;
+			}
 			if (trimmed === "consolidate") {
 				sendDisplayMessage(pi, "REPI Memory Consolidation", consolidateMemoryEvents());
 				return;
@@ -28688,6 +28903,8 @@ function installReconTools(pi: ExtensionAPI): void {
 				Type.Literal("usefulness"),
 				Type.Literal("feedback"),
 				Type.Literal("feedback-closure"),
+				Type.Literal("scope"),
+				Type.Literal("scope-isolation"),
 				Type.Literal("consolidate"),
 				Type.Literal("distill"),
 				Type.Literal("sediment"),
@@ -28798,6 +29015,15 @@ function installReconTools(pi: ExtensionAPI): void {
 				const report = buildMemoryFeedbackClosureReport();
 				const text = formatMemoryFeedbackClosure(report);
 				updateMissionGate("memory_checked", report.closureStatus === "fail" ? "blocked" : "done", `MemoryFeedbackClosureV1=${report.closureStatus}`);
+				return {
+					content: [{ type: "text" as const, text }],
+					details: report as unknown as Record<string, unknown>,
+				};
+			}
+			if (params.action === "scope" || params.action === "scope-isolation") {
+				const report = buildMemoryScopeIsolationReport({ target: params.query });
+				const text = formatMemoryScopeIsolation(report);
+				updateMissionGate("memory_checked", report.blockedEventIds.length ? "blocked" : "done", `MemoryScopeIsolationV1 blocked=${report.blockedEventIds.length}`);
 				return {
 					content: [{ type: "text" as const, text }],
 					details: report as unknown as Record<string, unknown>,

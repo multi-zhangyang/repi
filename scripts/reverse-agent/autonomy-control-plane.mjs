@@ -572,6 +572,30 @@ const REQUIREMENTS = [
 				markers: ["repi-memory-feedback-closure-fixture", "success-feedback-promotes-injected-memory", "failure-feedback-demotes-injected-memory", "pending-injection-requires-writeback"],
 			},
 			{
+				id: "memory_scope_isolation_runtime",
+				description: "Memory Scope Isolation 给每条 MemoryEventV1 写入 mission/session/workspace/branch/route/target scope，并在沉淀前阻断跨 workspace/target/route 污染。",
+				files: ["packages/coding-agent/src/core/recon-profile.ts", "repi-profile/extensions/reverse-pentest-core.ts"],
+				markers: ["MemoryScopeIsolationV1", "MemoryScopeV1", "buildMemoryScopeIsolationReport", "formatMemoryScopeIsolation", "scope_filter_by_mission_session_workspace_target", "cross_workspace_contamination_blocks_injection"],
+			},
+			{
+				id: "memory_scope_isolation_gate",
+				description: "Memory Scope Isolation hard-eval 真实调用 re_memory scope/sediment/context pack，验证同 scope allow、跨 session/workspace/target 阻断、legacy 手动复核和 context pack 接线。",
+				files: ["scripts/reverse-agent/memory-scope-isolation-gate.mjs"],
+				markers: ["repi-memory-scope-isolation-gate", "runtime:same-scope-allows-injection", "runtime:cross-workspace-blocks-injection", "runtime:cross-target-blocks-injection", "runtime:legacy-memory-scope-manual-review", "runtime:context-pack-has-scope-isolation"],
+			},
+			{
+				id: "memory_scope_isolation_schema",
+				description: "Memory Scope Isolation schema 固化 scope report/row 的可机读合同。",
+				files: ["schemas/reverse-agent/memory-scope-isolation.schema.json"],
+				markers: ["MemoryScopeIsolationReportV1", "MemoryScopeIsolationRowV1", "MemoryScopeV1", "scope_filter_by_mission_session_workspace_target"],
+			},
+			{
+				id: "memory_scope_isolation_fixture",
+				description: "Memory Scope Isolation fixture 覆盖同 scope、跨 scope 和 legacy scope 三类场景。",
+				files: ["fixtures/reverse-agent/memory-scope-isolation.fixture.json"],
+				markers: ["repi-memory-scope-isolation-fixture", "same-scope-allows-injection", "cross-session-workspace-blocks-injection", "legacy-scope-warns-manual-review"],
+			},
+			{
 				id: "memory_vector_rerank_runtime",
 				description: "Memory Vector Index 用本地 deterministic hash embedding 生成 vector-index/vector-search-report，并把 memory_vector_rerank 接入 search-events 排序。",
 				files: ["packages/coding-agent/src/core/recon-profile.ts", "repi-profile/extensions/reverse-pentest-core.ts"],
@@ -616,14 +640,14 @@ const REQUIREMENTS = [
 			},
 		],
 		hardeningNeeded: [
-			"knowledge graph/latest artifact 查询继续按 mission/session/workspace/target 做更严格过滤，避免跨任务污染。",
+			"knowledge graph/latest artifact 查询继续消费 MemoryScopeIsolationV1 行级 verdict，避免非 memory artifact 的跨任务污染。",
 			"compact resume ledger 继续扩展 queue 状态机：running/done/blocked/exhausted、auto-resume budget 和多次 compact 幂等回放。",
-				"Memory v5 后续继续补真实远程 embedding live 回归、跨 session contamination 负例和 re_swarm 多进程 worker memory writeback 压力回归；embedding provider contract 与 injection feedback closure 已接入 gate。",
+				"Memory v5 后续继续补真实远程 embedding live 回归、knowledge graph scope 过滤和 re_swarm 多进程 worker memory writeback 压力回归；embedding provider contract、scope isolation 与 injection feedback closure 已接入 gate。",
 		],
 		recommendedWork: [
 			"保持 ContextPackV2 / ResumeContractV2 runtime markers 与 context-compact-audit.mjs 同步。",
 			"把 memory/compaction-resume-ledger.jsonl 与 re_operator/re_proof_loop 的执行闭环做状态回写。",
-			"继续补静态/单元级假 artifact 场景：multi compact、target unresolved、cross-session contamination。",
+			"继续补静态/单元级假 artifact 场景：multi compact、target unresolved、knowledge graph scope verdict propagation。",
 		],
 	},
 	{
