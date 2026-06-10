@@ -62,7 +62,7 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - Memory v2：`~/.repi/agent/recon/memory/events.jsonl` 是 append-only `MemoryEventV1` 哈希链；`case-memory.jsonl` 是按 case signature 聚合后的复用视图；`retrieval-report.json` 记录每次 `re_memory search-events` 的召回、分数、原因和 hash-chain 状态。Markdown journal/playbook 仍保留给人读，但不再是唯一事实源。
 - Memory utility hard-eval：`npm run gate:memory-utility` 用跨目标 authz 与 pwn 负例 fixture 验证“正确召回”——高置信、已复现、同 route 的成功经验应排第一并给出可迁移命令；失败、过旧、跨 route 的噪声不能进入高位或污染命令建议。
 - Memory reuse feedback：`re_lane run` 复用 `memory-event:*` 命令后会自动写回在线学习闭环；强证据会追加 `memory_reuse_feedback_promote` 事件并提升同 case，弱证据/失败会追加 `memory_reuse_feedback_demote` 事件并让后续检索降权。`npm run gate:memory-feedback` 用成功提升和失败降权双场景保护该行为。
-- Memory hybrid retrieval：`re_memory search-events` 不再只靠精确 token；它会结合语义轻量召回、case-memory 文本、artifact path/tier 和在线反馈一起打分。`npm run gate:memory-hybrid` 用 `idor/bola/acl`→authz ownership、PCAP artifact 召回等场景保护该能力。
+- Memory hybrid retrieval：`re_memory search-events` 不再只靠精确 token；它会结合语义轻量召回、case-memory 文本、artifact path/tier 和在线反馈一起打分。`npm run gate:memory-hybrid` 用 `idor/bola/acl`→authz ownership、PCAP artifact 召回等场景保护该能力。Memory Vector rerank：`re_memory vector <query>` 会生成 `memory/vector-index.json` 与 `memory/vector-search-report.json`，使用本地 deterministic `repi-local-hash-embedding-v1` 做 64 维 hash embedding/rerank，并把 `memory_vector_rerank` reason 接入 `search-events` 排序；`npm run gate:memory-vector` 真实调用 vector/search-events，验证 index/search schema、跨 route forbidden leak 和 quality-weighted rerank。
 - Memory usefulness eval：`re_memory eval` 会生成 `usefulness-eval.json`，度量 hit@1、hit@k、MRR、forbiddenLeakRate 和空召回率；`npm run gate:memory-usefulness` 用 authz / pwn 正召回、失败/跨 route forbidden memory 不进 topK、child-process 并发 append 保持 hash-chain 的 hard-eval 保护“记忆真的有用”。
 - Memory v3 distiller：`re_memory distill` 会把 `events.jsonl` 中高置信、已复现、同 route 的经验蒸馏进 `distillation-report.json` / `pattern-book.md`，产出 `command_template`、`verifier_rule`、`worker_routing_hint`，并强制记录 `mandatory_memory_injection_chain=retrieve -> rank -> inject -> execute -> verify -> feedback`。跨 route/cross target/高置信矛盾/陈旧失败会进入 `quarantine.json`，避免把脏经验继续注入计划。`npm run gate:memory-distiller` 用 promote、quarantine、hash drift、低置信负例保护该能力。
 - Memory v4 sedimentation：`re_memory sediment` 会在 Memory v3 之上生成 `semantic-index.json`、`contradiction-ledger.jsonl`、`injection-packet.json` 和 `sedimentation-report.json`。`re_lane plan` 会强制刷新该沉淀包，并优先注入 `memory-sediment:*` 命令；只有同时具备 artifact sha256、replay/verifier 证据、非 quarantine、grade≥70 的事件才可进入 mandatory injection packet，执行后仍走 `memory_reuse_feedback` 写回。`npm run gate:memory-sedimentation` 验证 artifact/verifier/quarantine/feedback/hash-chain 负例。
@@ -702,6 +702,7 @@ npm run gate:memory-contract
 npm run gate:memory-utility
 npm run gate:memory-feedback
 npm run gate:memory-hybrid
+npm run gate:memory-vector
 npm run gate:memory-usefulness
 npm run gate:memory-distiller
 npm run gate:memory-sedimentation

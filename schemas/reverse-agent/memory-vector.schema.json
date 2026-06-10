@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repi.local/schemas/memory-vector.schema.json",
+  "title": "REPI Memory Vector Index V1",
+  "$defs": {
+    "MemoryArtifactHash": {
+      "type": "object",
+      "required": ["path", "sha256", "tier"],
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "type": ["string", "null"] },
+        "tier": { "type": "string" },
+        "required": { "type": "boolean" }
+      }
+    },
+    "MemoryVectorIndexEntryV1": {
+      "type": "object",
+      "required": ["kind", "schemaVersion", "eventId", "caseSignature", "route", "targetScope", "model", "dimensions", "tokens", "vector", "qualityWeight", "artifactRefs", "entryHash"],
+      "properties": {
+        "kind": { "const": "repi-memory-vector-index-entry" },
+        "schemaVersion": { "const": 1 },
+        "eventId": { "type": "string", "minLength": 1 },
+        "caseSignature": { "type": "string", "minLength": 1 },
+        "route": { "type": "string" },
+        "targetScope": { "type": "string" },
+        "model": { "const": "repi-local-hash-embedding-v1" },
+        "dimensions": { "const": 64 },
+        "tokens": { "type": "array", "items": { "type": "string" } },
+        "vector": { "type": "array", "items": { "type": "number" }, "minItems": 64 },
+        "qualityWeight": { "type": "number" },
+        "artifactRefs": { "type": "array", "items": { "$ref": "#/$defs/MemoryArtifactHash" } },
+        "entryHash": { "type": "string", "minLength": 16 }
+      }
+    },
+    "MemoryVectorIndexV1": {
+      "type": "object",
+      "required": ["kind", "schemaVersion", "generatedAt", "MemoryVectorIndexV1", "model", "dimensions", "eventsPath", "indexPath", "eventCount", "hashChainOk", "entries", "requiredGates"],
+      "properties": {
+        "kind": { "const": "repi-memory-vector-index" },
+        "schemaVersion": { "const": 1 },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "MemoryVectorIndexV1": { "const": true },
+        "model": { "const": "repi-local-hash-embedding-v1" },
+        "dimensions": { "const": 64 },
+        "eventsPath": { "type": "string" },
+        "indexPath": { "type": "string" },
+        "eventCount": { "type": "number" },
+        "hashChainOk": { "type": "boolean" },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/MemoryVectorIndexEntryV1" } },
+        "requiredGates": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "MemoryVectorSearchHitV1": {
+      "type": "object",
+      "required": ["eventId", "caseSignature", "score", "cosine", "qualityWeight", "reasons", "commands"],
+      "properties": {
+        "eventId": { "type": "string" },
+        "caseSignature": { "type": "string" },
+        "score": { "type": "number" },
+        "cosine": { "type": "number" },
+        "qualityWeight": { "type": "number" },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "commands": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "MemoryVectorSearchReportV1": {
+      "type": "object",
+      "required": ["kind", "schemaVersion", "generatedAt", "MemoryVectorSearchV1", "query", "indexPath", "reportPath", "model", "dimensions", "hits", "requiredGates"],
+      "properties": {
+        "kind": { "const": "repi-memory-vector-search-report" },
+        "schemaVersion": { "const": 1 },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "MemoryVectorSearchV1": { "const": true },
+        "query": { "type": "string" },
+        "route": { "type": "string" },
+        "target": { "type": "string" },
+        "indexPath": { "type": "string" },
+        "reportPath": { "type": "string" },
+        "model": { "const": "repi-local-hash-embedding-v1" },
+        "dimensions": { "const": 64 },
+        "hits": { "type": "array", "items": { "$ref": "#/$defs/MemoryVectorSearchHitV1" } },
+        "requiredGates": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

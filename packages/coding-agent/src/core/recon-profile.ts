@@ -2514,6 +2514,63 @@ type MemoryUsefulnessEvalReportV1 = {
 	recommendations: string[];
 };
 
+type MemoryVectorIndexEntryV1 = {
+	kind: "repi-memory-vector-index-entry";
+	schemaVersion: 1;
+	eventId: string;
+	caseSignature: string;
+	route: string;
+	targetScope: string;
+	model: "repi-local-hash-embedding-v1";
+	dimensions: number;
+	tokens: string[];
+	vector: number[];
+	qualityWeight: number;
+	artifactRefs: MemoryArtifactHash[];
+	entryHash: string;
+};
+
+type MemoryVectorIndexV1 = {
+	kind: "repi-memory-vector-index";
+	schemaVersion: 1;
+	generatedAt: string;
+	MemoryVectorIndexV1: true;
+	model: "repi-local-hash-embedding-v1";
+	dimensions: number;
+	eventsPath: string;
+	indexPath: string;
+	eventCount: number;
+	hashChainOk: boolean;
+	entries: MemoryVectorIndexEntryV1[];
+	requiredGates: string[];
+};
+
+type MemoryVectorSearchHitV1 = {
+	eventId: string;
+	caseSignature: string;
+	score: number;
+	cosine: number;
+	qualityWeight: number;
+	reasons: string[];
+	commands: string[];
+};
+
+type MemoryVectorSearchReportV1 = {
+	kind: "repi-memory-vector-search-report";
+	schemaVersion: 1;
+	generatedAt: string;
+	MemoryVectorSearchV1: true;
+	query: string;
+	route?: string;
+	target?: string;
+	indexPath: string;
+	reportPath: string;
+	model: "repi-local-hash-embedding-v1";
+	dimensions: number;
+	hits: MemoryVectorSearchHitV1[];
+	requiredGates: string[];
+};
+
 type KnowledgeNode = {
 	id: string;
 	kind: string;
@@ -3163,6 +3220,14 @@ function memoryUsefulnessEvalReportPath(): string {
 	return memoryPath("usefulness-eval.json");
 }
 
+function memoryVectorIndexPath(): string {
+	return memoryPath("vector-index.json");
+}
+
+function memoryVectorSearchReportPath(): string {
+	return memoryPath("vector-search-report.json");
+}
+
 function missionPath(name: string): string {
 	return join(reconDir(), "mission", name);
 }
@@ -3395,6 +3460,14 @@ function ensureReconStorage(): void {
 		[
 			memoryUsefulnessEvalReportPath(),
 			`${JSON.stringify({ kind: "repi-memory-usefulness-eval", schemaVersion: 1, MemoryUsefulnessEvalV1: true, scenarioCount: 0, scenarios: [] }, null, 2)}\n`,
+		],
+		[
+			memoryVectorIndexPath(),
+			`${JSON.stringify({ kind: "repi-memory-vector-index", schemaVersion: 1, MemoryVectorIndexV1: true, entries: [] }, null, 2)}\n`,
+		],
+		[
+			memoryVectorSearchReportPath(),
+			`${JSON.stringify({ kind: "repi-memory-vector-search-report", schemaVersion: 1, MemoryVectorSearchV1: true, hits: [] }, null, 2)}\n`,
 		],
 		[evidenceLedgerPath(), "# REPI Evidence Ledger\n\n"],
 		[toolIndexPath(), "# REPI Tool Index\n\n"],
@@ -17153,10 +17226,11 @@ function contextEvidenceRank(kind: string): string {
 }
 
 function contextSourceCommand(kind: string): string {
-	if (/^memory_(?:events|case_memory|retrieval|store|snapshot|usefulness|distillation|quarantine|semantic|contradiction|injection|sedimentation|supervisor|lifecycle)/i.test(kind)) {
+	if (/^memory_(?:events|case_memory|retrieval|store|snapshot|usefulness|vector|distillation|quarantine|semantic|contradiction|injection|sedimentation|supervisor|lifecycle)/i.test(kind)) {
 		if (/store_report/i.test(kind)) return "re_memory verify";
 		if (/store_snapshot/i.test(kind)) return "re_memory snapshot";
 		if (/usefulness/i.test(kind)) return "re_memory eval";
+		if (/vector/i.test(kind)) return "re_memory vector";
 		if (/distillation|quarantine/i.test(kind)) return "re_memory distill";
 		if (/semantic|contradiction|injection|sedimentation/i.test(kind)) return "re_memory sediment";
 		if (/supervisor|lifecycle/i.test(kind)) return "re_memory supervise";
@@ -17276,6 +17350,8 @@ function contextArtifactIndex(): ContextArtifactIndexEntry[] {
 		["memory_store_report", existingPath(memoryStoreReportPath())],
 		["memory_store_snapshot", existingPath(memoryStoreSnapshotPath())],
 		["memory_usefulness_eval", existingPath(memoryUsefulnessEvalReportPath())],
+		["memory_vector_index", existingPath(memoryVectorIndexPath())],
+		["memory_vector_search", existingPath(memoryVectorSearchReportPath())],
 		["memory_distillation_report", existingPath(memoryDistillationReportPath())],
 		["memory_quarantine", existingPath(memoryQuarantinePath())],
 		["memory_semantic_index", existingPath(memorySemanticIndexPath())],
@@ -23860,6 +23936,9 @@ function buildMemoryDigest(): string {
 		"<memory_usefulness_eval>",
 		truncateMiddle(readText(memoryUsefulnessEvalReportPath()), 1800),
 		"</memory_usefulness_eval>",
+		"<memory_vector_search>",
+		truncateMiddle(readText(memoryVectorSearchReportPath()), 1800),
+		"</memory_vector_search>",
 		"<case_index>",
 		truncateMiddle(readText(memoryPath("case-index.md")), 2000),
 		"</case_index>",
@@ -25440,6 +25519,76 @@ function memorySearchTokens(text: string): Set<string> {
 	);
 }
 
+const MEMORY_VECTOR_DIMENSIONS = 64;
+const MEMORY_VECTOR_MODEL = "repi-local-hash-embedding-v1" as const;
+
+function memoryVectorTokens(text: string): string[] {
+	const tokens = Array.from(memorySearchTokens(text));
+	return uniqueNonEmpty([...tokens, ...memoryHybridQueryTokens(tokens)], 256);
+}
+
+function memoryVectorForTokens(tokens: string[], dimensions = MEMORY_VECTOR_DIMENSIONS): number[] {
+	const vector = Array.from({ length: dimensions }, () => 0);
+	for (const token of tokens) {
+		const digest = createHash("sha256").update(token).digest();
+		const index = digest[0] % dimensions;
+		const sign = digest[1] % 2 === 0 ? 1 : -1;
+		const weight = 1 + Math.min(2.5, token.length / 10);
+		vector[index] += sign * weight;
+	}
+	const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+	if (!norm) return vector;
+	return vector.map((value) => Number((value / norm).toFixed(6)));
+}
+
+function memoryVectorForText(text: string): number[] {
+	return memoryVectorForTokens(memoryVectorTokens(text));
+}
+
+function memoryVectorCosine(left: number[], right: number[]): number {
+	const length = Math.min(left.length, right.length);
+	if (!length) return 0;
+	let dot = 0;
+	let leftNorm = 0;
+	let rightNorm = 0;
+	for (let index = 0; index < length; index += 1) {
+		dot += (left[index] ?? 0) * (right[index] ?? 0);
+		leftNorm += (left[index] ?? 0) ** 2;
+		rightNorm += (right[index] ?? 0) ** 2;
+	}
+	if (!leftNorm || !rightNorm) return 0;
+	return dot / Math.sqrt(leftNorm * rightNorm);
+}
+
+function memoryVectorQualityWeight(event: MemoryEventV1): number {
+	let weight = 0.55 + event.quality.confidence * 0.45;
+	if (event.quality.replayVerified) weight += 0.18;
+	if (event.outcome === "success") weight += 0.12;
+	if (event.outcome === "failure" || event.outcome === "blocked") weight -= 0.22;
+	weight += Math.min(0.16, event.quality.reuseCount * 0.03);
+	weight -= Math.min(0.24, event.quality.failureCount * 0.06 + event.quality.decay * 0.12);
+	return Number(Math.max(0.1, Math.min(1.35, weight)).toFixed(4));
+}
+
+function memoryVectorEntryFromEvent(event: MemoryEventV1): MemoryVectorIndexEntryV1 {
+	const tokens = memoryVectorTokens(memoryTextForSearch(event));
+	const base = {
+		kind: "repi-memory-vector-index-entry" as const,
+		schemaVersion: 1 as const,
+		eventId: event.id,
+		caseSignature: event.caseSignature,
+		route: event.route,
+		targetScope: memoryTargetScope(event.target),
+		model: MEMORY_VECTOR_MODEL,
+		dimensions: MEMORY_VECTOR_DIMENSIONS,
+		tokens,
+		vector: memoryVectorForTokens(tokens),
+		qualityWeight: memoryVectorQualityWeight(event),
+		artifactRefs: event.artifactHashes.filter((artifact) => artifact.sha256).slice(0, 32),
+	};
+	return { ...base, entryHash: sha256Text(JSON.stringify(base)) };
+}
+
 function memoryRouteMatches(eventRoute: string | undefined, route: string | undefined): boolean {
 	const left = String(eventRoute ?? "").trim().toLowerCase();
 	const right = String(route ?? "").trim().toLowerCase();
@@ -25551,10 +25700,120 @@ function memoryHybridSignalScore(
 	return score;
 }
 
+function buildMemoryVectorIndex(events = readMemoryEvents()): MemoryVectorIndexV1 {
+	ensureReconStorage();
+	const index: MemoryVectorIndexV1 = {
+		kind: "repi-memory-vector-index",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		MemoryVectorIndexV1: true,
+		model: MEMORY_VECTOR_MODEL,
+		dimensions: MEMORY_VECTOR_DIMENSIONS,
+		eventsPath: memoryEventsPath(),
+		indexPath: memoryVectorIndexPath(),
+		eventCount: events.length,
+		hashChainOk: memoryEventHashChainOk(events),
+		entries: events.map(memoryVectorEntryFromEvent),
+		requiredGates: [
+			"MemoryVectorIndexV1",
+			"deterministic_local_hash_embedding",
+			"route_scoped_vector_rerank",
+			"quality_weighted_vector_score",
+			"forbidden_cross_route_vector_leak_blocked",
+		],
+	};
+	writeFileAtomic(memoryVectorIndexPath(), `${JSON.stringify(index, null, 2)}\n`);
+	return index;
+}
+
+function searchMemoryVectors(query?: string, options?: { route?: string; target?: string; limit?: number }): MemoryVectorSearchReportV1 {
+	ensureReconStorage();
+	const events = readMemoryEvents();
+	const eventsById = new Map(events.map((event) => [event.id, event]));
+	const index = buildMemoryVectorIndex(events);
+	const queryText = query ?? "";
+	const queryTokens = memoryVectorTokens(queryText);
+	const queryVector = memoryVectorForTokens(queryTokens);
+	const hits = index.entries
+		.flatMap((entry) => {
+			const event = eventsById.get(entry.eventId);
+			if (!event) return [];
+			if (options?.route && !memoryRouteMatches(entry.route, options.route)) return [];
+			if (options?.target && entry.targetScope !== "global" && !entry.targetScope.includes(memoryTargetScope(options.target)))
+				return [];
+			const cosine = memoryVectorCosine(queryVector, entry.vector);
+			const reasons: string[] = [];
+			if (cosine > 0) reasons.push(`memory_vector_rerank:${cosine.toFixed(3)}`);
+			if (options?.route && memoryRouteMatches(entry.route, options.route)) reasons.push("route_scoped_vector");
+			if (entry.qualityWeight >= 1) reasons.push("quality_weighted_vector_score");
+			const score = Number((Math.max(0, cosine) * 100 * entry.qualityWeight).toFixed(2));
+			if (queryTokens.length > 0 && score <= 0) return [];
+			return [
+				{
+					eventId: entry.eventId,
+					caseSignature: entry.caseSignature,
+					score,
+					cosine: Number(cosine.toFixed(4)),
+					qualityWeight: entry.qualityWeight,
+					reasons,
+					commands: event.commands.slice(0, 8),
+				},
+			];
+		})
+		.sort((left, right) => right.score - left.score || left.eventId.localeCompare(right.eventId))
+		.slice(0, options?.limit ?? 12);
+	const report: MemoryVectorSearchReportV1 = {
+		kind: "repi-memory-vector-search-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		MemoryVectorSearchV1: true,
+		query: queryText,
+		route: options?.route,
+		target: options?.target,
+		indexPath: memoryVectorIndexPath(),
+		reportPath: memoryVectorSearchReportPath(),
+		model: MEMORY_VECTOR_MODEL,
+		dimensions: MEMORY_VECTOR_DIMENSIONS,
+		hits,
+		requiredGates: [
+			"MemoryVectorSearchV1",
+			"vector_index_built_before_search",
+			"route_scoped_vector_rerank",
+			"quality_weighted_vector_score",
+			"forbidden_cross_route_vector_leak_blocked",
+		],
+	};
+	writeFileAtomic(memoryVectorSearchReportPath(), `${JSON.stringify(report, null, 2)}\n`);
+	return report;
+}
+
+function formatMemoryVectorSearch(report = searchMemoryVectors("")): string {
+	return [
+		"memory_vector_search:",
+		`MemoryVectorSearchV1=${report.MemoryVectorSearchV1}`,
+		`query=${report.query}`,
+		`model=${report.model}`,
+		`dimensions=${report.dimensions}`,
+		`index=${report.indexPath}`,
+		`report=${report.reportPath}`,
+		"hits:",
+		...(report.hits.length
+			? report.hits.map(
+					(hit) =>
+						`- event=${hit.eventId} score=${hit.score.toFixed(2)} cosine=${hit.cosine.toFixed(3)} quality=${hit.qualityWeight.toFixed(2)} case=${hit.caseSignature} reasons=${hit.reasons.join(",") || "none"} commands=${hit.commands.length}`,
+				)
+			: ["- none"]),
+		"required_gates:",
+		...report.requiredGates.map((gate) => `- ${gate}`),
+	].join("\n");
+}
+
 function searchMemoryEvents(query?: string, options?: { route?: string; target?: string; limit?: number }): MemoryRetrievalHit[] {
 	ensureReconStorage();
 	const events = readMemoryEvents();
 	const caseMemory = latestCaseMemoryBySignature();
+	const vectorReport = searchMemoryVectors(query, options);
+	const vectorByEvent = new Map(vectorReport.hits.map((hit) => [hit.eventId, hit]));
 	const queryTokens = uniqueNonEmpty((query ?? "").toLowerCase().split(/[^a-z0-9一-鿿]+/), 24).filter(
 		(token) => token.length >= 2,
 	);
@@ -25589,6 +25848,11 @@ function searchMemoryEvents(query?: string, options?: { route?: string; target?:
 		score -= decay;
 		const caseRow = caseMemory.get(event.caseSignature);
 		score += memoryHybridSignalScore(event, caseRow, queryTokens, semanticTokens, reasons);
+		const vectorHit = vectorByEvent.get(event.id);
+		if (vectorHit && vectorHit.score > 0) {
+			score += Math.min(18, vectorHit.score / 6);
+			reasons.push(...vectorHit.reasons);
+		}
 		if (caseRow) {
 			const caseReuseBoost = Math.min(12, caseRow.quality.reuseCount * 1.5);
 			const caseFailurePenalty = Math.min(18, caseRow.quality.failureCount * 3 + caseRow.quality.decay * 10);
@@ -25612,6 +25876,9 @@ function searchMemoryEvents(query?: string, options?: { route?: string; target?:
 			(queryTokens.length > 0 &&
 				!reasons.some((reason) =>
 					/^(?:token:|memory_semantic_hybrid_reuse:|case-memory-hybrid:|artifact-hybrid:)/.test(reason),
+				) &&
+				!reasons.some((reason) =>
+					/^(?:memory_vector_rerank:|route_scoped_vector|quality_weighted_vector_score)/.test(reason),
 				))
 		)
 			return [];
@@ -25656,6 +25923,7 @@ function formatMemoryRetrieval(query?: string, hits = searchMemoryEvents(query))
 		`events_path: ${memoryEventsPath()}`,
 		`case_memory_path: ${caseMemoryPath()}`,
 		`retrieval_report: ${memoryRetrievalReportPath()}`,
+		`vector_report: ${memoryVectorSearchReportPath()}`,
 		`hash_chain_ok: ${memoryEventHashChainOk(readMemoryEvents())}`,
 		"hits:",
 		...(hits.length
@@ -27047,7 +27315,7 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 	});
 	pi.registerCommand("re-memory", {
 		description:
-			"Read, append, evolve, search, verify, repair, snapshot, eval, distill, sediment, supervise, or maintain REPI memory: /re-memory [show|events|search|append|evolve|verify|repair-index|snapshot|eval|consolidate|distill|sediment|supervise|playbooks|prune-playbooks] ...",
+			"Read, append, evolve, search, verify, repair, snapshot, eval, vector, distill, sediment, supervise, or maintain REPI memory: /re-memory [show|events|search|vector|append|evolve|verify|repair-index|snapshot|eval|consolidate|distill|sediment|supervise|playbooks|prune-playbooks] ...",
 		handler: async (args) => {
 			const trimmed = args.trim();
 			if (trimmed.startsWith("append ")) {
@@ -27131,6 +27399,13 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 				const report = buildMemorySemanticIndex();
 				updateMissionGate("memory_or_evolution_written", "done", `memory_v4_sedimentation inject=${report.injectionPacket.entries.length} contradictions=${report.contradictions.length}`);
 				sendDisplayMessage(pi, "REPI Memory Sedimentation", formatMemorySedimentation(report));
+				return;
+			}
+			if (trimmed === "vector" || trimmed === "vectors" || trimmed.startsWith("vector ") || trimmed.startsWith("rerank ")) {
+				const query = trimmed.replace(/^(?:vector|vectors|rerank)\s*/i, "").trim();
+				const report = searchMemoryVectors(query);
+				updateMissionGate("memory_checked", "done", `MemoryVectorSearchV1 hits=${report.hits.length}`);
+				sendDisplayMessage(pi, "REPI Memory Vector Search", formatMemoryVectorSearch(report));
 				return;
 			}
 			if (trimmed === "supervise" || trimmed === "supervisor" || trimmed === "lifecycle") {
@@ -27834,7 +28109,7 @@ function installReconTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "re_memory",
 		label: "RE Memory",
-		description: "Read, search, append, evolve, verify, evaluate, distill, sediment, supervise, or maintain REPI long-term memory and playbooks.",
+		description: "Read, search, vector-rerank, append, evolve, verify, evaluate, distill, sediment, supervise, or maintain REPI long-term memory and playbooks.",
 		promptSnippet: "Use long-term reverse/pentest memory for reusable evidence and lessons.",
 		promptGuidelines: ["Before repeating a known security workflow, inspect re_memory for similar cases."],
 		parameters: Type.Object({
@@ -27843,6 +28118,9 @@ function installReconTools(pi: ExtensionAPI): void {
 				Type.Literal("search"),
 				Type.Literal("events"),
 				Type.Literal("search-events"),
+				Type.Literal("vector"),
+				Type.Literal("vectors"),
+				Type.Literal("rerank"),
 				Type.Literal("append"),
 				Type.Literal("evolve"),
 				Type.Literal("verify"),
@@ -27980,6 +28258,18 @@ function installReconTools(pi: ExtensionAPI): void {
 						contradictionLedger: memoryContradictionLedgerPath(),
 						injectionPacket: memoryInjectionPacketPath(),
 						sedimentationReport: memorySedimentationReportPath(),
+					} as Record<string, unknown>,
+				};
+			}
+			if (params.action === "vector" || params.action === "vectors" || params.action === "rerank") {
+				const report = searchMemoryVectors(params.query);
+				const text = formatMemoryVectorSearch(report);
+				updateMissionGate("memory_checked", "done", `MemoryVectorSearchV1 hits=${report.hits.length}`);
+				return {
+					content: [{ type: "text" as const, text }],
+					details: {
+						vectorIndex: memoryVectorIndexPath(),
+						vectorSearchReport: memoryVectorSearchReportPath(),
 					} as Record<string, unknown>,
 				};
 			}
