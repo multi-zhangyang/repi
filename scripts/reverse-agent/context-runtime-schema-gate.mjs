@@ -213,12 +213,12 @@ function main() {
 			checks.push(check("runtime:pack-schema", packValidation.errors.length === 0, packValidation));
 			checks.push(check("runtime:resume-schema", resumeValidation.errors.length === 0, resumeValidation));
 			checks.push(check("runtime:resume-verification-pass", probeData.resume?.exactResumeVerification?.blocked?.length === 0 && probeData.resume?.resumeQueueStatus === "done" && probeData.resume?.closure?.status === "closed", { exactResumeVerification: probeData.resume?.exactResumeVerification, resumeQueueStatus: probeData.resume?.resumeQueueStatus, closure: probeData.resume?.closure }));
-			checks.push(check("runtime:memory-hash-contract", ["memory_events", "memory_case_memory", "memory_store_report", "memory_vector_index", "memory_vector_search", "memory_injection_packet", "memory_sedimentation_report"].every((kind) => (probeData.pack?.artifactIndex ?? []).some((artifact) => artifact.kind === kind)), { artifactKinds: (probeData.pack?.artifactIndex ?? []).map((artifact) => artifact.kind) }));
+			checks.push(check("runtime:memory-hash-contract", ["memory_events", "memory_case_memory", "memory_store_report", "memory_feedback_closure", "memory_vector_index", "memory_vector_search", "memory_injection_packet", "memory_sedimentation_report"].every((kind) => (probeData.pack?.artifactIndex ?? []).some((artifact) => artifact.kind === kind)), { artifactKinds: (probeData.pack?.artifactIndex ?? []).map((artifact) => artifact.kind) }));
 		} else {
 			checks.push(check("runtime:pack-schema", false, { error: "probe output missing" }));
 			checks.push(check("runtime:resume-schema", false, { error: "probe output missing" }));
 		}
-		checks.push(check("code:runtime-schema-markers", ["createdAt", "resumeContract", "memory_store_report", "memory_vector_index", "memory_vector_search", "memory_injection_packet"].every((marker) => readText("packages/coding-agent/src/core/recon-profile.ts").includes(marker)), { markers: ["createdAt", "resumeContract", "memory_store_report", "memory_vector_index", "memory_vector_search", "memory_injection_packet"] }));
+		checks.push(check("code:runtime-schema-markers", ["createdAt", "resumeContract", "memory_store_report", "memory_feedback_closure", "memory_vector_index", "memory_vector_search", "memory_injection_packet"].every((marker) => readText("packages/coding-agent/src/core/recon-profile.ts").includes(marker)), { markers: ["createdAt", "resumeContract", "memory_store_report", "memory_feedback_closure", "memory_vector_index", "memory_vector_search", "memory_injection_packet"] }));
 	} catch (error) {
 		checks.push(check("gate:exception", false, { error: String(error), stack: error?.stack }));
 	} finally {

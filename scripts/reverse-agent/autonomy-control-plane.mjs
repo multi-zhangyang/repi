@@ -548,6 +548,30 @@ const REQUIREMENTS = [
 					markers: ["repi-memory-supervisor-fixture", "promote", "demote", "quarantine", "merge", "feedback_required_after_injection"],
 				},
 			{
+				id: "memory_feedback_closure_runtime",
+				description: "Memory Feedback Closure 把 injected memory 的执行反馈闭环固化为 report：成功反馈 promote、失败反馈 demote、未反馈保持 pending，避免沉淀只写不验证。",
+				files: ["packages/coding-agent/src/core/recon-profile.ts", "repi-profile/extensions/reverse-pentest-core.ts"],
+				markers: ["MemoryFeedbackClosureV1", "buildMemoryFeedbackClosureReport", "formatMemoryFeedbackClosure", "memoryFeedbackClosureReportPath", "pending_feedback_after_injection", "failure_feedback_demotes"],
+			},
+			{
+				id: "memory_feedback_closure_gate",
+				description: "Memory Feedback Closure hard-eval 真实调用 re_memory feedback/supervise，验证 promote/demote/pending 三类反馈闭环和 supervisor demotion。",
+				files: ["scripts/reverse-agent/memory-feedback-closure-gate.mjs"],
+				markers: ["repi-memory-feedback-closure-gate", "runtime:success-feedback-promotes", "runtime:failure-feedback-demotes", "runtime:pending-feedback-tracked", "runtime:supervisor-demotes-failed-feedback"],
+			},
+			{
+				id: "memory_feedback_closure_schema",
+				description: "Memory Feedback Closure schema 固化 feedback report/row 的可机读合同。",
+				files: ["schemas/reverse-agent/memory-feedback-closure.schema.json"],
+				markers: ["MemoryFeedbackClosureReportV1", "MemoryFeedbackClosureRowV1", "pending_injection_requires_feedback_writeback"],
+			},
+			{
+				id: "memory_feedback_closure_fixture",
+				description: "Memory Feedback Closure fixture 覆盖成功反馈提升、失败反馈降权和 pending writeback。",
+				files: ["fixtures/reverse-agent/memory-feedback-closure.fixture.json"],
+				markers: ["repi-memory-feedback-closure-fixture", "success-feedback-promotes-injected-memory", "failure-feedback-demotes-injected-memory", "pending-injection-requires-writeback"],
+			},
+			{
 				id: "memory_vector_rerank_runtime",
 				description: "Memory Vector Index 用本地 deterministic hash embedding 生成 vector-index/vector-search-report，并把 memory_vector_rerank 接入 search-events 排序。",
 				files: ["packages/coding-agent/src/core/recon-profile.ts", "repi-profile/extensions/reverse-pentest-core.ts"],
@@ -594,7 +618,7 @@ const REQUIREMENTS = [
 		hardeningNeeded: [
 			"knowledge graph/latest artifact 查询继续按 mission/session/workspace/target 做更严格过滤，避免跨任务污染。",
 			"compact resume ledger 继续扩展 queue 状态机：running/done/blocked/exhausted、auto-resume budget 和多次 compact 幂等回放。",
-				"Memory v5 后续继续补 provider/remote embedding 后端、跨 session contamination 负例和 re_swarm 多进程 worker memory writeback 压力回归。",
+				"Memory v5 后续继续补 provider/remote embedding 后端、跨 session contamination 负例和 re_swarm 多进程 worker memory writeback 压力回归；injection feedback closure 已接入 gate。",
 		],
 		recommendedWork: [
 			"保持 ContextPackV2 / ResumeContractV2 runtime markers 与 context-compact-audit.mjs 同步。",

@@ -2395,6 +2395,7 @@ type MemorySupervisorReportV1 = {
 	storeReportPath: string;
 	sedimentationReportPath: string;
 	usefulnessReportPath: string;
+	feedbackClosureReportPath: string;
 	supervisorReportPath: string;
 	lifecycleBoardPath: string;
 	eventCount: number;
@@ -2402,6 +2403,7 @@ type MemorySupervisorReportV1 = {
 	storeGrade: "pass" | "repairable" | "blocked";
 	hashChainOk: boolean;
 	usefulnessStatus: "pass" | "warn" | "fail" | "empty";
+	feedbackClosureStatus: "pass" | "warn" | "fail" | "empty";
 	decisions: MemorySupervisorDecisionV1[];
 	promotionQueue: MemorySupervisorDecisionV1[];
 	demotionQueue: MemorySupervisorDecisionV1[];
@@ -2421,6 +2423,47 @@ type MemorySupervisorReportV1 = {
 		failureFeedbackDemotes: true;
 		mergeByCaseSignature: true;
 	};
+};
+
+type MemoryFeedbackClosureStatus = "promoted" | "demoted" | "pending" | "orphan_feedback";
+
+type MemoryFeedbackClosureRowV1 = {
+	kind: "repi-memory-feedback-closure-row";
+	schemaVersion: 1;
+	eventId: string;
+	caseSignature: string;
+	route: string;
+	targetScope: string;
+	injectionAction: MemorySedimentationAction | "not_injected";
+	injectionGrade: number;
+	feedbackEventIds: string[];
+	feedbackStatus: MemoryFeedbackClosureStatus;
+	positiveFeedbackCount: number;
+	negativeFeedbackCount: number;
+	lastFeedbackAt?: string;
+	blockers: string[];
+	nextCommands: string[];
+};
+
+type MemoryFeedbackClosureReportV1 = {
+	kind: "repi-memory-feedback-closure-report";
+	schemaVersion: 1;
+	generatedAt: string;
+	MemoryFeedbackClosureV1: true;
+	sedimentationReportPath: string;
+	injectionPacketPath: string;
+	feedbackClosureReportPath: string;
+	eventCount: number;
+	injectedCount: number;
+	feedbackLinkedCount: number;
+	feedbackCoverage: number;
+	closureStatus: "pass" | "warn" | "fail" | "empty";
+	rows: MemoryFeedbackClosureRowV1[];
+	promotionReadyEventIds: string[];
+	demotionRequiredEventIds: string[];
+	pendingFeedbackEventIds: string[];
+	orphanFeedbackEventIds: string[];
+	requiredGates: string[];
 };
 
 type MemoryTransactionFileDigestV1 = {
@@ -3220,6 +3263,10 @@ function memoryUsefulnessEvalReportPath(): string {
 	return memoryPath("usefulness-eval.json");
 }
 
+function memoryFeedbackClosureReportPath(): string {
+	return memoryPath("feedback-closure-report.json");
+}
+
 function memoryVectorIndexPath(): string {
 	return memoryPath("vector-index.json");
 }
@@ -3460,6 +3507,10 @@ function ensureReconStorage(): void {
 		[
 			memoryUsefulnessEvalReportPath(),
 			`${JSON.stringify({ kind: "repi-memory-usefulness-eval", schemaVersion: 1, MemoryUsefulnessEvalV1: true, scenarioCount: 0, scenarios: [] }, null, 2)}\n`,
+		],
+		[
+			memoryFeedbackClosureReportPath(),
+			`${JSON.stringify({ kind: "repi-memory-feedback-closure-report", schemaVersion: 1, MemoryFeedbackClosureV1: true, rows: [] }, null, 2)}\n`,
 		],
 		[
 			memoryVectorIndexPath(),
@@ -17226,10 +17277,11 @@ function contextEvidenceRank(kind: string): string {
 }
 
 function contextSourceCommand(kind: string): string {
-	if (/^memory_(?:events|case_memory|retrieval|store|snapshot|usefulness|vector|distillation|quarantine|semantic|contradiction|injection|sedimentation|supervisor|lifecycle)/i.test(kind)) {
+	if (/^memory_(?:events|case_memory|retrieval|store|snapshot|usefulness|feedback|vector|distillation|quarantine|semantic|contradiction|injection|sedimentation|supervisor|lifecycle)/i.test(kind)) {
 		if (/store_report/i.test(kind)) return "re_memory verify";
 		if (/store_snapshot/i.test(kind)) return "re_memory snapshot";
 		if (/usefulness/i.test(kind)) return "re_memory eval";
+		if (/feedback/i.test(kind)) return "re_memory feedback";
 		if (/vector/i.test(kind)) return "re_memory vector";
 		if (/distillation|quarantine/i.test(kind)) return "re_memory distill";
 		if (/semantic|contradiction|injection|sedimentation/i.test(kind)) return "re_memory sediment";
@@ -17350,6 +17402,7 @@ function contextArtifactIndex(): ContextArtifactIndexEntry[] {
 		["memory_store_report", existingPath(memoryStoreReportPath())],
 		["memory_store_snapshot", existingPath(memoryStoreSnapshotPath())],
 		["memory_usefulness_eval", existingPath(memoryUsefulnessEvalReportPath())],
+		["memory_feedback_closure", existingPath(memoryFeedbackClosureReportPath())],
 		["memory_vector_index", existingPath(memoryVectorIndexPath())],
 		["memory_vector_search", existingPath(memoryVectorSearchReportPath())],
 		["memory_distillation_report", existingPath(memoryDistillationReportPath())],
@@ -23936,6 +23989,9 @@ function buildMemoryDigest(): string {
 		"<memory_usefulness_eval>",
 		truncateMiddle(readText(memoryUsefulnessEvalReportPath()), 1800),
 		"</memory_usefulness_eval>",
+		"<memory_feedback_closure>",
+		truncateMiddle(readText(memoryFeedbackClosureReportPath()), 1800),
+		"</memory_feedback_closure>",
 		"<memory_vector_search>",
 		truncateMiddle(readText(memoryVectorSearchReportPath()), 1800),
 		"</memory_vector_search>",
@@ -24737,6 +24793,45 @@ function extractMemoryCommands(text: string): string[] {
 		.map((line) => line.replace(/^-\s*/, "").trim())
 		.filter((line) => /^(?:re[-_]\w+|python3?\s|node\s|bash\s|curl\s|rg\s|find\s|jq\s|nmap\s|ffuf\s|gdb\s|frida\s|tshark\s|checksec\s)/i.test(line));
 	return uniqueNonEmpty([...fenced, ...inline], 24);
+}
+
+function parseBooleanDirective(value: string | undefined): boolean | undefined {
+	if (!value) return undefined;
+	if (/^(?:1|true|yes|y)$/i.test(value)) return true;
+	if (/^(?:0|false|no|n)$/i.test(value)) return false;
+	return undefined;
+}
+
+function parseMemoryAppendDirectives(text: string): Partial<MemoryEventInput> {
+	const kv = new Map<string, string>();
+	for (const match of text.matchAll(/\b([a-zA-Z][a-zA-Z0-9_-]{1,40})=("[^"]+"|'[^']+'|[^\s]+)/g)) {
+		const key = match[1]?.toLowerCase().replaceAll("-", "_");
+		const raw = match[2] ?? "";
+		const value = raw.replace(/^["']|["']$/g, "");
+		if (key) kv.set(key, value);
+	}
+	const outcome = kv.get("outcome");
+	const confidenceRaw = Number(kv.get("confidence"));
+	const artifacts = uniqueNonEmpty(
+		[...text.matchAll(/\b(?:artifact|artifact_path|artifactPath)=("[^"]+"|'[^']+'|[^\s]+)/g)].map((match) =>
+			(match[1] ?? "").replace(/^["']|["']$/g, ""),
+		),
+		24,
+	);
+	return {
+		route: kv.get("route"),
+		target: kv.get("target"),
+		caseSignature: kv.get("casesignature") ?? kv.get("case_signature") ?? kv.get("case"),
+		outcome:
+			outcome === "success" || outcome === "failure" || outcome === "blocked" || outcome === "partial" || outcome === "repair"
+				? outcome
+				: undefined,
+		confidence: Number.isFinite(confidenceRaw) ? confidenceRaw : undefined,
+		replayVerified: parseBooleanDirective(kv.get("replayverified") ?? kv.get("replay_verified")),
+		playbookCandidate: parseBooleanDirective(kv.get("playbookcandidate") ?? kv.get("playbook_candidate")),
+		verifierRuleCandidate: parseBooleanDirective(kv.get("verifierrulecandidate") ?? kv.get("verifier_rule_candidate")),
+		artifactPaths: artifacts,
+	};
 }
 
 function memoryEventHash(event: MemoryEventV1): string {
@@ -26603,6 +26698,172 @@ function formatMemorySedimentation(report = buildMemorySemanticIndex()): string 
 	].join("\n");
 }
 
+function memoryFeedbackSourceEventIds(event: MemoryEventV1): string[] {
+	const text = memoryTextForSearch(event);
+	return uniqueNonEmpty(
+		[
+			...Array.from(text.matchAll(/\b(?:event|source_event|memory_event|feedback_for|injected_event)=?(mem:[a-z0-9-]+)/gi)).map(
+				(match) => match[1],
+			),
+			...Array.from(text.matchAll(/\bhistorical memory event\s+(mem:[a-z0-9-]+)/gi)).map((match) => match[1]),
+		].filter(Boolean) as string[],
+		16,
+	);
+}
+
+function memoryFeedbackPolarity(event: MemoryEventV1): "positive" | "negative" | "neutral" {
+	const text = memoryTextForSearch(event);
+	if (event.outcome === "failure" || event.outcome === "blocked" || /memory_reuse_feedback_demote|feedback[_ -]?demote|failed/i.test(text))
+		return "negative";
+	if (event.outcome === "success" || /memory_reuse_feedback_promote|feedback[_ -]?promote|verified|strong evidence/i.test(text))
+		return "positive";
+	return "neutral";
+}
+
+function buildMemoryFeedbackClosureReport(options?: {
+	sedimentation?: MemorySedimentationReportV1;
+	write?: boolean;
+}): MemoryFeedbackClosureReportV1 {
+	ensureReconStorage();
+	const events = readMemoryEvents();
+	const eventsById = new Map(events.map((event) => [event.id, event]));
+	const sedimentation = options?.sedimentation ?? buildMemorySemanticIndex();
+	const injectedById = new Map(sedimentation.injectionPacket.entries.map((entry) => [entry.eventId, entry]));
+	const feedbackBySource = new Map<string, MemoryEventV1[]>();
+	for (const event of events) {
+		for (const sourceId of memoryFeedbackSourceEventIds(event)) {
+			const rows = feedbackBySource.get(sourceId) ?? [];
+			rows.push(event);
+			feedbackBySource.set(sourceId, rows);
+		}
+	}
+	const sourceIds = uniqueNonEmpty([...injectedById.keys(), ...feedbackBySource.keys()], 240);
+	const rows: MemoryFeedbackClosureRowV1[] = sourceIds.map((eventId) => {
+		const source = eventsById.get(eventId);
+		const injection = injectedById.get(eventId);
+		const feedback = feedbackBySource.get(eventId) ?? [];
+		const positiveFeedbackCount = feedback.filter((event) => memoryFeedbackPolarity(event) === "positive").length;
+		const negativeFeedbackCount = feedback.filter((event) => memoryFeedbackPolarity(event) === "negative").length;
+		const feedbackStatus: MemoryFeedbackClosureStatus = negativeFeedbackCount
+			? "demoted"
+			: positiveFeedbackCount
+				? "promoted"
+				: injection
+					? "pending"
+					: "orphan_feedback";
+		const lastFeedbackAt = feedback
+			.map((event) => event.ts)
+			.sort()
+			.at(-1);
+		const blockers = uniqueNonEmpty(
+			[
+				feedbackStatus === "pending" ? "pending_feedback_after_injection" : undefined,
+				feedbackStatus === "demoted" ? "failure_feedback_demotes" : undefined,
+				feedbackStatus === "orphan_feedback" ? "feedback_without_current_injection_packet" : undefined,
+				injection?.blockers ?? [],
+			].flat(),
+			16,
+		);
+		return {
+			kind: "repi-memory-feedback-closure-row",
+			schemaVersion: 1,
+			eventId,
+			caseSignature: source?.caseSignature ?? injection?.caseSignature ?? "unknown",
+			route: source?.route ?? injection?.route ?? "unknown",
+			targetScope: memoryTargetScope(source?.target) || injection?.targetScope || "global",
+			injectionAction: injection?.action ?? "not_injected",
+			injectionGrade: Number((injection?.grade ?? 0).toFixed(2)),
+			feedbackEventIds: feedback.map((event) => event.id),
+			feedbackStatus,
+			positiveFeedbackCount,
+			negativeFeedbackCount,
+			lastFeedbackAt,
+			blockers,
+			nextCommands:
+				feedbackStatus === "pending"
+					? [
+							`re_memory append # memory_reuse_feedback_promote event=${eventId} after verifier/replay success`,
+							`re_memory append # memory_reuse_feedback_demote event=${eventId} after failed reuse`,
+						]
+					: feedbackStatus === "demoted"
+						? ["re_memory supervise", "re_memory sediment", "re_memory eval"]
+						: feedbackStatus === "promoted"
+							? ["re_memory supervise", "re_context pack"]
+							: ["re_memory sediment"],
+		};
+	});
+	const injectedCount = injectedById.size;
+	const closedInjected = rows.filter((row) => row.injectionAction !== "not_injected" && row.feedbackStatus !== "pending").length;
+	const pendingFeedbackEventIds = rows.filter((row) => row.feedbackStatus === "pending").map((row) => row.eventId);
+	const orphanFeedbackEventIds = rows.filter((row) => row.feedbackStatus === "orphan_feedback").map((row) => row.eventId);
+	const closureStatus =
+		injectedCount === 0 && rows.length === 0
+			? "empty"
+			: orphanFeedbackEventIds.length
+				? "fail"
+				: pendingFeedbackEventIds.length
+					? "warn"
+					: "pass";
+	const report: MemoryFeedbackClosureReportV1 = {
+		kind: "repi-memory-feedback-closure-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		MemoryFeedbackClosureV1: true,
+		sedimentationReportPath: memorySedimentationReportPath(),
+		injectionPacketPath: memoryInjectionPacketPath(),
+		feedbackClosureReportPath: memoryFeedbackClosureReportPath(),
+		eventCount: events.length,
+		injectedCount,
+		feedbackLinkedCount: rows.reduce((sum, row) => sum + row.feedbackEventIds.length, 0),
+		feedbackCoverage: injectedCount ? Number((closedInjected / injectedCount).toFixed(4)) : 0,
+		closureStatus,
+		rows,
+		promotionReadyEventIds: rows.filter((row) => row.feedbackStatus === "promoted").map((row) => row.eventId),
+		demotionRequiredEventIds: rows.filter((row) => row.feedbackStatus === "demoted").map((row) => row.eventId),
+		pendingFeedbackEventIds,
+		orphanFeedbackEventIds,
+		requiredGates: [
+			"MemoryFeedbackClosureV1",
+			"feedback_event_links_source_event",
+			"success_feedback_promotes",
+			"failure_feedback_demotes",
+			"pending_injection_requires_feedback_writeback",
+			"feedback_closure_report_in_context_pack",
+		],
+	};
+	if (options?.write !== false) writeFileAtomic(memoryFeedbackClosureReportPath(), `${JSON.stringify(report, null, 2)}\n`);
+	return report;
+}
+
+function formatMemoryFeedbackClosure(report = buildMemoryFeedbackClosureReport()): string {
+	return [
+		"memory_feedback_closure:",
+		`MemoryFeedbackClosureV1=${report.MemoryFeedbackClosureV1}`,
+		`status=${report.closureStatus}`,
+		`injected=${report.injectedCount}`,
+		`feedback_linked=${report.feedbackLinkedCount}`,
+		`feedback_coverage=${report.feedbackCoverage}`,
+		`report=${report.feedbackClosureReportPath}`,
+		"promotion_ready_event_ids:",
+		...(report.promotionReadyEventIds.length ? report.promotionReadyEventIds.map((id) => `- ${id}`) : ["- none"]),
+		"demotion_required_event_ids:",
+		...(report.demotionRequiredEventIds.length ? report.demotionRequiredEventIds.map((id) => `- ${id}`) : ["- none"]),
+		"pending_feedback_event_ids:",
+		...(report.pendingFeedbackEventIds.length ? report.pendingFeedbackEventIds.map((id) => `- ${id}`) : ["- none"]),
+		"rows:",
+		...(report.rows.length
+			? report.rows
+					.slice(0, 16)
+					.map(
+						(row) =>
+							`- event=${row.eventId} status=${row.feedbackStatus} injection=${row.injectionAction} grade=${row.injectionGrade.toFixed(1)} feedback=${row.feedbackEventIds.length} blockers=${row.blockers.join(",") || "none"}`,
+					)
+			: ["- none"]),
+		"required_gates:",
+		...report.requiredGates.map((gate) => `- ${gate}`),
+	].join("\n");
+}
+
 function memorySupervisorTtlDays(action: MemorySupervisorAction): number {
 	if (action === "promote") return 180;
 	if (action === "retain" || action === "merge") return 90;
@@ -26615,10 +26876,11 @@ function memorySupervisorDecisionFromEntry(params: {
 	entry: MemorySemanticIndexEntryV1;
 	event?: MemoryEventV1;
 	caseRow?: CaseMemoryV1;
+	feedback?: MemoryFeedbackClosureRowV1;
 	action?: MemorySupervisorAction;
 	reason?: string;
 }): MemorySupervisorDecisionV1 {
-	const action =
+	const sedimentationAction =
 		params.action ??
 		(params.entry.action === "inject"
 			? "promote"
@@ -26629,15 +26891,27 @@ function memorySupervisorDecisionFromEntry(params: {
 					: params.entry.action === "demote"
 						? "demote"
 						: "retain");
+	const action = params.feedback?.feedbackStatus === "demoted" && sedimentationAction === "promote" ? "demote" : sedimentationAction;
 	const ttlDays = memorySupervisorTtlDays(action);
 	const confidence = params.event?.quality.confidence ?? params.caseRow?.quality.confidence ?? Math.min(0.99, params.entry.grade / 100);
 	const reason =
 		params.reason ??
-		(params.entry.blockers.length
+		(params.feedback?.feedbackStatus === "demoted"
+			? `failure_feedback_demotes source_event=${params.entry.eventId} feedback=${params.feedback.feedbackEventIds.join(",")}`
+			: params.entry.blockers.length
 			? params.entry.blockers.join("; ")
 			: action === "promote"
-				? "artifact_sha256+verifier_or_replay+non_quarantine grade>=70"
-				: `sedimentation_action=${params.entry.action} grade=${params.entry.grade.toFixed(1)}`);
+					? "artifact_sha256+verifier_or_replay+non_quarantine grade>=70"
+					: `sedimentation_action=${params.entry.action} grade=${params.entry.grade.toFixed(1)}`);
+	const blockers = uniqueNonEmpty(
+		[
+			...params.entry.blockers,
+			params.feedback?.feedbackStatus === "pending" ? "pending_feedback_after_injection" : undefined,
+			params.feedback?.feedbackStatus === "demoted" ? "failure_feedback_demotes" : undefined,
+			...(params.feedback?.blockers ?? []),
+		],
+		24,
+	);
 	return {
 		kind: "repi-memory-supervisor-decision",
 		schemaVersion: 1,
@@ -26652,12 +26926,13 @@ function memorySupervisorDecisionFromEntry(params: {
 		route: params.entry.route,
 		evidenceRefs: params.entry.artifactRefs,
 		commands: uniqueNonEmpty(params.event?.commands ?? [], 16),
-		blockers: params.entry.blockers,
+		blockers,
 		lifecycle: {
 			ttlDays,
 			reviewAfterDays: action === "promote" ? 45 : action === "retain" || action === "merge" ? 21 : 7,
 			archiveCandidate: action === "expire" || action === "quarantine",
-			requiresFeedback: action === "promote" || action === "retain" || action === "merge",
+			requiresFeedback:
+				action === "promote" || action === "retain" || action === "merge" || params.feedback?.feedbackStatus === "pending",
 		},
 	};
 }
@@ -26731,11 +27006,13 @@ function formatMemorySupervisorBoard(report: MemorySupervisorReportV1): string {
 		`store_grade: ${report.storeGrade}`,
 		`hash_chain_ok: ${report.hashChainOk}`,
 		`usefulness_status: ${report.usefulnessStatus}`,
+		`feedback_closure_status: ${report.feedbackClosureStatus}`,
 		`events: ${report.eventCount}`,
 		`cases: ${report.caseCount}`,
 		`supervisor_report: ${report.supervisorReportPath}`,
 		`sedimentation_report: ${report.sedimentationReportPath}`,
 		`usefulness_report: ${report.usefulnessReportPath}`,
+		`feedback_closure_report: ${report.feedbackClosureReportPath}`,
 		"promotion_queue:",
 		...(report.promotionQueue.length ? report.promotionQueue.map(decisionLine) : ["- none"]),
 		"demotion_queue:",
@@ -26761,14 +27038,17 @@ function superviseMemoryLifecycle(): MemorySupervisorReportV1 {
 	const store = verifyMemoryStore();
 	const usefulness = evaluateMemoryUsefulness();
 	const sedimentation = buildMemorySemanticIndex();
+	const feedbackClosure = buildMemoryFeedbackClosureReport({ sedimentation });
 	const events = readMemoryEvents();
 	const eventsById = new Map(events.map((event) => [event.id, event]));
 	const casesBySignature = latestCaseMemoryBySignature();
+	const feedbackByEvent = new Map(feedbackClosure.rows.map((row) => [row.eventId, row]));
 	const decisions = sedimentation.entries.map((entry) =>
 		memorySupervisorDecisionFromEntry({
 			entry,
 			event: eventsById.get(entry.eventId),
 			caseRow: casesBySignature.get(entry.caseSignature),
+			feedback: feedbackByEvent.get(entry.eventId),
 		}),
 	);
 	const existingDecisionIds = new Set(decisions.map((decision) => decision.id));
@@ -26810,6 +27090,7 @@ function superviseMemoryLifecycle(): MemorySupervisorReportV1 {
 			store.storeGrade === "repairable" ? "re_memory repair-index" : undefined,
 			"re_memory verify",
 			"re_memory sediment",
+			"re_memory feedback",
 			quarantineQueue.length || expireQueue.length ? "re_memory prune-playbooks" : undefined,
 			mergeQueue.length ? "re_memory consolidate" : undefined,
 			promotionQueue.length ? "re_memory playbooks" : undefined,
@@ -26825,6 +27106,7 @@ function superviseMemoryLifecycle(): MemorySupervisorReportV1 {
 		storeReportPath: memoryStoreReportPath(),
 		sedimentationReportPath: memorySedimentationReportPath(),
 		usefulnessReportPath: memoryUsefulnessEvalReportPath(),
+		feedbackClosureReportPath: memoryFeedbackClosureReportPath(),
 		supervisorReportPath: memorySupervisorReportPath(),
 		lifecycleBoardPath: memoryLifecycleBoardPath(),
 		eventCount: events.length,
@@ -26832,6 +27114,7 @@ function superviseMemoryLifecycle(): MemorySupervisorReportV1 {
 		storeGrade: store.storeGrade,
 		hashChainOk: store.hashChainOk && sedimentation.hashChainOk,
 		usefulnessStatus: usefulness.aggregate.status,
+		feedbackClosureStatus: feedbackClosure.closureStatus,
 		decisions,
 		promotionQueue,
 		demotionQueue,
@@ -26849,6 +27132,7 @@ function superviseMemoryLifecycle(): MemorySupervisorReportV1 {
 			"merge_by_case_signature",
 			"ttl_review_after_days",
 			"feedback_required_after_injection",
+			"MemoryFeedbackClosureV1",
 		],
 		policy: {
 			MemorySupervisorV1: true,
@@ -26872,9 +27156,11 @@ function formatMemorySupervisor(report = superviseMemoryLifecycle()): string {
 		`store_grade=${report.storeGrade}`,
 		`hash_chain_ok=${report.hashChainOk}`,
 		`usefulness_status=${report.usefulnessStatus}`,
+		`feedback_closure_status=${report.feedbackClosureStatus}`,
 		`events=${report.eventCount}`,
 		`cases=${report.caseCount}`,
 		`supervisor_report=${report.supervisorReportPath}`,
+		`feedback_closure_report=${report.feedbackClosureReportPath}`,
 		`lifecycle_board=${report.lifecycleBoardPath}`,
 		`queues=promote:${report.promotionQueue.length},demote:${report.demotionQueue.length},quarantine:${report.quarantineQueue.length},expire:${report.expireQueue.length},merge:${report.mergeQueue.length},retain:${report.retainQueue.length}`,
 		"promotion_queue:",
@@ -27315,19 +27601,27 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 	});
 	pi.registerCommand("re-memory", {
 		description:
-			"Read, append, evolve, search, verify, repair, snapshot, eval, vector, distill, sediment, supervise, or maintain REPI memory: /re-memory [show|events|search|vector|append|evolve|verify|repair-index|snapshot|eval|consolidate|distill|sediment|supervise|playbooks|prune-playbooks] ...",
+			"Read, append, evolve, search, verify, repair, snapshot, eval, feedback, vector, distill, sediment, supervise, or maintain REPI memory: /re-memory [show|events|search|vector|append|evolve|verify|repair-index|snapshot|eval|feedback|consolidate|distill|sediment|supervise|playbooks|prune-playbooks] ...",
 		handler: async (args) => {
 			const trimmed = args.trim();
 			if (trimmed.startsWith("append ")) {
 				const body = trimmed.slice("append ".length);
+				const directives = parseMemoryAppendDirectives(body);
 				const anchor = appendJournal("manual", "operator-note", body);
 				const event = appendMemoryEvent({
 					source: "manual",
 					task: "manual operator memory",
+					route: directives.route,
+					target: directives.target,
+					caseSignature: directives.caseSignature,
 					lessons: [body],
 					commands: extractMemoryCommands(body),
-					outcome: "partial",
-					confidence: 0.58,
+					outcome: directives.outcome ?? "partial",
+					confidence: directives.confidence ?? 0.58,
+					replayVerified: directives.replayVerified,
+					playbookCandidate: directives.playbookCandidate,
+					verifierRuleCandidate: directives.verifierRuleCandidate,
+					artifactPaths: directives.artifactPaths,
 				});
 				updateMissionGate("memory_or_evolution_written", "done", `${anchor} event=${event.id}`);
 				sendDisplayMessage(pi, "REPI Memory Appended", `field-journal entry: ${anchor}\nmemory_event: ${event.id}\ncase_signature: ${event.caseSignature}`);
@@ -27383,6 +27677,12 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 				const report = evaluateMemoryUsefulness();
 				updateMissionGate("memory_checked", report.aggregate.status === "fail" ? "blocked" : "done", `memory_usefulness_eval=${report.aggregate.status}`);
 				sendDisplayMessage(pi, "REPI Memory Usefulness Eval", formatMemoryUsefulnessEval(report));
+				return;
+			}
+			if (trimmed === "feedback" || trimmed === "feedback-closure") {
+				const report = buildMemoryFeedbackClosureReport();
+				updateMissionGate("memory_checked", report.closureStatus === "fail" ? "blocked" : "done", `MemoryFeedbackClosureV1=${report.closureStatus}`);
+				sendDisplayMessage(pi, "REPI Memory Feedback Closure", formatMemoryFeedbackClosure(report));
 				return;
 			}
 			if (trimmed === "consolidate") {
@@ -28129,6 +28429,8 @@ function installReconTools(pi: ExtensionAPI): void {
 				Type.Literal("compact"),
 				Type.Literal("eval"),
 				Type.Literal("usefulness"),
+				Type.Literal("feedback"),
+				Type.Literal("feedback-closure"),
 				Type.Literal("consolidate"),
 				Type.Literal("distill"),
 				Type.Literal("sediment"),
@@ -28148,15 +28450,23 @@ function installReconTools(pi: ExtensionAPI): void {
 		async execute(_toolCallId, params) {
 			if (params.action === "append") {
 				const text = params.text ?? "";
+				const directives = parseMemoryAppendDirectives(text);
 				const anchor = appendJournal(params.scene ?? "agent", params.title ?? "field-note", text);
 				const event = appendMemoryEvent({
 					source: "manual",
 					task: params.title ?? "field-note",
+					route: directives.route ?? params.scene,
+					target: directives.target,
+					caseSignature: directives.caseSignature,
 					domainTags: [params.scene ?? "agent"],
 					lessons: [text],
 					commands: extractMemoryCommands(text),
-					outcome: "partial",
-					confidence: 0.58,
+					outcome: directives.outcome ?? "partial",
+					confidence: directives.confidence ?? 0.58,
+					replayVerified: directives.replayVerified,
+					playbookCandidate: directives.playbookCandidate,
+					verifierRuleCandidate: directives.verifierRuleCandidate,
+					artifactPaths: directives.artifactPaths,
 				});
 				updateMissionGate("memory_or_evolution_written", "done", `${anchor} event=${event.id}`);
 				return {
@@ -28222,6 +28532,15 @@ function installReconTools(pi: ExtensionAPI): void {
 				const report = evaluateMemoryUsefulness();
 				const text = formatMemoryUsefulnessEval(report);
 				updateMissionGate("memory_checked", report.aggregate.status === "fail" ? "blocked" : "done", `memory_usefulness_eval=${report.aggregate.status}`);
+				return {
+					content: [{ type: "text" as const, text }],
+					details: report as unknown as Record<string, unknown>,
+				};
+			}
+			if (params.action === "feedback" || params.action === "feedback-closure") {
+				const report = buildMemoryFeedbackClosureReport();
+				const text = formatMemoryFeedbackClosure(report);
+				updateMissionGate("memory_checked", report.closureStatus === "fail" ? "blocked" : "done", `MemoryFeedbackClosureV1=${report.closureStatus}`);
 				return {
 					content: [{ type: "text" as const, text }],
 					details: report as unknown as Record<string, unknown>,

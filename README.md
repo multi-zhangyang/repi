@@ -47,7 +47,7 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - `re_operation` / `re_delegate` / `re_swarm`：把大任务拆成 phase、worker packet、parallel plan。
 - `re_supervisor`：审查 worker 输出，生成冲突表、claim gate policy 和修复队列。
 - `re_reflect` / `re_knowledge_graph`：沉淀经验、case signature、playbook 和跨任务知识。
-- `re_memory events/search-events/verify/repair-index/snapshot/consolidate/distill/sediment/supervise`：读取结构化长期记忆、检索可复用 case、校验/修复事务化 store、汇总高质量经验，把事件蒸馏为 command template / verifier rule / worker routing hint，并生成 Memory v4 semantic-index、contradiction-ledger、mandatory injection packet，以及 Memory Supervisor 的 supervisor-report / lifecycle-board。
+- `re_memory events/search-events/verify/repair-index/snapshot/eval/feedback/vector/consolidate/distill/sediment/supervise`：读取结构化长期记忆、检索可复用 case、校验/修复事务化 store、汇总高质量经验，把事件蒸馏为 command template / verifier rule / worker routing hint，并生成 Memory v4 semantic-index、contradiction-ledger、mandatory injection packet，以及 Memory Supervisor 的 supervisor-report / lifecycle-board。
 - `re_context`：生成可恢复上下文包，支持 exact resume。
 - `re_operator`：把 next commands 转成 bounded operator queue。
 - `re_verifier` / `re_compiler` / `re_replayer` / `re_autofix` / `re_proof_loop`：验证、报告编译、复现、修复、闭环证明。
@@ -62,6 +62,7 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - Memory v2：`~/.repi/agent/recon/memory/events.jsonl` 是 append-only `MemoryEventV1` 哈希链；`case-memory.jsonl` 是按 case signature 聚合后的复用视图；`retrieval-report.json` 记录每次 `re_memory search-events` 的召回、分数、原因和 hash-chain 状态。Markdown journal/playbook 仍保留给人读，但不再是唯一事实源。
 - Memory utility hard-eval：`npm run gate:memory-utility` 用跨目标 authz 与 pwn 负例 fixture 验证“正确召回”——高置信、已复现、同 route 的成功经验应排第一并给出可迁移命令；失败、过旧、跨 route 的噪声不能进入高位或污染命令建议。
 - Memory reuse feedback：`re_lane run` 复用 `memory-event:*` 命令后会自动写回在线学习闭环；强证据会追加 `memory_reuse_feedback_promote` 事件并提升同 case，弱证据/失败会追加 `memory_reuse_feedback_demote` 事件并让后续检索降权。`npm run gate:memory-feedback` 用成功提升和失败降权双场景保护该行为。
+- Memory feedback closure：`re_memory feedback` 会读取 `memory/injection-packet.json`，把已注入记忆的后续反馈固化到 `memory/feedback-closure-report.json`；成功反馈进入 `promotionReadyEventIds`，失败反馈进入 `demotionRequiredEventIds` 并让 `re_memory supervise` 降权，未反馈的 injected memory 保持 `pendingFeedbackEventIds`。`npm run gate:memory-feedback-closure` 真实调用 `re_memory feedback/supervise` 验证 promote / demote / pending 三类闭环。
 - Memory hybrid retrieval：`re_memory search-events` 不再只靠精确 token；它会结合语义轻量召回、case-memory 文本、artifact path/tier 和在线反馈一起打分。`npm run gate:memory-hybrid` 用 `idor/bola/acl`→authz ownership、PCAP artifact 召回等场景保护该能力。Memory Vector rerank：`re_memory vector <query>` 会生成 `memory/vector-index.json` 与 `memory/vector-search-report.json`，使用本地 deterministic `repi-local-hash-embedding-v1` 做 64 维 hash embedding/rerank，并把 `memory_vector_rerank` reason 接入 `search-events` 排序；`npm run gate:memory-vector` 真实调用 vector/search-events，验证 index/search schema、跨 route forbidden leak 和 quality-weighted rerank。
 - Memory usefulness eval：`re_memory eval` 会生成 `usefulness-eval.json`，度量 hit@1、hit@k、MRR、forbiddenLeakRate 和空召回率；`npm run gate:memory-usefulness` 用 authz / pwn 正召回、失败/跨 route forbidden memory 不进 topK、child-process 并发 append 保持 hash-chain 的 hard-eval 保护“记忆真的有用”。
 - Memory v3 distiller：`re_memory distill` 会把 `events.jsonl` 中高置信、已复现、同 route 的经验蒸馏进 `distillation-report.json` / `pattern-book.md`，产出 `command_template`、`verifier_rule`、`worker_routing_hint`，并强制记录 `mandatory_memory_injection_chain=retrieve -> rank -> inject -> execute -> verify -> feedback`。跨 route/cross target/高置信矛盾/陈旧失败会进入 `quarantine.json`，避免把脏经验继续注入计划。`npm run gate:memory-distiller` 用 promote、quarantine、hash drift、低置信负例保护该能力。
@@ -450,7 +451,7 @@ re_memory { "action": "sediment" }
 - 每条 memory event 带 `quality.confidence`、`replayVerified`、`reuseCount`、`failureCount`、`decay`；检索时低置信、失败和衰减记录会降权，带 route 的检索会阻断跨域 command reuse，避免 Web/authz 经验污染 pwn 或相反。
 - 结构化契约由 `schemas/reverse-agent/memory-event.schema.json`、`fixtures/reverse-agent/memory-event.fixture.json` 和 `npm run gate:memory-contract` 保护。
 - Memory utility hard-eval 由 `fixtures/reverse-agent/memory-utility.fixture.json` 与 `npm run gate:memory-utility` 保护：它不只验证能写入，还验证能正确召回高价值事件、降权失败/陈旧噪声、拒绝跨 route 命令建议。
-- Memory reuse feedback hard-eval 由 `fixtures/reverse-agent/memory-feedback.fixture.json` 与 `npm run gate:memory-feedback` 保护：它验证复用成功会提升 case、复用失败会降权 case，且失败 case 不再继续污染命令建议。
+- Memory reuse feedback hard-eval 由 `fixtures/reverse-agent/memory-feedback.fixture.json` 与 `npm run gate:memory-feedback` 保护：它验证复用成功会提升 case、复用失败会降权 case，且失败 case 不再继续污染命令建议；`npm run gate:memory-feedback-closure` 进一步验证 injected memory 的 feedback closure report、pending writeback 和 supervisor demotion。
 - Memory hybrid retrieval hard-eval 由 `fixtures/reverse-agent/memory-hybrid.fixture.json` 与 `npm run gate:memory-hybrid` 保护：它验证语义轻量召回、case-memory 辅助召回、artifact path/tier 召回都能进入排序原因，并保持 route 隔离。
 - Memory usefulness eval hard-eval 由 `fixtures/reverse-agent/memory-usefulness.fixture.json` 与 `npm run gate:memory-usefulness` 保护：它验证 authz/pwn 场景的 hit@1、hit@k、MRR、forbidden memory 不进入 topK，并用同进程与 child-process 并发 append probe 验证 lock/transaction/hash-chain 不丢写。
 - Memory v3 distiller hard-eval 由 `fixtures/reverse-agent/memory-distiller.fixture.json` 与 `npm run gate:memory-distiller` 保护：它验证 promoted pattern、污染隔离、mandatory injection chain、hash drift 阻断、低置信不提升。
@@ -701,6 +702,7 @@ npm run gate:context-runtime-schema
 npm run gate:memory-contract
 npm run gate:memory-utility
 npm run gate:memory-feedback
+npm run gate:memory-feedback-closure
 npm run gate:memory-hybrid
 npm run gate:memory-vector
 npm run gate:memory-usefulness
