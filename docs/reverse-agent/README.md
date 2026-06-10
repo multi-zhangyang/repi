@@ -40,7 +40,7 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `repi-profile/extensions/reverse-pentest-core.ts` | 运行时核心：路由、记忆、工具索引、自审计、loop guard、compaction checkpoint、自定义工具 |
 | `repi-profile/skills/reverse-pentest-orchestrator/SKILL.md` | 安全任务总控 skill，按 reverse-skill 思维方式编排工作流 |
 | `repi-profile/prompts/*.md` | `/reverse`、`/websec`、`/jsre`、`/pwn`、`/pcap`、`/cloud`、`/identity`、`/memory`、`/audit-agent` 任务模板 |
-| `repi-profile/memory/*` | 长期经验、索引、自我进化记录；`repi-profile/memory/playbooks/index.md` 记录 playbook 质量/年龄/状态，`repi-profile/memory/playbooks/archive/` 存放被淘汰的低质或过旧链路 |
+| `repi-profile/memory/*` | 长期经验、索引、自我进化记录；运行时使用 `~/.repi/agent/recon/memory/events.jsonl` / `case-memory.jsonl` / `retrieval-report.json` 作为 Memory v2 结构化事实源，Markdown journal/playbook 是人类可读镜像；`repi-profile/memory/playbooks/index.md` 记录 playbook 质量/年龄/状态，`repi-profile/memory/playbooks/archive/` 存放被淘汰的低质或过旧链路 |
 | `.repi-harness/evidence/kernel/*.md` | `re_kernel build|audit` 生成的 execution_kernel、kernel_artifact、directive_stack、refusal_to_execution_rules、tool_call_policy、artifact_contract 与 stall_recovery |
 | `.repi-harness/evidence/maps/*.md` | `re_map` 自动生成的被动目标/工作区快照：stat、manifest/config、route/auth 搜索、binary candidates、URL baseline |
 | `.repi-harness/evidence/browser/*.md` | `re_live_browser plan|run` 生成的 live_browser、request_response_log、auth_matrix、IDOR/BOLA probes、WebSocket probes 与 replay_commands |
@@ -75,6 +75,7 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `bench/recon-remote/hard-score.mjs` | 跨平台 hard-score 评测器：按 signature_rebuild、signed_replay、anti_bot_challenge、cdn_media_probe、runtime_capture_depth、exploit_chain、bundle_trace、regression_readiness 对最新公网证据打分 |
 | `scripts/reverse-agent/refresh-tool-index.sh` | 离线刷新工具索引脚本 |
 | `scripts/reverse-agent/verify-profile.mjs` | 配置完整性验证脚本 |
+| `scripts/reverse-agent/memory-contract-gate.mjs` | Memory v2 结构化记忆门禁：验证 `MemoryEventV1` hash chain、`CaseMemoryV1` 引用、retrieval report 引用和负例拒绝；对应 `npm run gate:memory-contract` |
 | `pi` | 非拥有型兼容 shim；不会启动 REPI，只会转交给 PATH 中的原版 Pi，找不到则提示使用 `repi` |
 | `repi` | REPI 独立产品入口，默认使用 `~/.repi/agent`；源码 wrapper 和 npm/bin 直启都会由 CLI bootstrap 自动启用 `--recon` 隔离参数 |
 | `scripts/reverse-agent/install-repi.sh` | 安装 `/usr/local/bin/repi`，初始化 `~/.repi/agent`，不会覆盖/删除普通 `pi` |
@@ -187,7 +188,7 @@ REPI 的 `re_kernel` 内置 `authorized_task_bias`、`public_target_no_auto_refu
   - `re_exploit_lab`：模型可调用的 exploit/PoC 稳定化实验室工具，绑定 PoC inventory、环境 pin、多次 replay、flake triage 和 bundle manifest。
   - `re_mobile_runtime`：模型可调用的 APK/Android ADB/Frida runtime 工具，绑定 device/process map、Java crypto/String/native compare hooks、anti-debug checks 和 `mobile_runtime_artifact`。
   - `re_native_runtime`：模型可调用的 ELF/SO GDB/Pwn runtime 工具，绑定 binary inventory、mitigation matrix、loader/libc map、symbol/string map、GDB/crash/register anchors、pwntools scaffold 和 `native_runtime_artifact`。
-  - `re_memory`：模型可读写的长期记忆工具。
+  - `re_memory`：模型可读写的长期记忆工具；`events` / `search-events` / `consolidate` 读取 Memory v2 结构化 ledger，`append` / `evolve` 同时写 Markdown 镜像与 `events.jsonl`。
   - `re_tool_index`：模型可刷新/读取的工具索引。
   - `re_mission`：模型可维护任务黑板、gates 和下一步。
   - `re_lane`：模型可推进/阻塞/新增 mission lanes，并按 lane/target 生成或执行命令包；执行结果会成为 runtime evidence，且自动附带下一 lane/命令建议。
@@ -235,6 +236,7 @@ scripts/reverse-agent/clean-global-repi-profile.sh
 
 # 验证 repi 已经可用，不应再出现 model pattern、API key、collision、Global tools 报错
 npm run gate:repi-harness
+npm run gate:memory-contract
 npm run gate:repi-product
 npm run gate:repi-isolation
 
@@ -563,13 +565,14 @@ Failure/repair 合同现在同时保留机器字段和人类可读别名：
 - `--write` 仍写 per-run 目录，同时追加 canonical append-only 路径：
   `.repi-harness/evidence/failures/ledger.jsonl` 与 `.repi-harness/evidence/repairs/queue.jsonl`。
 - `gate:repi-isolation` 会用临时 HOME 构造旧 `~/.pi/agent` 污染样本，验证 `repi` 默认只用 `~/.repi/agent`，不会触发 stale model scope、API key、collision 或 Global tools 报错，也不会改写普通 `pi` profile。
+- `gate:memory-contract` 会验证 Memory v2 schema/fixture、`events.jsonl` hash chain、`case-memory.jsonl` 引用、`retrieval-report.json` 引用和负例拒绝，防止长期记忆退回纯 Markdown。
 - `gate:autonomous-runtime` 会读取 autonomous runtime strict fixture，验证 valid batch 通过、duplicate subagent attempt、非法 resume transition、loose claim-gate field 都被拒绝。
 - `gate:autonomous-contracts` 会读取 failure/repair strict fixture 与 autonomous runtime gate，验证 valid batch 通过、duplicate signature/attempt、loose extra field、exhausted 后继续 unpaused rerun/retry 都被拒绝。
 - release 级 claim 不走 `audit:claim-ledger --allow-platform-gaps`，而走 `gate:claim-release`；当前 required platform gaps 存在时它应该阻断，并把 blocked marker 写给 runtime final path 使用。
 
 ## Harness 自检层
 
-- `gate:repi-harness` 是外层顶级独立 harness：用临时 HOME/bin 模拟安装，证明 `pi` stub 不被覆盖、旧 repi stale shim 被清掉、`~/.pi/agent` 不被默认读取/改写、`repi` help/update help 去掉 upstream update/branding，并额外模拟不经源码 wrapper 的 package/bin 直启，确认 CLI 自身默认进入 REPI kernel；然后串联 product/isolation/context/autonomous runtime/control gates。CI 模板 `docs/reverse-agent/repi-harness.github-actions.yml` 复制到 `.github/workflows/repi-harness.yml` 后，会在 push/PR 自动跑这套门禁。
+- `gate:repi-harness` 是外层顶级独立 harness：用临时 HOME/bin 模拟安装，证明 `pi` stub 不被覆盖、旧 repi stale shim 被清掉、`~/.pi/agent` 不被默认读取/改写、`repi` help/update help 去掉 upstream update/branding，并额外模拟不经源码 wrapper 的 package/bin 直启，确认 CLI 自身默认进入 REPI kernel；然后串联 product/isolation/context/memory/autonomous runtime/control gates。CI 模板 `docs/reverse-agent/repi-harness.github-actions.yml` 复制到 `.github/workflows/repi-harness.yml` 后，会在 push/PR 自动跑这套门禁。
 - `re_harness` / `/re-harness quick|full|install|show` 生成 `harness_artifact`，聚合 `install_readiness`、`reverse_capability_guards`、`regression_guards`、注册工具/命令矩阵和 evidence/memory/tool-index 可写性。
 - 开发或产品面整改后执行 `re_harness full`；运行 `npm run install:repi` 后，只安装/刷新 `repi`，普通 `pi` 仍归 upstream Pi；随后执行 `hash -r`、`repi --offline --help`、`npm run gate:repi-harness` 与 `/re-harness install`。
 - `reverse_capability_guards` 会守住 re_native_runtime、re_web_authz_state、re_mobile_runtime、re_exploit_lab、re_proof_loop、re_autopilot、re_knowledge_graph、compact_resume_case_memory、compact_resume_repair_from_case_memory、compact_resume_success_skip_low_value_lane、operator_command_floor、proof_exit_criteria、specialist_runtime_planner，避免安装/自检优化削弱逆向渗透能力。

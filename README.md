@@ -47,6 +47,7 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - `re_operation` / `re_delegate` / `re_swarm`：把大任务拆成 phase、worker packet、parallel plan。
 - `re_supervisor`：审查 worker 输出，生成冲突表、claim gate policy 和修复队列。
 - `re_reflect` / `re_knowledge_graph`：沉淀经验、case signature、playbook 和跨任务知识。
+- `re_memory events/search-events/consolidate`：读取结构化长期记忆、检索可复用 case、汇总高质量经验。
 - `re_context`：生成可恢复上下文包，支持 exact resume。
 - `re_operator`：把 next commands 转成 bounded operator queue。
 - `re_verifier` / `re_compiler` / `re_replayer` / `re_autofix` / `re_proof_loop`：验证、报告编译、复现、修复、闭环证明。
@@ -58,6 +59,7 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - `ContextPackV2`：上下文 pack 带 `schemaVersion: 2`、`contextSha256`、artifact sha256、scope、closure、idempotency key。
 - exact context resume：`re_context resume <contextPath>` / tool `contextPath` / `compactionEntryId` 精确加载指定 pack，并校验 hash、artifact drift、workspace/target/branch scope。
 - `memory/compaction-resume-ledger.jsonl`：append-only compact/resume ledger。
+- Memory v2：`~/.repi/agent/recon/memory/events.jsonl` 是 append-only `MemoryEventV1` 哈希链；`case-memory.jsonl` 是按 case signature 聚合后的复用视图；`retrieval-report.json` 记录每次 `re_memory search-events` 的召回、分数、原因和 hash-chain 状态。Markdown journal/playbook 仍保留给人读，但不再是唯一事实源。
 - strict claim gate：`gate:claim-release` 使用严格 claim ledger validation，不把 orchestration 成功误报成平台 claim 成功；执行后会写 `~/.repi/agent/recon/evidence/claim-release/<timestamp>/result.json`，供 supervisor/compiler/complete 三段 runtime 读取。
 - failure/repair runtime ledger：`FailureLedgerEventV1`、`RepairQueueItemV1` strict schema、strict fixture、duplicate signature/attempt 去重检查、hard-eval 离线样例，`re_replayer` / `re_autofix` / `re_operator` / `re_proof_loop` failed|blocked row 到 `~/.repi/agent/recon/evidence/failures/ledger.jsonl`、`~/.repi/agent/recon/evidence/repairs/queue.jsonl` 的 append-only 写入 hooks，以及 compound-frontier、agent-dogfood role retry、plan-only invalid fixture 的 failure/repair 输出。
 - AutonomousRuntimeBatchV1 strict gate：`schemas/reverse-agent/autonomous-runtime-contract.schema.json` 与 `fixtures/reverse-agent/autonomous-runtime-contract.fixture.json` 覆盖 subagent runtime manifest、parallel shard state、compact resume transition、repair budget 和 runtime claim promotion；`npm run gate:autonomous-runtime` 会拒绝 duplicate subagent attempt、非法 resume transition 和 loose claim-gate 字段。
@@ -366,6 +368,41 @@ pack 中包含：
 - `idempotencyKey`
 - `next_operator_commands`
 
+## 长期记忆沉淀 / Memory v2
+
+当前 REPI 的长期记忆分两层：
+
+```text
+~/.repi/agent/recon/memory/events.jsonl          # append-only MemoryEventV1，带 prevHash/entryHash
+~/.repi/agent/recon/memory/case-memory.jsonl     # CaseMemoryV1 聚合视图
+~/.repi/agent/recon/memory/retrieval-report.json # 最近一次检索报告
+~/.repi/agent/recon/memory/field-journal.md      # 人类可读日志镜像
+~/.repi/agent/recon/memory/playbooks/*.md        # 人类可读 playbook 镜像
+```
+
+常用命令：
+
+```text
+/re-memory events
+/re-memory search-events authz replay
+/re-memory consolidate
+/re-memory append <本次任务可复用经验>
+```
+
+工具调用等价：
+
+```text
+re_memory { "action": "search-events", "query": "authz replay" }
+re_memory { "action": "consolidate" }
+```
+
+沉淀规则：
+
+- `re_reflect write` 会把 supervisor lessons / failure patterns / reuse rules / repair commands 同时写入 playbook 和 `events.jsonl`。
+- `re_lane plan` 会读取 playbook、knowledge graph 和 `events.jsonl`，把高分结构化历史命令合入命令包，并在 notes 中显示 `memory_event_reuse`。
+- 每条 memory event 带 `quality.confidence`、`replayVerified`、`reuseCount`、`failureCount`、`decay`；检索时低置信、失败和衰减记录会降权。
+- 结构化契约由 `schemas/reverse-agent/memory-event.schema.json`、`fixtures/reverse-agent/memory-event.fixture.json` 和 `npm run gate:memory-contract` 保护。
+
 恢复时可以直接指定原始 pack：
 
 ```text
@@ -590,6 +627,7 @@ git diff --exit-code
 node --check packages/coding-agent/src/core/recon-profile.ts
 node --check repi-profile/extensions/reverse-pentest-core.ts  # legacy mirror; repi 默认不加载
 node --check scripts/reverse-agent/context-compact-audit.mjs
+node --check scripts/reverse-agent/memory-contract-gate.mjs
 git diff --check
 
 env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY -u OPENAI_API_KEY \
@@ -597,6 +635,7 @@ env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY -u OPENAI_API_KEY \
     ./node_modules/.bin/tsgo --noEmit --pretty false
 
 npm run gate:context-compact
+npm run gate:memory-contract
 npm run gate:repi-harness
 npm run gate:repi-product
 npm run gate:repi-isolation
@@ -721,6 +760,9 @@ scripts/reverse-agent/
 ~/.repi/agent/recon/evidence/remote/compound-frontier/*/claim-ledger.jsonl
 memory/compaction-resume-ledger.jsonl
 memory/autonomous-budget-ledger.md
+memory/events.jsonl
+memory/case-memory.jsonl
+memory/retrieval-report.json
 memory/playbooks/*.md
 ```
 
@@ -805,5 +847,6 @@ claim_release_marker
 - 通用 re_swarm 独立 Pi sub-agent/session runtime：PID、session dir、stdout/stderr hash、tool-call digest。
 - 把 FailureLedgerEventV1 / RepairQueueItemV1 strict validator 接入更多独立 sub-agent/session runtime regression gates。
 - runtime ClaimLedgerEventV1 已覆盖 agent-dogfood / re_swarm / compound-frontier；后续重点是 strict validator regression、claim promotion 阻断和 unresolved challenge 自动回流。
+- Memory v2 已有结构化 ledger、case 聚合和检索 gate；后续可继续接向量/embedding rerank 与跨机器同步，但当前不再依赖纯 Markdown 记忆。
 - exact resume 继续扩展负例 fixture：multi compact、target unresolved、cross-session contamination。
 - 通用 re_swarm 独立子会话 runtime 与 provider live benchmark 可在需要时另行接入；当前仓库默认以离线可复现 harness 为准。

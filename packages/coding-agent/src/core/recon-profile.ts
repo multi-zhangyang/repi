@@ -1639,6 +1639,108 @@ type RuntimeFailureRepairInput = {
 	unblock?: string;
 };
 
+type MemoryEventSource =
+	| "reflect"
+	| "complete"
+	| "proof_loop"
+	| "autofix"
+	| "operator"
+	| "manual"
+	| "knowledge_graph";
+type MemoryOutcome = "success" | "failure" | "partial" | "blocked" | "repair";
+
+type MemoryArtifactHash = {
+	path: string;
+	sha256: string | null;
+	tier: string;
+	required?: boolean;
+};
+
+type MemoryQuality = {
+	confidence: number;
+	replayVerified: boolean;
+	reuseCount: number;
+	failureCount: number;
+	lastUsefulAt: string;
+	decay: number;
+	retrievalScore?: number;
+};
+
+type MemoryEventV1 = {
+	kind: "repi-memory-event";
+	schemaVersion: 1;
+	id: string;
+	seq: number;
+	ts: string;
+	source: MemoryEventSource;
+	task: string;
+	route: string;
+	target?: string;
+	domainTags: string[];
+	caseSignature: string;
+	outcome: MemoryOutcome;
+	lessons: string[];
+	failurePatterns: string[];
+	reuseRules: string[];
+	commands: string[];
+	artifacts: MemoryArtifactHash[];
+	artifactHashes: MemoryArtifactHash[];
+	quality: MemoryQuality;
+	promotion: {
+		playbookCandidate: boolean;
+		workerRoutingHint?: string;
+		verifierRuleCandidate: boolean;
+	};
+	prevHash: string;
+	entryHash: string;
+};
+
+type CaseMemoryV1 = {
+	kind: "repi-case-memory";
+	schemaVersion: 1;
+	id: string;
+	ts: string;
+	caseSignature: string;
+	route: string;
+	target?: string;
+	domainTags: string[];
+	summary: string;
+	eventIds: string[];
+	commands: string[];
+	reuseRules: string[];
+	failurePatterns: string[];
+	quality: MemoryQuality;
+	sourceEvents: string[];
+	lastEventHash: string;
+};
+
+type MemoryEventInput = {
+	source: MemoryEventSource;
+	task?: string;
+	route?: string;
+	target?: string;
+	domainTags?: string[];
+	caseSignature?: string;
+	outcome?: MemoryOutcome;
+	lessons?: string[];
+	failurePatterns?: string[];
+	reuseRules?: string[];
+	commands?: string[];
+	artifactPaths?: string[];
+	artifacts?: MemoryArtifactHash[];
+	confidence?: number;
+	replayVerified?: boolean;
+	playbookCandidate?: boolean;
+	workerRoutingHint?: string;
+	verifierRuleCandidate?: boolean;
+};
+
+type MemoryRetrievalHit = {
+	event: MemoryEventV1;
+	score: number;
+	reasons: string[];
+};
+
 type KnowledgeNode = {
 	id: string;
 	kind: string;
@@ -2219,6 +2321,18 @@ function memoryPlaybooksArchiveDir(): string {
 	return join(memoryPlaybooksDir(), "archive");
 }
 
+function memoryEventsPath(): string {
+	return memoryPath("events.jsonl");
+}
+
+function caseMemoryPath(): string {
+	return memoryPath("case-memory.jsonl");
+}
+
+function memoryRetrievalReportPath(): string {
+	return memoryPath("retrieval-report.json");
+}
+
 function missionPath(name: string): string {
 	return join(reconDir(), "mission", name);
 }
@@ -2406,6 +2520,12 @@ function ensureReconStorage(): void {
 		[memoryPath("field-journal.md"), "# REPI Field Journal\n\n"],
 		[memoryPath("case-index.md"), "# REPI Case Index\n\n"],
 		[memoryPath("evolution-log.md"), "# REPI Evolution Log\n\n"],
+		[memoryEventsPath(), ""],
+		[caseMemoryPath(), ""],
+		[
+			memoryRetrievalReportPath(),
+			`${JSON.stringify({ kind: "repi-memory-retrieval-report", schemaVersion: 1, query: "", hits: [] }, null, 2)}\n`,
+		],
 		[evidenceLedgerPath(), "# REPI Evidence Ledger\n\n"],
 		[toolIndexPath(), "# REPI Tool Index\n\n"],
 	]);
@@ -4201,6 +4321,40 @@ function memoryCommandCandidates(mission: MissionState, lane: MissionLane, targe
 		.slice(0, 4);
 }
 
+function structuredMemoryCommandCandidates(
+	mission: MissionState,
+	lane: MissionLane,
+	target?: string,
+): MemoryCommandCandidate[] {
+	const query = `${mission.route.domain} ${lane.name} ${mission.task} ${target ?? ""}`;
+	const hits = searchMemoryEvents(query, { route: mission.route.domain, target, limit: 8 });
+	const candidates: MemoryCommandCandidate[] = [];
+	for (const hit of hits) {
+		if (hit.event.quality.confidence < 0.45 || hit.event.outcome === "failure") continue;
+		for (const [index, command] of hit.event.commands.entries()) {
+			const normalized = normalizeHistoricalCommand(command, hit.event.target === "<none>" ? undefined : hit.event.target, target);
+			if (!normalized) continue;
+			candidates.push({
+				label: `memory-event:${hit.event.id}:${index + 1}`,
+				command: normalized,
+				evidence: `structured memory event ${hit.event.id} score=${hit.score.toFixed(1)} case=${hit.event.caseSignature} report=${memoryRetrievalReportPath()}`,
+				source: memoryEventsPath(),
+				score: Math.round(hit.score),
+			});
+			if (candidates.length >= 8) break;
+		}
+	}
+	const seen = new Set<string>();
+	return candidates
+		.sort((a, b) => b.score - a.score)
+		.filter((candidate) => {
+			if (seen.has(candidate.command)) return false;
+			seen.add(candidate.command);
+			return true;
+		})
+		.slice(0, 4);
+}
+
 function knowledgeIndexSection(name: string): string[] {
 	const text = readText(memoryPath("knowledge-graph-index.md"));
 	const lines = text.split(/\r?\n/);
@@ -4388,6 +4542,15 @@ function augmentLaneCommandPackFromMemory(
 	if (candidates.length > 0) {
 		notes.push(`memory_reuse: merged ${candidates.length} historical command(s) from memory/playbooks.`);
 		for (const candidate of candidates) {
+			if (!commands.some((command) => command.command === candidate.command)) {
+				commands.push({ label: candidate.label, command: candidate.command, evidence: candidate.evidence });
+			}
+		}
+	}
+	const structuredCandidates = structuredMemoryCommandCandidates(mission, lane, target);
+	if (structuredCandidates.length > 0) {
+		notes.push(`memory_event_reuse: merged ${structuredCandidates.length} structured event command(s) from events.jsonl.`);
+		for (const candidate of structuredCandidates) {
 			if (!commands.some((command) => command.command === candidate.command)) {
 				commands.push({ label: candidate.label, command: candidate.command, evidence: candidate.evidence });
 			}
@@ -15787,8 +15950,26 @@ function writeReflectionMemory(reflection: ReflectionArtifact): ReflectionArtifa
 			"Policy: future security tasks should run re_reflect write after supervisor repair/review before final report.",
 		].join("\n"),
 	);
+	const memoryEvent = appendMemoryEvent({
+		source: "reflect",
+		task: `supervisor reflection ${reflection.route ?? "security"}`,
+		route: reflection.route,
+		target: reflection.target,
+		domainTags: ["reflection", "supervisor", ...(reflection.route ? [reflection.route] : [])],
+		outcome: reflection.failurePatterns.length > reflection.lessons.length ? "repair" : "success",
+		lessons: reflection.lessons,
+		failurePatterns: reflection.failurePatterns,
+		reuseRules: reflection.reuseRules,
+		commands: uniqueNonEmpty([...reflection.repairPlaybook, ...extractMemoryCommands(reflection.repairPlaybook.join("\n"))], 40),
+		artifactPaths: uniqueNonEmpty([playbookPath, reflection.supervisorArtifact, ...reflection.sourceArtifacts], 80),
+		confidence: 0.82,
+		replayVerified: reflection.sourceArtifacts.some((item) => /\/evidence\/(?:runs|replayers|proof-loops|browser|web-authz|native-runtime|mobile-runtime)\//i.test(item)),
+		playbookCandidate: true,
+		workerRoutingHint: reflection.lessons.find((item) => /worker_scoreboard|adaptive_route|promotion:/i.test(item)),
+		verifierRuleCandidate: reflection.reuseRules.some((item) => /verify|replay|evidence|gate|assert/i.test(item)),
+	});
 	maintainPlaybooks({ archive: true });
-	return { ...reflection, journalAnchor, evolutionAnchor, playbookPath };
+	return { ...reflection, journalAnchor, evolutionAnchor, playbookPath, nextActions: uniqueNonEmpty([`re_memory search-events ${memoryEvent.caseSignature}`, ...reflection.nextActions], 16) };
 }
 
 function formatReflection(reflection: ReflectionArtifact, path?: string): string {
@@ -22423,6 +22604,12 @@ function writeReportScaffold(title?: string): string {
 function buildMemoryDigest(): string {
 	ensureReconStorage();
 	return [
+		"<memory_events_tail>",
+		truncateMiddle(readText(memoryEventsPath()), 2400),
+		"</memory_events_tail>",
+		"<case_memory_tail>",
+		truncateMiddle(readText(caseMemoryPath()), 2400),
+		"</case_memory_tail>",
 		"<case_index>",
 		truncateMiddle(readText(memoryPath("case-index.md")), 2000),
 		"</case_index>",
@@ -22981,6 +23168,410 @@ function appendEvolution(title: string, body: string): string {
 	return anchor;
 }
 
+function sha256Text(text: string): string {
+	return createHash("sha256").update(text).digest("hex");
+}
+
+function clamp01(value: number | undefined, fallback: number): number {
+	if (!Number.isFinite(value)) return fallback;
+	return Math.max(0, Math.min(1, Number(value)));
+}
+
+function uniqueNonEmpty(values: Array<string | undefined>, limit = 80): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const value of values) {
+		const text = String(value ?? "").trim();
+		if (!text || text === "none") continue;
+		const key = text.toLowerCase();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(text);
+		if (out.length >= limit) break;
+	}
+	return out;
+}
+
+function jsonlRecords<T>(path: string, predicate: (value: unknown) => value is T): T[] {
+	return readText(path)
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.flatMap((line) => {
+			try {
+				const parsed = JSON.parse(line) as unknown;
+				return predicate(parsed) ? [parsed] : [];
+			} catch {
+				return [];
+			}
+		});
+}
+
+function isMemoryArtifactHash(value: unknown): value is MemoryArtifactHash {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const row = value as MemoryArtifactHash;
+	return typeof row.path === "string" && (typeof row.sha256 === "string" || row.sha256 === null) && typeof row.tier === "string";
+}
+
+function isMemoryQuality(value: unknown): value is MemoryQuality {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const row = value as MemoryQuality;
+	return (
+		typeof row.confidence === "number" &&
+		typeof row.replayVerified === "boolean" &&
+		typeof row.reuseCount === "number" &&
+		typeof row.failureCount === "number" &&
+		typeof row.lastUsefulAt === "string" &&
+		typeof row.decay === "number"
+	);
+}
+
+function isMemoryEvent(value: unknown): value is MemoryEventV1 {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const row = value as MemoryEventV1;
+	return (
+		row.kind === "repi-memory-event" &&
+		row.schemaVersion === 1 &&
+		typeof row.id === "string" &&
+		Number.isInteger(row.seq) &&
+		typeof row.ts === "string" &&
+		typeof row.source === "string" &&
+		typeof row.task === "string" &&
+		typeof row.route === "string" &&
+		Array.isArray(row.domainTags) &&
+		typeof row.caseSignature === "string" &&
+		typeof row.outcome === "string" &&
+		Array.isArray(row.lessons) &&
+		Array.isArray(row.failurePatterns) &&
+		Array.isArray(row.reuseRules) &&
+		Array.isArray(row.commands) &&
+		Array.isArray(row.artifactHashes) &&
+		row.artifactHashes.every(isMemoryArtifactHash) &&
+		isMemoryQuality(row.quality) &&
+		typeof row.prevHash === "string" &&
+		typeof row.entryHash === "string"
+	);
+}
+
+function isCaseMemory(value: unknown): value is CaseMemoryV1 {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const row = value as CaseMemoryV1;
+	return (
+		row.kind === "repi-case-memory" &&
+		row.schemaVersion === 1 &&
+		typeof row.id === "string" &&
+		typeof row.ts === "string" &&
+		typeof row.caseSignature === "string" &&
+		Array.isArray(row.eventIds) &&
+		Array.isArray(row.commands) &&
+		Array.isArray(row.reuseRules) &&
+		Array.isArray(row.failurePatterns) &&
+		isMemoryQuality(row.quality) &&
+		typeof row.lastEventHash === "string"
+	);
+}
+
+function memoryArtifactTier(path: string): string {
+	if (/\/evidence\/(?:browser|web-authz|mobile-runtime|native-runtime|exploit-lab|runs|proof-loops|replayers)\//i.test(path))
+		return "runtime_artifact";
+	if (/\/evidence\/(?:maps|kernel|decisions|harness|knowledge)\//i.test(path)) return "process_config";
+	if (/\/evidence\//i.test(path)) return "persisted_state";
+	if (/\/memory\//i.test(path)) return "persisted_memory";
+	return "artifact";
+}
+
+function memoryArtifactHashes(paths: string[]): MemoryArtifactHash[] {
+	return uniqueNonEmpty(paths, 80).map((path) => {
+		let sha256: string | null = null;
+		try {
+			sha256 = createHash("sha256").update(readFileSync(path)).digest("hex");
+		} catch {
+			sha256 = null;
+		}
+		return { path, sha256, tier: memoryArtifactTier(path), required: sha256 !== null };
+	});
+}
+
+function extractMemoryCommands(text: string): string[] {
+	const fenced = Array.from(text.matchAll(/```(?:bash|sh|shell)?\s*([\s\S]*?)```/gi)).flatMap((match) =>
+		(match[1] ?? "")
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter(Boolean),
+	);
+	const inline = text
+		.split(/\r?\n/)
+		.map((line) => line.replace(/^-\s*/, "").trim())
+		.filter((line) => /^(?:re[-_]\w+|python3?\s|node\s|bash\s|curl\s|rg\s|find\s|jq\s|nmap\s|ffuf\s|gdb\s|frida\s|tshark\s|checksec\s)/i.test(line));
+	return uniqueNonEmpty([...fenced, ...inline], 24);
+}
+
+function memoryEventHash(event: MemoryEventV1): string {
+	const { entryHash: _entryHash, ...withoutHash } = event;
+	return sha256Text(JSON.stringify(withoutHash));
+}
+
+function memoryEventHashChainOk(events: MemoryEventV1[]): boolean {
+	let prevHash = "0".repeat(64);
+	for (const event of events) {
+		if (event.prevHash !== prevHash) return false;
+		if (event.entryHash !== memoryEventHash(event)) return false;
+		prevHash = event.entryHash;
+	}
+	return true;
+}
+
+function readMemoryEvents(): MemoryEventV1[] {
+	ensureReconStorage();
+	return jsonlRecords(memoryEventsPath(), isMemoryEvent);
+}
+
+function readCaseMemoryRows(): CaseMemoryV1[] {
+	ensureReconStorage();
+	return jsonlRecords(caseMemoryPath(), isCaseMemory);
+}
+
+function memoryEventSignature(input: Pick<MemoryEventInput, "task" | "route" | "target" | "domainTags">): string {
+	const tags = uniqueNonEmpty(input.domainTags ?? [], 24)
+		.map((item) => item.toLowerCase())
+		.sort()
+		.join(",");
+	return sha256Text([input.route ?? "unknown", input.target ?? "", input.task ?? "", tags].join("\n")).slice(0, 24);
+}
+
+function writeCaseMemorySnapshot(event: MemoryEventV1): CaseMemoryV1 {
+	const previous = readCaseMemoryRows()
+		.filter((row) => row.caseSignature === event.caseSignature)
+		.at(-1);
+	const eventIds = uniqueNonEmpty([...(previous?.eventIds ?? []), event.id], 80);
+	const commands = uniqueNonEmpty([...(previous?.commands ?? []), ...event.commands], 40);
+	const reuseRules = uniqueNonEmpty([...(previous?.reuseRules ?? []), ...event.reuseRules], 40);
+	const failurePatterns = uniqueNonEmpty([...(previous?.failurePatterns ?? []), ...event.failurePatterns], 40);
+	const sourceEvents = uniqueNonEmpty([...(previous?.sourceEvents ?? []), event.entryHash], 120);
+	const quality: MemoryQuality = {
+		confidence: Math.max(previous?.quality.confidence ?? 0, event.quality.confidence),
+		replayVerified: Boolean(previous?.quality.replayVerified || event.quality.replayVerified),
+		reuseCount: (previous?.quality.reuseCount ?? 0) + (event.outcome === "success" ? 1 : 0),
+		failureCount:
+			(previous?.quality.failureCount ?? 0) + (event.outcome === "failure" || event.outcome === "blocked" ? 1 : 0),
+		lastUsefulAt: event.ts,
+		decay: Math.max(0, (previous?.quality.decay ?? 0) * 0.9 + (event.outcome === "failure" ? 0.2 : 0)),
+	};
+	const summarySeed = uniqueNonEmpty([event.lessons[0], event.reuseRules[0], event.failurePatterns[0], event.task], 4).join(" | ");
+	const row: CaseMemoryV1 = {
+		kind: "repi-case-memory",
+		schemaVersion: 1,
+		id: `case:${event.caseSignature}:${event.seq}`,
+		ts: event.ts,
+		caseSignature: event.caseSignature,
+		route: event.route,
+		target: event.target,
+		domainTags: event.domainTags,
+		summary: truncateMiddle(summarySeed || event.task, 600),
+		eventIds,
+		commands,
+		reuseRules,
+		failurePatterns,
+		quality,
+		sourceEvents,
+		lastEventHash: event.entryHash,
+	};
+	appendText(caseMemoryPath(), `${JSON.stringify(row)}\n`);
+	return row;
+}
+
+function appendMemoryEvent(input: MemoryEventInput): MemoryEventV1 {
+	ensureReconStorage();
+	const mission = readCurrentMission();
+	const events = readMemoryEvents();
+	const ts = new Date().toISOString();
+	const task = input.task ?? mission?.task ?? "manual memory";
+	const route = input.route ?? mission?.route.domain ?? "manual";
+	const target = input.target;
+	const domainTags = uniqueNonEmpty([route, input.source, ...(input.domainTags ?? [])], 24);
+	const artifactHashes = uniqueNonEmpty(input.artifactPaths ?? [], 80);
+	const artifacts = uniqueNonEmpty([...(input.artifacts ?? []).map((item) => item.path), ...artifactHashes], 80);
+	const normalizedArtifacts = uniqueNonEmpty(input.artifacts?.map((item) => item.path) ?? [], 80).length
+		? uniqueNonEmpty(input.artifacts?.map((item) => item.path) ?? [], 80).map((path) =>
+			(input.artifacts ?? []).find((item) => item.path === path) ?? { path, sha256: null, tier: memoryArtifactTier(path) },
+		)
+		: [];
+	const hashed = memoryArtifactHashes(artifacts);
+	const mergedArtifacts = [
+		...normalizedArtifacts,
+		...hashed.filter((item) => !normalizedArtifacts.some((artifact) => artifact.path === item.path)),
+	].slice(0, 80);
+	const caseSignature = input.caseSignature ?? memoryEventSignature({ task, route, target, domainTags });
+	const row: MemoryEventV1 = {
+		kind: "repi-memory-event",
+		schemaVersion: 1,
+		id: `mem:${sha256Text(`${ts}\n${task}\n${route}\n${caseSignature}\n${events.length}`).slice(0, 20)}`,
+		seq: events.length + 1,
+		ts,
+		source: input.source,
+		task,
+		route,
+		target,
+		domainTags,
+		caseSignature,
+		outcome: input.outcome ?? "partial",
+		lessons: uniqueNonEmpty(input.lessons ?? [], 40),
+		failurePatterns: uniqueNonEmpty(input.failurePatterns ?? [], 40),
+		reuseRules: uniqueNonEmpty(input.reuseRules ?? [], 40),
+		commands: uniqueNonEmpty(input.commands ?? [], 40),
+		artifacts: mergedArtifacts,
+		artifactHashes: mergedArtifacts,
+		quality: {
+			confidence: clamp01(input.confidence, 0.65),
+			replayVerified: Boolean(input.replayVerified),
+			reuseCount: 0,
+			failureCount: input.outcome === "failure" || input.outcome === "blocked" ? 1 : 0,
+			lastUsefulAt: ts,
+			decay: input.outcome === "failure" ? 0.2 : 0,
+		},
+		promotion: {
+			playbookCandidate: Boolean(input.playbookCandidate),
+			workerRoutingHint: input.workerRoutingHint,
+			verifierRuleCandidate: Boolean(input.verifierRuleCandidate),
+		},
+		prevHash: events.at(-1)?.entryHash ?? "0".repeat(64),
+		entryHash: "",
+	};
+	row.entryHash = memoryEventHash(row);
+	appendText(memoryEventsPath(), `${JSON.stringify(row)}\n`);
+	writeCaseMemorySnapshot(row);
+	updateMissionGate("memory_or_evolution_written", "done", `memory_event=${row.id} case=${row.caseSignature}`);
+	return row;
+}
+
+function memoryTextForSearch(event: MemoryEventV1): string {
+	return [
+		event.task,
+		event.route,
+		event.target ?? "",
+		event.source,
+		event.outcome,
+		...event.domainTags,
+		...event.lessons,
+		...event.failurePatterns,
+		...event.reuseRules,
+		...event.commands,
+		...event.artifactHashes.map((artifact) => `${artifact.path} ${artifact.tier} ${artifact.sha256 ?? ""}`),
+	].join("\n").toLowerCase();
+}
+
+function searchMemoryEvents(query?: string, options?: { route?: string; target?: string; limit?: number }): MemoryRetrievalHit[] {
+	ensureReconStorage();
+	const events = readMemoryEvents();
+	const queryTokens = uniqueNonEmpty((query ?? "").toLowerCase().split(/[^a-z0-9一-鿿._:-]+/), 24).filter(
+		(token) => token.length >= 2,
+	);
+	const hits = events.flatMap((event) => {
+		const haystack = memoryTextForSearch(event);
+		const reasons: string[] = [];
+		let score = 0;
+		if (queryTokens.length === 0) {
+			score += Math.max(1, Math.min(12, event.seq / 10));
+			reasons.push("recent");
+		}
+		for (const token of queryTokens) {
+			if (haystack.includes(token)) {
+				score += 4;
+				reasons.push(`token:${token}`);
+			}
+		}
+		if (options?.route && event.route.toLowerCase().includes(options.route.toLowerCase())) {
+			score += 6;
+			reasons.push("route");
+		}
+		if (options?.target && event.target?.toLowerCase().includes(options.target.toLowerCase())) {
+			score += 6;
+			reasons.push("target");
+		}
+		const ageDays = Math.max(0, Math.floor((Date.now() - Date.parse(event.ts)) / 86_400_000));
+		const decay = Math.min(15, ageDays * 0.05 + event.quality.decay * 10 + event.quality.failureCount * 2);
+		score += event.quality.confidence * 10 + (event.quality.replayVerified ? 8 : 0) + event.quality.reuseCount * 2;
+		score -= decay;
+		if (event.outcome === "success") score += 6;
+		if (event.outcome === "blocked" || event.outcome === "failure") score -= 4;
+		if (score <= 0 || (queryTokens.length > 0 && !reasons.some((reason) => reason.startsWith("token:")))) return [];
+		return [{ event, score, reasons }];
+	});
+	const result = hits
+		.sort((left, right) => right.score - left.score || right.event.seq - left.event.seq)
+		.slice(0, options?.limit ?? 12);
+	writeFileSync(
+		memoryRetrievalReportPath(),
+		`${JSON.stringify(
+			{
+				kind: "repi-memory-retrieval-report",
+				schemaVersion: 1,
+				query: query ?? "",
+				route: options?.route,
+				target: options?.target,
+				generatedAt: new Date().toISOString(),
+				hashChainOk: memoryEventHashChainOk(events),
+				hits: result.map((hit) => ({
+					id: hit.event.id,
+					score: Number(hit.score.toFixed(2)),
+					reasons: hit.reasons,
+					caseSignature: hit.event.caseSignature,
+					outcome: hit.event.outcome,
+					quality: hit.event.quality,
+					commands: hit.event.commands.slice(0, 6),
+				})),
+			},
+			null,
+			2,
+		)}\n`,
+		"utf-8",
+	);
+	return result;
+}
+
+function formatMemoryRetrieval(query?: string, hits = searchMemoryEvents(query)): string {
+	return [
+		"memory_event_retrieval:",
+		`query: ${query ?? ""}`,
+		`events_path: ${memoryEventsPath()}`,
+		`case_memory_path: ${caseMemoryPath()}`,
+		`retrieval_report: ${memoryRetrievalReportPath()}`,
+		`hash_chain_ok: ${memoryEventHashChainOk(readMemoryEvents())}`,
+		"hits:",
+		...(hits.length
+			? hits.map(
+				(hit) =>
+					`- id=${hit.event.id} score=${hit.score.toFixed(1)} outcome=${hit.event.outcome} route=${hit.event.route} case=${hit.event.caseSignature} reasons=${hit.reasons.join(",")} commands=${hit.event.commands.length} lessons=${hit.event.lessons.length}`,
+				)
+			: ["- none"]),
+	].join("\n");
+}
+
+function consolidateMemoryEvents(): string {
+	const events = readMemoryEvents();
+	const cases = readCaseMemoryRows();
+	const latestCases = new Map<string, CaseMemoryV1>();
+	for (const row of cases) latestCases.set(row.caseSignature, row);
+	const strong = [...latestCases.values()]
+		.sort((left, right) => right.quality.confidence - left.quality.confidence || right.eventIds.length - left.eventIds.length)
+		.slice(0, 20);
+	return [
+		"memory_v2_consolidation:",
+		`events=${events.length}`,
+		`cases=${latestCases.size}`,
+		`hash_chain_ok=${memoryEventHashChainOk(events)}`,
+		`events_path=${memoryEventsPath()}`,
+		`case_memory_path=${caseMemoryPath()}`,
+		"top_cases:",
+		...(strong.length
+			? strong.map(
+				(row) =>
+					`- case=${row.caseSignature} route=${row.route} confidence=${row.quality.confidence.toFixed(2)} reuse=${row.quality.reuseCount} failures=${row.quality.failureCount} events=${row.eventIds.length} summary=${truncateMiddle(row.summary, 180)}`,
+				)
+			: ["- none"]),
+	].join("\n");
+}
+
 async function refreshToolIndex(pi: ExtensionAPI): Promise<string> {
 	ensureReconStorage();
 	const quoted = TOOL_INDEX_CANDIDATES.map((tool) => `'${tool.replace(/'/g, "'\\''")}'`).join(" ");
@@ -23168,19 +23759,53 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 	});
 	pi.registerCommand("re-memory", {
 		description:
-			"Read, append, evolve, or maintain REPI memory: /re-memory [show|append|evolve|playbooks|prune-playbooks] ...",
+			"Read, append, evolve, search, consolidate, or maintain REPI memory: /re-memory [show|events|search|append|evolve|consolidate|playbooks|prune-playbooks] ...",
 		handler: async (args) => {
 			const trimmed = args.trim();
 			if (trimmed.startsWith("append ")) {
-				const anchor = appendJournal("manual", "operator-note", trimmed.slice("append ".length));
-				updateMissionGate("memory_or_evolution_written", "done", anchor);
-				sendDisplayMessage(pi, "REPI Memory Appended", `field-journal entry: ${anchor}`);
+				const body = trimmed.slice("append ".length);
+				const anchor = appendJournal("manual", "operator-note", body);
+				const event = appendMemoryEvent({
+					source: "manual",
+					task: "manual operator memory",
+					lessons: [body],
+					commands: extractMemoryCommands(body),
+					outcome: "partial",
+					confidence: 0.58,
+				});
+				updateMissionGate("memory_or_evolution_written", "done", `${anchor} event=${event.id}`);
+				sendDisplayMessage(pi, "REPI Memory Appended", `field-journal entry: ${anchor}\nmemory_event: ${event.id}\ncase_signature: ${event.caseSignature}`);
 				return;
 			}
 			if (trimmed.startsWith("evolve ")) {
-				const anchor = appendEvolution("manual evolution", trimmed.slice("evolve ".length));
-				updateMissionGate("memory_or_evolution_written", "done", anchor);
-				sendDisplayMessage(pi, "REPI Evolution Appended", `evolution-log entry: ${anchor}`);
+				const body = trimmed.slice("evolve ".length);
+				const anchor = appendEvolution("manual evolution", body);
+				const event = appendMemoryEvent({
+					source: "operator",
+					task: "manual evolution",
+					lessons: [body],
+					reuseRules: extractMemoryCommands(body),
+					commands: extractMemoryCommands(body),
+					outcome: "partial",
+					confidence: 0.62,
+				});
+				updateMissionGate("memory_or_evolution_written", "done", `${anchor} event=${event.id}`);
+				sendDisplayMessage(pi, "REPI Evolution Appended", `evolution-log entry: ${anchor}\nmemory_event: ${event.id}\ncase_signature: ${event.caseSignature}`);
+				return;
+			}
+			if (trimmed.startsWith("search ") || trimmed.startsWith("search-events ")) {
+				const query = trimmed.replace(/^search(?:-events)?\s+/, "");
+				updateMissionGate("memory_checked", "done", `/re-memory search-events ${query}`);
+				sendDisplayMessage(pi, "REPI Memory Event Search", formatMemoryRetrieval(query));
+				return;
+			}
+			if (trimmed === "events") {
+				updateMissionGate("memory_checked", "done", "/re-memory events");
+				sendDisplayMessage(pi, "REPI Memory Events", formatMemoryRetrieval());
+				return;
+			}
+			if (trimmed === "consolidate") {
+				sendDisplayMessage(pi, "REPI Memory Consolidation", consolidateMemoryEvents());
 				return;
 			}
 			if (trimmed === "playbooks") {
@@ -23873,8 +24498,11 @@ function installReconTools(pi: ExtensionAPI): void {
 			action: Type.Union([
 				Type.Literal("show"),
 				Type.Literal("search"),
+				Type.Literal("events"),
+				Type.Literal("search-events"),
 				Type.Literal("append"),
 				Type.Literal("evolve"),
+				Type.Literal("consolidate"),
 				Type.Literal("playbooks"),
 				Type.Literal("prune-playbooks"),
 			]),
@@ -23885,19 +24513,54 @@ function installReconTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params) {
 			if (params.action === "append") {
-				const anchor = appendJournal(params.scene ?? "agent", params.title ?? "field-note", params.text ?? "");
-				updateMissionGate("memory_or_evolution_written", "done", anchor);
+				const text = params.text ?? "";
+				const anchor = appendJournal(params.scene ?? "agent", params.title ?? "field-note", text);
+				const event = appendMemoryEvent({
+					source: "manual",
+					task: params.title ?? "field-note",
+					domainTags: [params.scene ?? "agent"],
+					lessons: [text],
+					commands: extractMemoryCommands(text),
+					outcome: "partial",
+					confidence: 0.58,
+				});
+				updateMissionGate("memory_or_evolution_written", "done", `${anchor} event=${event.id}`);
 				return {
-					content: [{ type: "text" as const, text: `Appended field journal entry: ${anchor}` }],
-					details: { anchor } as Record<string, unknown>,
+					content: [{ type: "text" as const, text: `Appended field journal entry: ${anchor}\nmemory_event: ${event.id}\ncase_signature: ${event.caseSignature}` }],
+					details: { anchor, event } as unknown as Record<string, unknown>,
 				};
 			}
 			if (params.action === "evolve") {
-				const anchor = appendEvolution(params.title ?? "agent evolution", params.text ?? "");
-				updateMissionGate("memory_or_evolution_written", "done", anchor);
+				const text = params.text ?? "";
+				const anchor = appendEvolution(params.title ?? "agent evolution", text);
+				const event = appendMemoryEvent({
+					source: "operator",
+					task: params.title ?? "agent evolution",
+					lessons: [text],
+					reuseRules: extractMemoryCommands(text),
+					commands: extractMemoryCommands(text),
+					outcome: "partial",
+					confidence: 0.62,
+				});
+				updateMissionGate("memory_or_evolution_written", "done", `${anchor} event=${event.id}`);
 				return {
-					content: [{ type: "text" as const, text: `Appended evolution entry: ${anchor}` }],
-					details: { anchor } as Record<string, unknown>,
+					content: [{ type: "text" as const, text: `Appended evolution entry: ${anchor}\nmemory_event: ${event.id}\ncase_signature: ${event.caseSignature}` }],
+					details: { anchor, event } as unknown as Record<string, unknown>,
+				};
+			}
+			if (params.action === "events" || params.action === "search-events") {
+				const text = formatMemoryRetrieval(params.query);
+				updateMissionGate("memory_checked", "done", `${params.action}:${params.query ?? ""}`);
+				return {
+					content: [{ type: "text" as const, text }],
+					details: { query: params.query, report: memoryRetrievalReportPath() } as Record<string, unknown>,
+				};
+			}
+			if (params.action === "consolidate") {
+				const text = consolidateMemoryEvents();
+				return {
+					content: [{ type: "text" as const, text }],
+					details: { events: memoryEventsPath(), caseMemory: caseMemoryPath() } as Record<string, unknown>,
 				};
 			}
 			if (params.action === "playbooks" || params.action === "prune-playbooks") {
@@ -23915,9 +24578,10 @@ function installReconTools(pi: ExtensionAPI): void {
 					.split(/\r?\n/)
 					.filter((line) => !query || line.toLowerCase().includes(query))
 					.slice(0, 120);
+				const eventText = formatMemoryRetrieval(params.query);
 				return {
-					content: [{ type: "text" as const, text: lines.length ? lines.join("\n") : "No matching memory lines" }],
-					details: { query, matches: lines.length } as Record<string, unknown>,
+					content: [{ type: "text" as const, text: [lines.length ? lines.join("\n") : "No matching markdown memory lines", "", eventText].join("\n") }],
+					details: { query, matches: lines.length, eventReport: memoryRetrievalReportPath() } as Record<string, unknown>,
 				};
 			}
 			updateMissionGate("memory_checked", "done", "show");
