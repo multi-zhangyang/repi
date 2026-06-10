@@ -111,7 +111,7 @@ write(
 	join(fakePiAgent, "settings.json"),
 	JSON.stringify(
 		{
-			enabledModels: ["2go-anthropic/moonshot/kimi-k2.6", "2go-openai/moonshot/kimi-k2.6"],
+			enabledModels: ["stale-anthropic/vendor/private-model", "stale-openai/vendor/private-model"],
 			extensions: ["extensions/reverse-pentest-core.ts"],
 			prompts: ["prompts"],
 			skills: ["skills/reverse-pentest-orchestrator/SKILL.md"],

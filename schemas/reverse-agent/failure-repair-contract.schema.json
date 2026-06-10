@@ -1,21 +1,21 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pi-recon.local/schemas/reverse-agent/failure-repair-contract.schema.json",
+  "$id": "https://repi.local/schemas/reverse-agent/failure-repair-contract.schema.json",
   "title": "REPI Failure and Repair Contracts",
   "type": "object",
-  "x-piReconStrictFixture": "fixtures/reverse-agent/failure-repair-strict.fixture.json",
-  "x-piReconDedupWindow": {
+  "x-repiStrictFixture": "fixtures/reverse-agent/failure-repair-strict.fixture.json",
+  "x-repiDedupWindow": {
     "mode": "deterministic-batch-signature-window",
     "failureKey": ["source", "scope", "signature", "attempt"],
     "repairKey": ["repairId"],
     "budgetKey": ["signature", "retryBudget.retryKey", "budget.retryKey"],
     "rejects": ["duplicate_failure_signature_attempt", "duplicate_repair_id", "failure_repair_signature_mismatch", "exhausted_unpaused_retry"]
   },
-  "x-piReconTerminalRules": {
+  "x-repiTerminalRules": {
     "exhaustedFailureBudget": "status=exhausted requires remainingAttempts=0 or attempt>=maxAttempts",
     "exhaustedRepairRetry": "linked exhausted failures must not continue with unpaused rerun/retry repairs"
   },
-  "x-piReconInvariants": [
+  "x-repiInvariants": [
     "strict_additional_properties_false_for_failure_and_repair",
     "local_strict_fixture_must_pass",
     "deterministic_duplicate_signature_attempt_rejected",
@@ -166,7 +166,7 @@
         "rollback": { "$ref": "#/$defs/Rollback" }
       },
       "additionalProperties": false,
-      "x-piReconInvariants": [
+      "x-repiInvariants": [
         "strict_additional_properties_false_for_failure_and_repair",
         "same_signature_shares_retry_budget",
         "exhausted_status_stops_blind_retry",
@@ -217,7 +217,7 @@
         "note": { "type": "string" }
       },
       "additionalProperties": false,
-      "x-piReconInvariants": [
+      "x-repiInvariants": [
         "strict_additional_properties_false_for_failure_and_repair",
         "paused_true_for_live_or_provider_dependent_repairs",
         "commands_are_not_executed_by_static_gate",

@@ -231,6 +231,8 @@ function staticContractChecks() {
 		),
 	);
 	checks.push(markerCheck("installer:legacy-no-takeover", "scripts/reverse-agent/install-recon-pi.sh", ["deprecated", 'exec "$ROOT/scripts/reverse-agent/install-repi.sh'], [/ln\s+-s.*\$ROOT\/pi/, /rm\s+-rf/, /deleted upstream/],));
+	checks.push(markerCheck("installer:repi-legacy-cleaner", "scripts/reverse-agent/clean-global-repi-profile.sh", ["Cleaned global pi REPI file-profile pollution", "repi-legacy-backup", "reverse-pentest"], []));
+	checks.push(markerCheck("audit:repi-product-surface", "scripts/reverse-agent/repi-product-surface-audit.mjs", ["REPI product_surface_audit", "PRODUCT_SURFACE_FILES", "compatibilityProtocolMarkers"], []));
 	checks.push(markerCheck("release:binary-archives-repi", "scripts/build-binaries.sh", ["repi-linux-x64.tar.gz", '--outfile "$OUTPUT_DIR/$platform/repi', "repi-$platform.tar.gz", "repi-$platform.zip"], [/\bpi-linux-x64\.tar\.gz/, /--outfile .*\/pi(?:\.exe)?"/, /\bpi-\$platform\.(?:zip|tar\.gz)/]));
 	checks.push(markerCheck("release:local-shims-repi", "scripts/local-release.mjs", ["createRepiShim", '"repi.cmd"', '"repi"', "repi-${platform}.tar.gz"], ["createPiShim", /node_modules\/\.bin\/pi\b/, /\bpi\.cmd\b/, /\bpi-\$\{platform\}\.tar\.gz/]));
 	checks.push(markerCheck("code:repi-product-switch", "packages/coding-agent/src/config.ts", ["IS_REPI_PRODUCT", "REPI_PRODUCT", "PI_RECON_PRODUCT", "APP_NAME === \"repi\"", "https://gist.github.com/"], []));
@@ -243,7 +245,7 @@ function staticContractChecks() {
 	checks.push(markerCheck("profile:runtime-config-knowledge", "repi-profile/SYSTEM.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --list-models", "triggerPercent"], []));
 	checks.push(markerCheck("prompt:repi-config", "repi-profile/prompts/repi-config.md", ["~/.repi/agent/models.json", "OpenAI-compatible", "anthropic-messages", "triggerPercent=85"], []));
 	checks.push(markerCheck("docs:runtime-configuration", "docs/reverse-agent/repi-runtime-configuration.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "repi --offline", "openai-completions", "triggerPercent"], []));
-	checks.push(markerCheck("npm:top-harness-script", "package.json", ["gate:repi-harness", "gate:repi-product", "gate:repi-isolation", "install:repi"], []));
+	checks.push(markerCheck("npm:top-harness-script", "package.json", ["gate:repi-harness", "gate:repi-product", "gate:repi-isolation", "gate:repi-product-surface", "install:repi", "clean:repi-legacy-profile"], ["install:recon-pi", "gate:pi-recon-primary"]));
 	checks.push(markerCheck("ci:repi-harness-template", "docs/reverse-agent/repi-harness.github-actions.yml", ["REPI Independent Harness", "npm ci --ignore-scripts", "npm run gate:repi-harness", "npm run check", "git diff --exit-code"], []));
 	checks.push(markerCheck("docs:independent-entry", "README.md", ["repi  -> REPI", "pi    -> 你本机安装的原版 Pi", "npm run install:repi", "npm run gate:repi-harness"], ["npm run install:recon-pi\n", "npm run gate:pi-recon-primary\n"]));
 	checks.push(markerCheck("runtime:repi-storage-path-language", "repi-profile/SYSTEM.md", ["REPI", "~/.repi/agent/recon/evidence", "~/.repi/agent/recon/memory", "~/.repi/agent/recon/mission"], [/\.pi\/(?:evidence|memory|mission|reports)/]));
@@ -273,9 +275,13 @@ function runtimeInstallProbe() {
 	const installBin = join(tempRoot, "bin");
 	const npmPrefix = join(tempRoot, "npm-prefix");
 	const fakePiAgent = join(home, ".pi", "agent");
+	const cleanerHome = join(tempRoot, "cleaner-home");
 	mkdir(installBin);
 	mkdir(join(home, ".local", "bin"));
 	mkdir(join(npmPrefix, "bin"));
+	mkdir(cleanerHome);
+	const cleanerNoAgent = run("bash", ["scripts/reverse-agent/clean-global-repi-profile.sh"], { env: { HOME: cleanerHome } });
+	const cleanerCreatedPiAgent = existsSync(join(cleanerHome, ".pi", "agent"));
 	mkdir(fakePiAgent);
 
 	const fakePi = join(installBin, "pi");
@@ -288,7 +294,7 @@ function runtimeInstallProbe() {
 		symlinkSync(join(root, "pi"), join(npmPrefix, "bin", "pi"));
 	} catch {}
 
-	writeFileSync(join(fakePiAgent, "settings.json"), JSON.stringify({ enabledModels: ["2go-anthropic/moonshot/kimi-k2.6"], extensions: ["extensions/reverse-pentest-core.ts"] }, null, 2));
+	writeFileSync(join(fakePiAgent, "settings.json"), JSON.stringify({ enabledModels: ["stale-anthropic/vendor/private-model"], extensions: ["extensions/reverse-pentest-core.ts"] }, null, 2));
 	mkdir(join(fakePiAgent, "extensions"));
 	writeFileSync(join(fakePiAgent, "extensions", "reverse-pentest-core.ts"), "export default {};\n");
 	writeFileSync(join(fakePiAgent, "auth.json"), JSON.stringify({ fake: { apiKey: "do-not-copy-by-default" } }, null, 2));
@@ -348,6 +354,7 @@ function runtimeInstallProbe() {
 	const authAfterImport = existsSync(join(home, ".repi", "agent", "auth.json"));
 
 	const checks = [];
+	checks.push(resultCheck("runtime:cleaner-no-create-pi-agent", cleanerNoAgent.code === 0 && !cleanerCreatedPiAgent ? "pass" : "fail", { code: cleanerNoAgent.code, stdout: cleanerNoAgent.stdout.trim(), stderr: cleanerNoAgent.stderr.trim(), cleanerCreatedPiAgent }));
 	checks.push(resultCheck("runtime:install-repi-code", install.code === 0 ? "pass" : "fail", { code: install.code, stderrTail: install.stderr.slice(-2000) }));
 	checks.push(resultCheck("runtime:repi-symlink-created", existsSync(repiPath) ? "pass" : "fail", { repiPath, target: existsSync(repiPath) ? lstatSync(repiPath).isFile() || lstatSync(repiPath).isSymbolicLink() : false }));
 	checks.push(resultCheck("runtime:pi-stub-preserved", piProbe.stdout.includes("UPSTREAM_PI_STUB") ? "pass" : "fail", { stdout: piProbe.stdout.trim(), code: piProbe.code }));
@@ -385,6 +392,7 @@ function runtimeInstallProbe() {
 function childGateChecks() {
 	const gates = [
 		["gate:repi-product", ["scripts/reverse-agent/assert-repi-product.mjs", root]],
+		["gate:repi-product-surface", ["scripts/reverse-agent/repi-product-surface-audit.mjs", root, "--strict"]],
 		["gate:repi-isolation", ["scripts/reverse-agent/assert-repi-isolated.mjs", root]],
 		["gate:context-compact", ["scripts/reverse-agent/context-compact-audit.mjs", root]],
 		["gate:autonomous-runtime", ["scripts/reverse-agent/autonomous-runtime-contracts.mjs", root, "--strict"]],

@@ -59,7 +59,7 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pi-recon.local/schemas/autonomous-runtime-contract.schema.json",
+  "$id": "https://repi.local/schemas/autonomous-runtime-contract.schema.json",
   "title": "REPI Autonomous Runtime Contracts",
   "description": "Strict contracts for independent sub-agent runtime manifests, shard scheduling, compact/resume state, failure repair budgets, and runtime claim promotion gates.",
   "$defs": {
@@ -682,12 +682,12 @@
       }
     }
   },
-  "x-piReconInvariants": [
+  "x-repiInvariants": [
     "subagent_manifest_records_pid_session_stdout_stderr_model_tool_digest",
     "parallel_shard_state_records_dependencies_timeout_cancel_resource_limits_and_merge_keys",
     "compact_resume_state_is_idempotent_and_tracks_queued_running_done_blocked_exhausted",
     "repair_budget_state_shares_signature_budget_allowlist_rollback_and_regression_gates",
     "claim_promotion_gate_requires_strict_claim_ledger_validator_before_final_promotion"
   ],
-  "x-piReconStrictFixture": "fixtures/reverse-agent/autonomous-runtime-contract.fixture.json"
+  "x-repiStrictFixture": "fixtures/reverse-agent/autonomous-runtime-contract.fixture.json"
 }

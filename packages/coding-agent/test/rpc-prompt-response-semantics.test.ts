@@ -220,7 +220,7 @@ describe("RPC prompt response semantics", () => {
 					command: "prompt",
 					success: false,
 					error: expect.stringContaining(
-						"No API key found for fake-provider.\n\nUse /login to log into a provider via OAuth or API key. See:",
+						"No API key found for fake-provider.\n\nConfigure a provider in ~/.repi/agent/models.json or use /login for built-in OAuth/API-key providers. See:",
 					),
 				});
 			});

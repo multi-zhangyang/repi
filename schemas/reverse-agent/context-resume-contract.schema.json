@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pi-recon.local/schemas/reverse-agent/context-resume-contract.schema.json",
+  "$id": "https://repi.local/schemas/reverse-agent/context-resume-contract.schema.json",
   "title": "REPI Context and Resume Contracts",
   "$defs": {
     "ContextPackV2": {
@@ -80,7 +80,7 @@
         }
       },
       "additionalProperties": true,
-      "x-piReconInvariants": [
+      "x-repiInvariants": [
         "exact_context_load_by_contextPath_or_compactionEntryId",
         "reject_contextSha256_or_artifact_sha256_drift",
         "scope_filter_by_mission_session_workspace_target",
@@ -159,7 +159,7 @@
         }
       },
       "additionalProperties": true,
-      "x-piReconInvariants": [
+      "x-repiInvariants": [
         "contextSha256_must_match_before_resume",
         "artifactHashes_required_items_must_exist",
         "idempotencyKey_prevents_double_auto_resume",

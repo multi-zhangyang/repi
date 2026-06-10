@@ -1,5 +1,5 @@
 {
-  "kind": "pi-recon-autonomous-runtime-contract-fixture",
+  "kind": "repi-autonomous-runtime-contract-fixture",
   "schemaPath": "schemas/reverse-agent/autonomous-runtime-contract.schema.json",
   "validBatch": {
     "kind": "PiReconAutonomousRuntimeBatchV1",
@@ -17,8 +17,8 @@
         "pid": 4242,
         "parentPid": 3131,
         "sessionDir": ".repi/agent/sessions/fixture/mapper",
-        "stdoutPath": ".pi/evidence/fixture/stdout.log",
-        "stderrPath": ".pi/evidence/fixture/stderr.log",
+        "stdoutPath": ".repi/evidence/fixture/stdout.log",
+        "stderrPath": ".repi/evidence/fixture/stderr.log",
         "stdoutSha256": "111111111111111111111111",
         "stderrSha256": "222222222222222222222222",
         "startedAt": "2026-06-09T00:00:00.000Z",
@@ -28,15 +28,15 @@
         "signal": null,
         "model": {
           "provider": "aigateway",
-          "modelId": "moonshot/kimi-k2.6",
+          "modelId": "provider/private-model",
           "modelCalls": 1,
           "toolCalls": 3,
           "toolResults": 3
         },
         "toolCallDigest": "333333333333333333333333",
-        "claimLedgerPath": ".pi/evidence/fixture/claim-ledger.jsonl",
-        "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-        "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+        "claimLedgerPath": ".repi/evidence/fixture/claim-ledger.jsonl",
+        "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+        "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
         "resourceLimits": {
           "timeoutMs": 60000,
           "maxCommands": 8,
@@ -56,7 +56,7 @@
           "claimId"
         ],
         "evidenceRefs": [
-          ".pi/evidence/maps/fixture.md"
+          ".repi/evidence/maps/fixture.md"
         ]
       }
     ],
@@ -78,7 +78,7 @@
         },
         "startedAt": "2026-06-09T00:00:00.000Z",
         "endedAt": "2026-06-09T00:00:02.000Z",
-        "resultManifestPath": ".pi/evidence/fixture/worker-web-map.runtime-manifest.json",
+        "resultManifestPath": ".repi/evidence/fixture/worker-web-map.runtime-manifest.json",
         "stdoutSha256": "111111111111111111111111",
         "stderrSha256": "222222222222222222222222",
         "mergeKeys": [
@@ -155,14 +155,14 @@
           "gate:claim-release"
         ],
         "evidenceWriteback": [
-          ".pi/evidence/failures/ledger.jsonl"
+          ".repi/evidence/failures/ledger.jsonl"
         ]
       }
     ],
     "claimPromotionGates": [
       {
         "source": "agent-dogfood",
-        "ledgerPath": ".pi/evidence/fixture/claim-ledger.jsonl",
+        "ledgerPath": ".repi/evidence/fixture/claim-ledger.jsonl",
         "hashChainOk": true,
         "eventTypes": [
           "artifact_handoff",
@@ -177,7 +177,7 @@
           "platform proof intentionally not promoted by orchestration-only fixture"
         ],
         "artifactRefs": [
-          ".pi/evidence/fixture/result.json"
+          ".repi/evidence/fixture/result.json"
         ],
         "claimIds": [
           "fixture-run-001:worker-web-map"
@@ -205,8 +205,8 @@
             "pid": 4242,
             "parentPid": 3131,
             "sessionDir": ".repi/agent/sessions/fixture/mapper",
-            "stdoutPath": ".pi/evidence/fixture/stdout.log",
-            "stderrPath": ".pi/evidence/fixture/stderr.log",
+            "stdoutPath": ".repi/evidence/fixture/stdout.log",
+            "stderrPath": ".repi/evidence/fixture/stderr.log",
             "stdoutSha256": "111111111111111111111111",
             "stderrSha256": "222222222222222222222222",
             "startedAt": "2026-06-09T00:00:00.000Z",
@@ -216,15 +216,15 @@
             "signal": null,
             "model": {
               "provider": "aigateway",
-              "modelId": "moonshot/kimi-k2.6",
+              "modelId": "provider/private-model",
               "modelCalls": 1,
               "toolCalls": 3,
               "toolResults": 3
             },
             "toolCallDigest": "333333333333333333333333",
-            "claimLedgerPath": ".pi/evidence/fixture/claim-ledger.jsonl",
-            "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-            "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+            "claimLedgerPath": ".repi/evidence/fixture/claim-ledger.jsonl",
+            "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+            "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
             "resourceLimits": {
               "timeoutMs": 60000,
               "maxCommands": 8,
@@ -244,7 +244,7 @@
               "claimId"
             ],
             "evidenceRefs": [
-              ".pi/evidence/maps/fixture.md"
+              ".repi/evidence/maps/fixture.md"
             ]
           },
           {
@@ -258,8 +258,8 @@
             "pid": 4243,
             "parentPid": 3131,
             "sessionDir": ".repi/agent/sessions/fixture/mapper",
-            "stdoutPath": ".pi/evidence/fixture/stdout.log",
-            "stderrPath": ".pi/evidence/fixture/stderr.log",
+            "stdoutPath": ".repi/evidence/fixture/stdout.log",
+            "stderrPath": ".repi/evidence/fixture/stderr.log",
             "stdoutSha256": "111111111111111111111111",
             "stderrSha256": "222222222222222222222222",
             "startedAt": "2026-06-09T00:00:00.000Z",
@@ -269,15 +269,15 @@
             "signal": null,
             "model": {
               "provider": "aigateway",
-              "modelId": "moonshot/kimi-k2.6",
+              "modelId": "provider/private-model",
               "modelCalls": 1,
               "toolCalls": 3,
               "toolResults": 3
             },
             "toolCallDigest": "333333333333333333333333",
-            "claimLedgerPath": ".pi/evidence/fixture/claim-ledger.jsonl",
-            "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-            "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+            "claimLedgerPath": ".repi/evidence/fixture/claim-ledger.jsonl",
+            "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+            "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
             "resourceLimits": {
               "timeoutMs": 60000,
               "maxCommands": 8,
@@ -297,7 +297,7 @@
               "claimId"
             ],
             "evidenceRefs": [
-              ".pi/evidence/maps/fixture.md"
+              ".repi/evidence/maps/fixture.md"
             ]
           }
         ],
@@ -319,7 +319,7 @@
             },
             "startedAt": "2026-06-09T00:00:00.000Z",
             "endedAt": "2026-06-09T00:00:02.000Z",
-            "resultManifestPath": ".pi/evidence/fixture/worker-web-map.runtime-manifest.json",
+            "resultManifestPath": ".repi/evidence/fixture/worker-web-map.runtime-manifest.json",
             "stdoutSha256": "111111111111111111111111",
             "stderrSha256": "222222222222222222222222",
             "mergeKeys": [
@@ -396,14 +396,14 @@
               "gate:claim-release"
             ],
             "evidenceWriteback": [
-              ".pi/evidence/failures/ledger.jsonl"
+              ".repi/evidence/failures/ledger.jsonl"
             ]
           }
         ],
         "claimPromotionGates": [
           {
             "source": "agent-dogfood",
-            "ledgerPath": ".pi/evidence/fixture/claim-ledger.jsonl",
+            "ledgerPath": ".repi/evidence/fixture/claim-ledger.jsonl",
             "hashChainOk": true,
             "eventTypes": [
               "artifact_handoff",
@@ -418,7 +418,7 @@
               "platform proof intentionally not promoted by orchestration-only fixture"
             ],
             "artifactRefs": [
-              ".pi/evidence/fixture/result.json"
+              ".repi/evidence/fixture/result.json"
             ],
             "claimIds": [
               "fixture-run-001:worker-web-map"
@@ -487,7 +487,7 @@
         "claimPromotionGates": [
           {
             "source": "agent-dogfood",
-            "ledgerPath": ".pi/evidence/fixture/claim-ledger.jsonl",
+            "ledgerPath": ".repi/evidence/fixture/claim-ledger.jsonl",
             "hashChainOk": true,
             "eventTypes": [
               "artifact_handoff",
@@ -502,7 +502,7 @@
               "platform proof intentionally not promoted by orchestration-only fixture"
             ],
             "artifactRefs": [
-              ".pi/evidence/fixture/result.json"
+              ".repi/evidence/fixture/result.json"
             ],
             "claimIds": [
               "fixture-run-001:worker-web-map"

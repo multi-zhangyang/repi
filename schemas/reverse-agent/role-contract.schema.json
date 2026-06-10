@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pi-recon.local/schemas/reverse-agent/role-contract.schema.json",
+  "$id": "https://repi.local/schemas/reverse-agent/role-contract.schema.json",
   "title": "REPI Role Contract",
   "type": "object",
   "required": ["contractVersion", "runId", "evidenceOrder", "roles", "ledgerPolicy", "conflictPolicy", "claimGatePolicy"],

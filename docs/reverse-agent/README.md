@@ -1,6 +1,6 @@
 # REPI 深度逆向渗透 Agent 配置
 
-本目录说明本仓库对 Pi 的“魔改”配置。它不是单独添加一个 skill，而是把 Pi 的系统提示、资源加载、运行时扩展、长期记忆、工具索引、自审计、压缩记录和任务模板组合成一个逆向渗透作战 profile。
+本目录说明 REPI Agent 的独立产品控制面。它不是给普通 `pi` 追加一个 skill，也不是依赖全局 profile 污染，而是把 REPI 的系统提示、资源加载、运行时扩展、长期记忆、工具索引、自审计、压缩记录和任务模板组合成一个逆向渗透作战 profile，并通过 `repi` 命令独立启动。
 
 ## 三层形态
 
@@ -78,12 +78,10 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `pi` | 非拥有型兼容 shim；不会启动 REPI，只会转交给 PATH 中的原版 Pi，找不到则提示使用 `repi` |
 | `repi` | REPI 独立产品入口，默认使用 `~/.repi/agent`；源码 wrapper 和 npm/bin 直启都会由 CLI bootstrap 自动启用 `--recon` 隔离参数 |
 | `scripts/reverse-agent/install-repi.sh` | 安装 `/usr/local/bin/repi`，初始化 `~/.repi/agent`，不会覆盖/删除普通 `pi` |
-| `scripts/reverse-agent/install-recon-pi.sh` | 兼容旧命令名；已废弃，现在只会转而安装 `repi`，不会接管 `pi` |
 | `scripts/reverse-agent/assert-repi-product.mjs` | 验证 `repi` 是产品入口、`pi` 未被本仓库声明、repi help 不泄漏 upstream Pi update/pi.dev changelog 文案 |
 | `scripts/reverse-agent/repi-top-harness.mjs` | 顶级独立 harness：临时 HOME/bin 端到端验证安装、命令归属、profile 隔离、update/branding 去 Pi 化和能力 gates |
 | `docs/reverse-agent/repi-harness.github-actions.yml` | CI 自动验收模板：复制到 `.github/workflows/repi-harness.yml` 后，push/PR 运行 `gate:repi-harness`、`npm run check` 和 no-diff 检查 |
-| `scripts/reverse-agent/assert-pi-recon-primary.mjs` | 兼容旧 gate 名；实际转到 `assert-repi-product.mjs` |
-| `scripts/reverse-agent/clean-global-pi-recon.sh` | 清理旧版写入 `~/.pi/agent` 的 REPI 文件型 profile，移动到备份目录 |
+| `scripts/reverse-agent/clean-global-repi-profile.sh` | 清理旧版写入 `~/.pi/agent` 的 REPI 文件型 profile，移动到备份目录 |
 | `scripts/reverse-agent/install-global-profile.sh` | 兼容旧命令名；现在默认写入 `~/.repi/agent` |
 
 
@@ -129,7 +127,7 @@ repi --import-pi-auth --offline --list-models
 repi --project-context
 ```
 
-需要恢复普通 Pi 的完整资源发现时使用：
+需要按 REPI 的项目/全局资源发现机制加载扩展、skills、prompt templates 时使用：
 
 ```bash
 repi --with-project-resources
@@ -233,7 +231,7 @@ npm run install:repi
 hash -r
 
 # 如以前装过旧全局 profile，清理旧污染到备份目录
-scripts/reverse-agent/clean-global-pi-recon.sh
+scripts/reverse-agent/clean-global-repi-profile.sh
 
 # 验证 repi 已经可用，不应再出现 model pattern、API key、collision、Global tools 报错
 npm run gate:repi-harness
@@ -564,7 +562,7 @@ Failure/repair 合同现在同时保留机器字段和人类可读别名：
 - repair item：`action/repairAction/commands/expectedArtifacts/expectedGates/preconditions/paused/rollbackCriteria/regressionGates/blockedConditions/evidenceWriteback`。
 - `--write` 仍写 per-run 目录，同时追加 canonical append-only 路径：
   `.repi-harness/evidence/failures/ledger.jsonl` 与 `.repi-harness/evidence/repairs/queue.jsonl`。
-- `gate:repi-isolation` 会用临时 HOME 构造旧 `~/.pi/agent` 污染样本，验证 `repi` 默认只用 `~/.repi/agent`，不会触发 2go model scope、API key、collision 或 Global tools 报错，也不会改写普通 `pi` profile。
+- `gate:repi-isolation` 会用临时 HOME 构造旧 `~/.pi/agent` 污染样本，验证 `repi` 默认只用 `~/.repi/agent`，不会触发 stale model scope、API key、collision 或 Global tools 报错，也不会改写普通 `pi` profile。
 - `gate:autonomous-runtime` 会读取 autonomous runtime strict fixture，验证 valid batch 通过、duplicate subagent attempt、非法 resume transition、loose claim-gate field 都被拒绝。
 - `gate:autonomous-contracts` 会读取 failure/repair strict fixture 与 autonomous runtime gate，验证 valid batch 通过、duplicate signature/attempt、loose extra field、exhausted 后继续 unpaused rerun/retry 都被拒绝。
 - release 级 claim 不走 `audit:claim-ledger --allow-platform-gaps`，而走 `gate:claim-release`；当前 required platform gaps 存在时它应该阻断，并把 blocked marker 写给 runtime final path 使用。
@@ -573,5 +571,5 @@ Failure/repair 合同现在同时保留机器字段和人类可读别名：
 
 - `gate:repi-harness` 是外层顶级独立 harness：用临时 HOME/bin 模拟安装，证明 `pi` stub 不被覆盖、旧 repi stale shim 被清掉、`~/.pi/agent` 不被默认读取/改写、`repi` help/update help 去掉 upstream update/branding，并额外模拟不经源码 wrapper 的 package/bin 直启，确认 CLI 自身默认进入 REPI kernel；然后串联 product/isolation/context/autonomous runtime/control gates。CI 模板 `docs/reverse-agent/repi-harness.github-actions.yml` 复制到 `.github/workflows/repi-harness.yml` 后，会在 push/PR 自动跑这套门禁。
 - `re_harness` / `/re-harness quick|full|install|show` 生成 `harness_artifact`，聚合 `install_readiness`、`reverse_capability_guards`、`regression_guards`、注册工具/命令矩阵和 evidence/memory/tool-index 可写性。
-- 开发或魔改后执行 `re_harness full`；运行 `npm run install:repi` 后，只安装/刷新 `repi`，普通 `pi` 仍归 upstream Pi；随后执行 `hash -r`、`repi --offline --help`、`npm run gate:repi-harness` 与 `/re-harness install`。
+- 开发或产品面整改后执行 `re_harness full`；运行 `npm run install:repi` 后，只安装/刷新 `repi`，普通 `pi` 仍归 upstream Pi；随后执行 `hash -r`、`repi --offline --help`、`npm run gate:repi-harness` 与 `/re-harness install`。
 - `reverse_capability_guards` 会守住 re_native_runtime、re_web_authz_state、re_mobile_runtime、re_exploit_lab、re_proof_loop、re_autopilot、re_knowledge_graph、compact_resume_case_memory、compact_resume_repair_from_case_memory、compact_resume_success_skip_low_value_lane、operator_command_floor、proof_exit_criteria、specialist_runtime_planner，避免安装/自检优化削弱逆向渗透能力。

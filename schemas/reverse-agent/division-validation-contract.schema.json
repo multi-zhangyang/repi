@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pi-recon.local/schemas/reverse-agent/division-validation-contract.schema.json",
+  "$id": "https://repi.local/schemas/reverse-agent/division-validation-contract.schema.json",
   "title": "REPI Division Validation Contract",
   "$defs": {
     "DivisionValidationContractV1": {
@@ -97,7 +97,7 @@
         }
       },
       "additionalProperties": true,
-      "x-piReconInvariants": [
+      "x-repiInvariants": [
         "proven_or_final_pass_claim_requires_artifact_sha256_and_json_query",
         "verifier_pass_required_before_final_pass",
         "unresolved_adversary_challenge_blocks_claim_promotion",

@@ -377,9 +377,9 @@ export function validateAutonomousRuntimeSchemaFile(root = process.cwd()) {
 		if (!defs[def]) push(errors, `#/$defs/${def}`, "required", "missing definition");
 		if (defs[def]?.additionalProperties !== false) push(errors, `#/$defs/${def}.additionalProperties`, "strict", "must be false");
 	}
-	const fixtureOk = schema?.["x-piReconStrictFixture"] === AUTONOMOUS_RUNTIME_FIXTURE_PATH;
-	if (!fixtureOk) push(errors, "$.x-piReconStrictFixture", "fixture", "fixture path mismatch");
-	const invariants = new Set(schema?.["x-piReconInvariants"] ?? []);
+	const fixtureOk = schema?.["x-repiStrictFixture"] === AUTONOMOUS_RUNTIME_FIXTURE_PATH;
+	if (!fixtureOk) push(errors, "$.x-repiStrictFixture", "fixture", "fixture path mismatch");
+	const invariants = new Set(schema?.["x-repiInvariants"] ?? []);
 	for (const invariant of [
 		"subagent_manifest_records_pid_session_stdout_stderr_model_tool_digest",
 		"parallel_shard_state_records_dependencies_timeout_cancel_resource_limits_and_merge_keys",
@@ -387,7 +387,7 @@ export function validateAutonomousRuntimeSchemaFile(root = process.cwd()) {
 		"repair_budget_state_shares_signature_budget_allowlist_rollback_and_regression_gates",
 		"claim_promotion_gate_requires_strict_claim_ledger_validator_before_final_promotion",
 	]) {
-		if (!invariants.has(invariant)) push(errors, "$.x-piReconInvariants", "invariant", `missing ${invariant}`);
+		if (!invariants.has(invariant)) push(errors, "$.x-repiInvariants", "invariant", `missing ${invariant}`);
 	}
 	return { ok: errors.length === 0, path: AUTONOMOUS_RUNTIME_SCHEMA_PATH, errors };
 }
@@ -416,7 +416,7 @@ export function validateAutonomousRuntimeContracts(root = process.cwd()) {
 	const schema = validateAutonomousRuntimeSchemaFile(root);
 	const fixture = validateAutonomousRuntimeFixture(root);
 	return {
-		kind: "pi-recon-autonomous-runtime-contract-validation",
+		kind: "repi-autonomous-runtime-contract-validation",
 		generatedAt: new Date().toISOString(),
 		root,
 		ok: schema.ok && fixture.ok,

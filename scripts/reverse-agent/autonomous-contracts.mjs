@@ -154,8 +154,8 @@ function validateFailureRepairSchemaFile(root) {
 	const repair = defs.RepairQueueItemV1 ?? {};
 	const sharedStrict = ["EvidenceWriteback", "BlockedCondition", "Artifact", "ArtifactHash", "RetryBudget", "Rollback", "Preconditions", "RollbackCriteria"].every((name) => defs[name]?.additionalProperties === false);
 	const topStrict = failure.additionalProperties === false && repair.additionalProperties === false;
-	const fixturePathOk = schema?.["x-piReconStrictFixture"] === FAILURE_REPAIR_STRICT_FIXTURE_PATH;
-	const dedupWindow = schema?.["x-piReconDedupWindow"] ?? {};
+	const fixturePathOk = schema?.["x-repiStrictFixture"] === FAILURE_REPAIR_STRICT_FIXTURE_PATH;
+	const dedupWindow = schema?.["x-repiDedupWindow"] ?? {};
 	const dedupWindowOk =
 		dedupWindow.mode === FAILURE_REPAIR_DEDUP_WINDOW.mode &&
 		JSON.stringify(dedupWindow.failureKey) === JSON.stringify(FAILURE_REPAIR_DEDUP_WINDOW.failureKey) &&
@@ -166,7 +166,7 @@ function validateFailureRepairSchemaFile(root) {
 	const repairRequiredOk = SCHEMAS.RepairQueueItemV1.required.every((field) => repair.required?.includes(field));
 	const oneOfOk = (schema.oneOf ?? []).some((entry) => entry.$ref === "#/$defs/FailureLedgerEventV1") && (schema.oneOf ?? []).some((entry) => entry.$ref === "#/$defs/RepairQueueItemV1");
 	const repairNoteAllowed = repair.properties?.note?.type === "string";
-	const invariantSet = new Set([...(schema?.["x-piReconInvariants"] ?? []), ...(failure?.["x-piReconInvariants"] ?? []), ...(repair?.["x-piReconInvariants"] ?? [])]);
+	const invariantSet = new Set([...(schema?.["x-repiInvariants"] ?? []), ...(failure?.["x-repiInvariants"] ?? []), ...(repair?.["x-repiInvariants"] ?? [])]);
 	const invariantsOk =
 		invariantSet.has("strict_additional_properties_false_for_failure_and_repair") &&
 		invariantSet.has("local_strict_fixture_must_pass") &&
@@ -512,7 +512,7 @@ function buildResult(root) {
 	checks.releaseGateMetadata = validateReleaseGateMetadata(releaseGateMetadata);
 	const ok = Object.values(checks).every((check) => check.status === "pass");
 	return {
-		kind: "pi-recon-autonomous-contracts",
+		kind: "repi-autonomous-contracts",
 		version: CONTRACT_VERSION,
 		generatedAt: new Date().toISOString(),
 		root,

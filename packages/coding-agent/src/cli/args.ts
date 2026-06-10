@@ -256,10 +256,10 @@ ${updateCommandLine}
   ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list
 
 ${chalk.bold("Options:")}
-  --provider <name>              Provider name (default: google)
+  --provider <name>              Provider name (default: configured provider/model)
   --model <pattern>              Model pattern or ID (supports "provider/id" and optional ":<thinking>")
   --api-key <key>                API key (defaults to env vars)
-  --system-prompt <text>         System prompt (default: coding assistant prompt)
+  --system-prompt <text>         System prompt (default: REPI reverse/pentest kernel prompt)
   --append-system-prompt <text>  Append text or file contents to the system prompt (can be used multiple times)
   --recon, --reverse-pentest     Enable built-in REPI reverse/pentest kernel profile
   --mode <mode>                  Output mode: text (default), json, or rpc
@@ -302,50 +302,47 @@ ${chalk.bold("Options:")}
 Extensions can register additional flags (e.g., --plan from plan-mode extension).${extensionFlagsText}
 
 ${chalk.bold("Examples:")}
-  # Interactive mode
+  # Interactive REPI session
   ${APP_NAME}
 
-  # Interactive mode with initial prompt
-  ${APP_NAME} "List all .ts files in src/"
+  # Start with a reverse-engineering target
+  ${APP_NAME} "先对当前目录做被动 mapping，找二进制入口和验证路径"
 
-  # Include files in initial message
-  ${APP_NAME} @prompt.md @image.png "What color is the sky?"
+  # Non-interactive mode: generate a bounded task plan
+  ${APP_NAME} -p "对 ./challenge 生成 re_map、re_operator、re_verifier 执行计划"
 
-  # Non-interactive mode (process and exit)
-  ${APP_NAME} -p "List all .ts files in src/"
+  # Include files in the initial message
+  ${APP_NAME} @notes.md @traffic.har "从这些材料提取接口、签名参数和证据缺口"
 
-  # Multiple messages (interactive)
-  ${APP_NAME} "Read package.json" "What dependencies do we have?"
+  # Continue previous REPI session
+  ${APP_NAME} --continue "继续上次任务，先读取未闭合 evidence gaps"
 
-  # Continue previous session
-  ${APP_NAME} --continue "What did we discuss?"
+  # Start a named investigation session
+  ${APP_NAME} --name "firmware-auth-analysis"
 
-  # Start a named session
-  ${APP_NAME} --name "Refactor auth module"
-
-  # Use different model
-  ${APP_NAME} --provider openai --model gpt-4o-mini "Help me refactor this code"
+  # Use a configured OpenAI-compatible provider/model
+  ${APP_NAME} --provider openai-compatible --model provider/model-id "分析 Web/API 授权状态机"
 
   # Use model with provider prefix (no --provider needed)
-  ${APP_NAME} --model openai/gpt-4o "Help me refactor this code"
+  ${APP_NAME} --model openai-compatible/provider-model "生成 exploit-lab 复现矩阵"
 
   # Use model with thinking level shorthand
-  ${APP_NAME} --model sonnet:high "Solve this complex problem"
+  ${APP_NAME} --model sonnet:high "构建 pwn 目标的 leak→primitive→proof 路线"
 
   # Limit model cycling to specific models
-  ${APP_NAME} --models claude-sonnet,claude-haiku,gpt-4o
+  ${APP_NAME} --models claude-sonnet,gpt-4o,provider/model-id
 
   # Limit to a specific provider with glob pattern
-  ${APP_NAME} --models "github-copilot/*"
+  ${APP_NAME} --models "openai-compatible/*"
 
   # Cycle models with fixed thinking levels
-  ${APP_NAME} --models sonnet:high,haiku:low
+  ${APP_NAME} --models sonnet:high,gpt-4o:low
 
   # Start with a specific thinking level
-  ${APP_NAME} --thinking high "Solve this complex problem"
+  ${APP_NAME} --thinking high "审计当前仓库的 REPI harness 缺口"
 
-  # Read-only mode (no file modifications possible)
-  ${APP_NAME} --tools read,grep,find,ls -p "Review the code in src/"
+  # Passive/read-only mapping mode
+  ${APP_NAME} --tools read,grep,find,ls -p "只读分析 src/ 的路由、鉴权和入口"
 
   # Disable one tool while keeping the rest available
   ${APP_NAME} --exclude-tools ask_question
@@ -395,11 +392,11 @@ ${chalk.bold("Environment Variables:")}
   AWS_REGION                       - AWS region for Amazon Bedrock (e.g., us-east-1)
   ${ENV_AGENT_DIR.padEnd(32)} - Config directory (default: ~/${CONFIG_DIR_NAME}/agent)
   ${ENV_SESSION_DIR.padEnd(32)} - Session storage directory (overridden by --session-dir)
-  REPI_PACKAGE_DIR                 - Override package directory (PI_PACKAGE_DIR is accepted as compatibility fallback)
+  REPI_PACKAGE_DIR                 - Override REPI package directory
   REPI_OFFLINE                     - Disable startup network operations when set to 1/true/yes
-  REPI_TELEMETRY                   - Override install telemetry when set to 1/true/yes or 0/false/no
-  REPI_SKIP_VERSION_CHECK          - Disable REPI version checks when set
-  REPI_SKIP_PACKAGE_UPDATE_CHECK   - Disable REPI package update checks when set
+  REPI_TELEMETRY                   - Override REPI telemetry switch (default: 0 in product mode)
+  REPI_SKIP_VERSION_CHECK          - Disable REPI version checks when set (default: on)
+  REPI_SKIP_PACKAGE_UPDATE_CHECK   - Disable REPI package update checks when set (default: on)
 ${shareViewerLine}
 
 ${chalk.bold("Built-in Tool Names:")}

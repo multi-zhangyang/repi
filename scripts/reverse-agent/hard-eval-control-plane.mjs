@@ -471,7 +471,7 @@ function buildResult(root) {
 			: "hard-eval-control-plane-claims-passed"
 		: "hard-eval-control-plane-missing-evidence";
 	return {
-		kind: "pi-recon-hard-eval-control-plane",
+		kind: "repi-hard-eval-control-plane",
 		version: 1,
 		generatedAt: new Date().toISOString(),
 		root,

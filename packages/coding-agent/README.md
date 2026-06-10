@@ -9,7 +9,7 @@
 
 ---
 
-REPI / REPI is an independent reverse-engineering and penetration-testing task harness. It is not a `pi` profile skin: the product command is `repi`, runtime state lives in `~/.repi/agent`, and normal upstream `pi` stays separate.
+REPI Agent is an independent reverse-engineering and penetration-testing task harness. It is not a `pi` profile skin: the product command is `repi`, runtime state lives in `~/.repi/agent`, and normal upstream `pi` stays separate.
 
 The npm/bin entry itself defaults into the REPI kernel: `--recon`, clean-room resource isolation, context compaction/resume support, evidence ledgers, verifier/compiler/replayer/autofix/proof-loop commands, and the REPI profile initializer are applied inside the CLI. A shell wrapper is only a convenience for source checkouts.
 
@@ -280,12 +280,12 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 
 ### Telemetry and update checks
 
-REPI disables upstream REPI update checks in product mode. The upstream compatibility code has two startup features when not running as REPI:
+REPI product mode disables upstream update checks and install telemetry by default. The inherited compatibility code has two startup features only when the CLI is not running as REPI:
 
-- **Update check:** fetches `disabled in REPI product mode` to check whether a newer REPI version exists. Disable it with `PI_SKIP_VERSION_CHECK=1`. Disabling update checks only turns off this check.
-- **Install/update telemetry:** after first install or a changelog-detected update, sends an anonymous version ping to `disabled in REPI product mode`. This setting also controls optional provider attribution headers for OpenRouter, Cloudflare, and direct NVIDIA NIM requests. Opt out by setting `enableInstallTelemetry` to `false` in `settings.json`, or by setting `PI_TELEMETRY=0`. This does not disable update checks; REPI may still contact `github.com/multi-zhangyang/pi-recon-agent` for the latest version unless update checks are disabled or offline mode is enabled.
+- **Update check:** disabled in REPI product mode. For non-REPI compatibility runs, disable it with the legacy skip-version-check environment flag.
+- **Install/update telemetry:** disabled in REPI product mode. Provider attribution headers remain controlled by provider-specific settings and do not require upstream update telemetry.
 
-Use `--offline` or `PI_OFFLINE=1` to disable all startup network operations described here, including update checks, package update checks, and install/update telemetry.
+Use `--offline` or `REPI_OFFLINE=1` to disable startup network operations such as package update checks and install/update telemetry.
 
 ---
 
@@ -514,7 +514,7 @@ Project package commands accept `--approve`/`--no-approve` to trust or ignore pr
 In print mode, repi also reads piped stdin and merges it into the initial prompt:
 
 ```bash
-cat README.md | repi -p "Summarize this text"
+cat traffic.har | repi -p "提取 API、签名参数、状态机和 replay 命令"
 ```
 
 ### Model Options
@@ -584,46 +584,44 @@ Combine `--no-*` with explicit flags to load exactly what you need, ignoring set
 Prefix files with `@` to include in the message:
 
 ```bash
-repi @prompt.md "Answer this"
-repi -p @screenshot.png "What's in this image?"
-repi @code.ts @test.ts "Review these files"
+repi @notes.md "提取目标、入口、证据缺口和下一步命令"
+repi -p @screenshot.png "分析页面状态、接口线索和可复现证据"
+repi @sample.c @trace.log "定位校验路径并生成 verifier matrix"
 ```
 
 ### Examples
 
 ```bash
-# Interactive with initial prompt
-repi "List all .ts files in src/"
+# Interactive with initial REPI task
+repi "先对当前目录做被动 mapping，列出入口、鉴权点和证据缺口"
 
-# Non-interactive
-repi -p "Summarize this codebase"
+# Non-interactive bounded plan
+repi -p "对 ./challenge 生成 re_map、re_operator、re_verifier 执行计划"
 
 # Non-interactive with piped stdin
-cat README.md | repi -p "Summarize this text"
+cat traffic.har | repi -p "提取 API、签名参数、状态机和 replay 命令"
 
 # Named one-shot session
-repi --name "release audit" -p "Audit this repository"
+repi --name "firmware-auth-analysis" -p "审计固件认证链路并输出 proof loop"
 
-# Different model
-repi --provider openai --model gpt-4o "Help me refactor"
+# Different configured provider/model
+repi --provider openai-compatible --model provider/model-id "分析 Web/API 授权状态机"
 
 # Model with provider prefix (no --provider needed)
-repi --model openai/gpt-4o "Help me refactor"
+repi --model openai-compatible/provider-model "生成 exploit-lab 复现矩阵"
 
 # Model with thinking level shorthand
-repi --model sonnet:high "Solve this complex problem"
+repi --model sonnet:high "构建 pwn 目标的 leak→primitive→proof 路线"
 
 # Limit model cycling
-repi --models "claude-*,gpt-4o"
+repi --models "claude-*,gpt-4o,provider/model-id"
 
-# Read-only mode
-repi --tools read,grep,find,ls -p "Review the code"
+# Passive/read-only mapping mode
+repi --tools read,grep,find,ls -p "只读分析 src/ 的路由、鉴权和入口"
 
 # Disable one extension or built-in tool while keeping the rest available
 repi --exclude-tools ask_question
 
-# High thinking level
-repi --thinking high "Solve this complex problem"
 ```
 
 ### Environment Variables

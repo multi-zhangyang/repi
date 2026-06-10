@@ -501,8 +501,8 @@ const REQUIREMENTS = [
 				markers: [
 					"additionalProperties",
 					"deterministic_duplicate_signature_attempt_rejected",
-					"x-piReconStrictFixture",
-					"x-piReconDedupWindow",
+					"x-repiStrictFixture",
+					"x-repiDedupWindow",
 				],
 			},
 			{
@@ -740,8 +740,8 @@ function validateControlContractSchema(root, contract) {
 	const required = new Set(definition?.required ?? []);
 	const properties = new Set(Object.keys(definition?.properties ?? {}));
 	const schemaInvariants = new Set([
-		...(json?.["x-piReconInvariants"] ?? []),
-		...(definition?.["x-piReconInvariants"] ?? []),
+		...(json?.["x-repiInvariants"] ?? []),
+		...(definition?.["x-repiInvariants"] ?? []),
 	]);
 	const missingRequired = (contract.requiredFields ?? []).filter((field) => !required.has(field));
 	const missingProperties = (contract.requiredFields ?? []).filter((field) => !properties.has(field));

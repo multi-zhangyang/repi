@@ -1167,7 +1167,7 @@ const gates = {
   runtimeClaimLedgerCaptured: claimLedgerHashChainOk(claimLedgerEvents)
     && ['artifact_handoff', 'claim', 'validation', 'challenge', 'resolution'].every((type) => claimLedgerEvents.some((event) => event.type === type)),
   nonMockRuntimeExpected: audit.nonMockRuntimeExpected,
-  hardEvalControlRun: hardEvalRun.code === 0 && hardEvalJson?.kind === 'pi-recon-hard-eval-control-plane',
+  hardEvalControlRun: hardEvalRun.code === 0 && hardEvalJson?.kind === 'repi-hard-eval-control-plane',
   orchestrationPlatformScoreSplit: Boolean(hardEvalJson?.antiSelfDelusion?.orchestrationPlatformSplit),
   platformClaimGapsCaptured: hardEvalRequiredPlatformGaps.length ? (hardEvalJson?.failures || []).length >= hardEvalPlatformGaps.length : Boolean(hardEvalJson?.gate?.requiredPlatformClaimsValidated),
 };

@@ -40,8 +40,8 @@
           "exhaustedAction": "queue repair and require regression gate"
         },
         "evidenceWriteback": {
-          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
           "appendOnly": true,
           "mode": "strict-fixture"
         },
@@ -69,7 +69,7 @@
         "action": "rerun",
         "repairAction": "rerun",
         "commands": ["node scripts/reverse-agent/autonomous-contracts.mjs . --strict"],
-        "expectedArtifacts": [".pi/evidence/autonomous-contracts/**/result.json"],
+        "expectedArtifacts": [".repi/evidence/autonomous-contracts/**/result.json"],
         "expectedGates": ["strict_schema_fixture_gate"],
         "preconditions": {
           "liveAllowed": false,
@@ -90,8 +90,8 @@
           }
         ],
         "evidenceWriteback": {
-          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
           "appendOnly": true,
           "mode": "strict-fixture"
         },
@@ -127,8 +127,8 @@
           "exhaustedAction": "queue repair and require regression gate"
         },
         "evidenceWriteback": {
-          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
           "appendOnly": true,
           "mode": "strict-fixture"
         },
@@ -171,8 +171,8 @@
           "exhaustedAction": "queue repair and require regression gate"
         },
         "evidenceWriteback": {
-          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
           "appendOnly": true,
           "mode": "strict-fixture"
         },
@@ -221,8 +221,8 @@
           }
         ],
         "evidenceWriteback": {
-          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
           "appendOnly": true,
           "mode": "strict-fixture"
         },
@@ -257,8 +257,8 @@
           "exhaustedAction": "queue repair and require regression gate"
         },
         "evidenceWriteback": {
-          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
           "appendOnly": true,
           "mode": "strict-fixture"
         },
@@ -308,8 +308,8 @@
           }
         ],
         "evidenceWriteback": {
-          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
           "appendOnly": true,
           "mode": "strict-fixture"
         },
@@ -344,8 +344,8 @@
           "exhaustedAction": "escalate and block blind retry"
         },
         "evidenceWriteback": {
-          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
           "appendOnly": true,
           "mode": "strict-fixture"
         },
@@ -394,8 +394,8 @@
           }
         ],
         "evidenceWriteback": {
-          "failureLedgerPath": ".pi/evidence/failures/ledger.jsonl",
-          "repairQueuePath": ".pi/evidence/repairs/queue.jsonl",
+          "failureLedgerPath": ".repi/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi/evidence/repairs/queue.jsonl",
           "appendOnly": true,
           "mode": "strict-fixture"
         },

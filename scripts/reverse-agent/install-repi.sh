@@ -24,6 +24,7 @@ cleanup_stale_recon_pi() {
 }
 
 # Do not install or overwrite `pi`. Only remove stale symlinks created by the old takeover installer.
+cleanup_stale_recon_pi "$BIN_DIR/pi"
 cleanup_stale_recon_pi "$HOME/.local/bin/pi"
 NPM_PREFIX="$(npm prefix -g 2>/dev/null || true)"
 if [ -n "$NPM_PREFIX" ]; then
