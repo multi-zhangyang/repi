@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -1299,6 +1299,12 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(swarmRunPath!, "utf-8")).toContain("execution_audit:");
 		expect(readFileSync(swarmRunPath!, "utf-8")).toContain("coverage_matrix:");
 		expect(readFileSync(swarmRunPath!, "utf-8")).toContain("retry_queue:");
+		expect(swarmRun.content[0]?.text).toContain("structured_claim_merge:");
+		expect(swarmRun.content[0]?.text).toContain("status=blocked");
+		const structuredClaimMergePath = swarmRunPath!.replace(/\.md$/i, "-structured-claim-merge.json");
+		expect(existsSync(structuredClaimMergePath)).toBe(true);
+		expect(readFileSync(structuredClaimMergePath, "utf-8")).toContain("StructuredClaimMergeV1");
+		expect(readFileSync(structuredClaimMergePath, "utf-8")).toContain("strict_final_claim_promotion");
 		expect(readFileSync(join(agentDir, "recon", "memory", "swarm-run-board.md"), "utf-8")).toContain(
 			"Swarm Run Board",
 		);
@@ -1534,6 +1540,9 @@ describe("REPI kernel profile", () => {
 		expect(compilerDraft.content[0]?.text).toContain("release_gate_metadata:");
 		expect(compilerDraft.content[0]?.text).toContain("strict_claim_gate:");
 		expect(compilerDraft.content[0]?.text).toContain("claim_gate_result:");
+		expect(compilerDraft.content[0]?.text).toContain("structured_claim_merge_gate:");
+		expect(compilerDraft.content[0]?.text).toContain("status=blocked");
+		expect(compilerDraft.content[0]?.text).toContain("structured claim merge error:");
 		expect(compilerDraft.content[0]?.text).toContain("key_evidence_block:");
 		expect(compilerDraft.content[0]?.text).toContain("repro_commands:");
 		expect(compilerDraft.content[0]?.text).toContain("contradictions:");
@@ -1897,6 +1906,63 @@ describe("REPI kernel profile", () => {
 		expect(injected?.systemPrompt).toContain("Context/resume pack:");
 		expect(injected?.systemPrompt).toContain("Completion gate audit:");
 		expect(readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8")).toContain("Native reverse");
+	});
+
+	it("verifies and repairs MemoryStoreV5 transactional memory", async () => {
+		const tools = new Map<string, unknown>();
+		const fakePi = {
+			registerCommand() {},
+			registerTool(tool: { name: string }) {
+				tools.set(tool.name, tool);
+			},
+			on() {},
+			appendEntry() {},
+			getSessionName: () => undefined,
+			setSessionName() {},
+			sendMessage() {},
+			exec: async () => ({ code: 0, stdout: "", stderr: "", killed: false }),
+		} as unknown as ExtensionAPI;
+
+		createReconExtensionFactory()(fakePi);
+
+		const memoryTool = tools.get("re_memory") as {
+			execute: (
+				toolCallId: string,
+				params: Record<string, unknown>,
+			) => Promise<{ content: Array<{ text: string }>; details?: Record<string, unknown> }>;
+		};
+		const appendResult = await memoryTool.execute("tool-call-id", {
+			action: "append",
+			scene: "native",
+			title: "license runtime anchor",
+			text: "runtime strcmp anchor verified; command: strings ./license | rg license",
+		});
+		expect(appendResult.content[0]?.text).toContain("memory_event:");
+		const memoryDir = join(agentDir, "recon", "memory");
+		const storeReportPath = join(memoryDir, "store-report.json");
+		const transactionDir = join(memoryDir, "transactions");
+		expect(readFileSync(storeReportPath, "utf-8")).toContain("MemoryStoreV5");
+		expect(readFileSync(join(transactionDir, readdirSync(transactionDir)[0]!), "utf-8")).toContain(
+			"repi-memory-append-transaction",
+		);
+
+		const verifyPass = await memoryTool.execute("tool-call-id", { action: "verify" });
+		expect(verifyPass.content[0]?.text).toContain("memory_store_v5:");
+		expect(verifyPass.content[0]?.text).toContain("status=pass");
+		expect(verifyPass.content[0]?.text).toContain("hash_chain_ok=true");
+
+		writeFileSync(join(memoryDir, "case-memory.jsonl"), "", "utf-8");
+		const verifyRepairable = await memoryTool.execute("tool-call-id", { action: "verify" });
+		expect(verifyRepairable.content[0]?.text).toContain("status=repairable");
+		expect(verifyRepairable.content[0]?.text).toContain("re_memory repair-index");
+
+		const repaired = await memoryTool.execute("tool-call-id", { action: "repair-index" });
+		expect(repaired.content[0]?.text).toContain("status=pass");
+		expect(readFileSync(join(memoryDir, "case-memory.jsonl"), "utf-8")).toContain("repi-case-memory");
+
+		const snapshot = await memoryTool.execute("tool-call-id", { action: "snapshot" });
+		expect(snapshot.content[0]?.text).toContain("snapshot=");
+		expect(readFileSync(join(memoryDir, "store-snapshot.json"), "utf-8")).toContain("repi-memory-store-snapshot");
 	});
 
 	it("scores weak lane evidence and queues self-healing follow-ups", async () => {

@@ -40,7 +40,7 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `repi-profile/extensions/reverse-pentest-core.ts` | 运行时核心：路由、记忆、工具索引、自审计、loop guard、compaction checkpoint、自定义工具 |
 | `repi-profile/skills/reverse-pentest-orchestrator/SKILL.md` | 安全任务总控 skill，按 reverse-skill 思维方式编排工作流 |
 | `repi-profile/prompts/*.md` | `/reverse`、`/websec`、`/jsre`、`/pwn`、`/pcap`、`/cloud`、`/identity`、`/memory`、`/audit-agent` 任务模板 |
-| `repi-profile/memory/*` | 长期经验、索引、自我进化记录；运行时使用 `~/.repi/agent/recon/memory/events.jsonl` / `case-memory.jsonl` / `retrieval-report.json` 作为 Memory v2 结构化事实源，`re_replayer` / `re_autofix` / `re_proof_loop` / `re_complete` 会自动写回 replay/repair/proof/completion 事件，Markdown journal/playbook 是人类可读镜像；`repi-profile/memory/playbooks/index.md` 记录 playbook 质量/年龄/状态，`repi-profile/memory/playbooks/archive/` 存放被淘汰的低质或过旧链路 |
+| `repi-profile/memory/*` | 长期经验、索引、自我进化记录；运行时使用 `~/.repi/agent/recon/memory/events.jsonl` / `case-memory.jsonl` / `retrieval-report.json` / `store-report.json` 作为 Memory v5 结构化事实源，所有 append 通过 `.store.lock` 与 `transactions/*.json` manifest 提交，`re_replayer` / `re_autofix` / `re_proof_loop` / `re_complete` / 高价值 `re_lane run` 会自动写回 replay/repair/proof/completion/runtime 事件，Markdown journal/playbook 是人类可读镜像；`repi-profile/memory/playbooks/index.md` 记录 playbook 质量/年龄/状态，`repi-profile/memory/playbooks/archive/` 存放被淘汰的低质或过旧链路 |
 | `.repi-harness/evidence/kernel/*.md` | `re_kernel build|audit` 生成的 execution_kernel、kernel_artifact、directive_stack、refusal_to_execution_rules、tool_call_policy、artifact_contract 与 stall_recovery |
 | `.repi-harness/evidence/maps/*.md` | `re_map` 自动生成的被动目标/工作区快照：stat、manifest/config、route/auth 搜索、binary candidates、URL baseline |
 | `.repi-harness/evidence/browser/*.md` | `re_live_browser plan|run` 生成的 live_browser、request_response_log、auth_matrix、IDOR/BOLA probes、WebSocket probes 与 replay_commands |
@@ -82,6 +82,7 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `scripts/reverse-agent/memory-hybrid-gate.mjs` | Memory hybrid retrieval hard-eval：验证语义轻量召回、case-memory 文本召回、artifact path/tier 召回和 route 隔离；对应 `npm run gate:memory-hybrid` |
 | `scripts/reverse-agent/memory-distiller-gate.mjs` | Memory v3 distiller hard-eval：验证 promoted pattern、mandatory injection chain、memory_contamination_quarantine、hash drift 和低置信不提升；对应 `npm run gate:memory-distiller` |
 | `scripts/reverse-agent/memory-sedimentation-gate.mjs` | Memory v4 sedimentation hard-eval：验证 semantic-index、contradiction-ledger、mandatory_memory_injection_packet、artifact/verifier/quarantine/feedback 门禁；对应 `npm run gate:memory-sedimentation` |
+| `scripts/reverse-agent/memory-store-gate.mjs` | Memory v5 store hard-eval：验证 transaction manifest、hash-chain append 前校验、坏 prevHash 阻断、case-memory repair-index 与 lane runtime auto writeback；对应 `npm run gate:memory-store` |
 | `pi` | 非拥有型兼容 shim；不会启动 REPI，只会转交给 PATH 中的原版 Pi，找不到则提示使用 `repi` |
 | `repi` | REPI 独立产品入口，默认使用 `~/.repi/agent`；源码 wrapper 和 npm/bin 直启都会由 CLI bootstrap 自动启用 `--recon` 隔离参数 |
 | `scripts/reverse-agent/install-repi.sh` | 安装 `/usr/local/bin/repi`，初始化 `~/.repi/agent`，不会覆盖/删除普通 `pi` |
@@ -160,7 +161,7 @@ REPI 的 `re_kernel` 内置 `authorized_task_bias`、`public_target_no_auto_refu
   - `/re-native-runtime plan|show|run [target] [timeout-ms]`：生成/执行 ELF/SO GDB/Pwn 运行时捕获，输出 `native_runtime_artifact`、`binary_inventory`、`mitigation_matrix`、`loader_libc`、`symbol_map`、`gdb_trace`、`crash_plan`、`exploit_scaffold`，并闭合 `native_runtime_ready`。
   - `/re-chain plan|show|compose [target]`：把 map/runtime/authz/primitive/lab/verifier artifacts 编排成 `exploit_chain`、`chain_artifact`、`proof_path`、`exploit_path`、`evidence_gaps`、`replay_commands` 和 `operator_queue`，并闭合 `exploit_chain_ready`。
   - `/re-tools show|refresh`：查看或刷新工具索引。
-  - `/re-memory show|append|evolve|playbooks|prune-playbooks ...`：读取/追加长期记忆或进化日志；`playbooks` 生成 `repi-profile/memory/playbooks/index.md`，`prune-playbooks` 按 `quality_score`、年龄和容量把低质/过旧链路归档到 `repi-profile/memory/playbooks/archive/`。
+  - `/re-memory show|append|evolve|verify|repair-index|snapshot|playbooks|prune-playbooks ...`：读取/追加长期记忆或进化日志；`verify` 写 `store-report.json`，`repair-index` 从事件链重建 `case-memory.jsonl`，`snapshot` 写 `store-snapshot.json`；`playbooks` 生成 `repi-profile/memory/playbooks/index.md`，`prune-playbooks` 按 `quality_score`、年龄和容量把低质/过旧链路归档到 `repi-profile/memory/playbooks/archive/`。
   - `/re-mission show|new|gate ...`：维护 mission blackboard、lanes、completion gates。
   - `/re-lane show|next|done|block|add|set|plan|run|run-auto ...`：把 lanes 当成可推进队列，完成后自动推进并更新 gates；`plan` 生成当前 lane 的最小命令包，并检索 `repi-profile/memory/playbooks/*.md` / `case-index.md` 合入相似历史命令，优先复用 `quality_score` 更高的链路；`run` 先生成 `execution_strategy`，按 tool-index 对缺失工具进行 `fallback_commands` 降级或跳过无法替代命令，再只执行没有占位符的具体目标命令，并自动写入 `.repi-harness/evidence/runs/*.md` 与 evidence ledger，同时解析地址/比较函数/路由/签名调用等高信号锚点、输出 `evidence_quality` critic、低分时生成 `self_heal_commands` 并挂回 `[auto:*]` 队列、挂载 follow-up commands、自动推进匹配的下一 lane；`run-auto` 受控连续执行下一 lane 上的 `[auto:*]` 命令，并在每步后解析 `adaptive_decision`，根据 `evidence_quality` / `self_heal_commands` 决定继续当前 lane、切换下一 lane、停止等待 bootstrap 或结束扩展；当同一自修复链路重复低效或 stop 分支触发时输出 `multi_lane_plan`，自动新增或重排 `tool-bootstrap`、`evidence-repair`、`map-refresh` 修复 lane；其中 `tool-bootstrap` 会在 `run-auto` 内输出 `tool_bootstrap_closure`，刷新 tool-index、报告 `missing_after_refresh` / `resumed_lane`，并在工具闭合后恢复原 blocked lane；summary 输出 `adaptive_decisions`，有效链路会沉淀到 `repi-profile/memory/playbooks/*.md`、field journal 和 evolution log，同时刷新/淘汰 playbook index，防止低质量历史噪声污染后续计划。
     - `plan` 现在带有 `specialist_runtime_planner`：按 route/lane/target 自动下沉专项 runtime command pack，而不是只给通用 grep。覆盖 `browser/XHR/WS` 请求捕获、cookie/storage/auth-diff、CDP-backed browser runtime artifact、request/response/WS/storage 序列化、replay evaluator、route graph、auth matrix、IDOR/BOLA probe、authz state machine、sequence replay、object ownership、state rollback、OpenAPI/GraphQL 发现；`JS signing rebuild` 的 fetch/XMLHttpRequest/WebSocket/crypto.subtle hook、observed normalizer、first-divergence、signed replay harness 与 Node 重建脚手架；`pwn primitive` 的 mitigation/libc 指纹、cyclic crash、GDB 寄存器/栈、cyclic offset analyzer、ROP/libc scaffold、local verifier、ROPgadget/ropper fallback、pwntools skeleton；`exploit reliability/autopwn` 的 exploit-poc-normalizer-scaffold、exploit-replay-matrix-scaffold、exploit-environment-pin-scaffold、exploit-flake-triage-scaffold、exploit-artifact-bundle-scaffold；`PCAP/DFIR` 的 capinfos/tshark conversations、stream ranking、secret timeline、HTTP/DNS/TLS/credential filters、HTTP object extraction、foremost carving、transform-chain extractor；`Firmware/IoT rootfs` 的 firmware-static-fingerprint-scaffold、firmware-extract-rootfs-scaffold、firmware-filesystem-config-secret-scaffold、firmware-service-surface-scaffold、firmware-emulation-scaffold；`agent prompt/tool boundary` 的 agent-prompt-surface-map、agent-tool-boundary-scaffold、agent-memory-poisoning-scaffold、agent-injection-replay-harness、agent-delegation-trace-scaffold；`malware config/IOC` 的 malware-static-triage-scaffold、malware-yara-capa-floss-scaffold、malware-ioc-config-scaffold、malware-behavior-trace-scaffold；`Cloud/K8s identity` 的 cloud-identity-config-map、cloud-runtime-config-scaffold、cloud-metadata-probe-scaffold、cloud-privilege-edge-scaffold；`Identity/AD graph` 的 identity-ad-principal-enum-scaffold、identity-ad-credential-usability-scaffold、identity-ad-graph-scaffold；以及 `Frida/GDB trace` 的 Android runtime map、Java crypto/native compare hooks 和 native GDB breakpoint trace。
@@ -194,7 +195,7 @@ REPI 的 `re_kernel` 内置 `authorized_task_bias`、`public_target_no_auto_refu
   - `re_exploit_lab`：模型可调用的 exploit/PoC 稳定化实验室工具，绑定 PoC inventory、环境 pin、多次 replay、flake triage 和 bundle manifest。
   - `re_mobile_runtime`：模型可调用的 APK/Android ADB/Frida runtime 工具，绑定 device/process map、Java crypto/String/native compare hooks、anti-debug checks 和 `mobile_runtime_artifact`。
   - `re_native_runtime`：模型可调用的 ELF/SO GDB/Pwn runtime 工具，绑定 binary inventory、mitigation matrix、loader/libc map、symbol/string map、GDB/crash/register anchors、pwntools scaffold 和 `native_runtime_artifact`。
-  - `re_memory`：模型可读写的长期记忆工具；`events` / `search-events` / `consolidate` / `distill` / `sediment` 读取 Memory v4 结构化 ledger、蒸馏 pattern book、contamination quarantine、semantic-index、contradiction-ledger 与 mandatory injection packet，`append` / `evolve` 同时写 Markdown 镜像与 `events.jsonl`。
+  - `re_memory`：模型可读写的长期记忆工具；`events` / `search-events` / `verify` / `repair-index` / `snapshot` / `consolidate` / `distill` / `sediment` 读取 Memory v5 结构化 ledger、事务 report/snapshot、蒸馏 pattern book、contamination quarantine、semantic-index、contradiction-ledger 与 mandatory injection packet，`append` / `evolve` 同时写 Markdown 镜像与事务化 `events.jsonl`。
   - `re_tool_index`：模型可刷新/读取的工具索引。
   - `re_mission`：模型可维护任务黑板、gates 和下一步。
   - `re_lane`：模型可推进/阻塞/新增 mission lanes，并按 lane/target 生成或执行命令包；执行结果会成为 runtime evidence，且自动附带下一 lane/命令建议。
@@ -249,6 +250,7 @@ npm run gate:memory-feedback
 npm run gate:memory-hybrid
 npm run gate:memory-distiller
 npm run gate:memory-sedimentation
+npm run gate:memory-store
 npm run gate:repi-product
 npm run gate:repi-isolation
 
@@ -400,6 +402,22 @@ proof-loop；agent-dogfood 已写 per-attempt subagent runtime manifest 和 runt
 ```
 
 Memory v4 sedimentation 的晋升规则是硬门禁：`artifact_sha256_required`、`promotion_requires_verifier_or_replay`、`quarantine_blocks_injection`、`feedback_writeback_required_after_execution`、`memory_sedimentation_grade>=70`。`re_lane plan` 会刷新 `injection-packet.json` 并把合格命令注入为 `memory-sediment:<eventId>:<n>`；`re_lane run` 执行后复用同一 feedback 闭环，成功提升、失败降权。`npm run gate:memory-sedimentation` 使用 `fixtures/reverse-agent/memory-sedimentation.fixture.json` 验证 artifact 缺失、verifier 缺失、cross-route quarantine、失败反馈 demote、hash-chain drift 等负例。
+
+## Memory v5 store / 事务化记忆内核
+
+Memory v5 解决“记忆只是 JSONL 日志、并发写入和跨 session 恢复不够硬”的问题。所有 `appendMemoryEvent` 都先获取 `~/.repi/agent/recon/memory/.store.lock`，验证 `events.jsonl` 的 parse、seq、prevHash 和 entryHash，再写入 `~/.repi/agent/recon/memory/transactions/*.json` transaction manifest，最后原子替换 `events.jsonl` 与 `case-memory.jsonl`。事件链损坏时 append 会被阻断；case-memory 缺失或落后时使用：
+
+```text
+/re-memory verify
+/re-memory repair-index
+/re-memory snapshot
+
+re_memory { "action": "verify" }
+re_memory { "action": "repair-index" }
+re_memory { "action": "snapshot" }
+```
+
+`re_memory verify` 写 `store-report.json`，`re_memory repair-index` 从 verified event chain 重建 `case-memory.jsonl`，`re_memory snapshot` 写 `store-snapshot.json`。`re_lane run` 的高价值 runtime 结果也会自动写 `memory_auto_writeback`，把 evidence artifact sha256、evidence_quality、self-heal 和 verifier candidate 一起沉淀。`npm run gate:memory-store` 使用 `fixtures/reverse-agent/memory-store.fixture.json` 验证坏 prevHash 阻断、case index 修复、transaction manifest 和 lane runtime auto writeback marker。
 
 ## Reflection/evolution 闭环
 
@@ -610,7 +628,7 @@ Structured claim merge contract 约束最终 claim promotion：
 npm run gate:structured-claim-merge
 ```
 
-它验证 `StructuredClaimMergeV1`：worker claim 不能靠文本摘要升级为 final pass，必须有 artifact sha256、JSON query、verifier pass、resolved adversary challenge、resolved conflict table、winner evidence 和 loser downgrade。`final_pass_requires_json_query`、`unresolved_adversary_challenge_blocks_final`、unresolved conflict、weak/gap claim 被 promoted、JSON query mismatch、missing winner evidence 都会阻断最终发布。
+它验证 `StructuredClaimMergeV1`：worker claim 不能靠文本摘要升级为 final pass，必须有 artifact sha256、JSON query、verifier pass、resolved adversary challenge、resolved conflict table、winner evidence 和 loser downgrade。运行时 `re_swarm` 现在会从 `ClaimLedgerEventV1` 生成 `*-structured-claim-merge.json` 和 `structuredClaimMergeStatus`；`re_compiler final` 与 `re_complete audit` 会读取该 gate，遇到 `status=blocked_by_structured_claim_merge`、unresolved challenge/conflict、weak/gap claim 被 promoted、JSON query mismatch、missing winner evidence 时阻断最终发布。
 
 `scripts/reverse-agent/autonomous-runtime-contracts.mjs . --strict` 验证 autonomous runtime strict fixture：subagent manifest、parallel shard state、compact resume transition、repair budget 与 runtime claim promotion gate。`scripts/reverse-agent/autonomous-contracts.mjs . --strict` 会把该 gate 纳入总控制合同，并继续聚合 `ReconParallelPlanV1`、`ResumeContractV2`、`FailureLedgerEventV1/RepairQueueItemV1`、`RoleContractV1/ClaimLedgerEventV1`。常用入口：
 

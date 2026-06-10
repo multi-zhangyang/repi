@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { getAgentDir } from "../config.ts";
@@ -1388,6 +1388,16 @@ type StructuredClaimMergeV1 = {
 	};
 };
 
+type StructuredClaimMergeGateSnapshot = {
+	status: "pass" | "blocked" | "missing";
+	mergePath?: string;
+	mergeId?: string;
+	finalClaimCount: number;
+	blockedClaimCount: number;
+	errors: string[];
+	policies: string[];
+};
+
 function claimPromotionEvidenceContract(): string[] {
 	return [
 		"artifact_sha256_required",
@@ -1524,6 +1534,10 @@ type SwarmArtifact = {
 	claimLedgerEventCount: number;
 	claimLedgerTipHash?: string;
 	runtimeClaimLedgerCaptured: boolean;
+	structuredClaimMerge?: StructuredClaimMergeV1;
+	structuredClaimMergePath?: string;
+	structuredClaimMergeStatus?: "pass" | "blocked" | "missing";
+	structuredClaimMergeErrors: string[];
 	subagentRuntimeManifestPath?: string;
 	subagentRuntimeManifests: SwarmSubagentRuntimeManifestRow[];
 	subagentRuntimeManifestCount: number;
@@ -1608,6 +1622,7 @@ type SupervisorArtifact = {
 	claimGatePolicy: string[];
 	strictClaimGate?: StrictClaimGateSnapshot;
 	claimGateResult: string[];
+	structuredClaimMergeGate?: StructuredClaimMergeGateSnapshot;
 	sourceArtifacts: string[];
 };
 
@@ -1880,6 +1895,7 @@ type CompilerArtifact = {
 	claimGatePolicy: string[];
 	strictClaimGate?: StrictClaimGateSnapshot;
 	claimGateResult: string[];
+	structuredClaimMergeGate?: StructuredClaimMergeGateSnapshot;
 	sourceArtifacts: string[];
 };
 
@@ -2319,6 +2335,56 @@ type MemorySedimentationReportV1 = {
 		quarantineBlocksInjection: true;
 		failureFeedbackDemotes: true;
 	};
+};
+
+type MemoryTransactionFileDigestV1 = {
+	path: string;
+	beforeSha256: string;
+	afterSha256: string;
+	beforeBytes: number;
+	afterBytes: number;
+};
+
+type MemoryAppendTransactionV1 = {
+	kind: "repi-memory-append-transaction";
+	schemaVersion: 1;
+	id: string;
+	operation: "append-memory-event" | "repair-index" | "snapshot";
+	status: "prepared" | "committed" | "aborted";
+	startedAt: string;
+	committedAt?: string;
+	lockPath: string;
+	eventId?: string;
+	caseSignature?: string;
+	prevHash?: string;
+	entryHash?: string;
+	files: MemoryTransactionFileDigestV1[];
+	errors: string[];
+};
+
+type MemoryStoreVerificationV1 = {
+	kind: "repi-memory-store-verification";
+	schemaVersion: 1;
+	generatedAt: string;
+	MemoryStoreV5: true;
+	eventsPath: string;
+	caseMemoryPath: string;
+	transactionDir: string;
+	storeReportPath: string;
+	snapshotPath: string;
+	lockPath: string;
+	eventCount: number;
+	caseRowCount: number;
+	hashChainOk: boolean;
+	seqOk: boolean;
+	prevHashOk: boolean;
+	caseIndexOk: boolean;
+	parseOk: boolean;
+	latestEventHash: string;
+	storeGrade: "pass" | "repairable" | "blocked";
+	errors: string[];
+	repairCommands: string[];
+	requiredGates: string[];
 };
 
 type KnowledgeNode = {
@@ -2881,7 +2947,7 @@ const RECON_PROMPTS = [
 		description: "整理当前任务并写入 REPI 长期记忆",
 		argumentHint: "[scene/title]",
 		content:
-			"将当前会话中可复用的逆向/渗透经验写入 REPI Memory v3：目标、路由、证据、有效方法、失败路线、复现命令、下次复用；写入后可调用 re_memory search-events / consolidate / distill，生成 distillation-report、pattern-book 与 quarantine。",
+			"将当前会话中可复用的逆向/渗透经验写入 REPI Memory v5：目标、路由、证据、有效方法、失败路线、复现命令、下次复用；写入后可调用 re_memory verify / repair-index / snapshot / search-events / consolidate / distill / sediment，生成 store-report、store-snapshot、distillation-report、pattern-book、quarantine 与 injection-packet。",
 	},
 ];
 
@@ -2940,6 +3006,22 @@ function memoryInjectionPacketPath(): string {
 
 function memorySedimentationReportPath(): string {
 	return memoryPath("sedimentation-report.json");
+}
+
+function memoryTransactionsDir(): string {
+	return memoryPath("transactions");
+}
+
+function memoryStoreLockPath(): string {
+	return memoryPath(".store.lock");
+}
+
+function memoryStoreReportPath(): string {
+	return memoryPath("store-report.json");
+}
+
+function memoryStoreSnapshotPath(): string {
+	return memoryPath("store-snapshot.json");
 }
 
 function missionPath(name: string): string {
@@ -3088,6 +3170,7 @@ function toolIndexPath(): string {
 
 function ensureReconStorage(): void {
 	mkdirSync(join(reconDir(), "memory"), { recursive: true });
+	mkdirSync(memoryTransactionsDir(), { recursive: true });
 	mkdirSync(memoryPlaybooksDir(), { recursive: true });
 	mkdirSync(memoryPlaybooksArchiveDir(), { recursive: true });
 	mkdirSync(join(reconDir(), "mission"), { recursive: true });
@@ -3156,6 +3239,14 @@ function ensureReconStorage(): void {
 		[
 			memorySedimentationReportPath(),
 			`${JSON.stringify({ kind: "repi-memory-sedimentation-report", schemaVersion: 1, entries: [], contradictions: [] }, null, 2)}\n`,
+		],
+		[
+			memoryStoreReportPath(),
+			`${JSON.stringify({ kind: "repi-memory-store-verification", schemaVersion: 1, MemoryStoreV5: true, eventCount: 0, caseRowCount: 0, errors: [] }, null, 2)}\n`,
+		],
+		[
+			memoryStoreSnapshotPath(),
+			`${JSON.stringify({ kind: "repi-memory-store-snapshot", schemaVersion: 1, events: [], caseMemory: [] }, null, 2)}\n`,
 		],
 		[evidenceLedgerPath(), "# REPI Evidence Ledger\n\n"],
 		[toolIndexPath(), "# REPI Tool Index\n\n"],
@@ -8632,6 +8723,7 @@ async function runLaneCommandPack(
 	const result = await pi.exec("bash", ["-lc", script], { timeout: 120000 });
 	const analysis = analyzeLaneRun(effectivePack, result);
 	const artifactPath = writeLaneRunArtifact({ pack: effectivePack, runnable, script, result, analysis });
+	const laneRunMemoryEvent = appendLaneRunMemoryEvent(effectivePack, result, analysis, artifactPath);
 	const memoryFeedbackEvents = appendMemoryReuseFeedback(effectivePack, result, analysis, artifactPath);
 	const evidence = appendEvidence({
 		kind: "runtime",
@@ -8672,6 +8764,9 @@ async function runLaneCommandPack(
 		`evidence_ledger: ${evidence.timestamp} ${evidence.title}`,
 		memoryFeedbackEvents.length
 			? `memory_reuse_feedback: ${memoryFeedbackEvents.map((event) => `${event.id}:${event.outcome}:${event.caseSignature}`).join(", ")}`
+			: "",
+		laneRunMemoryEvent
+			? `memory_auto_writeback: ${laneRunMemoryEvent.id}:${laneRunMemoryEvent.outcome}:${laneRunMemoryEvent.caseSignature}`
 			: "",
 		missionUpdate.message,
 		formatLaneRunAnalysis(analysis),
@@ -14386,6 +14481,10 @@ function swarmClaimLedgerPath(swarm: Pick<SwarmArtifact, "timestamp" | "route" |
 	return swarmArtifactPath(swarm).replace(/\.md$/i, "-claim-ledger.jsonl");
 }
 
+function swarmStructuredClaimMergePath(swarm: Pick<SwarmArtifact, "timestamp" | "route" | "mode">): string {
+	return swarmArtifactPath(swarm).replace(/\.md$/i, "-structured-claim-merge.json");
+}
+
 function swarmSubagentRuntimeManifestIndexPath(swarm: Pick<SwarmArtifact, "timestamp" | "route" | "mode">): string {
 	return swarmArtifactPath(swarm).replace(/\.md$/i, "-subagent-runtime-manifests.json");
 }
@@ -14868,6 +14967,131 @@ function buildSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmClaimLedgerEve
 	return events;
 }
 
+
+function structuredClaimArtifactRefsFromLedgerEvent(event: SwarmClaimLedgerEventV1): StructuredClaimArtifactRefV1[] {
+	return (event.artifactHashes ?? [])
+		.filter((artifact) => typeof artifact.sha256 === "string" && artifact.sha256.length >= 32)
+		.slice(0, 12)
+		.map((artifact, index) => ({
+			artifactId: `${event.claimId ?? "claim"}:artifact:${index + 1}`,
+			path: artifact.path,
+			sha256: artifact.sha256,
+			jsonQuery: "$.sha256",
+			op: "==" as const,
+			expected: artifact.sha256,
+			verifierPass: true,
+		}));
+}
+
+function structuredClaimStatusFromLedger(status: SwarmClaimLedgerEventV1["status"]): StructuredClaimRowV1["status"] {
+	if (status === "proven") return "proven";
+	if (status === "pending") return "pending";
+	if (status === "blocked" || status === "fail" || status === "queued_repair") return "gap";
+	return "gap";
+}
+
+function buildStructuredClaimMergeFromSwarm(swarm: SwarmArtifact): StructuredClaimMergeV1 {
+	const claimLedger = swarm.claimLedger ?? [];
+	const planId = swarm.parallelPlan?.planId ?? `re_swarm:${swarm.timestamp}`;
+	const claimEvents = claimLedger.filter((event) => event.type === "claim" && Boolean(event.claimId));
+	const validationByClaim = new Map(
+		claimLedger
+			.filter((event) => event.type === "validation" && Boolean(event.claimId))
+			.map((event) => [event.claimId as string, event]),
+	);
+	const challengesByClaim = new Map<string, SwarmClaimLedgerEventV1[]>();
+	const resolutionsByClaim = new Map<string, SwarmClaimLedgerEventV1[]>();
+	for (const event of claimLedger) {
+		if (!event.claimId) continue;
+		if (event.type === "challenge") challengesByClaim.set(event.claimId, [...(challengesByClaim.get(event.claimId) ?? []), event]);
+		if (event.type === "resolution") resolutionsByClaim.set(event.claimId, [...(resolutionsByClaim.get(event.claimId) ?? []), event]);
+	}
+	const claimRows: StructuredClaimRowV1[] = claimEvents.map((event) => {
+		const validation = validationByClaim.get(event.claimId as string);
+		const resolutionRows = resolutionsByClaim.get(event.claimId as string) ?? [];
+		const artifactRefs = structuredClaimArtifactRefsFromLedgerEvent(event);
+		return {
+			claimId: event.claimId as string,
+			workerId: event.workerId ?? "re_swarm",
+			mergeKey: `${event.scope ?? swarm.target ?? swarm.route ?? "re_swarm"}:${event.workerId ?? "worker"}`,
+			status: validation?.status === "pass" && event.status === "proven" && artifactRefs.length > 0 ? "proven" : structuredClaimStatusFromLedger(event.status),
+			statement: event.statement ?? "worker claim missing statement",
+			artifactRefs,
+			challenges: (challengesByClaim.get(event.claimId as string) ?? []).map((challenge, index) => {
+				const resolution = resolutionRows[index] ?? resolutionRows[0];
+				const resolved = Boolean(resolution && (resolution.status === "accepted" || resolution.status === "pass"));
+				return {
+					challengeId: `${challenge.claimId}:challenge:${index + 1}`,
+					status: resolved ? "resolved" : "open",
+					resolution: resolution?.resolution,
+				};
+			}),
+		};
+	});
+	const provenIds = new Set(claimRows.filter((claim) => claim.status === "proven").map((claim) => claim.claimId));
+	const conflictTable: StructuredClaimMergeV1["conflictTable"] = (swarm.collisionMatrix ?? []).map((collision, index) => ({
+		conflictId: `collision:${index + 1}:${createHash("sha256").update(collision).digest("hex").slice(0, 12)}`,
+		claimIds: claimRows.map((claim) => claim.claimId).slice(0, 8),
+		topic: collision,
+		status: "unresolved",
+		winningEvidenceRefs: [],
+		downgradeLosers: [],
+		resolutionReason: "collision preserved for supervisor structured claim merge review",
+	}));
+	const finalClaims = claimRows
+		.filter((claim) => claim.status === "proven" && claim.artifactRefs.length > 0 && claim.challenges.every((challenge) => challenge.status === "resolved"))
+		.map((claim) => ({
+			claimId: claim.claimId,
+			promotion: "final_pass" as const,
+			reportSection: `worker:${claim.workerId}`,
+			verifierPass: true,
+			artifactRefs: claim.artifactRefs,
+		}));
+	const blockedClaims = claimRows
+		.filter((claim) => !provenIds.has(claim.claimId) || claim.challenges.some((challenge) => challenge.status !== "resolved") || claim.artifactRefs.length === 0)
+		.map((claim) => ({
+			claimId: claim.claimId,
+			reason: claim.artifactRefs.length === 0
+				? "artifact_sha256_required"
+				: claim.challenges.some((challenge) => challenge.status !== "resolved")
+					? "unresolved_adversary_challenge_blocks_final"
+					: `claim_status_${claim.status}`,
+		}));
+	return {
+		kind: "StructuredClaimMergeV1",
+		schemaVersion: 1,
+		mergeId: `structured-claim-merge:${planId}:${createHash("sha256").update(JSON.stringify(claimLedger.map((event) => event.eventHash))).digest("hex").slice(0, 16)}`,
+		sourcePoolId: planId,
+		target: swarm.target,
+		claimRows,
+		conflictTable,
+		promotionGate: {
+			mode: "strict_final_claim_promotion",
+			requiredStatuses: ["proven"],
+			finalClaims,
+			blockedClaims,
+			policies: claimPromotionEvidenceContract(),
+		},
+	};
+}
+
+function structuredClaimMergeGateFromSwarm(swarm?: SwarmArtifact): StructuredClaimMergeGateSnapshot {
+	if (!swarm || !(swarm.claimLedger?.length)) {
+		return { status: "missing", finalClaimCount: 0, blockedClaimCount: 0, errors: ["structured_claim_merge_missing_runtime_claim_ledger"], policies: claimPromotionEvidenceContract() };
+	}
+	const merge = swarm.structuredClaimMerge ?? buildStructuredClaimMergeFromSwarm(swarm);
+	const verification = verifyStructuredClaimMergePromotion(merge);
+	return {
+		status: verification.ok ? "pass" : "blocked",
+		mergePath: swarm.structuredClaimMergePath,
+		mergeId: merge.mergeId,
+		finalClaimCount: merge.promotionGate.finalClaims.length,
+		blockedClaimCount: merge.promotionGate.blockedClaims.length,
+		errors: verification.errors,
+		policies: merge.promotionGate.policies,
+	};
+}
+
 function refreshSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmArtifact {
 	const claimLedger = buildSwarmRuntimeClaimLedger(swarm);
 	const runtimeClaimLedgerCaptured =
@@ -14875,16 +15099,29 @@ function refreshSwarmRuntimeClaimLedger(swarm: SwarmArtifact): SwarmArtifact {
 		(["artifact_handoff", "claim", "validation", "challenge", "resolution"] as const).every((type) =>
 			claimLedger.some((event) => event.type === type),
 		);
+	const structuredClaimMergePath = swarm.structuredClaimMergePath ?? swarmStructuredClaimMergePath(swarm);
+	const structuredClaimMerge = buildStructuredClaimMergeFromSwarm({ ...swarm, claimLedger, structuredClaimMergePath });
+	const structuredClaimMergeGate = structuredClaimMergeGateFromSwarm({
+		...swarm,
+		claimLedger,
+		structuredClaimMerge,
+		structuredClaimMergePath,
+	});
 	return {
 		...swarm,
 		claimLedger,
 		claimLedgerEventCount: claimLedger.length,
 		claimLedgerTipHash: claimLedger.at(-1)?.eventHash,
 		runtimeClaimLedgerCaptured,
+		structuredClaimMerge,
+		structuredClaimMergePath,
+		structuredClaimMergeStatus: structuredClaimMergeGate.status,
+		structuredClaimMergeErrors: structuredClaimMergeGate.errors,
 		sourceArtifacts: Array.from(
 			new Set([
 				...swarm.sourceArtifacts,
 				swarm.claimLedgerPath,
+				structuredClaimMergePath,
 				swarm.subagentRuntimeManifestPath,
 				...(swarm.subagentRuntimeManifests ?? []).flatMap((manifest) => [
 					manifest.runtimeManifestFile,
@@ -15000,6 +15237,8 @@ function buildSwarm(options: { target?: string; task?: string; mode?: "plan" | "
 		claimLedger: [],
 		claimLedgerEventCount: 0,
 		runtimeClaimLedgerCaptured: false,
+		structuredClaimMergeStatus: "missing",
+		structuredClaimMergeErrors: [],
 		subagentRuntimeManifests: [],
 		subagentRuntimeManifestCount: 0,
 		subagentRuntimeManifestsCaptured: false,
@@ -15695,6 +15934,14 @@ function formatSwarm(swarm: SwarmArtifact, path?: string): string {
 							`- seq=${event.seq} type=${event.type} claim=${event.claimId ?? "none"} status=${event.status ?? "n/a"} hash=${event.eventHash.slice(0, 16)}`,
 					)
 			: ["- none"]),
+		"structured_claim_merge:",
+		`- path=${swarm.structuredClaimMergePath ?? "pending"}`,
+		`- status=${swarm.structuredClaimMergeStatus ?? "missing"}`,
+		`- final_claims=${swarm.structuredClaimMerge?.promotionGate.finalClaims.length ?? 0}`,
+		`- blocked_claims=${swarm.structuredClaimMerge?.promotionGate.blockedClaims.length ?? 0}`,
+		...(swarm.structuredClaimMergeErrors?.length
+			? swarm.structuredClaimMergeErrors.slice(0, 10).map((item) => `- error=${item}`)
+			: ["- errors=none"]),
 		"subagent_runtime_manifests:",
 		`- path=${swarm.subagentRuntimeManifestPath ?? "pending"}`,
 		`- count=${swarm.subagentRuntimeManifestCount ?? 0}`,
@@ -15725,6 +15972,7 @@ function writeSwarmArtifact(swarm: SwarmArtifact): string {
 	ensureReconStorage();
 	const path = swarmArtifactPath(swarm);
 	swarm.claimLedgerPath = swarmClaimLedgerPath(swarm);
+	swarm.structuredClaimMergePath = swarmStructuredClaimMergePath(swarm);
 	swarm.subagentRuntimeManifestPath = swarmSubagentRuntimeManifestIndexPath(swarm);
 	Object.assign(swarm, refreshSwarmSubagentRuntimeManifestCapture(swarm));
 	Object.assign(swarm, refreshSwarmRuntimeClaimLedger(swarm));
@@ -15733,6 +15981,9 @@ function writeSwarmArtifact(swarm: SwarmArtifact): string {
 		`${swarm.claimLedger.map((event) => JSON.stringify(event)).join("\n")}${swarm.claimLedger.length ? "\n" : ""}`,
 		"utf-8",
 	);
+	if (swarm.structuredClaimMergePath && swarm.structuredClaimMerge) {
+		writeFileSync(swarm.structuredClaimMergePath, `${JSON.stringify(swarm.structuredClaimMerge, null, 2)}\n`, "utf-8");
+	}
 	writeFileSync(
 		swarm.subagentRuntimeManifestPath,
 		`${JSON.stringify(
@@ -15816,7 +16067,7 @@ function writeSwarmArtifact(swarm: SwarmArtifact): string {
 	appendEvidence({
 		kind: swarm.mode === "run" ? "runtime" : "artifact",
 		title: `swarm-${swarm.mode} ${swarm.missionId ?? "no-mission"}`,
-		fact: `Built swarm ${swarm.mode} with ${swarm.workers.length} worker runtime packet(s), ${swarm.executions.length} execution(s), ${swarm.parallelGroups.length} parallel group(s), ${swarm.collisionMatrix.length} collision(s), ${swarm.blocked.length} blocked, audit=${swarm.executionAudit.length}, retries=${swarm.retryQueue.length}, parallel_plan=${swarm.parallelPlan?.planId ?? "missing"}, plan_coverage=${swarm.planCoverage.length}, release_gate_metadata=${swarm.releaseGateMetadata.length}, subagent_runtime_manifests=${swarm.subagentRuntimeManifestCount} captured=${swarm.subagentRuntimeManifestsCaptured ? "pass" : "fail"}, runtime_claim_ledger=${swarm.claimLedgerEventCount} hash_chain=${swarm.runtimeClaimLedgerCaptured ? "pass" : "fail"}`,
+		fact: `Built swarm ${swarm.mode} with ${swarm.workers.length} worker runtime packet(s), ${swarm.executions.length} execution(s), ${swarm.parallelGroups.length} parallel group(s), ${swarm.collisionMatrix.length} collision(s), ${swarm.blocked.length} blocked, audit=${swarm.executionAudit.length}, retries=${swarm.retryQueue.length}, parallel_plan=${swarm.parallelPlan?.planId ?? "missing"}, plan_coverage=${swarm.planCoverage.length}, release_gate_metadata=${swarm.releaseGateMetadata.length}, subagent_runtime_manifests=${swarm.subagentRuntimeManifestCount} captured=${swarm.subagentRuntimeManifestsCaptured ? "pass" : "fail"}, runtime_claim_ledger=${swarm.claimLedgerEventCount} hash_chain=${swarm.runtimeClaimLedgerCaptured ? "pass" : "fail"}, structured_claim_merge=${swarm.structuredClaimMergeStatus ?? "missing"}`,
 		command: `re_swarm ${swarm.mode}`,
 		path,
 		verify: `cat ${path}`,
@@ -19792,7 +20043,11 @@ function compilerOutcome(verifier: VerifierArtifact, summary: Record<VerifierSta
 }
 
 function compilerClaimGateReady(compiler: CompilerArtifact): boolean {
-	return compiler.mode === "final" && compiler.strictClaimGate?.status === "pass";
+	return (
+		compiler.mode === "final" &&
+		compiler.strictClaimGate?.status === "pass" &&
+		(compiler.structuredClaimMergeGate?.status ?? "missing") !== "blocked"
+	);
 }
 
 function latestCompilerClaimGateInputs(): {
@@ -19804,6 +20059,7 @@ function latestCompilerClaimGateInputs(): {
 	claimGatePolicy: string[];
 	strictClaimGate: StrictClaimGateSnapshot;
 	claimGateResult: string[];
+	structuredClaimMergeGate: StructuredClaimMergeGateSnapshot;
 } {
 	const supervisorPath = latestSupervisorArtifactPath();
 	const supervisor = supervisorPath ? parseSupervisorArtifact(supervisorPath) : undefined;
@@ -19815,6 +20071,7 @@ function latestCompilerClaimGateInputs(): {
 	const strictClaimGate = supervisor?.strictClaimGate ?? strictClaimGateSnapshot();
 	const claimGateResult =
 		supervisor?.claimGateResult ?? buildClaimGateResult(releaseGateMetadata, claimGatePolicy, strictClaimGate);
+	const structuredClaimMergeGate = structuredClaimMergeGateFromSwarm(swarm);
 	return {
 		supervisor,
 		supervisorPath,
@@ -19824,6 +20081,7 @@ function latestCompilerClaimGateInputs(): {
 		claimGatePolicy,
 		strictClaimGate,
 		claimGateResult,
+		structuredClaimMergeGate,
 	};
 }
 
@@ -19862,6 +20120,13 @@ function compilerReportLines(compiler: CompilerArtifact): string[] {
 		"",
 		"### Claim Gate Result",
 		...bullet(compiler.claimGateResult),
+		"",
+		"### Structured Claim Merge Gate",
+		`- structured_claim_merge_status: ${compiler.structuredClaimMergeGate?.status ?? "missing"}`,
+		`- structured_claim_merge_path: ${compiler.structuredClaimMergeGate?.mergePath ?? "missing"}`,
+		`- final_claims: ${compiler.structuredClaimMergeGate?.finalClaimCount ?? 0}`,
+		`- blocked_claims: ${compiler.structuredClaimMergeGate?.blockedClaimCount ?? 0}`,
+		...bullet(compiler.structuredClaimMergeGate?.errors ?? []),
 		"",
 		"## Operator Feedback",
 		"",
@@ -19904,6 +20169,7 @@ function buildCompiler(options: { target?: string; mode?: "draft" | "final" } = 
 	const summary = compilerStatusSummary(verifier.assertions);
 	const mode = options.mode ?? "draft";
 	const strictBlocksFinal = mode === "final" && claimGateInputs.strictClaimGate.status !== "pass";
+	const structuredClaimBlocksFinal = mode === "final" && claimGateInputs.structuredClaimMergeGate.status === "blocked";
 	const compiler: CompilerArtifact = {
 		timestamp: new Date().toISOString(),
 		missionId: verifier.missionId,
@@ -19922,6 +20188,12 @@ function buildCompiler(options: { target?: string; mode?: "draft" | "final" } = 
 						"claim boundary: final reports require a passing strict claim release marker from gate:claim-release.",
 					]
 				: []),
+			...(structuredClaimBlocksFinal
+				? [
+						`status=blocked_by_structured_claim_merge structured_claim_merge=${claimGateInputs.structuredClaimMergeGate.status}`,
+						"claim boundary: final reports require StructuredClaimMergeV1 final promotion to pass artifact/jsonQuery/verifier/challenge/conflict gates.",
+					]
+				: []),
 		],
 		keyEvidence: compilerKeyEvidence(verifier),
 		reproCommands: compilerReproCommands(verifier, verifierArtifact),
@@ -19932,6 +20204,12 @@ function buildCompiler(options: { target?: string; mode?: "draft" | "final" } = 
 				? [
 						`strict claim gate ${claimGateInputs.strictClaimGate.status}: ${claimGateInputs.strictClaimGate.markerPath ?? "missing marker"}`,
 						...claimGateInputs.strictClaimGate.requiredGaps.map((gap) => `strict claim required gap: ${gap}`),
+					]
+				: []),
+			...(claimGateInputs.structuredClaimMergeGate.status === "blocked"
+				? [
+						`structured claim merge blocked: ${claimGateInputs.structuredClaimMergeGate.mergePath ?? "missing merge path"}`,
+						...claimGateInputs.structuredClaimMergeGate.errors.map((error) => `structured claim merge error: ${error}`),
 					]
 				: []),
 		],
@@ -19946,6 +20224,9 @@ function buildCompiler(options: { target?: string; mode?: "draft" | "final" } = 
 							"re_operator dispatch <target> 2",
 							"re_proof_loop run <target> 4 2",
 						]),
+				...(claimGateInputs.structuredClaimMergeGate.status === "blocked"
+					? ["re_swarm merge", "re_supervisor repair", "re_verifier matrix", "re_compiler draft"]
+					: []),
 				...compilerNextOperatorQueue(verifier),
 			]),
 		).slice(0, 24),
@@ -19954,6 +20235,7 @@ function buildCompiler(options: { target?: string; mode?: "draft" | "final" } = 
 		claimGatePolicy: claimGateInputs.claimGatePolicy,
 		strictClaimGate: claimGateInputs.strictClaimGate,
 		claimGateResult: claimGateInputs.claimGateResult,
+		structuredClaimMergeGate: claimGateInputs.structuredClaimMergeGate,
 		sourceArtifacts: Array.from(
 			new Set(
 				[
@@ -19961,6 +20243,7 @@ function buildCompiler(options: { target?: string; mode?: "draft" | "final" } = 
 					claimGateInputs.supervisorPath,
 					claimGateInputs.swarmPath,
 					claimGateInputs.strictClaimGate.markerPath,
+					claimGateInputs.structuredClaimMergeGate.mergePath,
 					...verifier.sourceArtifacts,
 				].filter(Boolean) as string[],
 			),
@@ -20000,6 +20283,14 @@ function formatCompiler(compiler: CompilerArtifact, path?: string): string {
 		...formatStrictClaimGateSnapshot(compiler.strictClaimGate),
 		"claim_gate_result:",
 		...(compiler.claimGateResult.length ? compiler.claimGateResult.map((item) => `- ${item}`) : ["- none"]),
+		"structured_claim_merge_gate:",
+		`- status=${compiler.structuredClaimMergeGate?.status ?? "missing"}`,
+		`- path=${compiler.structuredClaimMergeGate?.mergePath ?? "missing"}`,
+		`- final_claims=${compiler.structuredClaimMergeGate?.finalClaimCount ?? 0}`,
+		`- blocked_claims=${compiler.structuredClaimMergeGate?.blockedClaimCount ?? 0}`,
+		...(compiler.structuredClaimMergeGate?.errors.length
+			? compiler.structuredClaimMergeGate.errors.slice(0, 10).map((item) => `- error=${item}`)
+			: ["- errors=none"]),
 		"operator_feedback:",
 		...((compiler.operatorFeedback ?? []).length
 			? (compiler.operatorFeedback ?? []).map((item) => `- ${item}`)
@@ -20055,7 +20346,7 @@ function writeCompilerArtifact(compiler: CompilerArtifact): string {
 	appendEvidence({
 		kind: "artifact",
 		title: `compiler-${compiler.mode} ${compiler.missionId ?? "no-mission"}`,
-		fact: `Compiler ${compiler.mode}: proved=${compiler.statusSummary.proved}, weak=${compiler.statusSummary.weak}, contradicted=${compiler.statusSummary.contradicted}, missing=${compiler.statusSummary.missing}, operator_feedback=${(compiler.operatorFeedback ?? []).length}, strict_claim_gate=${compiler.strictClaimGate?.status ?? "missing"}, claim_gate_result=${compiler.claimGateResult.length}`,
+		fact: `Compiler ${compiler.mode}: proved=${compiler.statusSummary.proved}, weak=${compiler.statusSummary.weak}, contradicted=${compiler.statusSummary.contradicted}, missing=${compiler.statusSummary.missing}, operator_feedback=${(compiler.operatorFeedback ?? []).length}, strict_claim_gate=${compiler.strictClaimGate?.status ?? "missing"}, claim_gate_result=${compiler.claimGateResult.length}, structured_claim_merge=${compiler.structuredClaimMergeGate?.status ?? "missing"}`,
 		command: `re_compiler ${compiler.mode}`,
 		path,
 		verify: `cat ${path}`,
@@ -23228,6 +23519,13 @@ function auditCompletion(): { ready: boolean; blockers: string[]; warnings: stri
 		for (const row of (swarm.releaseGateMetadata ?? []).filter((item) => /claim_gate_verdict=blocked|release_blocking_gaps=[1-9]|required_platform_gaps=[1-9]|unresolved_frontier_gaps=[1-9]|blocked_until_supervisor_claim_gate_passes/i.test(item)).slice(0, 8)) {
 			blockers.push(`swarm release gate blocks final claim: ${row}`);
 		}
+		const structuredClaimMergeGate = structuredClaimMergeGateFromSwarm(swarm);
+		if (structuredClaimMergeGate.status === "blocked") {
+			blockers.push(
+				`swarm structured claim merge blocks final claim: ${structuredClaimMergeGate.mergePath ?? swarmPath ?? "missing merge path"}`,
+			);
+			for (const error of structuredClaimMergeGate.errors.slice(0, 8)) blockers.push(`structured claim merge error: ${error}`);
+		}
 	}
 	const strictClaim = strictClaimGateSnapshot();
 	if (strictClaim.status !== "pass") {
@@ -23246,6 +23544,12 @@ function auditCompletion(): { ready: boolean; blockers: string[]; warnings: stri
 		}
 		for (const row of (compiler.claimGateResult ?? []).filter((item) => /final_publish_ready=no|strict_status=(?:blocked|missing)|required_gaps=[1-9]/i.test(item)).slice(0, 8)) {
 			blockers.push(`compiler claim gate result blocks final report: ${row}`);
+		}
+		if (compiler.structuredClaimMergeGate?.status === "blocked") {
+			blockers.push(
+				`compiler structured claim merge blocks final report: ${compiler.structuredClaimMergeGate.mergePath ?? "missing merge path"}`,
+			);
+			for (const error of compiler.structuredClaimMergeGate.errors.slice(0, 8)) blockers.push(`compiler structured claim merge error: ${error}`);
 		}
 		if (!compiler.reportPath) blockers.push(`compiler final artifact has no release report path: ${compilerPath}`);
 	}
@@ -23320,6 +23624,9 @@ function buildMemoryDigest(): string {
 		"<case_memory_tail>",
 		truncateMiddle(readText(caseMemoryPath()), 2400),
 		"</case_memory_tail>",
+		"<memory_store_v5>",
+		truncateMiddle(readText(memoryStoreReportPath()), 1800),
+		"</memory_store_v5>",
 		"<case_index>",
 		truncateMiddle(readText(memoryPath("case-index.md")), 2000),
 		"</case_index>",
@@ -23923,6 +24230,101 @@ function jsonlRecords<T>(path: string, predicate: (value: unknown) => value is T
 		});
 }
 
+function jsonlScan<T>(
+	path: string,
+	predicate: (value: unknown) => value is T,
+	typeName: string,
+): { rows: T[]; errors: string[]; raw: string } {
+	const raw = readText(path);
+	const rows: T[] = [];
+	const errors: string[] = [];
+	raw.split(/\r?\n/).forEach((line, index) => {
+		const trimmed = line.trim();
+		if (!trimmed) return;
+		try {
+			const parsed = JSON.parse(trimmed) as unknown;
+			if (predicate(parsed)) rows.push(parsed);
+			else errors.push(`${path}:${index + 1}:invalid_${typeName}`);
+		} catch (error) {
+			errors.push(`${path}:${index + 1}:json_parse_error:${String(error).slice(0, 120)}`);
+		}
+	});
+	return { rows, errors, raw };
+}
+
+function memoryStoreSleep(ms: number): void {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function fileDigest(path: string): { sha256: string; bytes: number; text: string } {
+	try {
+		const buffer = readFileSync(path);
+		return { sha256: createHash("sha256").update(buffer).digest("hex"), bytes: buffer.length, text: buffer.toString("utf-8") };
+	} catch {
+		return { sha256: sha256Text(""), bytes: 0, text: "" };
+	}
+}
+
+function withMemoryStoreLock<T>(operation: MemoryAppendTransactionV1["operation"], fn: () => T): T {
+	mkdirSync(memoryTransactionsDir(), { recursive: true });
+	const lockPath = memoryStoreLockPath();
+	let acquired = false;
+	let lastError: unknown;
+	for (let attempt = 0; attempt < 80; attempt++) {
+		try {
+			mkdirSync(lockPath);
+			writeFileSync(
+				join(lockPath, "owner.json"),
+				`${JSON.stringify(
+					{
+						kind: "repi-memory-store-lock",
+						schemaVersion: 1,
+						operation,
+						pid: process.pid,
+						acquiredAt: new Date().toISOString(),
+					},
+					null,
+					2,
+				)}\n`,
+				"utf-8",
+			);
+			acquired = true;
+			break;
+		} catch (error) {
+			lastError = error;
+			try {
+				const ageMs = Date.now() - statSync(lockPath).mtimeMs;
+				if (ageMs > 30_000) rmSync(lockPath, { recursive: true, force: true });
+			} catch {}
+			memoryStoreSleep(25 + Math.min(200, attempt * 5));
+		}
+	}
+	if (!acquired) throw new Error(`memory_store_lock_timeout:${String(lastError)}`);
+	try {
+		return fn();
+	} finally {
+		rmSync(lockPath, { recursive: true, force: true });
+	}
+}
+
+function textWithJsonlLine(current: string, line: string): string {
+	return `${current}${current.length && !current.endsWith("\n") ? "\n" : ""}${line}\n`;
+}
+
+function writeFileAtomic(path: string, body: string): void {
+	const tmp = `${path}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+	writeFileSync(tmp, body, "utf-8");
+	renameSync(tmp, path);
+}
+
+function memoryTransactionPath(id: string): string {
+	return join(memoryTransactionsDir(), `${id}.json`);
+}
+
+function writeMemoryTransaction(transaction: MemoryAppendTransactionV1): void {
+	writeFileSync(memoryTransactionPath(transaction.id), `${JSON.stringify(transaction, null, 2)}\n`, "utf-8");
+}
+
 function isMemoryArtifactHash(value: unknown): value is MemoryArtifactHash {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
 	const row = value as MemoryArtifactHash;
@@ -24061,10 +24463,7 @@ function memoryEventSignature(input: Pick<MemoryEventInput, "task" | "route" | "
 	return sha256Text([input.route ?? "unknown", input.target ?? "", input.task ?? "", tags].join("\n")).slice(0, 24);
 }
 
-function writeCaseMemorySnapshot(event: MemoryEventV1): CaseMemoryV1 {
-	const previous = readCaseMemoryRows()
-		.filter((row) => row.caseSignature === event.caseSignature)
-		.at(-1);
+function caseMemorySnapshotFromEvent(event: MemoryEventV1, previous?: CaseMemoryV1): CaseMemoryV1 {
 	const eventIds = uniqueNonEmpty([...(previous?.eventIds ?? []), event.id], 80);
 	const commands = uniqueNonEmpty([...(previous?.commands ?? []), ...event.commands], 40);
 	const reuseRules = uniqueNonEmpty([...(previous?.reuseRules ?? []), ...event.reuseRules], 40);
@@ -24098,8 +24497,259 @@ function writeCaseMemorySnapshot(event: MemoryEventV1): CaseMemoryV1 {
 		sourceEvents,
 		lastEventHash: event.entryHash,
 	};
-	appendText(caseMemoryPath(), `${JSON.stringify(row)}\n`);
 	return row;
+}
+
+function writeCaseMemorySnapshot(event: MemoryEventV1): CaseMemoryV1 {
+	const previous = readCaseMemoryRows()
+		.filter((row) => row.caseSignature === event.caseSignature)
+		.at(-1);
+	const row = caseMemorySnapshotFromEvent(event, previous);
+	withMemoryStoreLock("append-memory-event", () => {
+		const before = fileDigest(caseMemoryPath());
+		writeFileAtomic(caseMemoryPath(), textWithJsonlLine(before.text, JSON.stringify(row)));
+	});
+	return row;
+}
+
+function buildMemoryStoreVerificationUnlocked(options: { write?: boolean } = {}): MemoryStoreVerificationV1 {
+	const eventScan = jsonlScan(memoryEventsPath(), isMemoryEvent, "MemoryEventV1");
+	const caseScan = jsonlScan(caseMemoryPath(), isCaseMemory, "CaseMemoryV1");
+	const errors = [...eventScan.errors, ...caseScan.errors];
+	let prevHash = "0".repeat(64);
+	let hashChainOk = true;
+	let seqOk = true;
+	let prevHashOk = true;
+	const eventIds = new Set<string>();
+	const entryHashes = new Set<string>();
+	for (const [index, event] of eventScan.rows.entries()) {
+		if (event.seq !== index + 1) {
+			seqOk = false;
+			errors.push(`events:${event.id}:seq_expected_${index + 1}_got_${event.seq}`);
+		}
+		if (event.prevHash !== prevHash) {
+			prevHashOk = false;
+			hashChainOk = false;
+			errors.push(`events:${event.id}:prev_hash_mismatch`);
+		}
+		const expectedHash = memoryEventHash(event);
+		if (event.entryHash !== expectedHash) {
+			hashChainOk = false;
+			errors.push(`events:${event.id}:entry_hash_mismatch`);
+		}
+		if (eventIds.has(event.id)) errors.push(`events:${event.id}:duplicate_id`);
+		eventIds.add(event.id);
+		entryHashes.add(event.entryHash);
+		prevHash = event.entryHash;
+	}
+	const latestEventByCase = new Map<string, MemoryEventV1>();
+	for (const event of eventScan.rows) latestEventByCase.set(event.caseSignature, event);
+	const latestCaseRows = new Map<string, CaseMemoryV1>();
+	for (const row of caseScan.rows) latestCaseRows.set(row.caseSignature, row);
+	let caseIndexOk = caseScan.errors.length === 0;
+	for (const [caseSignature, event] of latestEventByCase) {
+		const row = latestCaseRows.get(caseSignature);
+		if (!row) {
+			caseIndexOk = false;
+			errors.push(`case-memory:${caseSignature}:missing_latest_row`);
+			continue;
+		}
+		if (row.lastEventHash !== event.entryHash) {
+			caseIndexOk = false;
+			errors.push(`case-memory:${caseSignature}:last_event_hash_mismatch`);
+		}
+		if (!row.eventIds.includes(event.id)) {
+			caseIndexOk = false;
+			errors.push(`case-memory:${caseSignature}:latest_event_id_missing`);
+		}
+	}
+	for (const row of caseScan.rows) {
+		for (const eventId of row.eventIds) {
+			if (!eventIds.has(eventId)) {
+				caseIndexOk = false;
+				errors.push(`case-memory:${row.caseSignature}:unknown_event_id:${eventId}`);
+			}
+		}
+		if (!entryHashes.has(row.lastEventHash) && row.lastEventHash !== "0".repeat(64)) {
+			caseIndexOk = false;
+			errors.push(`case-memory:${row.caseSignature}:unknown_last_event_hash`);
+		}
+	}
+	const parseOk = eventScan.errors.length === 0 && caseScan.errors.length === 0;
+	const storeGrade =
+		hashChainOk && seqOk && prevHashOk && caseIndexOk && parseOk
+			? "pass"
+			: hashChainOk && seqOk && prevHashOk && parseOk
+				? "repairable"
+				: "blocked";
+	const report: MemoryStoreVerificationV1 = {
+		kind: "repi-memory-store-verification",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		MemoryStoreV5: true,
+		eventsPath: memoryEventsPath(),
+		caseMemoryPath: caseMemoryPath(),
+		transactionDir: memoryTransactionsDir(),
+		storeReportPath: memoryStoreReportPath(),
+		snapshotPath: memoryStoreSnapshotPath(),
+		lockPath: memoryStoreLockPath(),
+		eventCount: eventScan.rows.length,
+		caseRowCount: caseScan.rows.length,
+		hashChainOk,
+		seqOk,
+		prevHashOk,
+		caseIndexOk,
+		parseOk,
+		latestEventHash: eventScan.rows.at(-1)?.entryHash ?? "0".repeat(64),
+		storeGrade,
+		errors: uniqueNonEmpty(errors, 120),
+		repairCommands:
+			storeGrade === "repairable"
+				? ["re_memory repair-index", "re_memory verify", "re_memory sediment"]
+				: storeGrade === "blocked"
+					? ["inspect memory/events.jsonl parse/hash-chain errors before appending", "restore from memory/store-snapshot.json if needed"]
+					: ["re_memory snapshot"],
+		requiredGates: [
+			"memory_store_lock_acquired",
+			"hash_chain_verified_before_append",
+			"case_memory_rebuilt_from_events",
+			"transaction_manifest_committed",
+			"repair_index_blocks_on_event_chain_corruption",
+		],
+	};
+	if (options.write !== false) writeFileAtomic(memoryStoreReportPath(), `${JSON.stringify(report, null, 2)}\n`);
+	return report;
+}
+
+function verifyMemoryStore(options: { write?: boolean } = {}): MemoryStoreVerificationV1 {
+	ensureReconStorage();
+	return withMemoryStoreLock("snapshot", () => buildMemoryStoreVerificationUnlocked(options));
+}
+
+function rebuildCaseMemoryFromEvents(events: MemoryEventV1[]): CaseMemoryV1[] {
+	const latest = new Map<string, CaseMemoryV1>();
+	const rows: CaseMemoryV1[] = [];
+	for (const event of events) {
+		const row = caseMemorySnapshotFromEvent(event, latest.get(event.caseSignature));
+		latest.set(event.caseSignature, row);
+		rows.push(row);
+	}
+	return rows;
+}
+
+function repairMemoryStoreIndex(): MemoryStoreVerificationV1 {
+	ensureReconStorage();
+	return withMemoryStoreLock("repair-index", () => {
+		const before = buildMemoryStoreVerificationUnlocked({ write: false });
+		if (!before.hashChainOk || !before.seqOk || !before.prevHashOk || !before.parseOk) {
+			writeFileAtomic(memoryStoreReportPath(), `${JSON.stringify(before, null, 2)}\n`);
+			return before;
+		}
+		const startedAt = new Date().toISOString();
+		const events = jsonlScan(memoryEventsPath(), isMemoryEvent, "MemoryEventV1").rows;
+		const rows = rebuildCaseMemoryFromEvents(events);
+		const caseBefore = fileDigest(caseMemoryPath());
+		const nextBody = rows.length ? `${rows.map((row) => JSON.stringify(row)).join("\n")}\n` : "";
+		const afterSha256 = sha256Text(nextBody);
+		const transaction: MemoryAppendTransactionV1 = {
+			kind: "repi-memory-append-transaction",
+			schemaVersion: 1,
+			id: `memtx:${sha256Text(`${startedAt}:repair-index:${before.latestEventHash}`).slice(0, 20)}`,
+			operation: "repair-index",
+			status: "prepared",
+			startedAt,
+			lockPath: memoryStoreLockPath(),
+			files: [
+				{
+					path: caseMemoryPath(),
+					beforeSha256: caseBefore.sha256,
+					afterSha256,
+					beforeBytes: caseBefore.bytes,
+					afterBytes: Buffer.byteLength(nextBody),
+				},
+			],
+			errors: [],
+		};
+		writeMemoryTransaction(transaction);
+		writeFileAtomic(caseMemoryPath(), nextBody);
+		const committed: MemoryAppendTransactionV1 = {
+			...transaction,
+			status: "committed",
+			committedAt: new Date().toISOString(),
+		};
+		writeMemoryTransaction(committed);
+		const after = buildMemoryStoreVerificationUnlocked({ write: true });
+		return after;
+	});
+}
+
+function snapshotMemoryStore(): MemoryStoreVerificationV1 {
+	ensureReconStorage();
+	return withMemoryStoreLock("snapshot", () => {
+		const verification = buildMemoryStoreVerificationUnlocked({ write: false });
+		const eventScan = jsonlScan(memoryEventsPath(), isMemoryEvent, "MemoryEventV1");
+		const caseScan = jsonlScan(caseMemoryPath(), isCaseMemory, "CaseMemoryV1");
+		const snapshot = {
+			kind: "repi-memory-store-snapshot",
+			schemaVersion: 1,
+			MemoryStoreV5: true,
+			generatedAt: verification.generatedAt,
+			verification,
+			events: eventScan.rows,
+			caseMemory: caseScan.rows,
+		};
+		const before = fileDigest(memoryStoreSnapshotPath());
+		const body = `${JSON.stringify(snapshot, null, 2)}\n`;
+		const transaction: MemoryAppendTransactionV1 = {
+			kind: "repi-memory-append-transaction",
+			schemaVersion: 1,
+			id: `memtx:${sha256Text(`${verification.generatedAt}:snapshot:${verification.latestEventHash}`).slice(0, 20)}`,
+			operation: "snapshot",
+			status: "prepared",
+			startedAt: verification.generatedAt,
+			lockPath: memoryStoreLockPath(),
+			files: [
+				{
+					path: memoryStoreSnapshotPath(),
+					beforeSha256: before.sha256,
+					afterSha256: sha256Text(body),
+					beforeBytes: before.bytes,
+					afterBytes: Buffer.byteLength(body),
+				},
+			],
+			errors: [],
+		};
+		writeMemoryTransaction(transaction);
+		writeFileAtomic(memoryStoreSnapshotPath(), body);
+		writeMemoryTransaction({ ...transaction, status: "committed", committedAt: new Date().toISOString() });
+		writeFileAtomic(memoryStoreReportPath(), `${JSON.stringify(verification, null, 2)}\n`);
+		return verification;
+	});
+}
+
+function formatMemoryStoreVerification(report: MemoryStoreVerificationV1): string {
+	return [
+		"memory_store_v5:",
+		`status=${report.storeGrade}`,
+		`events=${report.eventCount}`,
+		`case_rows=${report.caseRowCount}`,
+		`hash_chain_ok=${report.hashChainOk}`,
+		`seq_ok=${report.seqOk}`,
+		`case_index_ok=${report.caseIndexOk}`,
+		`parse_ok=${report.parseOk}`,
+		`latest_event_hash=${report.latestEventHash}`,
+		`events_path=${report.eventsPath}`,
+		`case_memory_path=${report.caseMemoryPath}`,
+		`transaction_dir=${report.transactionDir}`,
+		`store_report=${report.storeReportPath}`,
+		`snapshot=${report.snapshotPath}`,
+		"required_gates:",
+		...report.requiredGates.map((gate) => `- ${gate}`),
+		"errors:",
+		...(report.errors.length ? report.errors.map((error) => `- ${error}`) : ["- none"]),
+		"repair_commands:",
+		...report.repairCommands.map((command) => `- ${command}`),
+	].join("\n");
 }
 
 type MemoryReuseFeedbackReference = {
@@ -24194,68 +24844,221 @@ function appendMemoryReuseFeedback(
 	});
 }
 
+function appendLaneRunMemoryEvent(
+	pack: LaneCommandPack,
+	result: { code: number; stdout: string; stderr: string; killed?: boolean },
+	analysis: LaneRunAnalysis,
+	artifactPath: string,
+): MemoryEventV1 | undefined {
+	const highValue =
+		analysis.critic.verdict === "strong" ||
+		analysis.critic.score >= 45 ||
+		significantLaneFindings(analysis) ||
+		(result.code !== 0 && (analysis.critic.selfHeal.length > 0 || analysis.critic.deficits.length > 0));
+	if (!highValue) return undefined;
+	const outcome: MemoryOutcome =
+		result.killed || analysis.critic.verdict === "weak"
+			? "blocked"
+			: result.code === 0 && analysis.critic.verdict === "strong"
+				? "success"
+				: result.code === 0
+					? "partial"
+					: "repair";
+	const commands = uniqueNonEmpty(pack.commands.map((command) => command.command), 24);
+	return appendMemoryEvent({
+		source: "operator",
+		task: `lane run ${pack.route}/${pack.lane}`,
+		route: pack.route,
+		target: pack.target,
+		domainTags: uniqueNonEmpty(
+			[
+				"lane-run",
+				"runtime-evidence",
+				`lane:${pack.lane}`,
+				`verdict:${analysis.critic.verdict}`,
+				result.code === 0 ? "exit-zero" : "exit-nonzero",
+			],
+			24,
+		),
+		outcome,
+		lessons: uniqueNonEmpty(
+			[
+				`Lane ${pack.lane} produced evidence_quality=${analysis.critic.score} verdict=${analysis.critic.verdict} exit=${result.code}.`,
+				...analysis.findings.slice(0, 8),
+				analysis.nextLane ? `Next lane hint: ${analysis.nextLane}` : undefined,
+			],
+			20,
+		),
+		failurePatterns: uniqueNonEmpty(
+			[
+				...(result.code !== 0 ? [`lane_run_exit_nonzero:${result.code}`] : []),
+				...(result.killed ? ["lane_run_killed"] : []),
+				...analysis.critic.deficits,
+				...analysis.critic.selfHeal.map((command) => `self_heal:${command.label}:${command.command}`),
+			],
+			20,
+		),
+		reuseRules: uniqueNonEmpty(
+			[
+				`Reuse ${pack.lane} lane commands when route=${pack.route} target_shape=${pack.target ? memoryTargetScope(pack.target) : "workspace"} and evidence artifacts hash-match.`,
+				analysis.critic.verdict === "strong"
+					? "Promote only after verifier/replayer confirms the same runtime artifact anchors."
+					: "Treat as candidate memory; rerun verifier before claim promotion.",
+				...pack.notes.slice(0, 6),
+			],
+			18,
+		),
+		commands,
+		artifactPaths: [artifactPath],
+		confidence: Math.max(0.42, Math.min(0.92, analysis.critic.score / 100)),
+		replayVerified: analysis.critic.verdict === "strong" && result.code === 0,
+		playbookCandidate: analysis.critic.verdict === "strong" && result.code === 0,
+		verifierRuleCandidate: analysis.critic.score >= 45,
+		workerRoutingHint: pack.lane,
+	});
+}
+
+function appendMemoryEventTransaction(input: MemoryEventInput): {
+	event: MemoryEventV1;
+	caseRow: CaseMemoryV1;
+	transaction: MemoryAppendTransactionV1;
+} {
+	const mission = readCurrentMission();
+	return withMemoryStoreLock("append-memory-event", () => {
+		const preflight = buildMemoryStoreVerificationUnlocked({ write: false });
+		if (preflight.storeGrade === "blocked") {
+			throw new Error(`memory_store_blocked_before_append:${preflight.errors.slice(0, 6).join("|")}`);
+		}
+		const eventScan = jsonlScan(memoryEventsPath(), isMemoryEvent, "MemoryEventV1");
+		if (preflight.storeGrade === "repairable") {
+			const rebuiltRows = rebuildCaseMemoryFromEvents(eventScan.rows);
+			writeFileAtomic(
+				caseMemoryPath(),
+				rebuiltRows.length ? `${rebuiltRows.map((caseRow) => JSON.stringify(caseRow)).join("\n")}\n` : "",
+			);
+		}
+		const caseScan = jsonlScan(caseMemoryPath(), isCaseMemory, "CaseMemoryV1");
+		const events = eventScan.rows;
+		const ts = new Date().toISOString();
+		const task = input.task ?? mission?.task ?? "manual memory";
+		const route = input.route ?? mission?.route.domain ?? "manual";
+		const target = input.target;
+		const domainTags = uniqueNonEmpty([route, input.source, ...(input.domainTags ?? [])], 24);
+		const artifactHashes = uniqueNonEmpty(input.artifactPaths ?? [], 80);
+		const artifacts = uniqueNonEmpty([...(input.artifacts ?? []).map((item) => item.path), ...artifactHashes], 80);
+		const normalizedArtifacts = uniqueNonEmpty(input.artifacts?.map((item) => item.path) ?? [], 80).length
+			? uniqueNonEmpty(input.artifacts?.map((item) => item.path) ?? [], 80).map((path) =>
+					(input.artifacts ?? []).find((item) => item.path === path) ?? { path, sha256: null, tier: memoryArtifactTier(path) },
+				)
+			: [];
+		const hashed = memoryArtifactHashes(artifacts);
+		const mergedArtifacts = [
+			...normalizedArtifacts,
+			...hashed.filter((item) => !normalizedArtifacts.some((artifact) => artifact.path === item.path)),
+		].slice(0, 80);
+		const caseSignature = input.caseSignature ?? memoryEventSignature({ task, route, target, domainTags });
+		const row: MemoryEventV1 = {
+			kind: "repi-memory-event",
+			schemaVersion: 1,
+			id: `mem:${sha256Text(`${ts}\n${task}\n${route}\n${caseSignature}\n${events.length}`).slice(0, 20)}`,
+			seq: events.length + 1,
+			ts,
+			source: input.source,
+			task,
+			route,
+			target,
+			domainTags,
+			caseSignature,
+			outcome: input.outcome ?? "partial",
+			lessons: uniqueNonEmpty(input.lessons ?? [], 40),
+			failurePatterns: uniqueNonEmpty(input.failurePatterns ?? [], 40),
+			reuseRules: uniqueNonEmpty(input.reuseRules ?? [], 40),
+			commands: uniqueNonEmpty(input.commands ?? [], 40),
+			artifacts: mergedArtifacts,
+			artifactHashes: mergedArtifacts,
+			quality: {
+				confidence: clamp01(input.confidence, 0.65),
+				replayVerified: Boolean(input.replayVerified),
+				reuseCount: 0,
+				failureCount: input.outcome === "failure" || input.outcome === "blocked" ? 1 : 0,
+				lastUsefulAt: ts,
+				decay: input.outcome === "failure" ? 0.2 : 0,
+			},
+			promotion: {
+				playbookCandidate: Boolean(input.playbookCandidate),
+				workerRoutingHint: input.workerRoutingHint,
+				verifierRuleCandidate: Boolean(input.verifierRuleCandidate),
+			},
+			prevHash: events.at(-1)?.entryHash ?? "0".repeat(64),
+			entryHash: "",
+		};
+		row.entryHash = memoryEventHash(row);
+		const previousCase = caseScan.rows.filter((caseRow) => caseRow.caseSignature === row.caseSignature).at(-1);
+		const caseRow = caseMemorySnapshotFromEvent(row, previousCase);
+		const eventBefore = fileDigest(memoryEventsPath());
+		const caseBefore = fileDigest(caseMemoryPath());
+		const eventBody = textWithJsonlLine(eventBefore.text, JSON.stringify(row));
+		const caseBody = textWithJsonlLine(caseBefore.text, JSON.stringify(caseRow));
+		const startedAt = new Date().toISOString();
+		const transaction: MemoryAppendTransactionV1 = {
+			kind: "repi-memory-append-transaction",
+			schemaVersion: 1,
+			id: `memtx:${sha256Text(`${startedAt}:${row.id}:${row.entryHash}`).slice(0, 20)}`,
+			operation: "append-memory-event",
+			status: "prepared",
+			startedAt,
+			lockPath: memoryStoreLockPath(),
+			eventId: row.id,
+			caseSignature: row.caseSignature,
+			prevHash: row.prevHash,
+			entryHash: row.entryHash,
+			files: [
+				{
+					path: memoryEventsPath(),
+					beforeSha256: eventBefore.sha256,
+					afterSha256: sha256Text(eventBody),
+					beforeBytes: eventBefore.bytes,
+					afterBytes: Buffer.byteLength(eventBody),
+				},
+				{
+					path: caseMemoryPath(),
+					beforeSha256: caseBefore.sha256,
+					afterSha256: sha256Text(caseBody),
+					beforeBytes: caseBefore.bytes,
+					afterBytes: Buffer.byteLength(caseBody),
+				},
+			],
+			errors: [],
+		};
+		writeMemoryTransaction(transaction);
+		try {
+			writeFileAtomic(memoryEventsPath(), eventBody);
+			writeFileAtomic(caseMemoryPath(), caseBody);
+			const committed: MemoryAppendTransactionV1 = {
+				...transaction,
+				status: "committed",
+				committedAt: new Date().toISOString(),
+			};
+			writeMemoryTransaction(committed);
+			buildMemoryStoreVerificationUnlocked({ write: true });
+			return { event: row, caseRow, transaction: committed };
+		} catch (error) {
+			const aborted: MemoryAppendTransactionV1 = {
+				...transaction,
+				status: "aborted",
+				errors: [String(error)],
+			};
+			writeMemoryTransaction(aborted);
+			throw error;
+		}
+	});
+}
+
 function appendMemoryEvent(input: MemoryEventInput): MemoryEventV1 {
 	ensureReconStorage();
-	const mission = readCurrentMission();
-	const events = readMemoryEvents();
-	const ts = new Date().toISOString();
-	const task = input.task ?? mission?.task ?? "manual memory";
-	const route = input.route ?? mission?.route.domain ?? "manual";
-	const target = input.target;
-	const domainTags = uniqueNonEmpty([route, input.source, ...(input.domainTags ?? [])], 24);
-	const artifactHashes = uniqueNonEmpty(input.artifactPaths ?? [], 80);
-	const artifacts = uniqueNonEmpty([...(input.artifacts ?? []).map((item) => item.path), ...artifactHashes], 80);
-	const normalizedArtifacts = uniqueNonEmpty(input.artifacts?.map((item) => item.path) ?? [], 80).length
-		? uniqueNonEmpty(input.artifacts?.map((item) => item.path) ?? [], 80).map((path) =>
-			(input.artifacts ?? []).find((item) => item.path === path) ?? { path, sha256: null, tier: memoryArtifactTier(path) },
-		)
-		: [];
-	const hashed = memoryArtifactHashes(artifacts);
-	const mergedArtifacts = [
-		...normalizedArtifacts,
-		...hashed.filter((item) => !normalizedArtifacts.some((artifact) => artifact.path === item.path)),
-	].slice(0, 80);
-	const caseSignature = input.caseSignature ?? memoryEventSignature({ task, route, target, domainTags });
-	const row: MemoryEventV1 = {
-		kind: "repi-memory-event",
-		schemaVersion: 1,
-		id: `mem:${sha256Text(`${ts}\n${task}\n${route}\n${caseSignature}\n${events.length}`).slice(0, 20)}`,
-		seq: events.length + 1,
-		ts,
-		source: input.source,
-		task,
-		route,
-		target,
-		domainTags,
-		caseSignature,
-		outcome: input.outcome ?? "partial",
-		lessons: uniqueNonEmpty(input.lessons ?? [], 40),
-		failurePatterns: uniqueNonEmpty(input.failurePatterns ?? [], 40),
-		reuseRules: uniqueNonEmpty(input.reuseRules ?? [], 40),
-		commands: uniqueNonEmpty(input.commands ?? [], 40),
-		artifacts: mergedArtifacts,
-		artifactHashes: mergedArtifacts,
-		quality: {
-			confidence: clamp01(input.confidence, 0.65),
-			replayVerified: Boolean(input.replayVerified),
-			reuseCount: 0,
-			failureCount: input.outcome === "failure" || input.outcome === "blocked" ? 1 : 0,
-			lastUsefulAt: ts,
-			decay: input.outcome === "failure" ? 0.2 : 0,
-		},
-		promotion: {
-			playbookCandidate: Boolean(input.playbookCandidate),
-			workerRoutingHint: input.workerRoutingHint,
-			verifierRuleCandidate: Boolean(input.verifierRuleCandidate),
-		},
-		prevHash: events.at(-1)?.entryHash ?? "0".repeat(64),
-		entryHash: "",
-	};
-	row.entryHash = memoryEventHash(row);
-	appendText(memoryEventsPath(), `${JSON.stringify(row)}\n`);
-	writeCaseMemorySnapshot(row);
-	updateMissionGate("memory_or_evolution_written", "done", `memory_event=${row.id} case=${row.caseSignature}`);
-	return row;
+	const { event } = appendMemoryEventTransaction(input);
+	updateMissionGate("memory_or_evolution_written", "done", `memory_event=${event.id} case=${event.caseSignature}`);
+	return event;
 }
 
 function memoryTextForSearch(event: MemoryEventV1): string {
@@ -25436,7 +26239,7 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 	});
 	pi.registerCommand("re-memory", {
 		description:
-			"Read, append, evolve, search, consolidate, distill, sediment, or maintain REPI memory: /re-memory [show|events|search|append|evolve|consolidate|distill|sediment|playbooks|prune-playbooks] ...",
+			"Read, append, evolve, search, verify, repair, snapshot, distill, sediment, or maintain REPI memory: /re-memory [show|events|search|append|evolve|verify|repair-index|snapshot|consolidate|distill|sediment|playbooks|prune-playbooks] ...",
 		handler: async (args) => {
 			const trimmed = args.trim();
 			if (trimmed.startsWith("append ")) {
@@ -25479,6 +26282,24 @@ function installReconCommands(pi: ExtensionAPI, stats: ReconStats): void {
 			if (trimmed === "events") {
 				updateMissionGate("memory_checked", "done", "/re-memory events");
 				sendDisplayMessage(pi, "REPI Memory Events", formatMemoryRetrieval());
+				return;
+			}
+			if (trimmed === "verify") {
+				const report = verifyMemoryStore();
+				updateMissionGate("memory_checked", report.storeGrade === "blocked" ? "blocked" : "done", `memory_store_v5=${report.storeGrade}`);
+				sendDisplayMessage(pi, "REPI Memory Store Verification", formatMemoryStoreVerification(report));
+				return;
+			}
+			if (trimmed === "repair-index") {
+				const report = repairMemoryStoreIndex();
+				updateMissionGate("memory_or_evolution_written", report.storeGrade === "blocked" ? "blocked" : "done", `memory_store_v5_repair=${report.storeGrade}`);
+				sendDisplayMessage(pi, "REPI Memory Store Repair", formatMemoryStoreVerification(report));
+				return;
+			}
+			if (trimmed === "snapshot" || trimmed === "compact") {
+				const report = snapshotMemoryStore();
+				updateMissionGate("memory_or_evolution_written", report.storeGrade === "blocked" ? "blocked" : "done", `memory_store_v5_snapshot=${report.storeGrade}`);
+				sendDisplayMessage(pi, "REPI Memory Store Snapshot", formatMemoryStoreVerification(report));
 				return;
 			}
 			if (trimmed === "consolidate") {
@@ -26203,6 +27024,10 @@ function installReconTools(pi: ExtensionAPI): void {
 				Type.Literal("search-events"),
 				Type.Literal("append"),
 				Type.Literal("evolve"),
+				Type.Literal("verify"),
+				Type.Literal("repair-index"),
+				Type.Literal("snapshot"),
+				Type.Literal("compact"),
 				Type.Literal("consolidate"),
 				Type.Literal("distill"),
 				Type.Literal("sediment"),
@@ -26259,6 +27084,33 @@ function installReconTools(pi: ExtensionAPI): void {
 				return {
 					content: [{ type: "text" as const, text }],
 					details: { query: params.query, report: memoryRetrievalReportPath() } as Record<string, unknown>,
+				};
+			}
+			if (params.action === "verify") {
+				const report = verifyMemoryStore();
+				const text = formatMemoryStoreVerification(report);
+				updateMissionGate("memory_checked", report.storeGrade === "blocked" ? "blocked" : "done", `memory_store_v5=${report.storeGrade}`);
+				return {
+					content: [{ type: "text" as const, text }],
+					details: report as unknown as Record<string, unknown>,
+				};
+			}
+			if (params.action === "repair-index") {
+				const report = repairMemoryStoreIndex();
+				const text = formatMemoryStoreVerification(report);
+				updateMissionGate("memory_or_evolution_written", report.storeGrade === "blocked" ? "blocked" : "done", `memory_store_v5_repair=${report.storeGrade}`);
+				return {
+					content: [{ type: "text" as const, text }],
+					details: report as unknown as Record<string, unknown>,
+				};
+			}
+			if (params.action === "snapshot" || params.action === "compact") {
+				const report = snapshotMemoryStore();
+				const text = formatMemoryStoreVerification(report);
+				updateMissionGate("memory_or_evolution_written", report.storeGrade === "blocked" ? "blocked" : "done", `memory_store_v5_snapshot=${report.storeGrade}`);
+				return {
+					content: [{ type: "text" as const, text }],
+					details: report as unknown as Record<string, unknown>,
 				};
 			}
 			if (params.action === "consolidate") {

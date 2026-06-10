@@ -185,7 +185,7 @@ function main() {
 		for (const negative of fixture.negativeCases ?? []) checks.push(negativeCase(fixture, negative));
 	}
 	checks.push(
-		markerCheck("code:structured-claim-merge", "packages/coding-agent/src/core/recon-profile.ts", ["type StructuredClaimMergeV1", "function claimPromotionEvidenceContract", "function verifyStructuredClaimMergePromotion", "final_pass_requires_json_query", "unresolved_adversary_challenge_blocks_final"]),
+		markerCheck("code:structured-claim-merge", "packages/coding-agent/src/core/recon-profile.ts", ["type StructuredClaimMergeV1", "function claimPromotionEvidenceContract", "function verifyStructuredClaimMergePromotion", "function buildStructuredClaimMergeFromSwarm", "function structuredClaimMergeGateFromSwarm", "status=blocked_by_structured_claim_merge", "structured claim merge blocks final claim", "final_pass_requires_json_query", "unresolved_adversary_challenge_blocks_final"]),
 		markerCheck("docs:structured-claim-merge", "README.md", ["Structured claim merge", "gate:structured-claim-merge", "final_pass_requires_json_query", "unresolved_adversary_challenge_blocks_final"]),
 		markerCheck("npm:structured-claim-merge-script", "package.json", ["gate:structured-claim-merge", "structured-claim-merge-gate.mjs"]),
 	);
