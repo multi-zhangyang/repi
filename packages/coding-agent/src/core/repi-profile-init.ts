@@ -94,13 +94,20 @@ export function initializeRepiProfile(options: { repoRoot?: string; verbose?: bo
 	settings.enableSkillCommands = true;
 	settings.quietStartup = settings.quietStartup ?? false;
 	settings.collapseChangelog = settings.collapseChangelog ?? true;
+	const existingCompaction = (settings.compaction as Record<string, unknown> | undefined) ?? {};
+	const migratedLegacyReserveTokens =
+		existingCompaction.triggerPercent === undefined &&
+		existingCompaction.warningPercent === undefined &&
+		existingCompaction.reserveTokens === 32768
+			? 16384
+			: existingCompaction.reserveTokens;
 	settings.compaction = {
-		enabled: true,
-		triggerPercent: 85,
-		warningPercent: 80,
-		reserveTokens: 16384,
-		keepRecentTokens: 36000,
-		...((settings.compaction as Record<string, unknown> | undefined) ?? {}),
+		...existingCompaction,
+		enabled: existingCompaction.enabled ?? true,
+		triggerPercent: existingCompaction.triggerPercent ?? 85,
+		warningPercent: existingCompaction.warningPercent ?? 80,
+		reserveTokens: migratedLegacyReserveTokens ?? 16384,
+		keepRecentTokens: existingCompaction.keepRecentTokens ?? 36000,
 	};
 	settings.branchSummary = {
 		reserveTokens: 24576,

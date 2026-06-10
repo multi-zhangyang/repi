@@ -9,7 +9,9 @@
   "transport": "auto",
   "compaction": {
     "enabled": true,
-    "reserveTokens": 32768,
+    "triggerPercent": 85,
+    "warningPercent": 80,
+    "reserveTokens": 16384,
     "keepRecentTokens": 36000
   },
   "branchSummary": {

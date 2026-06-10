@@ -60,7 +60,11 @@ export const CONTEXT_COMPACT_REQUIREMENTS = [
 			},
 			{
 				file: "packages/coding-agent/src/core/repi-profile-init.ts",
-				markers: ["triggerPercent: 85", "warningPercent: 80", "reserveTokens: 16384", "keepRecentTokens: 36000"],
+				markers: ["existingCompaction", "triggerPercent: existingCompaction.triggerPercent ?? 85", "warningPercent: existingCompaction.warningPercent ?? 80", "reserveTokens: migratedLegacyReserveTokens ?? 16384", "keepRecentTokens: existingCompaction.keepRecentTokens ?? 36000"],
+			},
+			{
+				file: "repi-profile/settings.json",
+				markers: ["triggerPercent", "warningPercent", "16384", "36000"],
 			},
 			{
 				file: "packages/coding-agent/test/compaction.test.ts",
@@ -69,6 +73,29 @@ export const CONTEXT_COMPACT_REQUIREMENTS = [
 			{
 				file: "docs/reverse-agent/README.md",
 				markers: ["triggerPercent", "warningPercent", "compactionTriggerTokens"],
+			},
+		],
+	},
+
+	{
+		id: "runtime_model_provider_configuration",
+		description: "Running REPI can answer model/provider/API key/local runtime/compact configuration questions without sending users to old pi profile paths.",
+		checks: [
+			{
+				file: "packages/coding-agent/src/core/recon-profile.ts",
+				markers: ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --list-models", "triggerPercent=85"],
+			},
+			{
+				file: "repi-profile/SYSTEM.md",
+				markers: ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --list-models"],
+			},
+			{
+				file: "repi-profile/prompts/repi-config.md",
+				markers: ["~/.repi/agent/models.json", "OpenAI-compatible", "anthropic-messages", "triggerPercent=85"],
+			},
+			{
+				file: "docs/reverse-agent/repi-runtime-configuration.md",
+				markers: ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "repi --offline", "triggerPercent"],
 			},
 		],
 	},

@@ -535,6 +535,7 @@ repi --offline \
 
 ```text
 docs/reverse-agent/model-provider-formats.md
+docs/reverse-agent/repi-runtime-configuration.md
 ```
 
 覆盖：

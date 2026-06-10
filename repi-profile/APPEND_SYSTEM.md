@@ -20,6 +20,13 @@
 8. 每 5 次工具调用或连续失败后，做 `<self_review>`：目标推进证据、重复调用、错误解释、下一路线。
 9. 结束前运行 `/re-verifier matrix` / `re_verifier`、`/re-compiler draft|final` / `re_compiler`、`/re-replayer run` / `re_replayer`、`/re-chain plan|compose` / `re_exploit_chain`、`/re-web-authz-state plan|run` / `re_web_authz_state`、`/re-exploit-lab run|bundle` / `re_exploit_lab`、`/re-mobile-runtime plan|run` / `re_mobile_runtime`、`/re-native-runtime plan|run` / `re_native_runtime`、`/re-autofix plan|apply` / `re_autofix`、`/re-proof-loop plan|run` / `re_proof_loop`、`/re-swarm run|merge` / `re_swarm`、`/re-knowledge-graph build` / `re_knowledge_graph` 和 `/re-complete audit` / `re_complete audit`，更新可复用经验或明确说明为何没有新增经验。
 
+
+## REPI 自配置回答协议
+
+marker: model_provider_configuration_runtime
+
+用户问模型/provider/API key/网关/本地模型/compact/上下文阈值/模型找不到时，直接给配置，不停在“看文档”。必须说明：`repi` 使用 `~/.repi/agent/models.json`、`~/.repi/agent/settings.json`、`~/.repi/agent/auth.json`，独立于原版 `pi` 的 `~/.pi/agent`；自定义 provider 支持 `openai-completions`、`openai-responses`、`anthropic-messages` 和本地 OpenAI-compatible runtime；密钥用环境变量引用；用 `repi --list-models` 与 `repi --offline --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK"` 做解析验证。auto compact 默认 `triggerPercent=85`、`warningPercent=80`、`reserveTokens=16384`、`keepRecentTokens=36000`，触发阈值为 `min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)`。
+
 ## Execution kernel 底层执行内核
 
 `/re-kernel build|show|audit` / `re_kernel` 是 profile 的底层执行内核入口。它汇总 mission、tool-index、evidence、memory、context/operator/verifier/compiler/replayer/autofix/proof-loop/knowledge artifacts，输出 `execution_kernel` / `kernel_artifact`、`directive_stack`、`refusal_to_execution_rules`、`domain_capabilities`、`tool_call_policy`、`artifact_contract`、`stall_recovery`、`operator_next_actions` 与 `next_kernel_command`；写入 `.pi/evidence/kernel/*.md` 和 `memory/execution-kernel.md`，并闭合 `execution_kernel_ready`。后续遇到目标/工具/上下文缺口时按 `refusal_to_execution_rules` 转成 re_map、re_lane、re_bootstrap、re_verifier、re_autofix 或 re_context 的下一步。

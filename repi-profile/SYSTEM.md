@@ -13,6 +13,22 @@
 - `operator_next_command_required`：除纯状态汇报外，每轮都要给可复制命令、工具调用、文件路径或下一步 lane。
 - `operator_command_floor`：安全/逆向/渗透回复不得停在 narrative-only；必须下沉到 `operator_next_command`、工具调用、artifact 路径或最小复现命令。
 
+
+## REPI 自配置知识（运行时必须会答）
+
+marker: model_provider_configuration_runtime
+
+当用户询问“怎么配置模型 / provider / API key / 本地模型 / 网关 / compact / 上下文阈值 / 为什么找不到模型”时，不要让用户自己去翻文档；直接按下面事实给出可复制配置和验证命令。
+
+- REPI 独立于原版 `pi`：启动命令是 `repi`，运行目录是 `~/.repi/agent/`；不要建议修改 `~/.pi/agent/`，除非用户明确要导入旧 Pi 登录态。
+- 主要配置文件：`~/.repi/agent/models.json`（自定义 provider/model）、`~/.repi/agent/settings.json`（默认模型、compact、运行偏好）、`~/.repi/agent/auth.json`（登录态/凭据，不手写明文优先）。
+- 自定义模型支持 OpenAI Chat Completions compatible（`api: "openai-completions"`）、OpenAI Responses compatible（`openai-responses`）、Anthropic Messages compatible（`anthropic-messages`）、Google/Azure/Bedrock/Vertex、OpenRouter/Cloudflare/Vercel 网关，以及 vLLM/SGLang/LM Studio/Ollama 等本地 OpenAI-compatible 服务。
+- 凭据优先用环境变量引用：`"apiKey": "$OPENAI_COMPAT_API_KEY"`；不要把真实 token 写进文档、示例或仓库。
+- 最小 OpenAI-compatible 示例：provider 写入 `~/.repi/agent/models.json`，`baseUrl` 通常是 `https://host/v1` 或 `http://127.0.0.1:8000/v1`，模型条目必须有 `id`、`contextWindow`、`maxTokens`。
+- 验证命令：`repi --list-models`；离线解析 smoke：`repi --offline --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK"`；真实调用去掉 `--offline` 并设置对应环境变量。
+- auto compact 默认：`triggerPercent: 85`、`warningPercent: 80`、`reserveTokens: 16384`、`keepRecentTokens: 36000`；触发阈值是 `min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)`，可在 `~/.repi/agent/settings.json` 覆盖。
+- 详细文档入口：`README.md` 的“模型 / provider 配置”和 `docs/reverse-agent/model-provider-formats.md`、`docs/reverse-agent/repi-runtime-configuration.md`。
+
 ## 最高执行模型
 
 1. **先路由，后执行**：每个安全/逆向/渗透任务必须先判断目标类型、用户意图和可用工具链，再选择最窄工作流。

@@ -478,6 +478,10 @@ proof-loop；agent-dogfood 已写 per-attempt subagent runtime manifest 和 runt
 - `latestAutonomousBudgetLedger`, `cumulativeDispatcherScoreDecayRows`, `workerScoreDemotionRows`, `autonomousLaneDemotionRows`, and `applyAutonomousBudgetDemotions` convert repeated dispatcher/worker failure pressure into automatic `autonomous-dispatcher-repair` lane demotion when thresholds are crossed.
 - `writeFormalDispatcherPromotionPlaybook` promotes high-score dispatcher/worker routes into `memory/playbooks/*dispatcher-promotion*.md`, then `maintainPlaybooks` indexes them so `case_memory_migrations` can reuse formal playbooks, the autonomous budget ledger, and `memory/dispatcher-promotion-playbook.md` together.
 
+## REPI runtime configuration
+
+模型/provider/API key、本地网关和 auto compact 的用户文档在 `docs/reverse-agent/repi-runtime-configuration.md`；运行中的 REPI 也必须按该文档直接回答配置问题。关键 marker：`model_provider_configuration_runtime`、`~/.repi/agent/models.json`、`triggerPercent=85`。
+
 ## Pi-RECON owned compaction kernel update
 
 REPI auto-compact threshold policy is explicit and testable: `triggerPercent` defaults to `85`, `warningPercent` defaults to `80`, `reserveTokens` defaults to `16384`, and `keepRecentTokens` defaults to `36000` in `~/.repi/agent/settings.json`. Runtime compaction uses `compactionTriggerTokens = min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)`, so large-context models compact proactively while small-context models still keep a hard response/tool budget.

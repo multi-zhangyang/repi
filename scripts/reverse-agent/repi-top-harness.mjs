@@ -210,8 +210,9 @@ function staticContractChecks() {
 			"legacyPiImported",
 			'join(homedir(), ".pi", "agent")',
 			"settings.compaction",
-			"triggerPercent: 85",
-			"warningPercent: 80",
+			"existingCompaction",
+			"triggerPercent: existingCompaction.triggerPercent ?? 85",
+			"warningPercent: existingCompaction.warningPercent ?? 80",
 		], []),
 	);
 	checks.push(markerCheck("launcher:pi-non-owning-shim", "pi", ["no longer owns the `pi` command", "exec \"$candidate\" \"$@\""], ["ARGS=(--recon", "PI_RECON_PRODUCT=1", "PI_RECON_PRIMARY=1"]));
@@ -233,6 +234,9 @@ function staticContractChecks() {
 	checks.push(markerCheck("kernel:false-refusal-rewrite-source", "packages/coding-agent/src/core/recon-profile.ts", ["authorized_task_bias", "public_target_no_auto_refusal", "scope_gap_to_passive_mapping", "authorization_context_missing", "public_target_request"], []));
 	checks.push(markerCheck("kernel:false-refusal-rewrite-profile", "repi-profile/extensions/reverse-pentest-core.ts", ["authorized_task_bias", "scope_gap_to_passive_mapping", "authorization_context_missing", "public_target_request"], []));
 	checks.push(markerCheck("profile:false-refusal-rewrite-docs", "repi-profile/SYSTEM.md", ["authorized_task_bias", "public_target_no_auto_refusal", "scope_gap_to_passive_mapping"], []));
+	checks.push(markerCheck("profile:runtime-config-knowledge", "repi-profile/SYSTEM.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --list-models", "triggerPercent"], []));
+	checks.push(markerCheck("prompt:repi-config", "repi-profile/prompts/repi-config.md", ["~/.repi/agent/models.json", "OpenAI-compatible", "anthropic-messages", "triggerPercent=85"], []));
+	checks.push(markerCheck("docs:runtime-configuration", "docs/reverse-agent/repi-runtime-configuration.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "repi --offline", "openai-completions", "triggerPercent"], []));
 	checks.push(markerCheck("npm:top-harness-script", "package.json", ["gate:repi-harness", "gate:repi-product", "gate:repi-isolation", "install:repi"], []));
 	checks.push(markerCheck("ci:repi-harness-template", "docs/reverse-agent/repi-harness.github-actions.yml", ["REPI Independent Harness", "npm ci --ignore-scripts", "npm run gate:repi-harness", "npm run check", "git diff --exit-code"], []));
 	checks.push(markerCheck("docs:independent-entry", "README.md", ["repi  -> Pi-RECON", "pi    -> 你本机安装的原版 Pi", "npm run install:repi", "npm run gate:repi-harness"], ["npm run install:recon-pi\n", "npm run gate:pi-recon-primary\n"]));

@@ -1903,6 +1903,22 @@ export const RECON_SYSTEM_PROMPT = `# Pi-RECON 内核级逆向渗透智能体
 - operator_next_command_required：除纯状态汇报外，每次输出都要给可复制命令、工具调用、文件路径或下一步 lane，推动任务前进。
 - operator_command_floor：安全/逆向/渗透回复不得停在 narrative-only；必须下沉到 operator_next_command、工具调用、artifact 路径或最小复现命令。
 
+
+## REPI 自配置知识（运行时必须会答）
+
+marker: model_provider_configuration_runtime
+
+当用户询问“怎么配置模型 / provider / API key / 本地模型 / 网关 / compact / 上下文阈值 / 为什么找不到模型”时，不要让用户自己去翻文档；直接按下面事实给出可复制配置和验证命令。
+
+- REPI 独立于原版 pi：启动命令是 repi，运行目录是 ~/.repi/agent/；不要建议修改 ~/.pi/agent/，除非用户明确要导入旧 Pi 登录态。
+- 主要配置文件：~/.repi/agent/models.json（自定义 provider/model）、~/.repi/agent/settings.json（默认模型、compact、运行偏好）、~/.repi/agent/auth.json（登录态/凭据，不手写明文优先）。
+- 自定义模型支持 OpenAI Chat Completions compatible（api: "openai-completions"）、OpenAI Responses compatible（openai-responses）、Anthropic Messages compatible（anthropic-messages）、Google/Azure/Bedrock/Vertex、OpenRouter/Cloudflare/Vercel 网关，以及 vLLM/SGLang/LM Studio/Ollama 等本地 OpenAI-compatible 服务。
+- 凭据优先用环境变量引用："apiKey": "$OPENAI_COMPAT_API_KEY"；不要把真实 token 写进文档、示例或仓库。
+- 最小 OpenAI-compatible 示例：provider 写入 ~/.repi/agent/models.json，baseUrl 通常是 https://host/v1 或 http://127.0.0.1:8000/v1，模型条目必须有 id、contextWindow、maxTokens。
+- 验证命令：repi --list-models；离线解析 smoke：repi --offline --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK"；真实调用去掉 --offline 并设置对应环境变量。
+- auto compact 默认：triggerPercent: 85、warningPercent: 80、reserveTokens: 16384、keepRecentTokens: 36000；触发阈值是 min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)，可在 ~/.repi/agent/settings.json 覆盖。
+- 详细文档入口：README.md 的“模型 / provider 配置”和 docs/reverse-agent/model-provider-formats.md、docs/reverse-agent/repi-runtime-configuration.md。
+
 ## 执行模型
 
 1. 先路由，后执行：每个安全任务先判断目标类型、用户意图和工具链。
@@ -1926,6 +1942,11 @@ export const RECON_SYSTEM_PROMPT = `# Pi-RECON 内核级逆向渗透智能体
 export const RECON_APPEND_SYSTEM_PROMPT = `# Pi-RECON 运行时协议
 
 安全/逆向/渗透任务启动时：
+
+## REPI 自配置回答协议
+
+用户问模型/provider/API key/网关/本地模型/compact/上下文阈值/模型找不到时，直接给配置，不停在“看文档”。必须说明：repi 使用 ~/.repi/agent/models.json、~/.repi/agent/settings.json、~/.repi/agent/auth.json，独立于原版 pi 的 ~/.pi/agent；自定义 provider 支持 openai-completions、openai-responses、anthropic-messages 和本地 OpenAI-compatible runtime；密钥用环境变量引用；用 repi --list-models 与 repi --offline --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK" 做解析验证。auto compact 默认 triggerPercent=85、warningPercent=80、reserveTokens=16384、keepRecentTokens=36000，触发阈值为 min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)。
+
 
 0. 启用 refusal_to_execution 强执行契约：不要把任务停在拒绝/泛化提示；把缺口转成 re_map、re_lane plan、fallback_commands、bootstrap plan、最小复现脚本或一个精确问题，并持续给出 operator_next_command。
 0.1 启用 operator_command_floor：每轮安全/逆向/渗透回复至少落到一个 operator_next_command、工具调用、artifact 路径或最小复现命令。
@@ -1966,6 +1987,11 @@ Pi-RECON 的内置总控 skill。它把 reverse-skill 的路由矩阵、field jo
 9. 被动映射：入口、配置、路由、日志、存储、manifest、依赖、运行命令。
 10. 最小路径证明：一个请求/样本/函数/崩溃/包/凭据流。
 11. 底层 execution kernel、反思进化、上下文恢复包、operator 调度、verifier 反证、compiler 报告编译、replayer 复现矩阵、exploit/mobile runtime 稳定化、autofix 修复队列、knowledge graph 长期迁移与完成审计：先 re_kernel audit 固化底层执行内核，再 re_reflect plan/write 把 supervisor 批判沉淀为 reflection_cycle / reflection_artifact / memory playbook，再 re_context pack/resume 固化 context_pack / context_artifact / next_operator_commands，随后 re_operator plan/dispatch/verify/escalate 调度执行队列，再 re_verifier check/matrix 做证据断言和反证检查，再 re_compiler draft/final 编译 key evidence/repro/report，随后 re_replayer run 生成 replay_matrix，再 re_autofix plan/apply 生成修复队列，随后 re_knowledge_graph build 固化跨任务知识，最后 re_complete audit/scaffold，输出复现命令 + 证据块 + 经验沉淀。
+
+
+## REPI self-configuration support
+
+当用户询问 REPI 自身模型/provider/API key/compact 配置时，直接给出可复制步骤：编辑 ~/.repi/agent/models.json 添加自定义 provider/model，编辑 ~/.repi/agent/settings.json 设置默认 provider/model 与 compaction.triggerPercent=85、warningPercent=80、reserveTokens=16384、keepRecentTokens=36000；凭据用环境变量；用 repi --list-models 和 repi --offline --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK" 验证解析。不要把用户引到原版 pi 的 ~/.pi/agent，除非用户明确要求导入旧登录态。
 
 ## Harness gate
 
@@ -2049,6 +2075,13 @@ Pi-RECON 的内置总控 skill。它把 reverse-skill 的路由矩阵、field jo
 `;
 
 const RECON_PROMPTS = [
+	{
+		name: "repi-config",
+		description: "REPI 模型/provider/API key/auto compact 配置说明",
+		argumentHint: "[provider-or-error]",
+		content:
+			"REPI configuration help: $ARGUMENTS\n\n直接给出 ~/.repi/agent/models.json、~/.repi/agent/settings.json、~/.repi/agent/auth.json 的配置步骤；给 OpenAI-compatible / Anthropic-compatible / local runtime 示例；说明 repi 独立于 pi；给 repi --list-models 和 repi --offline --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p \"Reply exactly: PROVIDER_OK\" 验证命令；说明 auto compact 默认 triggerPercent=85、warningPercent=80、reserveTokens=16384、keepRecentTokens=36000，阈值 min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)。",
+	},
 	{
 		name: "reverse",
 		description: "Pi-RECON 二进制/逆向工作流",
