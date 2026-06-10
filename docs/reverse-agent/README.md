@@ -587,6 +587,14 @@ npm run gate:worker-child-session
 
 它验证 `WorkerChildSessionRuntimeBatchV1`：child worker 必须通过 `repi --recon` 进入独立 `isolatedHome` / `.repi` profile，provider 配置只能引用环境变量，不能把真实 key 写入 artifact；默认不导入 `.pi` auth，不开启 update/telemetry；每个 child session 需要 transcript/stdout/stderr hash、toolCallDigest、timeout/cancel、retryBudget、pool bridge 和 `artifact_handoff → claim → validation → challenge → resolution` claim ledger。负例覆盖 `pi` 命令污染、共享 `.pi` home、secret allowlist、literal api key、transcript hash drift、timeout 未 cancel、exhausted 还 running、缺 pool bridge 和 claim 缺 validation。
 
+Structured claim merge contract 约束最终 claim promotion：
+
+```bash
+npm run gate:structured-claim-merge
+```
+
+它验证 `StructuredClaimMergeV1`：worker claim 不能靠文本摘要升级为 final pass，必须有 artifact sha256、JSON query、verifier pass、resolved adversary challenge、resolved conflict table、winner evidence 和 loser downgrade。`final_pass_requires_json_query`、`unresolved_adversary_challenge_blocks_final`、unresolved conflict、weak/gap claim 被 promoted、JSON query mismatch、missing winner evidence 都会阻断最终发布。
+
 `scripts/reverse-agent/autonomous-runtime-contracts.mjs . --strict` 验证 autonomous runtime strict fixture：subagent manifest、parallel shard state、compact resume transition、repair budget 与 runtime claim promotion gate。`scripts/reverse-agent/autonomous-contracts.mjs . --strict` 会把该 gate 纳入总控制合同，并继续聚合 `ReconParallelPlanV1`、`ResumeContractV2`、`FailureLedgerEventV1/RepairQueueItemV1`、`RoleContractV1/ClaimLedgerEventV1`。常用入口：
 
 ```bash

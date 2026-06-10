@@ -1329,6 +1329,119 @@ function verifyWorkerChildSessionRuntimeBatch(batch: WorkerChildSessionRuntimeBa
 	return { ok: errors.length === 0, errors: uniqueNonEmpty(errors, 80) };
 }
 
+type StructuredClaimArtifactRefV1 = {
+	artifactId: string;
+	path: string;
+	sha256: string;
+	jsonQuery: string;
+	op: "==" | "contains" | "includes_all";
+	expected: unknown;
+	verifierPass: boolean;
+};
+
+type StructuredClaimRowV1 = {
+	claimId: string;
+	workerId: string;
+	mergeKey: string;
+	status: "proven" | "gap" | "contradicted" | "pending";
+	statement: string;
+	artifactRefs: StructuredClaimArtifactRefV1[];
+	challenges: {
+		challengeId: string;
+		status: "open" | "resolved";
+		resolution?: string;
+	}[];
+};
+
+type StructuredClaimMergeV1 = {
+	kind: "StructuredClaimMergeV1";
+	schemaVersion: 1;
+	mergeId: string;
+	sourcePoolId: string;
+	target?: string;
+	claimRows: StructuredClaimRowV1[];
+	conflictTable: {
+		conflictId: string;
+		claimIds: string[];
+		topic: string;
+		status: "resolved" | "unresolved";
+		winnerClaimId?: string;
+		winningEvidenceRefs: string[];
+		downgradeLosers: string[];
+		resolutionReason?: string;
+	}[];
+	promotionGate: {
+		mode: "strict_final_claim_promotion";
+		requiredStatuses: ["proven"];
+		finalClaims: {
+			claimId: string;
+			promotion: "final_pass";
+			reportSection: string;
+			verifierPass: boolean;
+			artifactRefs: StructuredClaimArtifactRefV1[];
+		}[];
+		blockedClaims: {
+			claimId: string;
+			reason: string;
+		}[];
+		policies: string[];
+	};
+};
+
+function claimPromotionEvidenceContract(): string[] {
+	return [
+		"artifact_sha256_required",
+		"final_pass_requires_json_query",
+		"final_pass_requires_verifier_pass",
+		"unresolved_adversary_challenge_blocks_final",
+		"unresolved_conflict_blocks_final",
+		"conflict_loser_must_be_downgraded",
+	];
+}
+
+function verifyStructuredClaimMergePromotion(merge: StructuredClaimMergeV1): { ok: boolean; errors: string[] } {
+	const errors: string[] = [];
+	const claims = new Map(merge.claimRows.map((claim) => [claim.claimId, claim]));
+	const conflictsByClaim = new Map<string, StructuredClaimMergeV1["conflictTable"]>();
+	for (const conflict of merge.conflictTable) {
+		if (conflict.status !== "resolved") errors.push(`unresolved_conflict:${conflict.conflictId}`);
+		if (!conflict.winnerClaimId) errors.push(`missing_conflict_winner:${conflict.conflictId}`);
+		if (conflict.winningEvidenceRefs.length === 0) errors.push(`missing_winning_evidence:${conflict.conflictId}`);
+		for (const claimId of conflict.claimIds) {
+			const rows = conflictsByClaim.get(claimId) ?? [];
+			rows.push(conflict);
+			conflictsByClaim.set(claimId, rows);
+		}
+		for (const loser of conflict.claimIds.filter((claimId) => claimId !== conflict.winnerClaimId)) {
+			if (!conflict.downgradeLosers.includes(loser)) errors.push(`conflict_loser_not_downgraded:${loser}`);
+		}
+	}
+	for (const claim of merge.claimRows) {
+		for (const ref of claim.artifactRefs) {
+			if (!ref.sha256) errors.push(`artifact_sha256_required:${claim.claimId}:${ref.artifactId}`);
+			if (!ref.jsonQuery) errors.push(`final_pass_requires_json_query:${claim.claimId}:${ref.artifactId}`);
+		}
+		for (const challenge of claim.challenges) {
+			if (challenge.status !== "resolved") errors.push(`unresolved_adversary_challenge_blocks_final:${claim.claimId}`);
+		}
+	}
+	for (const finalClaim of merge.promotionGate.finalClaims) {
+		const claim = claims.get(finalClaim.claimId);
+		if (!claim) {
+			errors.push(`final_claim_missing:${finalClaim.claimId}`);
+			continue;
+		}
+		if (claim.status !== "proven") errors.push(`final_pass_claim_not_proven:${finalClaim.claimId}`);
+		if (!finalClaim.verifierPass) errors.push(`final_pass_without_verifier_pass:${finalClaim.claimId}`);
+		if (finalClaim.artifactRefs.some((ref) => !ref.jsonQuery)) errors.push(`final_pass_requires_json_query:${finalClaim.claimId}`);
+		for (const conflict of conflictsByClaim.get(finalClaim.claimId) ?? []) {
+			if (conflict.status !== "resolved") errors.push(`unresolved_conflict_blocks_final:${finalClaim.claimId}`);
+			if (conflict.winnerClaimId !== finalClaim.claimId) errors.push(`final_pass_lost_conflict:${finalClaim.claimId}`);
+		}
+	}
+	return { ok: errors.length === 0, errors: uniqueNonEmpty(errors, 80) };
+}
+
 type ReconParallelPlanWorkerV1 = {
 	id: string;
 	role: string;

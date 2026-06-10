@@ -284,6 +284,8 @@ repi /identity "AD kerberos ldap bloodhound"
 
 Worker runtime hard-eval now has two layers: `WorkerRuntimePoolV1` (`npm run gate:worker-runtime-pool`) validates concurrency/resource/timeout/retry/claim-aware merge semantics, while `WorkerChildSessionRuntimeBatchV1` (`npm run gate:worker-child-session`) validates the optional independent child-session/provider runtime contract. Child sessions must launch through `repi --recon` with an isolated `.repi` home, provider credentials as env refs, update/telemetry disabled, transcript/stdout/stderr hashes, timeout/cancel, retryBudget, pool bridge, and claim ledger validation.
 
+Structured claim merge is the final-promotion layer: `StructuredClaimMergeV1` (`npm run gate:structured-claim-merge`) requires final pass claims to bind artifact sha256, JSON query, verifier pass, resolved adversary challenge, resolved conflict table, winner evidence, and loser downgrade. This prevents worker text summaries or orchestration success from becoming final claims without evidence.
+
 ## Supervisor critic
 
 `/re-supervisor review|show|repair [target]` / `re_supervisor` 消费 `delegation_plan` / `delegation_artifact` 与最新 `swarm_artifact`，输出 `supervisor_review` 与 `supervisor_artifact`。它对 `worker_packets` 和 swarm runtime 做 score/verdict/conflicts/evidence_gaps/repair_actions 评估，生成 `swarm_artifact`、`conflict_matrix`、`repair_queue`、`commander_merge_queue`、`commander_merge_budget`、`worker_scoreboard`、`priority_queue`、`next_supervisor_command`；`commander_merge_queue` 将 `worker_results` / `blocked` / `merge_digest` 推入 `re_context pack`、`re_operator dispatch`、`re_proof_loop run`，并写出 operator 可消费的 `commander_runtime_policy`，闭合 `supervisor_review_ready`。
