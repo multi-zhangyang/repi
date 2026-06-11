@@ -109,6 +109,7 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `scripts/reverse-agent/tool-call-trace-ledger-gate.mjs` | ToolCallTraceLedgerV1 hard-eval：触发真实 REPI `tool_call` / `tool_result` hook，验证 append-only tool trace、输入/输出 hash、脱敏预览、replay hint、prior-call 链接和 hash-chain 负例；对应 `npm run gate:tool-call-trace-ledger` |
 | `scripts/reverse-agent/parallel-provider-worker-matrix-gate.mjs` | Parallel provider worker matrix hard-eval：并发启动多个真实 `repi --provider ...` child worker，验证 OpenAI/Anthropic pass、provider failure repair、timeout/cancel、claim-aware provider worker merge、failure/repair writeback 和 secret redaction；对应 `npm run gate:parallel-provider-worker-matrix` |
 | `scripts/reverse-agent/remote-provider-longrun-gate.mjs` | Remote provider long-run opt-in hard-eval：默认无密钥 skip/pass；显式 `REPI_REMOTE_PROVIDER_LIVE=1` 后真实运行远程 OpenAI/Anthropic-compatible provider 多轮长跑，验证 timeout、session/profile 隔离、env-ref-only、脱敏和 failure/repair writeback；对应 `npm run gate:remote-provider-longrun` |
+| `scripts/reverse-agent/provider-backed-dogfood-gate.mjs` | Provider-backed dogfood opt-in release gate：默认无密钥 skip/pass；显式 `REPI_PROVIDER_BACKED_DOGFOOD_LIVE=1` 后运行 `agent-dogfood/parallel-run.mjs` 多 worker + synthesizer，验证非 plan-only、真实模型/工具调用、subagent manifest、runtime claim ledger、non-mock runtime、parallel overlap 和 orchestration/platform split；对应 `npm run gate:provider-backed-dogfood` |
 | `pi` | 非拥有型兼容 shim；不会启动 REPI，只会转交给 PATH 中的原版 Pi，找不到则提示使用 `repi` |
 | `repi` | REPI 独立产品入口，默认使用 `~/.repi/agent`；源码 wrapper 和 npm/bin 直启都会由 CLI bootstrap 自动启用 `--recon` 隔离参数 |
 | `scripts/reverse-agent/install-repi.sh` | 安装 `/usr/local/bin/repi`，初始化 `~/.repi/agent`，不会覆盖/删除普通 `pi` |
@@ -687,6 +688,8 @@ Remote provider long-run contract 约束“真实远程 provider 回归必须可
 ```bash
 npm run gate:remote-provider-longrun
 ```
+
+`ProviderBackedDogfoodReleaseGateV1` 与 `gate:provider-backed-dogfood` 用同样的 opt-in 模式保护 release dogfood：默认无 `REPI_PROVIDER_BACKED_DOGFOOD_LIVE=1` 时 skipped/pass；显式开启后读取 `REPI_PROVIDER_BACKED_DOGFOOD_PROVIDER`、`REPI_PROVIDER_BACKED_DOGFOOD_MODEL`、`REPI_PROVIDER_BACKED_DOGFOOD_ROLES`，运行 provider-backed `agent-dogfood/parallel-run.mjs`，要求至少两个 worker、synthesizer、真实 model/tool calls、subagent runtime manifests、runtime claim ledger、non-mock runtime、parallel overlap，且不能把 `agent-dogfood-plan-only` artifact promoted 成 provider-backed 结果。负例覆盖 plan-only promoted、single worker、missing model calls、missing synthesizer、missing claim ledger、non-mock false 和 secret leak。
 
 默认无 `REPI_REMOTE_PROVIDER_LIVE=1` 时该 gate 输出 skipped/pass，不需要任何远程密钥。显式开启 live 后，配置：
 

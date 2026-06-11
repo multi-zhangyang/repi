@@ -358,6 +358,9 @@ function staticContractChecks() {
 	checks.push(markerCheck("runtime:tool-call-trace-ledger-fixture", "fixtures/reverse-agent/tool-call-trace-ledger.fixture.json", ["repi-tool-call-trace-ledger-fixture", "negative:tool-trace-secret-leak", "negative:tool-trace-missing-replay"], []));
 	checks.push(markerCheck("parallel:provider-worker-matrix-hard-eval", "scripts/reverse-agent/parallel-provider-worker-matrix-gate.mjs", ["repi-parallel-provider-worker-matrix-gate", "ParallelProviderWorkerMatrixV1", "runtime:parallel-provider-worker-concurrency", "runtime:parallel-provider-worker-timeout-cancel", "negative:parallel-worker-missing-claim-merge"], []));
 	checks.push(markerCheck("provider:remote-longrun-optional-live", "scripts/reverse-agent/remote-provider-longrun-gate.mjs", ["repi-remote-provider-longrun-gate", "RemoteProviderLongRunV1", "runtime:remote-provider-longrun-skipped", "runtime:remote-provider-longrun-attempts", "negative:remote-provider-live-missing-marker"], []));
+	checks.push(markerCheck("provider:provider-backed-dogfood-optional-live", "scripts/reverse-agent/provider-backed-dogfood-gate.mjs", ["ProviderBackedDogfoodReleaseGateV1", "runtime:provider-backed-dogfood-skipped", "validateProviderBackedDogfood", "negative:dogfood-plan-only-promoted", "negative:dogfood-missing-model-calls"], []));
+	checks.push(markerCheck("provider:provider-backed-dogfood-schema", "schemas/reverse-agent/provider-backed-dogfood.schema.json", ["ProviderBackedDogfoodReleaseGateV1", "planOnlyNotPromoted", "providerBacked", "multiWorker", "runtimeClaimLedgerCaptured"], []));
+	checks.push(markerCheck("provider:provider-backed-dogfood-fixture", "fixtures/reverse-agent/provider-backed-dogfood.fixture.json", ["repi-provider-backed-dogfood-fixture", "negative:dogfood-plan-only-promoted", "negative:dogfood-missing-model-calls", "negative:dogfood-nonmock-false"], []));
 	checks.push(markerCheck("claims:runtime-claim-ledger-live-re-swarm", "scripts/reverse-agent/gate-runtime-claim-ledger.mjs", ["runAgentDogfoodLiveProbe", "--write-plan-ledger", "loadedNativeRuntimeProbe", "runReSwarmLiveProbe", "runtime:re-swarm-claim-ledger-live-probe-exit", "reSwarmLiveProbeProvidesDefaultCoverage", "runCompoundFrontierLiveProbe", "runtimeLedgerQuality", "--no-live-re-swarm"], []));
 	checks.push(markerCheck("claims:runtime-ledger-quality", "scripts/reverse-agent/runtime-ledger-quality-gate.mjs", ["RuntimeLedgerQualityGateV1", "validateSourceQuality", "runtimeLedgerQuality", "artifactDigests", "strictValidator", "negative:runtime-ledger-missing-event-type-count"], []));
 	checks.push(markerCheck("claims:runtime-ledger-quality-schema", "schemas/reverse-agent/runtime-ledger-quality.schema.json", ["RuntimeLedgerQualityGateV1", "requireArtifactSha256", "requireStrictValidator", "eventTypeCounts", "artifactDigests"], []));
@@ -566,6 +569,8 @@ function childGateChecks() {
 		["gate:tool-call-trace-ledger", ["scripts/reverse-agent/tool-call-trace-ledger-gate.mjs", root, "--strict"]],
 		["gate:parallel-provider-worker-matrix", ["scripts/reverse-agent/parallel-provider-worker-matrix-gate.mjs", root, "--strict"]],
 		["gate:remote-provider-longrun", ["scripts/reverse-agent/remote-provider-longrun-gate.mjs", root, "--strict"]],
+		// child:gate:provider-backed-dogfood
+		["gate:provider-backed-dogfood", ["scripts/reverse-agent/provider-backed-dogfood-gate.mjs", root, "--strict"]],
 		["gate:structured-claim-merge", ["scripts/reverse-agent/structured-claim-merge-gate.mjs", root, "--strict"]],
 		["gate:runtime-claim-ledger", ["scripts/reverse-agent/gate-runtime-claim-ledger.mjs", root, "--strict"]],
 		// child:gate:runtime-ledger-quality

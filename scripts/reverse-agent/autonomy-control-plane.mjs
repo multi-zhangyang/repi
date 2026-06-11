@@ -517,6 +517,37 @@ const REQUIREMENTS = [
 				markers: ["gate:remote-provider-longrun", "remote-provider-longrun-gate.mjs"],
 			},
 			{
+				id: "provider_backed_dogfood_gate",
+				description: "ProviderBackedDogfoodReleaseGateV1 把 provider-backed agent-dogfood 多 worker 真执行做成 opt-in release quality gate，默认无密钥 skip/pass，live 时阻断 plan-only promoted、单 worker、缺模型调用、缺 synthesizer、缺 runtime claim ledger、non-mock false 和 secret leak。",
+				files: ["scripts/reverse-agent/provider-backed-dogfood-gate.mjs"],
+				markers: [
+					"ProviderBackedDogfoodReleaseGateV1",
+					"runtime:provider-backed-dogfood-skipped",
+					"validateProviderBackedDogfood",
+					"negative:dogfood-plan-only-promoted",
+					"negative:dogfood-missing-model-calls",
+					"negative:dogfood-nonmock-false",
+				],
+			},
+			{
+				id: "provider_backed_dogfood_schema",
+				description: "ProviderBackedDogfoodReleaseGateV1 schema 固化非 plan-only、provider-backed、多 worker、synthesizer、model/tool、manifest、claim ledger、non-mock 和 overlap 字段。",
+				files: ["schemas/reverse-agent/provider-backed-dogfood.schema.json"],
+				markers: ["ProviderBackedDogfoodReleaseGateV1", "planOnlyNotPromoted", "providerBacked", "multiWorker", "runtimeClaimLedgerCaptured"],
+			},
+			{
+				id: "provider_backed_dogfood_fixture",
+				description: "Provider-backed dogfood fixture 覆盖 plan-only promoted、single worker、missing model calls、missing synthesizer、missing claim ledger、non-mock false 和 secret leak 负例。",
+				files: ["fixtures/reverse-agent/provider-backed-dogfood.fixture.json"],
+				markers: ["repi-provider-backed-dogfood-fixture", "negative:dogfood-plan-only-promoted", "negative:dogfood-missing-model-calls", "negative:dogfood-nonmock-false"],
+			},
+			{
+				id: "provider_backed_dogfood_npm_gate",
+				description: "package 暴露 gate:provider-backed-dogfood；CI 默认不需要真实 provider secret，live 多 worker dogfood 必须显式 opt-in。",
+				files: ["package.json"],
+				markers: ["gate:provider-backed-dogfood", "provider-backed-dogfood-gate.mjs"],
+			},
+			{
 				id: "tool_call_trace_ledger_gate",
 				description: "ToolCallTraceLedgerV1 给 tool_call/tool_result 建 append-only tool trace，保留输入/输出 hash、脱敏预览、replay hint 和 hash-chain。",
 				files: ["scripts/reverse-agent/tool-call-trace-ledger-gate.mjs", "packages/coding-agent/src/core/recon-profile.ts"],
@@ -1512,7 +1543,7 @@ const REQUIREMENTS = [
 			},
 		],
 		hardeningNeeded: [
-			"gate:runtime-claim-ledger 已补 agent-dogfood plan-only native ledger、bounded reSwarmLiveProbe、compound-frontier native/use-latest ledger 和 runtimeLedgerQuality；RuntimeLedgerQualityGateV1 已把 artifact sha256/event type count/tip hash/hash-chain/strict validator 提升为独立质量门禁；后续继续把 provider-backed agent-dogfood 多 worker 真执行作为 release 前 live gate 扩大覆盖。",
+			"gate:runtime-claim-ledger 已补 agent-dogfood plan-only native ledger、bounded reSwarmLiveProbe、compound-frontier native/use-latest ledger 和 runtimeLedgerQuality；RuntimeLedgerQualityGateV1 已把 artifact sha256/event type count/tip hash/hash-chain/strict validator 提升为独立质量门禁；ProviderBackedDogfoodReleaseGateV1 已把 provider-backed agent-dogfood 多 worker 真执行做成 opt-in release quality gate，后续继续扩大 live provider 样本与更长链路回归。",
 			"StructuredClaimMergeV1 已接入 bounded re_swarm live gate，collision_matrix 的 winner/loser arbitration 已进入 live conflictTable；后续继续扩大真实 multi-worker 冲突样本。",
 			"synthesizer 输出继续扩展 conflict table 到更多 live runtime：claimIds、冲突主题、胜出证据、降级原因和 loser downgrade。",
 		],
