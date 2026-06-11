@@ -267,17 +267,20 @@ hash -r
 repi --import-pi-auth --offline --list-models
 ```
 
-这个动作只会把 `~/.pi/agent/auth.json` / `models.json` 复制到 `~/.repi/agent`，不会反向写 `~/.pi/agent`。如果之前安装过旧的全局 REPI profile，可以清理旧污染：
+这个动作只会把 `~/.pi/agent/auth.json` / `models.json` 复制到 `~/.repi/agent`，不会反向写 `~/.pi/agent`。如果之前安装过旧的全局 REPI profile，先做 dry-run 审计，再显式 apply 清理旧污染：
 
 ```bash
-scripts/reverse-agent/clean-global-repi-profile.sh
+npm run clean:repi-legacy-profile          # dry-run，不改 ~/.pi/agent
+npm run clean:repi-legacy-profile:apply    # 只移动带 REPI/reverse-pentest marker 的旧文件
 ```
 
-清理脚本只会把旧的 REPI 文件型 profile 移到备份目录，例如：
+清理脚本只会把命中的旧 REPI 文件型 profile 移到备份目录，例如：
 
 ```text
 ~/.pi/agent/repi-legacy-backup.<timestamp>/
 ```
+
+`~/.pi/agent/tools/` 可能包含用户或 upstream Pi 自定义工具，默认不会移动；确认确实是旧 REPI tools 污染后再执行 `npm run clean:repi-legacy-profile:force-tools`。
 
 旧脚本 `scripts/reverse-agent/install-global-profile.sh` 仅作为兼容入口保留，默认也写入 `~/.repi/agent`，不再默认写入 `~/.pi/agent`。
 
@@ -919,8 +922,8 @@ scripts/reverse-agent/
   audit-parallel-plan.mjs
   install-repi.sh
   init-repi-profile.mjs       # legacy script entry; CLI has built-in initializer too
-  clean-global-repi-profile.sh
-  install-global-profile.sh   # legacy compatibility; defaults to ~/.repi/agent
+  clean-global-repi-profile.sh  # dry-run by default; --apply required; tools need --force-tools
+  install-global-profile.sh     # legacy compatibility; defaults to ~/.repi/agent
   refresh-tool-index.sh
   verify-profile.mjs
 ```
@@ -978,7 +981,8 @@ node --check repi-profile/extensions/reverse-pentest-core.ts  # legacy mirror; r
 
 ```bash
 scripts/reverse-agent/install-repi.sh /root/pi-diy/pi
-scripts/reverse-agent/clean-global-repi-profile.sh
+npm run clean:repi-legacy-profile        # dry-run first
+npm run clean:repi-legacy-profile:apply  # then move marked legacy REPI files
 repi --offline --help
 repi --offline --list-models
 ```

@@ -130,7 +130,7 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `scripts/reverse-agent/assert-repi-product.mjs` | 验证 `repi` 是产品入口、`pi` 未被本仓库声明、repi help 不泄漏 upstream Pi update/pi.dev changelog 文案 |
 | `scripts/reverse-agent/repi-top-harness.mjs` | 顶级独立 harness：临时 HOME/bin 端到端验证安装、命令归属、profile 隔离、update/branding 去 Pi 化和能力 gates |
 | `docs/reverse-agent/repi-harness.github-actions.yml` | CI 自动验收模板：复制到 `.github/workflows/repi-harness.yml` 后，push/PR 显式运行 `gate:repi-product`、`gate:repi-isolation`、`gate:repi-product-surface`、`gate:autonomous-closure-readiness`、`gate:capability-release-bundle`、`gate:release-ci-pipeline`、`gate:release-evidence-index`、`gate:repi-harness`、`npm run check` 和 no-diff 检查；由 `gate:release-ci-pipeline` 审计 |
-| `scripts/reverse-agent/clean-global-repi-profile.sh` | 清理旧版写入 `~/.pi/agent` 的 REPI 文件型 profile，移动到备份目录 |
+| `scripts/reverse-agent/clean-global-repi-profile.sh` | 清理旧版写入 `~/.pi/agent` 的 REPI 文件型 profile；默认 dry-run，`--apply` 才移动带 REPI marker 的文件，`tools/` 需要 `--force-tools` |
 | `scripts/reverse-agent/install-global-profile.sh` | 兼容旧命令名；现在默认写入 `~/.repi/agent` |
 
 
@@ -279,8 +279,10 @@ scripts/reverse-agent/refresh-tool-index.sh /root/pi-diy/pi
 npm run install:repi
 hash -r
 
-# 如以前装过旧全局 profile，清理旧污染到备份目录
-scripts/reverse-agent/clean-global-repi-profile.sh
+# 如以前装过旧全局 profile，先 dry-run，再显式清理旧污染到备份目录
+npm run clean:repi-legacy-profile
+npm run clean:repi-legacy-profile:apply
+# tools/ 只有确认是旧 REPI 污染时才强制移动：npm run clean:repi-legacy-profile:force-tools
 
 # 验证 repi 已经可用，不应再出现 model pattern、API key、collision、Global tools 报错
 npm run gate:repi-harness

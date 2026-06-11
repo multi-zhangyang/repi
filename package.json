@@ -76,6 +76,8 @@
 		"gate:repi-harness": "node scripts/reverse-agent/repi-top-harness.mjs . --strict",
 		"gate:repi-top-harness": "node scripts/reverse-agent/repi-top-harness.mjs . --strict",
 		"clean:repi-legacy-profile": "bash scripts/reverse-agent/clean-global-repi-profile.sh",
+		"clean:repi-legacy-profile:apply": "bash scripts/reverse-agent/clean-global-repi-profile.sh --apply",
+		"clean:repi-legacy-profile:force-tools": "bash scripts/reverse-agent/clean-global-repi-profile.sh --apply --force-tools",
 		"gate:repi-product-surface": "node scripts/reverse-agent/repi-product-surface-audit.mjs . --strict",
 		"gate:artifact-scope-filter": "node scripts/reverse-agent/artifact-scope-filter-gate.mjs . --strict",
 		"gate:latest-artifact-consumer-scope": "node scripts/reverse-agent/latest-artifact-consumer-scope-gate.mjs . --strict",

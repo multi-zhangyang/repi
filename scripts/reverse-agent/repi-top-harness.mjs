@@ -232,7 +232,7 @@ function staticContractChecks() {
 		),
 	);
 	checks.push(markerCheck("installer:legacy-no-takeover", "scripts/reverse-agent/install-recon-pi.sh", ["deprecated", 'exec "$ROOT/scripts/reverse-agent/install-repi.sh'], [/ln\s+-s.*\$ROOT\/pi/, /rm\s+-rf/, /deleted upstream/],));
-	checks.push(markerCheck("installer:repi-legacy-cleaner", "scripts/reverse-agent/clean-global-repi-profile.sh", ["Cleaned global pi REPI file-profile pollution", "repi-legacy-backup", "reverse-pentest"], []));
+	checks.push(markerCheck("installer:repi-legacy-cleaner", "scripts/reverse-agent/clean-global-repi-profile.sh", ["Cleaned global pi REPI file-profile pollution", "repi-legacy-backup", "Default is dry-run", "--apply", "--force-tools", "file_has_marker", "reverse-pentest"], []));
 	checks.push(markerCheck("audit:repi-product-surface", "scripts/reverse-agent/repi-product-surface-audit.mjs", ["REPI product_surface_audit", "PRODUCT_SURFACE_FILES", "compatibilityProtocolMarkers"], []));
 	checks.push(markerCheck("release:binary-archives-repi", "scripts/build-binaries.sh", ["repi-linux-x64.tar.gz", '--outfile "$OUTPUT_DIR/$platform/repi', "repi-$platform.tar.gz", "repi-$platform.zip"], [/\bpi-linux-x64\.tar\.gz/, /--outfile .*\/pi(?:\.exe)?"/, /\bpi-\$platform\.(?:zip|tar\.gz)/]));
 	checks.push(markerCheck("release:local-shims-repi", "scripts/local-release.mjs", ["createRepiShim", '"repi.cmd"', '"repi"', "repi-${platform}.tar.gz"], ["createPiShim", /node_modules\/\.bin\/pi\b/, /\bpi\.cmd\b/, /\bpi-\$\{platform\}\.tar\.gz/]));
@@ -246,7 +246,7 @@ function staticContractChecks() {
 	checks.push(markerCheck("profile:runtime-config-knowledge", "repi-profile/SYSTEM.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --offline --list-models", "triggerPercent"], []));
 	checks.push(markerCheck("prompt:repi-config", "repi-profile/prompts/repi-config.md", ["~/.repi/agent/models.json", "OpenAI-compatible", "anthropic-messages", "triggerPercent=85"], []));
 	checks.push(markerCheck("docs:runtime-configuration", "docs/reverse-agent/repi-runtime-configuration.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "repi --offline", "openai-completions", "triggerPercent"], []));
-	checks.push(markerCheck("npm:top-harness-script", "package.json", ["gate:repi-harness", "gate:repi-product", "gate:repi-isolation", "gate:repi-product-surface", "gate:context-compact", "gate:compact-resume-chain", "gate:compact-resume-ledger-v2", "gate:multi-compact-pressure", "gate:cross-session-resume-live", "gate:cross-session-multi-compact-matrix", "gate:context-runtime-schema", "gate:memory-contract", "gate:memory-utility", "gate:memory-feedback", "gate:memory-feedback-closure", "gate:memory-scope-isolation", "gate:knowledge-scope-isolation", "gate:artifact-scope-filter", "gate:latest-artifact-consumer-scope", "gate:failure-signature-priority", "gate:memory-orchestrator", "gate:memory-deposition", "gate:memory-experience", "gate:memory-quality-ledger", "gate:memory-replay-evaluator", "gate:memory-strategy-capsule", "gate:memory-active-kernel", "gate:memory-maturation-runtime", "gate:memory-ux", "gate:memory-hybrid", "gate:memory-vector", "gate:memory-usefulness", "gate:memory-distiller", "gate:memory-sedimentation", "gate:memory-store", "gate:memory-swarm-writeback", "gate:memory-supervisor", "gate:worker-runtime-pool", "gate:worker-lease-scheduler", "gate:worker-child-session", "gate:provider-runtime-matrix", "gate:provider-failure-injection", "gate:repair-rollback-policy", "gate:worker-provider-repair-rollback-unification", "gate:tool-call-trace-ledger", "gate:parallel-provider-worker-matrix", "gate:remote-provider-longrun", "gate:structured-claim-merge", "gate:live-conflict-arbitration-matrix", "gate:autonomous-hardening-gap-ledger", "gate:autonomous-closure-readiness", "gate:capability-release-bundle", "gate:release-ci-pipeline", "gate:release-evidence-index", "install:repi", "clean:repi-legacy-profile"], ["install:recon-pi", "gate:pi-recon-primary"]));
+	checks.push(markerCheck("npm:top-harness-script", "package.json", ["gate:repi-harness", "gate:repi-product", "gate:repi-isolation", "gate:repi-product-surface", "gate:context-compact", "gate:compact-resume-chain", "gate:compact-resume-ledger-v2", "gate:multi-compact-pressure", "gate:cross-session-resume-live", "gate:cross-session-multi-compact-matrix", "gate:context-runtime-schema", "gate:memory-contract", "gate:memory-utility", "gate:memory-feedback", "gate:memory-feedback-closure", "gate:memory-scope-isolation", "gate:knowledge-scope-isolation", "gate:artifact-scope-filter", "gate:latest-artifact-consumer-scope", "gate:failure-signature-priority", "gate:memory-orchestrator", "gate:memory-deposition", "gate:memory-experience", "gate:memory-quality-ledger", "gate:memory-replay-evaluator", "gate:memory-strategy-capsule", "gate:memory-active-kernel", "gate:memory-maturation-runtime", "gate:memory-ux", "gate:memory-hybrid", "gate:memory-vector", "gate:memory-usefulness", "gate:memory-distiller", "gate:memory-sedimentation", "gate:memory-store", "gate:memory-swarm-writeback", "gate:memory-supervisor", "gate:worker-runtime-pool", "gate:worker-lease-scheduler", "gate:worker-child-session", "gate:provider-runtime-matrix", "gate:provider-failure-injection", "gate:repair-rollback-policy", "gate:worker-provider-repair-rollback-unification", "gate:tool-call-trace-ledger", "gate:parallel-provider-worker-matrix", "gate:remote-provider-longrun", "gate:structured-claim-merge", "gate:live-conflict-arbitration-matrix", "gate:autonomous-hardening-gap-ledger", "gate:autonomous-closure-readiness", "gate:capability-release-bundle", "gate:release-ci-pipeline", "gate:release-evidence-index", "install:repi", "clean:repi-legacy-profile", "clean:repi-legacy-profile:apply", "clean:repi-legacy-profile:force-tools"], ["install:recon-pi", "gate:pi-recon-primary"]));
 	checks.push(markerCheck("memory:v2-runtime-contract", "packages/coding-agent/src/core/recon-profile.ts", ["type MemoryEventV1", "function appendMemoryEvent", "function appendReplayerMemoryEvent", "appendReplayerMemoryEvent(replay, path)", "function appendAutofixMemoryEvent", "appendAutofixMemoryEvent(autofix, path)", "function appendProofLoopMemoryEvent", "appendProofLoopMemoryEvent(proof, path)", "function appendCompletionMemoryEvent", "appendCompletionMemoryEvent(audit", "function searchMemoryEvents", "memory_event_reuse", "events.jsonl", "case-memory.jsonl"], []));
 	checks.push(markerCheck("memory:v2-schema-fixture", "schemas/reverse-agent/memory-event.schema.json", ["MemoryEventV1", "CaseMemoryV1", "MemoryRetrievalReportV1", "confidence"], []));
 	checks.push(markerCheck("memory:utility-hard-eval", "scripts/reverse-agent/memory-utility-gate.mjs", ["repi-memory-utility-gate", "scenario:", "mustSuggestCommands", "mustNotSuggestCommands", "routeMatches"], []));
@@ -462,6 +462,37 @@ function runtimeInstallProbe() {
 	mkdir(cleanerHome);
 	const cleanerNoAgent = run("bash", ["scripts/reverse-agent/clean-global-repi-profile.sh"], { env: { HOME: cleanerHome } });
 	const cleanerCreatedPiAgent = existsSync(join(cleanerHome, ".pi", "agent"));
+
+	const cleanerProbeHome = join(tempRoot, "cleaner-probe-home");
+	const cleanerProbeAgent = join(cleanerProbeHome, ".pi", "agent");
+	mkdir(join(cleanerProbeAgent, "extensions"));
+	mkdir(join(cleanerProbeAgent, "prompts"));
+	mkdir(join(cleanerProbeAgent, "tools"));
+	writeFileSync(join(cleanerProbeAgent, "settings.json"), JSON.stringify({ extensions: ["extensions/reverse-pentest-core.ts", "user-extension.ts"], prompts: ["prompts"], enabledModels: ["stale-openai/vendor/private-model"] }, null, 2));
+	writeFileSync(join(cleanerProbeAgent, "extensions", "reverse-pentest-core.ts"), "// REPI reverse-pentest legacy extension\nexport default {};\n", "utf8");
+	writeFileSync(join(cleanerProbeAgent, "prompts", "websec.md"), "REPI reverse-pentest legacy prompt\n", "utf8");
+	writeFileSync(join(cleanerProbeAgent, "prompts", "personal.md"), "normal pi user prompt\n", "utf8");
+	writeFileSync(join(cleanerProbeAgent, "tools", "tool-index.md"), "# REPI Tool Index\n", "utf8");
+	const cleanerBeforeDryHash = treeHash(cleanerProbeAgent);
+	const cleanerDry = run("bash", ["scripts/reverse-agent/clean-global-repi-profile.sh"], { env: { HOME: cleanerProbeHome } });
+	const cleanerAfterDryHash = treeHash(cleanerProbeAgent);
+	const cleanerDryBackups = readdirSync(cleanerProbeAgent).filter((name) => name.startsWith("repi-legacy-backup."));
+	const cleanerApply = run("bash", ["scripts/reverse-agent/clean-global-repi-profile.sh", "--apply"], { env: { HOME: cleanerProbeHome } });
+	const cleanerBackupsAfterApply = readdirSync(cleanerProbeAgent).filter((name) => name.startsWith("repi-legacy-backup.")).sort();
+	const cleanerBackupAfterApply = cleanerBackupsAfterApply.length ? join(cleanerProbeAgent, cleanerBackupsAfterApply[cleanerBackupsAfterApply.length - 1]) : "";
+	const cleanerSettingsAfterApply = existsSync(join(cleanerProbeAgent, "settings.json")) ? JSON.parse(readFileSync(join(cleanerProbeAgent, "settings.json"), "utf8")) : {};
+	const cleanerApplyMarkerOnly =
+		cleanerApply.code === 0 &&
+		existsSync(join(cleanerBackupAfterApply, "extensions", "reverse-pentest-core.ts")) &&
+		existsSync(join(cleanerBackupAfterApply, "prompts", "websec.md")) &&
+		existsSync(join(cleanerProbeAgent, "prompts", "personal.md")) &&
+		!existsSync(join(cleanerBackupAfterApply, "prompts", "personal.md")) &&
+		!JSON.stringify(cleanerSettingsAfterApply).includes("reverse-pentest-core") &&
+		JSON.stringify(cleanerSettingsAfterApply).includes("user-extension.ts");
+	const cleanerToolsStillOriginal = existsSync(join(cleanerProbeAgent, "tools", "tool-index.md")) && !existsSync(join(cleanerBackupAfterApply, "tools", "tool-index.md"));
+	const cleanerForceTools = run("bash", ["scripts/reverse-agent/clean-global-repi-profile.sh", "--apply", "--force-tools"], { env: { HOME: cleanerProbeHome } });
+	const cleanerBackupsAfterForce = readdirSync(cleanerProbeAgent).filter((name) => name.startsWith("repi-legacy-backup.")).sort();
+	const cleanerToolsMovedWithForce = cleanerBackupsAfterForce.some((name) => existsSync(join(cleanerProbeAgent, name, "tools", "tool-index.md"))) && !existsSync(join(cleanerProbeAgent, "tools", "tool-index.md"));
 	mkdir(fakePiAgent);
 
 	const fakePi = join(installBin, "pi");
@@ -536,6 +567,9 @@ function runtimeInstallProbe() {
 
 	const checks = [];
 	checks.push(resultCheck("runtime:cleaner-no-create-pi-agent", cleanerNoAgent.code === 0 && !cleanerCreatedPiAgent ? "pass" : "fail", { code: cleanerNoAgent.code, stdout: cleanerNoAgent.stdout.trim(), stderr: cleanerNoAgent.stderr.trim(), cleanerCreatedPiAgent }));
+	checks.push(resultCheck("runtime:cleaner-default-dry-run-preserves-pi-profile", cleanerDry.code === 0 && cleanerBeforeDryHash === cleanerAfterDryHash && cleanerDry.combined.includes("DRY-RUN") && cleanerDryBackups.length === 0 ? "pass" : "fail", { code: cleanerDry.code, before: cleanerBeforeDryHash, after: cleanerAfterDryHash, backupCount: cleanerDryBackups.length, stdout: cleanerDry.stdout.slice(0, 1200), stderr: cleanerDry.stderr.slice(-1000) }));
+	checks.push(resultCheck("runtime:cleaner-apply-marker-only", cleanerApplyMarkerOnly ? "pass" : "fail", { code: cleanerApply.code, backups: cleanerBackupsAfterApply, settings: cleanerSettingsAfterApply, stdout: cleanerApply.stdout.slice(0, 1200), stderr: cleanerApply.stderr.slice(-1000) }));
+	checks.push(resultCheck("runtime:cleaner-tools-require-force", cleanerToolsStillOriginal && cleanerForceTools.code === 0 && cleanerToolsMovedWithForce ? "pass" : "fail", { toolsStillAfterApply: cleanerToolsStillOriginal, forceCode: cleanerForceTools.code, movedWithForce: cleanerToolsMovedWithForce, forceStdout: cleanerForceTools.stdout.slice(0, 1200), forceStderr: cleanerForceTools.stderr.slice(-1000) }));
 	checks.push(resultCheck("runtime:install-repi-code", install.code === 0 ? "pass" : "fail", { code: install.code, stderrTail: install.stderr.slice(-2000) }));
 	checks.push(resultCheck("runtime:repi-symlink-created", existsSync(repiPath) ? "pass" : "fail", { repiPath, target: existsSync(repiPath) ? lstatSync(repiPath).isFile() || lstatSync(repiPath).isSymbolicLink() : false }));
 	checks.push(resultCheck("runtime:pi-stub-preserved", piProbe.stdout.includes("UPSTREAM_PI_STUB") ? "pass" : "fail", { stdout: piProbe.stdout.trim(), code: piProbe.code }));

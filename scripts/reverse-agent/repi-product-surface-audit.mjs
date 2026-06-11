@@ -111,7 +111,7 @@ const requiredMarkers = [
 	["packages/coding-agent/test/package-command-paths.test.ts", "rejects `repi update pi` as an upstream pi boundary request"],
 	["repi", "REPI_PRODUCT=1"],
 	["scripts/reverse-agent/install-repi.sh", "Installed REPI launcher"],
-	["scripts/reverse-agent/clean-global-repi-profile.sh", "Cleaned global pi REPI file-profile pollution"],
+	["scripts/reverse-agent/clean-global-repi-profile.sh", "Default is dry-run"],
 	["repi-profile/SYSTEM.md", "~/.repi/agent/recon/evidence"],
 ];
 const missingMarkers = requiredMarkers
