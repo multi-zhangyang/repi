@@ -200,6 +200,50 @@ const CONTROL_CONTRACTS = [
 		runtimeIntegration: "bounded-offline-hard-eval",
 	},
 	{
+		id: "FailureSignaturePriorityGateV1",
+		pillar: "failure_self_repair",
+		title: "failure signature priority proof-loop / knowledge consumer",
+		description: "failure_signature_priority_gate 要证明 runtime failure ledger 与 repair queue 会优先进入 proof-loop 和 knowledge graph：exhausted/repeated signature 先于普通 feedback，缺少 concrete command 的 repair 不算 ready，且按 target scope 隔离。",
+		requiredFields: [
+			"kind",
+			"schemaVersion",
+			"FailureSignaturePriorityGateV1",
+			"requiredGates",
+			"scenarios",
+			"invariants",
+		],
+		nestedRequired: {
+			scenarios: ["id", "inputLedger", "expectedProofLoop", "expectedKnowledgeGraph", "mustNotContain"],
+			inputLedger: ["target", "failureStatuses", "repairQueueCommands"],
+		},
+		enumFields: {
+			requiredGates: [
+				"FailureSignaturePriorityGateV1",
+				"proof_loop_failure_signature_priority",
+				"knowledge_graph_failure_signature_priority",
+				"runtime_failure_ledger_preempts_blind_retry",
+				"repair_queue_ready_command_required",
+				"target_scoped_failure_signature_priority",
+			],
+			"scenarios.id": [
+				"exhausted-failure-preempts-operator-feedback",
+				"repeated-failure-promotes-repair-command",
+				"unrelated-target-failure-does-not-leak",
+				"missing-repair-command-is-not-ready",
+			],
+		},
+		invariants: [
+			"failure_signature_priority_gate",
+			"proof_loop_failure_signature_priority",
+			"knowledge_graph_failure_signature_priority",
+			"runtime_failure_ledger_preempts_blind_retry",
+			"repair_queue_ready_command_required",
+			"target_scoped_failure_signature_priority",
+		],
+		schemaPath: "schemas/reverse-agent/failure-signature-priority.schema.json",
+		runtimeIntegration: "bounded-offline-hard-eval",
+	},
+	{
 		id: "FailureLedgerEventV1",
 		pillar: "failure_self_repair",
 		title: "failure signature + bounded repair ledger",
@@ -996,6 +1040,30 @@ const REQUIREMENTS = [
 				markers: ["repi-latest-artifact-consumer-scope-fixture", "operator-feedback-cross-target-block", "proof-loop-source-cross-target-block", "compiler-claim-gate-cross-target-block"],
 			},
 			{
+				id: "failure_signature_priority_runtime",
+				description: "FailureSignaturePriorityGateV1 把 runtime failure ledger / repair queue 接成 proof-loop 与 knowledge graph 的优先消费者，exhausted/repeated signature 先进入 repair/escalate 路线。",
+				files: ["packages/coding-agent/src/core/recon-profile.ts"],
+				markers: ["failureSignaturePriorityReport", "failureSignaturePriority", "failureSignatureRepairQueue", "failure_signature_priority", "knowledge_graph_failure_signature_priority", "runtimeRepairTargetMatches"],
+			},
+			{
+				id: "failure_signature_priority_gate",
+				description: "FailureSignaturePriorityGateV1 hard-eval 写入 exhausted、repeated、missing-command 和 unrelated-target runtime failure rows，验证 proof-loop/knowledge graph 优先级、sourceArtifacts 与 scope 隔离。",
+				files: ["scripts/reverse-agent/failure-signature-priority-gate.mjs"],
+				markers: ["repi-failure-signature-priority-gate", "FailureSignaturePriorityGateV1", "runtime:proof-loop-failure-priority", "runtime:knowledge-consumes-failure-signature", "runtime:no-unrelated-target-leak"],
+			},
+			{
+				id: "failure_signature_priority_schema",
+				description: "FailureSignaturePriorityGateV1 schema 固化 failure signature priority 的 required gates、scenario 输入和 proof-loop/knowledge 期望。",
+				files: ["schemas/reverse-agent/failure-signature-priority.schema.json"],
+				markers: ["FailureSignaturePriorityGateV1", "FailureSignaturePriorityScenarioV1", "runtime_failure_ledger_preempts_blind_retry", "repair_queue_ready_command_required"],
+			},
+			{
+				id: "failure_signature_priority_fixture",
+				description: "FailureSignaturePriorityGateV1 fixture 覆盖 exhausted 优先、repeated repair、缺命令非 ready、跨 target 不泄漏。",
+				files: ["fixtures/reverse-agent/failure-signature-priority.fixture.json"],
+				markers: ["repi-failure-signature-priority-fixture", "exhausted-failure-preempts-operator-feedback", "repeated-failure-promotes-repair-command", "missing-repair-command-is-not-ready"],
+			},
+			{
 				id: "memory_orchestrator_v6_runtime",
 				description: "Memory Orchestrator V6 把长期记忆从旁路工具提升为强制主循环：任务前召回、注入前 scope 过滤、tool 后写回、compact 前快照、compact 后恢复、最终 supervise。",
 				files: ["packages/coding-agent/src/core/recon-profile.ts", "repi-profile/extensions/reverse-pentest-core.ts"],
@@ -1380,6 +1448,12 @@ const REQUIREMENTS = [
 				description: "plan-only invalid fixture 验证不启动 provider 且输出 failure/repair rows。",
 				files: ["scripts/reverse-agent/audit-parallel-plan.mjs"],
 				markers: ["validatePlanOnlyFailureRepair", "planOnlyFailureRepair", "tmp-invalid-plan.json"],
+			},
+			{
+				id: "failure_signature_priority_npm_gate",
+				description: "package 暴露 gate:failure-signature-priority，供顶级 harness 与 CI 验证 proof-loop/knowledge 对 runtime failure ledger 的优先消费。",
+				files: ["package.json"],
+				markers: ["gate:failure-signature-priority", "failure-signature-priority-gate.mjs"],
 			},
 			{
 				id: "provider_failure_injection_core_contract",
@@ -1855,7 +1929,7 @@ function buildManifest(root) {
 		auditSelf,
 		controlPlaneContractAudit,
 		topAutonomousDefinition: false,
-		topAutonomousDefinitionReason: "核心组织链路、MemoryOrchestratorV6 mandatory memory control loop、MemoryDepositionEngineV7 runtime step event bus、MemoryExperienceEngineV8 经验化沉淀、MemorySkillCapsuleV9 技能胶囊资产化、MemoryDistillPromotionV10 provider 蒸馏提升门、MemoryQualityLedgerV11 质量反馈学习闭环、MemoryReplayEvaluatorV12 A/B replay 因果归因、MemoryStrategyCapsuleV13 可执行战术胶囊、MemoryActiveKernelV14 主动记忆决策内核、MemoryMaturationRuntimeV15 记忆成熟/保鲜闭环、agent-dogfood subagent runtime manifest、AutonomousRuntimeBatchV1 strict fixture/gate、re_swarm → WorkerChildSessionRuntimeBatchV1 → WorkerRuntimePoolV1 live bounded bridge，以及 agent-dogfood / re_swarm / compound runtime claim ledger、ContextPackV2 exact resume marker/negative fixtures/closure gate、CrossSessionResumeLiveV1 跨 session resume/provider continuation gate、CompactResumeLedgerV2 状态机/runtime gate、strict failure/repair fixture、RepairRollbackPolicyV1 baseline/allowlist/regression/rollback gate、ToolCallTraceLedgerV1 append-only tool trace、runtime failure/repair ledger hooks、compound/role retry failure-repair 输出、strict claim release marker、ParallelProviderWorkerMatrixV1 多 worker provider 并发回归、RemoteProviderLongRunV1 可选远程长跑 gate 和 supervisor/compiler/complete final gate 已可用；MultiCompactPressureGateV1 多轮 compact 压力、old contextPath、幂等 replay、scope/artifact drift 负例和 operator/proof-loop writeback 已接入；更深 runtime ledger wiring 仍可继续硬化。",
+		topAutonomousDefinitionReason: "核心组织链路、MemoryOrchestratorV6 mandatory memory control loop、MemoryDepositionEngineV7 runtime step event bus、MemoryExperienceEngineV8 经验化沉淀、MemorySkillCapsuleV9 技能胶囊资产化、MemoryDistillPromotionV10 provider 蒸馏提升门、MemoryQualityLedgerV11 质量反馈学习闭环、MemoryReplayEvaluatorV12 A/B replay 因果归因、MemoryStrategyCapsuleV13 可执行战术胶囊、MemoryActiveKernelV14 主动记忆决策内核、MemoryMaturationRuntimeV15 记忆成熟/保鲜闭环、agent-dogfood subagent runtime manifest、AutonomousRuntimeBatchV1 strict fixture/gate、re_swarm → WorkerChildSessionRuntimeBatchV1 → WorkerRuntimePoolV1 live bounded bridge，以及 agent-dogfood / re_swarm / compound runtime claim ledger、ContextPackV2 exact resume marker/negative fixtures/closure gate、CrossSessionResumeLiveV1 跨 session resume/provider continuation gate、CompactResumeLedgerV2 状态机/runtime gate、strict failure/repair fixture、RepairRollbackPolicyV1 baseline/allowlist/regression/rollback gate、ToolCallTraceLedgerV1 append-only tool trace、runtime failure/repair ledger hooks、compound/role retry failure-repair 输出、strict claim release marker、ParallelProviderWorkerMatrixV1 多 worker provider 并发回归、RemoteProviderLongRunV1 可选远程长跑 gate 和 supervisor/compiler/complete final gate 已可用；MultiCompactPressureGateV1 多轮 compact 压力、old contextPath、幂等 replay、scope/artifact drift 负例和 operator/proof-loop writeback 已接入；FailureSignaturePriorityGateV1 已把 exhausted/repeated runtime failure signature 优先送入 proof-loop/knowledge graph 并验证 target scope；更深 runtime ledger wiring 仍可继续硬化。",
 		pillars,
 		notYetTopAutonomousDefinition: hardeningItems,
 		recommendedNonTestWorkOrder: [

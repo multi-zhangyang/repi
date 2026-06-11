@@ -2907,6 +2907,7 @@ type AutofixArtifact = {
 type ProofLoopStatus = "ready" | "done" | "blocked";
 type ProofLoopPhase =
 	| "compact-resume"
+	| "failure-signature"
 	| "operator-feedback"
 	| "swarm-retry"
 	| "verifier"
@@ -2930,6 +2931,7 @@ type ProofLoopVerdict = "ready" | "partial" | "needs_repair" | "blocked";
 
 type ProofLoopGapSource =
 	| "compact_resume"
+	| "failure_signature"
 	| "operator_feedback"
 	| "verifier"
 	| "compiler"
@@ -2960,6 +2962,8 @@ type ProofLoopArtifact = {
 	evidenceSummary: string[];
 	caseMemoryLanePlan?: CaseMemoryLanePlan;
 	caseMemoryBridge: string[];
+	failureSignaturePriority: string[];
+	failureSignatureRepairQueue: string[];
 	operatorFeedback: string[];
 	operatorFeedbackQueue: string[];
 	swarmRetryQueue: string[];
@@ -4944,6 +4948,8 @@ type KnowledgeGraphArtifact = {
 	commandStrategyHints: string[];
 	dispatcherFeedbackScoreboard: string[];
 	dispatcherRoutingHints: string[];
+	failureSignaturePriority: string[];
+	failureSignatureRepairQueue: string[];
 	compactResumeTelemetry: string[];
 	compactResumeCaseMemory: string[];
 	compactResumeRoutingHints: string[];
@@ -6585,6 +6591,163 @@ function appendFailureRepairLedger(params: { failures: FailureLedgerEventV1[]; r
 	ensureReconStorage();
 	if (params.failures.length) appendText(runtimeFailureLedgerPath(), params.failures.map((item) => JSON.stringify(item)).join("\n") + "\n");
 	if (params.repairs.length) appendText(runtimeRepairQueuePath(), params.repairs.map((item) => JSON.stringify(item)).join("\n") + "\n");
+}
+
+function readRuntimeFailureLedgerRows(): FailureLedgerEventV1[] {
+	return readText(runtimeFailureLedgerPath())
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.map((line) => {
+			try {
+				const row = JSON.parse(line) as FailureLedgerEventV1;
+				return row?.signature && row?.id ? row : undefined;
+			} catch {
+				return undefined;
+			}
+		})
+		.filter((row): row is FailureLedgerEventV1 => Boolean(row));
+}
+
+function readRuntimeRepairQueueRows(): RepairQueueItemV1[] {
+	return readText(runtimeRepairQueuePath())
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.map((line) => {
+			try {
+				const row = JSON.parse(line) as RepairQueueItemV1;
+				return row?.repairId && row?.signature ? row : undefined;
+			} catch {
+				return undefined;
+			}
+		})
+		.filter((row): row is RepairQueueItemV1 => Boolean(row));
+}
+
+function runtimeFailureTargetMatches(failure: FailureLedgerEventV1, target?: string): boolean {
+	if (!target) return true;
+	const needle = target.toLowerCase();
+	return [
+		failure.scope,
+		...(failure.failedGates ?? []),
+		...(failure.blockedConditions ?? []).flatMap((condition) => [condition.reason, condition.unblock]),
+		...(failure.artifactHashes ?? []).map((artifact) => artifact.path),
+	]
+		.filter(Boolean)
+		.some((item) => item.toLowerCase().includes(needle));
+}
+
+function runtimeRepairTargetMatches(repair: RepairQueueItemV1, target?: string): boolean {
+	if (!target) return true;
+	const needle = target.toLowerCase();
+	return [
+		repair.scope,
+		...(repair.commands ?? []),
+		...(repair.expectedArtifacts ?? []),
+		...(repair.expectedGates ?? []),
+		...(repair.blockedConditions ?? []).flatMap((condition) => [condition.reason, condition.unblock]),
+	]
+		.filter(Boolean)
+		.some((item) => item.toLowerCase().includes(needle));
+}
+
+function runtimeFailurePriority(status: RuntimeFailureStatus): number {
+	if (status === "exhausted") return 5;
+	if (status === "blocked") return 4;
+	if (status === "repair_queued") return 3;
+	if (status === "failed") return 2;
+	if (status === "rolled_back") return 1;
+	return 0;
+}
+
+function failureSignaturePriorityReport(target?: string): {
+	rows: string[];
+	commands: string[];
+	repairQueue: string[];
+	sourceArtifacts: string[];
+	exhaustedCount: number;
+	repeatedCount: number;
+} {
+	const failures = readRuntimeFailureLedgerRows().filter((failure) => runtimeFailureTargetMatches(failure, target));
+	const failureIds = new Set(failures.map((failure) => failure.id));
+	const failureSignatures = new Set(failures.map((failure) => failure.signature));
+	const repairs = readRuntimeRepairQueueRows().filter(
+		(repair) =>
+			(!target || runtimeRepairTargetMatches(repair, target) || failureIds.has(repair.fromFailureId)) &&
+			(!failureSignatures.size || failureSignatures.has(repair.signature)),
+	);
+	const repairBySignature = new Map<string, RepairQueueItemV1>();
+	for (const repair of repairs) {
+		const existing = repairBySignature.get(repair.signature);
+		if (!existing || (existing.paused && !repair.paused) || (repair.commands?.length ?? 0) > (existing.commands?.length ?? 0))
+			repairBySignature.set(repair.signature, repair);
+	}
+	const grouped = new Map<string, FailureLedgerEventV1[]>();
+	for (const failure of failures) grouped.set(failure.signature, [...(grouped.get(failure.signature) ?? []), failure]);
+	const latest = [...grouped.values()]
+		.map((rows) => rows.sort((left, right) => right.attempt - left.attempt || right.ts.localeCompare(left.ts))[0]!)
+		.sort(
+			(left, right) =>
+				runtimeFailurePriority(right.status) - runtimeFailurePriority(left.status) ||
+				right.attempt - left.attempt ||
+				left.budget.remainingAttempts - right.budget.remainingAttempts ||
+				right.ts.localeCompare(left.ts),
+		);
+	const rows = latest.slice(0, 16).map((failure) => {
+		const repair = repairBySignature.get(failure.signature);
+		const repeats = grouped.get(failure.signature)?.length ?? 1;
+		const readyRepair = repair && !repair.paused && repair.commands.length > 0;
+		const next = readyRepair ? repair.commands[0] : failure.budget.exhaustedAction;
+		return [
+			`failure_signature_priority status=${failure.status}`,
+			`attempt=${failure.attempt}/${failure.maxAttempts}`,
+			`repeats=${repeats}`,
+			`remaining=${failure.budget.remainingAttempts}`,
+			`signature=${failure.signature.slice(0, 16)}`,
+			`source=${failure.source}`,
+			`category=${failure.category}`,
+			`repair_action=${readyRepair ? repair.action : "escalate"}`,
+			`repair_ready=${readyRepair ? "true" : "false"}`,
+			`failed_gates=${failure.failedGates.join("|") || "none"}`,
+			`next=${next}`,
+		].join(" ");
+	});
+	const repairQueue = repairs
+		.slice(0, 16)
+		.map((repair) =>
+			[
+				`failure_signature_repair_queue repair_id=${repair.repairId}`,
+				`signature=${repair.signature.slice(0, 16)}`,
+				`action=${repair.action}`,
+				`paused=${repair.paused}`,
+				`ready=${!repair.paused && repair.commands.length > 0}`,
+				`commands=${repair.commands.join(" && ") || "missing"}`,
+				`expected_gates=${repair.expectedGates.join("|") || "none"}`,
+			].join(" "),
+		);
+	return {
+		rows,
+		commands: uniqueNonEmpty(
+			latest.flatMap((failure) => {
+				const repair = repairBySignature.get(failure.signature);
+				if (repair && !repair.paused && repair.commands.length) return repair.commands;
+				return [failure.budget.exhaustedAction];
+			}),
+			16,
+		),
+		repairQueue,
+		sourceArtifacts: uniqueNonEmpty(
+			[
+				runtimeFailureLedgerPath(),
+				runtimeRepairQueuePath(),
+				...latest.flatMap((failure) => failure.artifactHashes.map((artifact) => artifact.path)),
+			],
+			32,
+		),
+		exhaustedCount: latest.filter((failure) => failure.status === "exhausted").length,
+		repeatedCount: [...grouped.values()].filter((rows) => rows.length > 1).length,
+	};
 }
 
 function appendRuntimeFailureInputs(inputs: RuntimeFailureRepairInput[]): void {
@@ -25610,15 +25773,19 @@ function proofLoopGapItems(target?: string): ProofLoopGapItem[] {
 					[compactResume.path, ...compactTelemetry.sourceArtifacts],
 				);
 		}
-		if (
-			compactTelemetry.contractVerified &&
-			compactTelemetry.autoResumeTriggered &&
-			!compactTelemetry.proofLoopEntered
-		)
-			add("compact_resume", "compact resume proof loop has not been entered yet", [
-				compactResume.path,
-				...compactTelemetry.sourceArtifacts,
-			]);
+			if (
+				compactTelemetry.contractVerified &&
+				compactTelemetry.autoResumeTriggered &&
+				!compactTelemetry.proofLoopEntered
+			)
+				add("compact_resume", "compact resume proof loop has not been entered yet", [
+					compactResume.path,
+					...compactTelemetry.sourceArtifacts,
+				]);
+	}
+	const failurePriority = failureSignaturePriorityReport(targetRef);
+	for (const row of failurePriority.rows.slice(0, 12)) {
+		add("failure_signature", row, failurePriority.sourceArtifacts);
 	}
 	for (const gate of proofLoopGateStatus()
 		.filter((item) => /pending|blocked|missing/i.test(item))
@@ -25694,6 +25861,8 @@ function buildProofLoopSteps(target?: string): ProofLoopStep[] {
 	const sourceArtifacts = proofLoopSourceArtifacts(target);
 	const operatorFeedbackCommands = latestOperatorFeedback(target).commands;
 	const swarmRetryCommands = latestSwarmRetryQueue(target).commands;
+	const failureSignaturePriority = failureSignaturePriorityReport(target);
+	const failureSignatureCommands = failureSignaturePriority.commands;
 	const compactResume = latestReconCompactionResumeTelemetry();
 	const compactResumeCommands = compactResumeProofQueue();
 	const specs: Array<[ProofLoopPhase, string]> = [
@@ -25712,30 +25881,39 @@ function buildProofLoopSteps(target?: string): ProofLoopStep[] {
 		specs.push(["case-memory", `re_autopilot plan${suffix}`]);
 		if (caseMemoryPlan.action !== "none") specs.push(["case-memory", `re_autopilot run${suffix} 1`]);
 	}
+	for (const command of failureSignatureCommands.slice(0, 4)) specs.push(["failure-signature", command]);
 	for (const command of compactResumeCommands.slice(0, 4)) specs.push(["compact-resume", command]);
 	for (const command of operatorFeedbackCommands.slice(0, 4)) specs.push(["operator-feedback", command]);
 	for (const command of swarmRetryCommands.slice(0, 4)) specs.push(["swarm-retry", command]);
-	return specs.map(([phase, command], index) => {
-		const placeholderBlocked = /<target>/i.test(command) && !target;
-		return {
-			id: `proof:${index + 1}:${phase}`,
-			phase,
-			command,
-			status: placeholderBlocked ? "blocked" : "ready",
-			reason: placeholderBlocked
-				? "target placeholder is unresolved"
-				: phase === "compact-resume"
-					? "source=compact_resume"
-					: undefined,
-			sourceArtifacts: phase === "compact-resume" ? [compactResume.path, ...sourceArtifacts] : sourceArtifacts,
-		};
-	});
+		return specs.map(([phase, command], index) => {
+			const placeholderBlocked = /<target>/i.test(command) && !target;
+			return {
+				id: `proof:${index + 1}:${phase}`,
+				phase,
+				command,
+				status: placeholderBlocked ? "blocked" : "ready",
+				reason: placeholderBlocked
+					? "target placeholder is unresolved"
+					: phase === "compact-resume"
+						? "source=compact_resume"
+						: phase === "failure-signature"
+							? "source=failure_signature_priority"
+							: undefined,
+				sourceArtifacts:
+					phase === "compact-resume"
+						? [compactResume.path, ...sourceArtifacts]
+						: phase === "failure-signature"
+							? failureSignaturePriority.sourceArtifacts
+							: sourceArtifacts,
+			};
+		});
 }
 
 function proofLoopNextActions(proof: ProofLoopArtifact): string[] {
 	const ready = proof.steps.filter((step) => step.status === "ready");
 	const target = proof.target ?? "<target>";
 	const caseMemoryActions = caseMemoryOperatorCommands(proof.caseMemoryLanePlan, proof.target);
+	const failureSignatureCommands = failureSignaturePriorityReport(proof.target).commands;
 	const swarmRetryCommands = latestSwarmRetryQueue(proof.target).commands;
 	const autonomousBudgetActions =
 		proof.autonomousBudget?.nextActions ?? autonomousExecutionBudget(proof.target).nextActions;
@@ -25758,6 +25936,7 @@ function proofLoopNextActions(proof: ProofLoopArtifact): string[] {
 	return Array.from(
 		new Set([
 			...(proof.compactResumeQueue ?? []),
+			...failureSignatureCommands,
 			...(proof.operatorFeedbackQueue ?? []),
 			...autonomousBudgetActions,
 			...swarmRetryCommands,
@@ -25772,6 +25951,7 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 	const verdict = proofLoopVerdict(proof.target);
 	const operatorFeedback = latestOperatorFeedback(proof.target);
 	const existingCommands = new Set(proof.steps.map((step) => step.command));
+	const failureSignature = failureSignaturePriorityReport(proof.target);
 	const compactResume = latestReconCompactionResumeTelemetry();
 	const compactResumeQueue = compactResumeProofQueue();
 	const compactResumeSteps: ProofLoopStep[] = compactResumeQueue
@@ -25785,19 +25965,33 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 			reason:
 				/<target>/i.test(command) && !proof.target ? "target placeholder is unresolved" : "source=compact_resume",
 			sourceArtifacts: [compactResume.path],
+			}));
+	const failureSignatureSteps: ProofLoopStep[] = failureSignature.commands
+		.filter((command) => !existingCommands.has(command))
+		.slice(0, 4)
+		.map((command, index) => ({
+			id: `proof:${proof.steps.length + compactResumeSteps.length + index + 1}:failure-signature`,
+			phase: "failure-signature",
+			command,
+			status: /<target>/i.test(command) && !proof.target ? "blocked" : "ready",
+			reason:
+				/<target>/i.test(command) && !proof.target
+					? "target placeholder is unresolved"
+					: "source=failure_signature_priority",
+			sourceArtifacts: failureSignature.sourceArtifacts,
 		}));
 	const operatorFeedbackSteps: ProofLoopStep[] = operatorFeedback.commands
 		.filter((command) => !existingCommands.has(command))
 		.slice(0, 4)
 		.map((command, index) => ({
-			id: `proof:${proof.steps.length + index + 1}:operator-feedback`,
+			id: `proof:${proof.steps.length + compactResumeSteps.length + failureSignatureSteps.length + index + 1}:operator-feedback`,
 			phase: "operator-feedback",
 			command,
 			status: /<target>/i.test(command) && !proof.target ? "blocked" : "ready",
 			reason: /<target>/i.test(command) && !proof.target ? "target placeholder is unresolved" : undefined,
 			sourceArtifacts: operatorFeedback.sourceArtifacts,
 		}));
-	const steps = [...proof.steps, ...compactResumeSteps, ...operatorFeedbackSteps];
+	const steps = [...proof.steps, ...failureSignatureSteps, ...compactResumeSteps, ...operatorFeedbackSteps];
 	const swarmRetry = proofLoopSwarmRetryQueue(proof.target);
 	const specialistQueue = proofLoopSpecialistQueue(proof.target);
 	const swarmBridge = proofLoopSwarmBridge(proof.target);
@@ -25814,10 +26008,12 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 		caseMemoryLanePlan,
 		caseMemoryBridge,
 		autonomousBudget,
-		dispatcherScoreDecay: autonomousBudget.scoreDecay,
-		repeatedFailureDemotions: autonomousBudget.demotionRules,
-		highScorePromotions: autonomousBudget.promotionRules,
-		compactResumeTelemetry: compactResume.lines,
+			dispatcherScoreDecay: autonomousBudget.scoreDecay,
+			repeatedFailureDemotions: autonomousBudget.demotionRules,
+			highScorePromotions: autonomousBudget.promotionRules,
+			failureSignaturePriority: failureSignature.rows,
+			failureSignatureRepairQueue: failureSignature.repairQueue,
+			compactResumeTelemetry: compactResume.lines,
 		compactResumeQueue,
 		operatorFeedback: operatorFeedback.rows,
 		operatorFeedbackQueue: operatorFeedback.commands,
@@ -25835,6 +26031,8 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 			dispatcherScoreDecay: autonomousBudget.scoreDecay,
 			repeatedFailureDemotions: autonomousBudget.demotionRules,
 			highScorePromotions: autonomousBudget.promotionRules,
+			failureSignaturePriority: failureSignature.rows,
+			failureSignatureRepairQueue: failureSignature.repairQueue,
 			compactResumeTelemetry: compactResume.lines,
 			compactResumeQueue,
 			operatorFeedback: operatorFeedback.rows,
@@ -25847,10 +26045,11 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 		sourceArtifacts: Array.from(
 			new Set(
 				[
-					...proofLoopSourceArtifacts(proof.target),
-					autonomousBudget.dispatcherBoardPath,
-					autonomousBudget.promotionPlaybookPath,
-					compactResume.path,
+						...proofLoopSourceArtifacts(proof.target),
+						autonomousBudget.dispatcherBoardPath,
+						autonomousBudget.promotionPlaybookPath,
+						...failureSignature.sourceArtifacts,
+						compactResume.path,
 					...operatorFeedback.sourceArtifacts,
 					...bridgeArtifacts,
 				].filter(Boolean) as string[],
@@ -25882,10 +26081,12 @@ function buildProofLoop(
 		caseMemoryLanePlan: undefined,
 		caseMemoryBridge: [],
 		autonomousBudget: autonomousExecutionBudget(options.target ?? mission?.task),
-		dispatcherScoreDecay: [],
-		repeatedFailureDemotions: [],
-		highScorePromotions: [],
-		compactResumeTelemetry: [],
+			dispatcherScoreDecay: [],
+			repeatedFailureDemotions: [],
+			highScorePromotions: [],
+			failureSignaturePriority: [],
+			failureSignatureRepairQueue: [],
+			compactResumeTelemetry: [],
 		compactResumeQueue: [],
 		operatorFeedback: [],
 		operatorFeedbackQueue: [],
@@ -25918,9 +26119,17 @@ function formatProofLoop(proof: ProofLoopArtifact, path?: string): string {
 		...(proof.caseMemoryLanePlan
 			? caseMemoryLanePlanLines(proof.caseMemoryLanePlan).map((item) => `- ${item}`)
 			: ["- none"]),
-		"case_memory_bridge:",
-		...(proof.caseMemoryBridge.length ? proof.caseMemoryBridge.map((item) => `- ${item}`) : ["- none"]),
-		"compact_resume_telemetry:",
+			"case_memory_bridge:",
+			...(proof.caseMemoryBridge.length ? proof.caseMemoryBridge.map((item) => `- ${item}`) : ["- none"]),
+			"failure_signature_priority:",
+			...(proof.failureSignaturePriority.length
+				? proof.failureSignaturePriority.map((item) => `- ${item}`)
+				: ["- none"]),
+			"failure_signature_repair_queue:",
+			...(proof.failureSignatureRepairQueue.length
+				? proof.failureSignatureRepairQueue.map((item) => `- ${item}`)
+				: ["- none"]),
+			"compact_resume_telemetry:",
 		...(proof.compactResumeTelemetry.length ? proof.compactResumeTelemetry.map((item) => `- ${item}`) : ["- none"]),
 		"compact_resume_queue:",
 		...(proof.compactResumeQueue.length ? proof.compactResumeQueue.map((item) => `- ${item}`) : ["- none"]),
@@ -26048,10 +26257,11 @@ async function executeProofLoopStep(
 				},
 				target,
 			);
-		}
-		case "operator-feedback":
-		case "swarm-retry":
-			return executeOperatorStep(
+			}
+			case "operator-feedback":
+			case "failure-signature":
+			case "swarm-retry":
+				return executeOperatorStep(
 				pi,
 				{
 					id: step.id,
@@ -26729,8 +26939,8 @@ function buildKnowledgeGraph(
 		edges.push({ from: missionNodeId, to: id, kind: "suggests", label: "high-score-promotion" });
 	}
 	const compactResumeSignals = compactResumeKnowledgeSignals(options.target ?? mission?.task);
-	if (compactResumeSignals.lines.length || compactResumeSignals.caseMemory.length) {
-		const id = "compact-resume:telemetry";
+		if (compactResumeSignals.lines.length || compactResumeSignals.caseMemory.length) {
+			const id = "compact-resume:telemetry";
 		nodes.push({
 			id,
 			kind: "compact_resume_telemetry",
@@ -26771,11 +26981,51 @@ function buildKnowledgeGraph(
 				to: nodeId,
 				kind: /repair|blocked/.test(line) ? "repairs" : "suggests",
 				label: "compact-resume-case-memory",
-			});
+				});
+			}
 		}
-	}
-	const dispatcherRoutingHints = dispatcherBoard.hints.slice(0, 24);
-	const allTags = Array.from(new Set(nodes.flatMap((node) => node.tags))).filter((tag) => tag !== "mission");
+		const failureSignature = failureSignaturePriorityReport(options.target ?? mission?.task);
+		if (failureSignature.rows.length || failureSignature.repairQueue.length) {
+			const id = "failure-signature:priority";
+			nodes.push({
+				id,
+				kind: "failure_signature_priority",
+				label: `runtime failure priority exhausted=${failureSignature.exhaustedCount} repeated=${failureSignature.repeatedCount}`,
+				path: runtimeFailureLedgerPath(),
+				route,
+				score: failureSignature.exhaustedCount ? 95 : failureSignature.repeatedCount ? 85 : 70,
+				tags: ["failure-signature", "runtime-ledger", "repair", "priority"],
+			});
+			edges.push({ from: missionNodeId, to: id, kind: "repairs", label: "runtime-failure-priority" });
+			for (const [index, line] of failureSignature.rows.slice(0, 12).entries()) {
+				const nodeId = `failure-signature-priority:${index + 1}`;
+				nodes.push({
+					id: nodeId,
+					kind: "failure_signature_priority",
+					label: truncateMiddle(line, 180),
+					path: runtimeFailureLedgerPath(),
+					route,
+					score: /status=exhausted/.test(line) ? 98 : /repeats=[2-9]/.test(line) ? 88 : 72,
+					tags: ["failure-signature", "runtime-ledger", "repair", /status=exhausted/.test(line) ? "exhausted" : "queued"],
+				});
+				edges.push({ from: id, to: nodeId, kind: "repairs", label: "failure-signature-priority-row" });
+			}
+			for (const [index, line] of failureSignature.repairQueue.slice(0, 12).entries()) {
+				const nodeId = `failure-signature-repair:${index + 1}`;
+				nodes.push({
+					id: nodeId,
+					kind: "failure_signature_repair",
+					label: truncateMiddle(line, 180),
+					path: runtimeRepairQueuePath(),
+					route,
+					score: /ready=true/.test(line) ? 82 : 45,
+					tags: ["failure-signature", "repair-queue", /ready=true/.test(line) ? "ready" : "blocked"],
+				});
+				edges.push({ from: id, to: nodeId, kind: "repairs", label: "failure-signature-repair-queue" });
+			}
+		}
+		const dispatcherRoutingHints = dispatcherBoard.hints.slice(0, 24);
+		const allTags = Array.from(new Set(nodes.flatMap((node) => node.tags))).filter((tag) => tag !== "mission");
 	const caseSignatures = [
 		`route=${route ?? "unknown"}`,
 		`target=${options.target ?? mission?.task ?? "<none>"}`,
@@ -26795,10 +27045,15 @@ function buildKnowledgeGraph(
 		`score_decay=${dispatcherScoreDecay.length}`,
 		`demotions=${repeatedFailureDemotions.length}`,
 		`promotions=${highScorePromotions.length}`,
-		`compact_resume_status=${compactResumeSignals.status}`,
-		`compact_resume_case_memory=${compactResumeSignals.caseMemory.length}`,
-		`compact_resume_routes=${compactResumeSignals.routingHints.length}`,
-	];
+			`compact_resume_status=${compactResumeSignals.status}`,
+			`compact_resume_case_memory=${compactResumeSignals.caseMemory.length}`,
+			`compact_resume_routes=${compactResumeSignals.routingHints.length}`,
+			`failure_signature_priority=${failureSignature.rows.length}`,
+			`knowledge_graph_failure_signature_priority=${failureSignature.rows.length}`,
+			`failure_signature_repairs=${failureSignature.repairQueue.length}`,
+			`failure_signature_exhausted=${failureSignature.exhaustedCount}`,
+			`failure_signature_repeated=${failureSignature.repeatedCount}`,
+		];
 	const similarityIndex = nodes
 		.filter((node) => node.path && node.kind !== "scope_quarantine")
 		.sort((a, b) => b.score - a.score)
@@ -26816,8 +27071,11 @@ function buildKnowledgeGraph(
 			...dispatcherRoutingHints.flatMap((hint) => knowledgeCommandHints(hint)),
 			...dispatcherScoreDecay.flatMap((hint) => knowledgeCommandHints(hint)),
 			...repeatedFailureDemotions.flatMap((hint) => knowledgeCommandHints(hint)),
-			...highScorePromotions.flatMap((hint) => knowledgeCommandHints(hint)),
-			...compactResumeSignals.commandHints,
+				...highScorePromotions.flatMap((hint) => knowledgeCommandHints(hint)),
+				...failureSignature.rows.flatMap((hint) => knowledgeCommandHints(hint)),
+				...failureSignature.repairQueue.flatMap((hint) => knowledgeCommandHints(hint)),
+				...failureSignature.commands,
+				...compactResumeSignals.commandHints,
 			...compactResumeSignals.routingHints.flatMap((hint) => knowledgeCommandHints(hint)),
 			...compactResumeSignals.caseMemory.flatMap((hint) => knowledgeCommandHints(hint)),
 			...autonomousBudget.nextActions,
@@ -26826,13 +27084,16 @@ function buildKnowledgeGraph(
 			...dispatcherRoutingHints.flatMap((hint) => hint.match(/re[-_][\w-]+(?:\s+[^\s;&]+){0,4}/gi) ?? []),
 			...dispatcherScoreDecay.flatMap((hint) => hint.match(/re[-_][\w-]+(?:\s+[^\s;&]+){0,4}/gi) ?? []),
 			...repeatedFailureDemotions.flatMap((hint) => hint.match(/re[-_][\w-]+(?:\s+[^\s;&]+){0,4}/gi) ?? []),
-			...highScorePromotions.flatMap((hint) => hint.match(/re[-_][\w-]+(?:\s+[^\s;&]+){0,4}/gi) ?? []),
-			...compactResumeSignals.routingHints.flatMap((hint) => hint.match(/re[-_][\w-]+(?:\s+[^\s;&]+){0,4}/gi) ?? []),
-		]),
-	).slice(0, 24);
-	const nextActions = Array.from(
-		new Set([
-			...compactResumeSignals.commandHints,
+				...highScorePromotions.flatMap((hint) => hint.match(/re[-_][\w-]+(?:\s+[^\s;&]+){0,4}/gi) ?? []),
+				...failureSignature.rows.flatMap((hint) => hint.match(/re[-_][\w-]+(?:\s+[^\s;&]+){0,4}/gi) ?? []),
+				...failureSignature.repairQueue.flatMap((hint) => hint.match(/re[-_][\w-]+(?:\s+[^\s;&]+){0,4}/gi) ?? []),
+				...compactResumeSignals.routingHints.flatMap((hint) => hint.match(/re[-_][\w-]+(?:\s+[^\s;&]+){0,4}/gi) ?? []),
+			]),
+		).slice(0, 24);
+		const nextActions = Array.from(
+			new Set([
+				...failureSignature.commands,
+				...compactResumeSignals.commandHints,
 			...(commandStrategyHints.length ? commandStrategyHints.slice(0, 8) : ["re_map <target> 2"]),
 			...autonomousBudget.nextActions,
 			"re_context pack",
@@ -26856,9 +27117,11 @@ function buildKnowledgeGraph(
 		adaptiveRoutingHints,
 		workerPromotionQueue,
 		commandStrategyHints,
-		dispatcherFeedbackScoreboard: dispatcherBoard.lines.slice(0, 32),
-		dispatcherRoutingHints,
-		compactResumeTelemetry: compactResumeSignals.lines,
+			dispatcherFeedbackScoreboard: dispatcherBoard.lines.slice(0, 32),
+			dispatcherRoutingHints,
+			failureSignaturePriority: failureSignature.rows,
+			failureSignatureRepairQueue: failureSignature.repairQueue,
+			compactResumeTelemetry: compactResumeSignals.lines,
 		compactResumeCaseMemory: compactResumeSignals.caseMemory,
 		compactResumeRoutingHints: compactResumeSignals.routingHints,
 		knowledgeScopeIsolation,
@@ -26871,11 +27134,12 @@ function buildKnowledgeGraph(
 			new Set(
 					[
 						...usableSources.map((source) => source.path),
-						knowledgeScopeIsolation.reportPath,
-						...knowledgeScopeIsolation.quarantinedSourceArtifacts,
-						dispatcherBoard.path,
-					autonomousBudget.promotionPlaybookPath,
-					...compactResumeSignals.sourceArtifacts,
+							knowledgeScopeIsolation.reportPath,
+							...knowledgeScopeIsolation.quarantinedSourceArtifacts,
+							dispatcherBoard.path,
+						autonomousBudget.promotionPlaybookPath,
+						...failureSignature.sourceArtifacts,
+						...compactResumeSignals.sourceArtifacts,
 				].filter(Boolean) as string[],
 			),
 		).slice(0, 80),
@@ -26933,9 +27197,17 @@ function formatKnowledgeGraph(graph: KnowledgeGraphArtifact, path?: string): str
 		...(graph.dispatcherFeedbackScoreboard?.length
 			? graph.dispatcherFeedbackScoreboard.map((item) => `- ${item}`)
 			: ["- none"]),
-		"dispatcher_routing_hints:",
-		...(graph.dispatcherRoutingHints?.length ? graph.dispatcherRoutingHints.map((item) => `- ${item}`) : ["- none"]),
-		"compact_resume_telemetry:",
+			"dispatcher_routing_hints:",
+			...(graph.dispatcherRoutingHints?.length ? graph.dispatcherRoutingHints.map((item) => `- ${item}`) : ["- none"]),
+			"failure_signature_priority:",
+			...(graph.failureSignaturePriority?.length
+				? graph.failureSignaturePriority.map((item) => `- ${item}`)
+				: ["- none"]),
+			"failure_signature_repair_queue:",
+			...(graph.failureSignatureRepairQueue?.length
+				? graph.failureSignatureRepairQueue.map((item) => `- ${item}`)
+				: ["- none"]),
+			"compact_resume_telemetry:",
 		...(graph.compactResumeTelemetry?.length ? graph.compactResumeTelemetry.map((item) => `- ${item}`) : ["- none"]),
 		"compact_resume_case_memory:",
 		...(graph.compactResumeCaseMemory?.length
@@ -27030,11 +27302,21 @@ function writeKnowledgeGraphArtifact(graph: KnowledgeGraphArtifact): string {
 				: ["- none"]),
 			"",
 			"## Dispatcher routing hints",
-			...(graph.dispatcherRoutingHints?.length
-				? graph.dispatcherRoutingHints.map((item) => `- ${item}`)
-				: ["- none"]),
-			"",
-			"## Compact resume telemetry",
+				...(graph.dispatcherRoutingHints?.length
+					? graph.dispatcherRoutingHints.map((item) => `- ${item}`)
+					: ["- none"]),
+				"",
+				"## Failure signature priority",
+				...(graph.failureSignaturePriority?.length
+					? graph.failureSignaturePriority.map((item) => `- ${item}`)
+					: ["- none"]),
+				"",
+				"## Failure signature repair queue",
+				...(graph.failureSignatureRepairQueue?.length
+					? graph.failureSignatureRepairQueue.map((item) => `- ${item}`)
+					: ["- none"]),
+				"",
+				"## Compact resume telemetry",
 			...(graph.compactResumeTelemetry?.length
 				? graph.compactResumeTelemetry.map((item) => `- ${item}`)
 				: ["- none"]),
@@ -27076,7 +27358,7 @@ function writeKnowledgeGraphArtifact(graph: KnowledgeGraphArtifact): string {
 	appendEvidence({
 		kind: "artifact",
 		title: `knowledge-graph-${graph.mode} ${graph.missionId ?? "no-mission"}`,
-		fact: `Knowledge graph ${graph.mode}: nodes=${graph.nodes.length}, edges=${graph.edges.length}, signatures=${graph.caseSignatures.length}, scope_blocked=${graph.knowledgeScopeIsolation.blockedSourceCount}, scope_warn=${graph.knowledgeScopeIsolation.warnSourceCount}, adaptive_routes=${graph.adaptiveRoutingHints.length}, promotions=${graph.workerPromotionQueue.length}, dispatcher_feedback=${graph.dispatcherFeedbackScoreboard.length}, dispatcher_routes=${graph.dispatcherRoutingHints.length}, compact_resume_case_memory=${graph.compactResumeCaseMemory.length}, compact_resume_routes=${graph.compactResumeRoutingHints.length}, autonomous_budget=${graph.autonomousBudget?.maxTurns ?? "none"}/${graph.autonomousBudget?.maxDispatch ?? "none"}, score_decay=${(graph.dispatcherScoreDecay ?? []).length}, demotions=${(graph.repeatedFailureDemotions ?? []).length}, high_score_promotions=${(graph.highScorePromotions ?? []).length}`,
+			fact: `Knowledge graph ${graph.mode}: nodes=${graph.nodes.length}, edges=${graph.edges.length}, signatures=${graph.caseSignatures.length}, scope_blocked=${graph.knowledgeScopeIsolation.blockedSourceCount}, scope_warn=${graph.knowledgeScopeIsolation.warnSourceCount}, adaptive_routes=${graph.adaptiveRoutingHints.length}, promotions=${graph.workerPromotionQueue.length}, dispatcher_feedback=${graph.dispatcherFeedbackScoreboard.length}, dispatcher_routes=${graph.dispatcherRoutingHints.length}, failure_signature_priority=${graph.failureSignaturePriority.length}, failure_signature_repairs=${graph.failureSignatureRepairQueue.length}, compact_resume_case_memory=${graph.compactResumeCaseMemory.length}, compact_resume_routes=${graph.compactResumeRoutingHints.length}, autonomous_budget=${graph.autonomousBudget?.maxTurns ?? "none"}/${graph.autonomousBudget?.maxDispatch ?? "none"}, score_decay=${(graph.dispatcherScoreDecay ?? []).length}, demotions=${(graph.repeatedFailureDemotions ?? []).length}, high_score_promotions=${(graph.highScorePromotions ?? []).length}`,
 		command: `re_knowledge_graph ${graph.mode}`,
 		path,
 		verify: `cat ${path}`,

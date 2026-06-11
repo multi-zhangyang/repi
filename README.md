@@ -65,7 +65,7 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - Memory utility hard-eval：`npm run gate:memory-utility` 用跨目标 authz 与 pwn 负例 fixture 验证“正确召回”——高置信、已复现、同 route 的成功经验应排第一并给出可迁移命令；失败、过旧、跨 route 的噪声不能进入高位或污染命令建议。
 - Memory reuse feedback：`re_lane run` 复用 `memory-event:*` 命令后会自动写回在线学习闭环；强证据会追加 `memory_reuse_feedback_promote` 事件并提升同 case，弱证据/失败会追加 `memory_reuse_feedback_demote` 事件并让后续检索降权。`npm run gate:memory-feedback` 用成功提升和失败降权双场景保护该行为。
 - Memory feedback closure：`re_memory feedback` 会读取 `memory/injection-packet.json`，把已注入记忆的后续反馈固化到 `memory/feedback-closure-report.json`；成功反馈进入 `promotionReadyEventIds`，失败反馈进入 `demotionRequiredEventIds` 并让 `re_memory supervise` 降权，未反馈的 injected memory 保持 `pendingFeedbackEventIds`。`npm run gate:memory-feedback-closure` 真实调用 `re_memory feedback/supervise` 验证 promote / demote / pending 三类闭环。
-- Memory scope isolation：每条 `MemoryEventV1` 现在带 `MemoryScopeV1`（mission/session/workspace/branch/route/target）。`re_memory scope [target]` 写 `memory/scope-isolation-report.json`，按 `scope_filter_by_mission_session_workspace_target` 判断 allow/warn/block；跨 workspace/target/route 的记忆会 `blocksInjection=true` 并在 `re_memory sediment` 前 quarantine，legacy 无 scope 的旧记忆只 warn/manual-review。`re_knowledge_graph build/query` 继续生成 `KnowledgeScopeIsolationV1`，把 scope-blocked artifact 从 `command_strategy_hints` / `similarity_index` 剔除，只保留 `scope_quarantine` 证据节点。`re_context pack` 还会生成 `ArtifactScopeFilterV1` / `memory/artifact-scope-filter-report.json`，把同一 verdict 传播到 latest artifact side-channel：如果最新 run/browser/verifier 等 artifact 属于其它 workspace/target/route，会被跳过并在 context artifact_index 中保留较旧但同 scope 的 artifact。`npm run gate:memory-scope-isolation` 真实调用 `re_memory scope/sediment` 和 `re_context pack`；`npm run gate:knowledge-scope-isolation` 真实调用 `re_knowledge_graph build`；`npm run gate:artifact-scope-filter` 验证 blocked latest artifact 不进入 context index、allowed older artifact 仍可复用；`npm run gate:latest-artifact-consumer-scope` 继续压测 operator feedback、proof-loop gap/evidence/source、compiler claim gate 等 latest artifact consumer，确保跨 target 的较新 artifact 不会通过 latest 旁路污染当前目标。
+- Memory scope isolation：每条 `MemoryEventV1` 现在带 `MemoryScopeV1`（mission/session/workspace/branch/route/target）。`re_memory scope [target]` 写 `memory/scope-isolation-report.json`，按 `scope_filter_by_mission_session_workspace_target` 判断 allow/warn/block；跨 workspace/target/route 的记忆会 `blocksInjection=true` 并在 `re_memory sediment` 前 quarantine，legacy 无 scope 的旧记忆只 warn/manual-review。`re_knowledge_graph build/query` 继续生成 `KnowledgeScopeIsolationV1`，把 scope-blocked artifact 从 `command_strategy_hints` / `similarity_index` 剔除，只保留 `scope_quarantine` 证据节点。`re_context pack` 还会生成 `ArtifactScopeFilterV1` / `memory/artifact-scope-filter-report.json`，把同一 verdict 传播到 latest artifact side-channel：如果最新 run/browser/verifier 等 artifact 属于其它 workspace/target/route，会被跳过并在 context artifact_index 中保留较旧但同 scope 的 artifact。`npm run gate:memory-scope-isolation` 真实调用 `re_memory scope/sediment` 和 `re_context pack`；`npm run gate:knowledge-scope-isolation` 真实调用 `re_knowledge_graph build`；`npm run gate:artifact-scope-filter` 验证 blocked latest artifact 不进入 context index、allowed older artifact 仍可复用；`npm run gate:latest-artifact-consumer-scope` 继续压测 operator feedback、proof-loop gap/evidence/source、compiler claim gate 等 latest artifact consumer，确保跨 target 的较新 artifact 不会通过 latest 旁路污染当前目标。`FailureSignaturePriorityGateV1` / `npm run gate:failure-signature-priority` 会把 runtime failure ledger / repair queue 作为 proof-loop 与 knowledge graph 的高优先级输入：exhausted/repeated signature 先进入修复或 escalate，缺少 concrete command 的 repair 不算 ready，跨 target failure 不会进入当前目标的 next actions。
 - Memory hybrid retrieval：`re_memory search-events` 不再只靠精确 token；它会结合语义轻量召回、case-memory 文本、artifact path/tier 和在线反馈一起打分。`npm run gate:memory-hybrid` 用 `idor/bola/acl`→authz ownership、PCAP artifact 召回等场景保护该能力。Memory Vector rerank：`re_memory vector <query>` 会生成 `memory/vector-index.json` 与 `memory/vector-search-report.json`，默认使用本地 deterministic `repi-local-hash-embedding-v1` 做 64 维 hash embedding/rerank；也可通过 `REPI_MEMORY_EMBEDDING_PROVIDER=openai-compatible`、`REPI_MEMORY_EMBEDDING_BASE_URL`、`REPI_MEMORY_EMBEDDING_MODEL`、`REPI_MEMORY_EMBEDDING_API_KEY_ENV` 和显式 `REPI_MEMORY_EMBEDDING_ALLOW_REMOTE=1` 切到 OpenAI-compatible embedding 后端，缺配置时自动 `local_hash_embedding_fallback`。它会把 `MemoryEmbeddingProviderV1` 和 `memory_vector_rerank` reason 接入 `search-events` 排序；`npm run gate:memory-vector` 真实调用 vector/search-events，验证 index/search schema、provider fallback、跨 route forbidden leak 和 quality-weighted rerank。
 - Memory usefulness eval：`re_memory eval` 会生成 `usefulness-eval.json`，度量 hit@1、hit@k、MRR、forbiddenLeakRate 和空召回率；`npm run gate:memory-usefulness` 用 authz / pwn 正召回、失败/跨 route forbidden memory 不进 topK、child-process 并发 append 保持 hash-chain 的 hard-eval 保护“记忆真的有用”。
 
@@ -298,6 +298,8 @@ npm run gate:compact-resume-ledger-v2
 npm run gate:multi-compact-pressure
 # 单独验证 latest artifact consumer 目标 scope 隔离
 npm run gate:latest-artifact-consumer-scope
+# 单独验证 failure signature priority 进入 proof-loop/knowledge
+npm run gate:failure-signature-priority
 npm run gate:repi-product
 npm run gate:repi-isolation
 ```
@@ -716,6 +718,7 @@ npm run gate:repi-harness
 - `gate:compact-resume-ledger-v2` 验证 `CompactResumeLedgerV2`：transition ledger hash、`queued/running/done/blocked/exhausted` 状态机、idempotent replay、auto-resume budget 和 context pack 嵌入。
 - `gate:multi-compact-pressure` 验证 `MultiCompactPressureGateV1`：multi compact append-only pressure、old contextPath over latest fallback、duplicate replay、scope/artifact drift 负例和 operator/proof-loop compact writeback。
 - `gate:latest-artifact-consumer-scope` 验证 `LatestArtifactConsumerScopeGateV1`：operator feedback、proof-loop gap/evidence/source、compiler claim gate 等 consumer 必须按 target 过滤 latest artifact，跨 target 较新 artifact 只能 quarantine，不能进入当前 target 的 proof/claim/feedback。
+- `gate:failure-signature-priority` 验证 `FailureSignaturePriorityGateV1`：runtime failure ledger / repair queue 必须优先进入 proof-loop 与 knowledge graph，exhausted/repeated signature 不继续盲 retry，缺命令 repair 不能 ready，跨 target failure 不泄漏。
 - `gate:context-runtime-schema` 真实运行 `re_context pack/resume`，验证 `ContextPackV2` / `ResumeContractV2`、memory hash contract 与 exact resume closure。
 
 
@@ -769,6 +772,7 @@ npm run gate:memory-scope-isolation
 npm run gate:knowledge-scope-isolation
 npm run gate:artifact-scope-filter
 npm run gate:latest-artifact-consumer-scope
+npm run gate:failure-signature-priority
 npm run gate:memory-hybrid
 npm run gate:memory-vector
 npm run gate:memory-usefulness
