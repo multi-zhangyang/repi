@@ -231,6 +231,7 @@ function staticContractChecks() {
 			[/ln\s+-sfn\s+"\$ROOT\/pi"\s+"\$BIN_DIR\/pi"/, /rm\s+-rf\s+"\$HOME\/\.pi"/, /@earendil-works\/(?:pi|repi)-coding-agent/],
 		),
 	);
+	checks.push(markerCheck("installer:global-profile-deprecated", "scripts/reverse-agent/install-global-profile.sh", ["install-global-profile.sh is deprecated", "no longer installs a file-based global profile", "init-repi-profile.mjs", "install-repi.sh", "does not copy SYSTEM.md", "write ~/.pi/agent"], [/cp \"\$ROOT\/repi-profile/, /extensions\/reverse-pentest-core\.ts" "\$AGENT_DIR/, /settings\.extensions =/, /settings\.skills =/, /settings\.prompts =/]));
 	checks.push(markerCheck("installer:legacy-no-takeover", "scripts/reverse-agent/install-recon-pi.sh", ["deprecated", 'exec "$ROOT/scripts/reverse-agent/install-repi.sh'], [/ln\s+-s.*\$ROOT\/pi/, /rm\s+-rf/, /deleted upstream/],));
 	checks.push(markerCheck("installer:repi-legacy-cleaner", "scripts/reverse-agent/clean-global-repi-profile.sh", ["Cleaned global pi REPI file-profile pollution", "repi-legacy-backup", "Default is dry-run", "--apply", "--force-tools", "file_has_marker", "reverse-pentest"], []));
 	checks.push(markerCheck("audit:repi-product-surface", "scripts/reverse-agent/repi-product-surface-audit.mjs", ["REPI product_surface_audit", "PRODUCT_SURFACE_FILES", "compatibilityProtocolMarkers"], []));
@@ -493,6 +494,24 @@ function runtimeInstallProbe() {
 	const cleanerForceTools = run("bash", ["scripts/reverse-agent/clean-global-repi-profile.sh", "--apply", "--force-tools"], { env: { HOME: cleanerProbeHome } });
 	const cleanerBackupsAfterForce = readdirSync(cleanerProbeAgent).filter((name) => name.startsWith("repi-legacy-backup.")).sort();
 	const cleanerToolsMovedWithForce = cleanerBackupsAfterForce.some((name) => existsSync(join(cleanerProbeAgent, name, "tools", "tool-index.md"))) && !existsSync(join(cleanerProbeAgent, "tools", "tool-index.md"));
+
+	const legacyGlobalHome = join(tempRoot, "legacy-global-home");
+	const legacyGlobalBin = join(tempRoot, "legacy-global-bin");
+	mkdir(legacyGlobalHome);
+	mkdir(legacyGlobalBin);
+	const legacyGlobalInstall = run("bash", ["scripts/reverse-agent/install-global-profile.sh", root, legacyGlobalBin], { env: { HOME: legacyGlobalHome, PATH: `${legacyGlobalBin}:${process.env.PATH}`, PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_SKIP_PACKAGE_UPDATE_CHECK: "1", PI_TELEMETRY: "0" } });
+	const legacyGlobalAgent = join(legacyGlobalHome, ".repi", "agent");
+	const legacyGlobalForbiddenFileProfile = [
+		join(legacyGlobalAgent, "SYSTEM.md"),
+		join(legacyGlobalAgent, "APPEND_SYSTEM.md"),
+		join(legacyGlobalAgent, "extensions", "reverse-pentest-core.ts"),
+		join(legacyGlobalAgent, "skills", "reverse-pentest-orchestrator", "SKILL.md"),
+		join(legacyGlobalAgent, "prompts", "websec.md"),
+		join(legacyGlobalAgent, "node_modules"),
+		join(legacyGlobalAgent, "vendor", "reverse-skill"),
+	].filter((path) => existsSync(path));
+	const legacyGlobalProfilePath = join(legacyGlobalAgent, "recon", "profile.json");
+	const legacyGlobalProfile = existsSync(legacyGlobalProfilePath) ? JSON.parse(readFileSync(legacyGlobalProfilePath, "utf8")) : null;
 	mkdir(fakePiAgent);
 
 	const fakePi = join(installBin, "pi");
@@ -570,6 +589,7 @@ function runtimeInstallProbe() {
 	checks.push(resultCheck("runtime:cleaner-default-dry-run-preserves-pi-profile", cleanerDry.code === 0 && cleanerBeforeDryHash === cleanerAfterDryHash && cleanerDry.combined.includes("DRY-RUN") && cleanerDryBackups.length === 0 ? "pass" : "fail", { code: cleanerDry.code, before: cleanerBeforeDryHash, after: cleanerAfterDryHash, backupCount: cleanerDryBackups.length, stdout: cleanerDry.stdout.slice(0, 1200), stderr: cleanerDry.stderr.slice(-1000) }));
 	checks.push(resultCheck("runtime:cleaner-apply-marker-only", cleanerApplyMarkerOnly ? "pass" : "fail", { code: cleanerApply.code, backups: cleanerBackupsAfterApply, settings: cleanerSettingsAfterApply, stdout: cleanerApply.stdout.slice(0, 1200), stderr: cleanerApply.stderr.slice(-1000) }));
 	checks.push(resultCheck("runtime:cleaner-tools-require-force", cleanerToolsStillOriginal && cleanerForceTools.code === 0 && cleanerToolsMovedWithForce ? "pass" : "fail", { toolsStillAfterApply: cleanerToolsStillOriginal, forceCode: cleanerForceTools.code, movedWithForce: cleanerToolsMovedWithForce, forceStdout: cleanerForceTools.stdout.slice(0, 1200), forceStderr: cleanerForceTools.stderr.slice(-1000) }));
+	checks.push(resultCheck("runtime:install-global-profile-deprecated-wrapper", legacyGlobalInstall.code === 0 && legacyGlobalInstall.combined.includes("deprecated") && legacyGlobalProfile?.kind === "isolated-repi-profile" && legacyGlobalForbiddenFileProfile.length === 0 && !existsSync(join(legacyGlobalHome, ".pi")) && existsSync(join(legacyGlobalBin, "repi")) ? "pass" : "fail", { code: legacyGlobalInstall.code, stdout: legacyGlobalInstall.stdout.slice(0, 1600), stderr: legacyGlobalInstall.stderr.slice(-1200), legacyGlobalAgent, legacyGlobalProfileKind: legacyGlobalProfile?.kind ?? null, forbiddenFileProfile: legacyGlobalForbiddenFileProfile.map((path) => relative(legacyGlobalHome, path)), piDirExists: existsSync(join(legacyGlobalHome, ".pi")), repiExists: existsSync(join(legacyGlobalBin, "repi")) }));
 	checks.push(resultCheck("runtime:install-repi-code", install.code === 0 ? "pass" : "fail", { code: install.code, stderrTail: install.stderr.slice(-2000) }));
 	checks.push(resultCheck("runtime:repi-symlink-created", existsSync(repiPath) ? "pass" : "fail", { repiPath, target: existsSync(repiPath) ? lstatSync(repiPath).isFile() || lstatSync(repiPath).isSymbolicLink() : false }));
 	checks.push(resultCheck("runtime:pi-stub-preserved", piProbe.stdout.includes("UPSTREAM_PI_STUB") ? "pass" : "fail", { stdout: piProbe.stdout.trim(), code: piProbe.code }));

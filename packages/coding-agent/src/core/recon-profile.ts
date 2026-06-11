@@ -22310,7 +22310,7 @@ function updateReconCompactionTelemetryFromExecutions(
 	const current = latest.telemetry;
 	if (!current) return undefined;
 	const executions = new Map(executionsList.map((item) => [normalizeReconCommand(item.command), item]));
-	const commandStatus = current.commandStatus.map((row) => {
+	let commandStatus = current.commandStatus.map((row) => {
 		const execution =
 			executions.get(normalizeReconCommand(row.command)) ??
 			executionsList.find((item) => reconCommandMatches(row.command, item.command));
@@ -22326,6 +22326,21 @@ function updateReconCompactionTelemetryFromExecutions(
 			outputSha256: createHash("sha256").update(execution.output).digest("hex"),
 		};
 	});
+	const proofLoopEnteredByCurrentRun =
+		commandStatus.some((row) => row.enteredProofLoop) ||
+		executionsList.some(
+			(item) =>
+				item.status !== "blocked" &&
+				(/^re[-_]proof[-_]loop\s+run\b/i.test(item.command) ||
+					/\bcompact resume proof loop entered\b|\bproof_loop:/i.test(item.output)),
+		);
+	if (current.contractVerified && current.autoResumeTriggered && proofLoopEnteredByCurrentRun) {
+		commandStatus = commandStatus.map((row) => ({
+			...row,
+			status: "done",
+			enteredProofLoop: row.enteredProofLoop || /^re[-_]proof[-_]loop\s+run\b/i.test(row.command),
+		}));
+	}
 	const telemetry: ReconCompactionResumeTelemetry = {
 		...current,
 		timestamp: new Date().toISOString(),
@@ -24124,25 +24139,52 @@ function latestOperatorFeedback(target?: string): {
 } {
 	const scope = target ? { target, requestedBy: "operator_feedback_latest_artifact_consumer" } : {};
 	const specs: Array<
-		[string | undefined, (path: string) => { target?: string; operatorFeedback?: string[] } | undefined]
+		[string | undefined, (path: string) => { target?: string; operatorFeedback?: string[] } | undefined, "scoped" | "fallback"]
 	> = [
-		[latestAutofixArtifactPath(scope), parseAutofixArtifact],
-		[latestReplayerArtifactPath(scope), parseReplayArtifact],
-		[latestCompilerArtifactPath(scope), parseCompilerArtifact],
-		[latestVerifierArtifactPath(scope), parseVerifierArtifact],
+		[latestAutofixArtifactPath(scope), parseAutofixArtifact, "scoped"],
+		[latestReplayerArtifactPath(scope), parseReplayArtifact, "scoped"],
+		[latestCompilerArtifactPath(scope), parseCompilerArtifact, "scoped"],
+		[latestVerifierArtifactPath(scope), parseVerifierArtifact, "scoped"],
+		...(target
+			? ([
+					[latestAutofixArtifactPath(), parseAutofixArtifact, "fallback"],
+					[latestReplayerArtifactPath(), parseReplayArtifact, "fallback"],
+					[latestCompilerArtifactPath(), parseCompilerArtifact, "fallback"],
+					[latestVerifierArtifactPath(), parseVerifierArtifact, "fallback"],
+				] as Array<
+					[
+						string | undefined,
+						(path: string) => { target?: string; operatorFeedback?: string[] } | undefined,
+						"fallback",
+					]
+				>)
+			: []),
 	];
-	const rows: string[] = [];
-	const sourceArtifacts: string[] = [];
-	for (const [path, parse] of specs) {
+	const seenPaths = new Set<string>();
+	const exactRows: string[] = [];
+	const exactSources: string[] = [];
+	const fallbackRows: string[] = [];
+	const fallbackSources: string[] = [];
+	for (const [path, parse, mode] of specs) {
 		if (!path || !existsSync(path)) continue;
+		if (seenPaths.has(path)) continue;
+		seenPaths.add(path);
 		const artifact = parse(path);
-		if (!artifact || !artifactTargetMatches(target, artifact.target)) continue;
+		if (!artifact) continue;
 		const feedback = artifact.operatorFeedback ?? [];
 		if (feedback.length) {
-			sourceArtifacts.push(path);
-			rows.push(...feedback);
+			const exact = mode === "scoped" && artifactTargetMatches(target, artifact.target);
+			if (exact) {
+				exactSources.push(path);
+				exactRows.push(...feedback);
+			} else {
+				fallbackSources.push(path);
+				fallbackRows.push(...feedback);
+			}
 		}
 	}
+	const rows = exactRows.length ? exactRows : fallbackRows;
+	const sourceArtifacts = exactRows.length ? exactSources : fallbackSources;
 	const dedupedRows = Array.from(new Set(rows)).slice(0, 48);
 	const commands = operatorFeedbackNextCommands(dedupedRows)
 		.map((command) => operatorCommandConcrete(command, target).command)
@@ -24153,6 +24195,18 @@ function latestOperatorFeedback(target?: string): {
 		commands: Array.from(new Set(commands)).slice(0, 16),
 		sourceArtifacts: Array.from(new Set(sourceArtifacts)).slice(0, 16),
 	};
+}
+
+function operatorFeedbackProofLoopCommands(
+	feedback: Pick<ReturnType<typeof latestOperatorFeedback>, "rows" | "commands">,
+	target?: string,
+): string[] {
+	const fallback = feedback.commands.length ? [] : operatorFeedbackDispatcherCommands(feedback.rows, target);
+	return Array.from(new Set([...feedback.commands, ...fallback]).values())
+		.map((command) => operatorCommandConcrete(command, target).command)
+		.filter((command) => /^re[-_]/i.test(command))
+		.filter((command) => !/^re[-_]proof[-_]loop\b/i.test(command))
+		.slice(0, 16);
 }
 
 function verifierInterestingEvidence(output: string, fallback: string): string[] {
@@ -25859,7 +25913,8 @@ function buildProofLoopSteps(target?: string): ProofLoopStep[] {
 	const suffix = proofLoopCommandTarget(target);
 	const replayTarget = target?.trim() || "<target>";
 	const sourceArtifacts = proofLoopSourceArtifacts(target);
-	const operatorFeedbackCommands = latestOperatorFeedback(target).commands;
+	const operatorFeedback = latestOperatorFeedback(target);
+	const operatorFeedbackCommands = operatorFeedbackProofLoopCommands(operatorFeedback, target);
 	const swarmRetryCommands = latestSwarmRetryQueue(target).commands;
 	const failureSignaturePriority = failureSignaturePriorityReport(target);
 	const failureSignatureCommands = failureSignaturePriority.commands;
@@ -25950,6 +26005,7 @@ function proofLoopNextActions(proof: ProofLoopArtifact): string[] {
 function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 	const verdict = proofLoopVerdict(proof.target);
 	const operatorFeedback = latestOperatorFeedback(proof.target);
+	const operatorFeedbackQueue = operatorFeedbackProofLoopCommands(operatorFeedback, proof.target);
 	const existingCommands = new Set(proof.steps.map((step) => step.command));
 	const failureSignature = failureSignaturePriorityReport(proof.target);
 	const compactResume = latestReconCompactionResumeTelemetry();
@@ -25980,7 +26036,7 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 					: "source=failure_signature_priority",
 			sourceArtifacts: failureSignature.sourceArtifacts,
 		}));
-	const operatorFeedbackSteps: ProofLoopStep[] = operatorFeedback.commands
+	const operatorFeedbackSteps: ProofLoopStep[] = operatorFeedbackQueue
 		.filter((command) => !existingCommands.has(command))
 		.slice(0, 4)
 		.map((command, index) => ({
@@ -26016,7 +26072,7 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 			compactResumeTelemetry: compactResume.lines,
 		compactResumeQueue,
 		operatorFeedback: operatorFeedback.rows,
-		operatorFeedbackQueue: operatorFeedback.commands,
+		operatorFeedbackQueue,
 		swarmRetryQueue: swarmRetry,
 		specialistQueue,
 		swarmBridge,
@@ -26036,7 +26092,7 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 			compactResumeTelemetry: compactResume.lines,
 			compactResumeQueue,
 			operatorFeedback: operatorFeedback.rows,
-			operatorFeedbackQueue: operatorFeedback.commands,
+			operatorFeedbackQueue,
 			swarmRetryQueue: swarmRetry,
 			specialistQueue,
 			swarmBridge,
@@ -26450,13 +26506,18 @@ function compactResumeKnowledgeSignals(target?: string): {
 	const queued = telemetry?.commandStatus.filter((row) => row.status === "queued") ?? [];
 	const blocked = telemetry?.commandStatus.filter((row) => row.status === "blocked") ?? [];
 	const done = telemetry?.commandStatus.filter((row) => row.status === "done") ?? [];
-	const status: "queued" | "blocked" | "partial" | "done" = blocked.length
-		? "blocked"
-		: queued.length
-			? "queued"
-			: telemetry?.contractVerified && telemetry.autoResumeTriggered && !telemetry.proofLoopEntered
-				? "partial"
-				: "done";
+	const terminalResumeDone = Boolean(
+		telemetry?.contractVerified && telemetry.autoResumeTriggered && telemetry.proofLoopEntered,
+	);
+	const status: "queued" | "blocked" | "partial" | "done" = terminalResumeDone
+		? "done"
+		: blocked.length
+			? "blocked"
+			: queued.length
+				? "queued"
+				: telemetry?.contractVerified && telemetry.autoResumeTriggered && !telemetry.proofLoopEntered
+					? "partial"
+					: "done";
 	const targetRef = target?.trim() || "<target>";
 	const commandHints = Array.from(
 		new Set([
@@ -27535,7 +27596,7 @@ function harnessInstallScriptChecks(): HarnessCheck[] {
 		harnessFileCheck({
 			id: "install-script:install-global-profile",
 			path: harnessWorkspacePath("scripts/reverse-agent/install-global-profile.sh"),
-			markers: ["evidence/harness"],
+			markers: ["no longer installs a file-based global profile", "init-repi-profile.mjs", "install-repi.sh"],
 			missingStatus: "warn",
 		}),
 		harnessFileCheck({
@@ -27686,7 +27747,7 @@ function buildHarnessArtifact(mode: HarnessMode = "quick"): HarnessArtifact {
 			)
 			.map((check) => `${check.status}:${check.id}:${check.evidence.join(" | ")}`),
 		"verify_command=scripts/reverse-agent/verify-profile.mjs /root/pi-diy/pi",
-		"install_command=scripts/reverse-agent/install-global-profile.sh /root/pi-diy/pi",
+		"install_command=scripts/reverse-agent/install-repi.sh /root/pi-diy/pi",
 		"help_smoke=REPI_OFFLINE=1 ./pi-test.sh --recon --no-tools --help",
 	];
 	const regressionGuards = [
@@ -39241,7 +39302,7 @@ function installReconTools(pi: ExtensionAPI): void {
 			"Use re_harness before installing/upgrading the profile or after major reverse/pentest capability changes.",
 		promptGuidelines: [
 			"Call re_harness full after profile edits and before claiming the agent is installable.",
-			"Use install mode to hard-fail missing global profile files after install-global-profile.sh.",
+			"Use install mode to verify install-repi/init wiring and keep the deprecated install-global-profile wrapper file-profile-free.",
 			"Treat reverse_capability_guards and regression_guards failures as blockers before final completion.",
 		],
 		parameters: Type.Object({

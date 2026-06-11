@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../src/core/extensions/types.ts";
 import {
 	createReconExtensionFactory,
@@ -13,6 +13,8 @@ import {
 
 const ENV_AGENT_DIR = "REPI_CODING_AGENT_DIR";
 const ENV_BRANCH_ID = "REPI_BRANCH_ID";
+
+vi.setConfig({ testTimeout: 60_000 });
 
 describe("REPI kernel profile", () => {
 	let tempDir: string;

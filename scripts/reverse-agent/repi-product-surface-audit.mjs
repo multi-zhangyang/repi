@@ -31,6 +31,7 @@ const PRODUCT_SURFACE_FILES = [
 	"repi",
 	"pi",
 	"scripts/reverse-agent/install-repi.sh",
+	"scripts/reverse-agent/install-global-profile.sh",
 	"scripts/reverse-agent/clean-global-repi-profile.sh",
 	".gitignore",
 	"repi-profile/SYSTEM.md",
@@ -111,6 +112,7 @@ const requiredMarkers = [
 	["packages/coding-agent/test/package-command-paths.test.ts", "rejects `repi update pi` as an upstream pi boundary request"],
 	["repi", "REPI_PRODUCT=1"],
 	["scripts/reverse-agent/install-repi.sh", "Installed REPI launcher"],
+	["scripts/reverse-agent/install-global-profile.sh", "no longer installs a file-based global profile"],
 	["scripts/reverse-agent/clean-global-repi-profile.sh", "Default is dry-run"],
 	["repi-profile/SYSTEM.md", "~/.repi/agent/recon/evidence"],
 ];

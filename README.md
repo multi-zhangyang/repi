@@ -282,7 +282,7 @@ npm run clean:repi-legacy-profile:apply    # 只移动带 REPI/reverse-pentest m
 
 `~/.pi/agent/tools/` 可能包含用户或 upstream Pi 自定义工具，默认不会移动；确认确实是旧 REPI tools 污染后再执行 `npm run clean:repi-legacy-profile:force-tools`。
 
-旧脚本 `scripts/reverse-agent/install-global-profile.sh` 仅作为兼容入口保留，默认也写入 `~/.repi/agent`，不再默认写入 `~/.pi/agent`。
+旧脚本 `scripts/reverse-agent/install-global-profile.sh` 仅作为兼容入口保留；现在是 deprecated wrapper，只初始化 `~/.repi/agent` 运行时 profile 并调用 `install-repi.sh`，不再复制文件型 `SYSTEM.md` / extensions / skills / prompts，也不写 `~/.pi/agent`。
 
 验证：
 
@@ -923,7 +923,7 @@ scripts/reverse-agent/
   install-repi.sh
   init-repi-profile.mjs       # legacy script entry; CLI has built-in initializer too
   clean-global-repi-profile.sh  # dry-run by default; --apply required; tools need --force-tools
-  install-global-profile.sh     # legacy compatibility; defaults to ~/.repi/agent
+  install-global-profile.sh     # deprecated wrapper; init ~/.repi/agent + install repi only
   refresh-tool-index.sh
   verify-profile.mjs
 ```
