@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://repi.local/schemas/reverse-agent/cross-session-multi-compact-matrix.schema.json",
   "title": "CrossSessionMultiCompactMatrixGateV1",
-  "description": "cross_session_multi_compact_matrix_gate: one bounded matrix proves cross-session exact contextPath resume after five compactions, old contextPath over latest fallback, artifact/context hash verification, multi-provider and remote-shaped provider continuation after exact resume, operator/proof-loop closure, and CompactResumeLedgerV2 terminal-row integrity.",
+  "description": "cross_session_multi_compact_matrix_gate: one bounded matrix proves cross-session exact contextPath resume after five compactions, old contextPath over latest fallback, artifact/context hash verification, multi-provider and remote-shaped provider continuation after exact resume, operator/proof-loop closure, and CompactResumeLedgerV2 terminal-row integrity, and per-cycle CompactResumeLedgerV2 terminal alignment.",
   "$defs": {
     "CrossSessionMatrixSessionV1": {
       "type": "object",
@@ -419,6 +419,8 @@
         "appendOnly",
         "hashChainOk",
         "terminalRowsNotReopened",
+        "cycleTerminalAlignmentOk",
+        "ledgerCycleAlignment",
         "transitions"
       ],
       "additionalProperties": false,
@@ -449,6 +451,12 @@
           "items": {
             "$ref": "#/$defs/CompactResumeLedgerTransitionV2"
           }
+        },
+        "cycleTerminalAlignmentOk": {
+          "const": true
+        },
+        "ledgerCycleAlignment": {
+          "$ref": "#/$defs/CompactResumeLedgerCycleTerminalAlignmentV1"
         }
       }
     },
@@ -555,7 +563,8 @@
             "requiresLongerCompactionChain",
             "requiresOperatorProofClosure",
             "requiresRemoteProviderContinuationSampleMatrix",
-            "requiresFiveCycleCompactionChain"
+            "requiresFiveCycleCompactionChain",
+            "requiresLedgerCycleTerminalAlignment"
           ],
           "additionalProperties": false,
           "properties": {
@@ -587,6 +596,9 @@
               "const": true
             },
             "requiresFiveCycleCompactionChain": {
+              "const": true
+            },
+            "requiresLedgerCycleTerminalAlignment": {
               "const": true
             }
           }
@@ -627,7 +639,7 @@
         },
         "requiredGates": {
           "type": "array",
-          "minItems": 12,
+          "minItems": 13,
           "items": {
             "enum": [
               "CrossSessionMultiCompactMatrixGateV1",
@@ -639,6 +651,7 @@
               "longer_cross_session_compaction_chain",
               "operator_proof_loop_budget_closure",
               "terminal_resume_rows_not_reopened",
+              "compact_resume_ledger_cycle_terminal_alignment",
               "compact_resume_ledger_v2_hash_chain_quality",
               "five_cycle_cross_session_compaction_chain",
               "remote_provider_continuation_sample_matrix"
@@ -650,7 +663,7 @@
         },
         "negativeCases": {
           "type": "array",
-          "minItems": 14,
+          "minItems": 15,
           "items": {
             "type": "object",
             "required": [
@@ -675,6 +688,7 @@
                   "compact-chain-too-short",
                   "provider-continuation-before-exact-resume",
                   "five-cycle-chain-too-short",
+                  "ledger-terminal-missing-after-rehash",
                   "remote-provider-sample-missing",
                   "remote-provider-secret-leak"
                 ]
@@ -693,7 +707,7 @@
         },
         "invariants": {
           "type": "array",
-          "minItems": 12,
+          "minItems": 13,
           "items": {
             "enum": [
               "cross_session_multi_compact_matrix_gate",
@@ -703,6 +717,7 @@
               "provider_continuation_after_exact_resume",
               "operator_proof_loop_budget_closure",
               "terminal_resume_rows_not_reopened",
+              "compact_resume_ledger_cycle_terminal_alignment",
               "compact_resume_ledger_v2_hash_chain_quality",
               "provider_continuation_matrix_multi_provider",
               "longer_cross_session_compaction_chain",
@@ -720,6 +735,7 @@
         "provider_continuation_after_exact_resume",
         "operator_proof_loop_budget_closure",
         "terminal_resume_rows_not_reopened",
+        "compact_resume_ledger_cycle_terminal_alignment",
         "compact_resume_ledger_v2_hash_chain_quality",
         "provider_continuation_matrix_multi_provider",
         "longer_cross_session_compaction_chain",
@@ -951,6 +967,59 @@
           "const": true
         }
       }
+    },
+    "CompactResumeLedgerCycleTerminalAlignmentV1": {
+      "type": "object",
+      "required": [
+        "kind",
+        "allCyclesHaveQueuedRunningTerminal",
+        "terminalMatchesClosure",
+        "terminalMatchesOperatorProofClosure",
+        "contextHashMatchesCycle",
+        "noOrphanTransitions",
+        "cycleCount",
+        "transitionCount",
+        "terminalStatesByCycle"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "CompactResumeLedgerCycleTerminalAlignmentV1"
+        },
+        "allCyclesHaveQueuedRunningTerminal": {
+          "const": true
+        },
+        "terminalMatchesClosure": {
+          "const": true
+        },
+        "terminalMatchesOperatorProofClosure": {
+          "const": true
+        },
+        "contextHashMatchesCycle": {
+          "const": true
+        },
+        "noOrphanTransitions": {
+          "const": true
+        },
+        "cycleCount": {
+          "type": "integer",
+          "minimum": 5
+        },
+        "transitionCount": {
+          "type": "integer",
+          "minimum": 15
+        },
+        "terminalStatesByCycle": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "done",
+              "blocked",
+              "exhausted"
+            ]
+          }
+        }
+      }
     }
   },
   "$ref": "#/$defs/CrossSessionMultiCompactMatrixGateV1",
@@ -965,6 +1034,7 @@
     "longer_cross_session_compaction_chain",
     "operator_proof_loop_budget_closure",
     "terminal_resume_rows_not_reopened",
+    "compact_resume_ledger_cycle_terminal_alignment",
     "compact_resume_ledger_v2_hash_chain_quality",
     "five_cycle_cross_session_compaction_chain",
     "remote_provider_continuation_sample_matrix"

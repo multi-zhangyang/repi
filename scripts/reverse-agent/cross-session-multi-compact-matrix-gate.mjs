@@ -26,6 +26,7 @@ const REQUIRED_GATES = [
 	"remote_provider_continuation_sample_matrix",
 	"operator_proof_loop_budget_closure",
 	"terminal_resume_rows_not_reopened",
+	"compact_resume_ledger_cycle_terminal_alignment",
 	"compact_resume_ledger_v2_hash_chain_quality",
 ];
 const REQUIRED_NEGATIVE_CASES = [
@@ -41,6 +42,7 @@ const REQUIRED_NEGATIVE_CASES = [
 	"compact-chain-too-short",
 	"provider-continuation-before-exact-resume",
 	"five-cycle-chain-too-short",
+	"ledger-terminal-missing-after-rehash",
 	"remote-provider-sample-missing",
 	"remote-provider-secret-leak",
 ];
@@ -56,6 +58,7 @@ const INVARIANTS = [
 	"remote_provider_continuation_sample_matrix",
 	"operator_proof_loop_budget_closure",
 	"terminal_resume_rows_not_reopened",
+	"compact_resume_ledger_cycle_terminal_alignment",
 	"compact_resume_ledger_v2_hash_chain_quality",
 ];
 const TERMINAL_STATES = new Set(["done", "blocked", "exhausted"]);
@@ -119,6 +122,65 @@ function ledgerHashChainOk(rows) {
 		prevHash = row.entryHash;
 	}
 	return (rows ?? []).length >= 6;
+}
+
+function rehashLedgerTransitions(rows) {
+	let prevHash = "0".repeat(64);
+	return (rows ?? []).map((row, index) => {
+		const { entryHash: _entryHash, prevHash: _prevHash, seq: _seq, ...rest } = row;
+		const transition = { kind: "CompactResumeLedgerTransitionV2", seq: index + 1, prevHash, ...rest };
+		transition.entryHash = transitionHash(transition);
+		prevHash = transition.entryHash;
+		return transition;
+	});
+}
+
+function validateLedgerCycleTerminalAlignment(matrix) {
+	const errors = [];
+	const cycles = matrix?.compactCycles ?? [];
+	const transitions = matrix?.compactResumeLedger?.transitions ?? [];
+	const closures = new Map((matrix?.operatorProofClosures ?? []).map((closure) => [closure.cycleId, closure]));
+	const cycleIds = new Set(cycles.map((cycle) => cycle.cycleId));
+	const transitionsByCycle = new Map();
+	for (const transition of transitions) {
+		if (!cycleIds.has(transition.cycleId)) errors.push(`ledger_orphan_transition:${transition.cycleId}`);
+		const bucket = transitionsByCycle.get(transition.cycleId) ?? [];
+		bucket.push(transition);
+		transitionsByCycle.set(transition.cycleId, bucket);
+	}
+	for (const cycle of cycles) {
+		const rows = transitionsByCycle.get(cycle.cycleId) ?? [];
+		if (!rows.length) {
+			errors.push(`ledger_cycle_missing:${cycle.cycleId}`);
+			continue;
+		}
+		for (const transition of rows) {
+			if (transition.contextPath !== cycle.contextPath) errors.push(`ledger_cycle_context_path_mismatch:${cycle.cycleId}:${transition.seq}`);
+			if (transition.contextSha256 !== cycle.contextSha256) errors.push(`ledger_cycle_context_sha_mismatch:${cycle.cycleId}:${transition.seq}`);
+		}
+		const queued = rows.find((transition) => transition.state === "queued" && transition.sessionId === cycle.sourceSessionId);
+		const running = rows.find((transition) => transition.state === "running" && transition.sessionId === cycle.resumeSessionId);
+		const terminalRows = rows.filter((transition) => TERMINAL_STATES.has(transition.state));
+		if (!queued) errors.push(`ledger_cycle_queued_missing:${cycle.cycleId}`);
+		if (!running) errors.push(`ledger_cycle_running_missing:${cycle.cycleId}`);
+		if (terminalRows.length !== 1) errors.push(`ledger_cycle_terminal_count:${cycle.cycleId}:${terminalRows.length}`);
+		const terminal = terminalRows[0];
+		if (!terminal) continue;
+		if (terminal.sessionId !== cycle.resumeSessionId) errors.push(`ledger_cycle_terminal_session_mismatch:${cycle.cycleId}`);
+		if (terminal.state !== cycle.resumeClosure?.status) errors.push(`ledger_cycle_terminal_resume_closure_mismatch:${cycle.cycleId}`);
+		const proofClosure = closures.get(cycle.cycleId);
+		if (!proofClosure) errors.push(`ledger_cycle_operator_proof_closure_missing:${cycle.cycleId}`);
+		else if (terminal.state !== proofClosure.proofLoopStatus) errors.push(`ledger_cycle_terminal_operator_proof_mismatch:${cycle.cycleId}`);
+		const terminalIndex = rows.indexOf(terminal);
+		if (rows.slice(terminalIndex + 1).length > 0) errors.push(`ledger_cycle_transition_after_terminal:${cycle.cycleId}`);
+	}
+	return {
+		ok: errors.length === 0,
+		errors,
+		cycleCount: cycles.length,
+		transitionCount: transitions.length,
+		terminalStatesByCycle: Object.fromEntries(cycles.map((cycle) => [cycle.cycleId, (transitionsByCycle.get(cycle.cycleId) ?? []).find((transition) => TERMINAL_STATES.has(transition.state))?.state ?? "missing"])),
+	};
 }
 
 function buildContextPack(tempRoot, cycleId, sourceSessionId, target, artifacts) {
@@ -417,6 +479,7 @@ function buildRuntimeMatrix(tempRoot) {
 		secretFree: providerContinuations.every((row) => row.noLiteralSecrets === true),
 		noPiPollution: providerContinuations.every((row) => row.noPiHomeImport === true && row.noUpdateBanner === true),
 	};
+	const ledgerCycleAlignment = validateLedgerCycleTerminalAlignment({ compactCycles, operatorProofClosures, compactResumeLedger: { transitions: ledgerTransitions } });
 	return {
 		kind: "CrossSessionMultiCompactMatrixGateV1",
 		schemaVersion: 1,
@@ -445,6 +508,18 @@ function buildRuntimeMatrix(tempRoot) {
 				appendOnly: true,
 				hashChainOk: ledgerHashChainOk(ledgerTransitions),
 				terminalRowsNotReopened: true,
+				cycleTerminalAlignmentOk: ledgerCycleAlignment.ok,
+				ledgerCycleAlignment: {
+					kind: "CompactResumeLedgerCycleTerminalAlignmentV1",
+					allCyclesHaveQueuedRunningTerminal: ledgerCycleAlignment.ok,
+					terminalMatchesClosure: ledgerCycleAlignment.ok,
+					terminalMatchesOperatorProofClosure: ledgerCycleAlignment.ok,
+					contextHashMatchesCycle: ledgerCycleAlignment.ok,
+					noOrphanTransitions: ledgerCycleAlignment.ok,
+					cycleCount: ledgerCycleAlignment.cycleCount,
+					transitionCount: ledgerCycleAlignment.transitionCount,
+					terminalStatesByCycle: ledgerCycleAlignment.terminalStatesByCycle,
+				},
 				transitions: ledgerTransitions,
 			},
 			providerContinuationPolicy: {
@@ -464,6 +539,7 @@ function buildRuntimeMatrix(tempRoot) {
 				requiresRemoteProviderContinuationSampleMatrix: true,
 				requiresLongerCompactionChain: true,
 				requiresFiveCycleCompactionChain: true,
+				requiresLedgerCycleTerminalAlignment: true,
 				requiresOperatorProofClosure: true,
 			},
 		},
@@ -542,6 +618,13 @@ function validateMatrix(tempRoot, report) {
 		if (TERMINAL_STATES.has(transition.state)) seenTerminal.add(transition.cycleId);
 	}
 	if (ledger?.terminalRowsNotReopened !== true) errors.push("terminal_rows_not_reopened_false");
+	const ledgerAlignment = validateLedgerCycleTerminalAlignment(matrix);
+	if (!ledgerAlignment.ok) errors.push(...ledgerAlignment.errors);
+	if (ledger?.cycleTerminalAlignmentOk !== true) errors.push("ledger_cycle_terminal_alignment_flag_false");
+	if (ledger?.ledgerCycleAlignment?.kind !== "CompactResumeLedgerCycleTerminalAlignmentV1") errors.push("ledgerCycleAlignment.kind");
+	for (const key of ["allCyclesHaveQueuedRunningTerminal", "terminalMatchesClosure", "terminalMatchesOperatorProofClosure", "contextHashMatchesCycle", "noOrphanTransitions"]) {
+		if (ledger?.ledgerCycleAlignment?.[key] !== true) errors.push(`ledgerCycleAlignment.${key}_not_true`);
+	}
 	for (const closure of matrix?.operatorProofClosures ?? []) {
 		if (!TERMINAL_STATES.has(closure.proofLoopStatus)) errors.push(`closure_not_terminal:${closure.cycleId}`);
 		if (closure.proofLoopEntered !== true) errors.push(`closure_proof_loop_not_entered:${closure.cycleId}`);
@@ -612,6 +695,12 @@ function mutateReport(report, id) {
 		matrix.remoteProviderContinuationSampleMatrix.sampleCount = matrix.remoteProviderContinuationSampleMatrix.samples.length;
 		matrix.compactResumeLedger.transitions = matrix.compactResumeLedger.transitions.filter((transition) => !removedIds.has(transition.cycleId));
 	}
+	if (id === "ledger-terminal-missing-after-rehash") {
+		const terminal = matrix.compactResumeLedger.transitions.find((transition) => transition.cycleId === "compact-cycle-005" && transition.state === "exhausted");
+		terminal.state = "running";
+		matrix.compactResumeLedger.transitions = rehashLedgerTransitions(matrix.compactResumeLedger.transitions);
+		matrix.compactResumeLedger.hashChainOk = ledgerHashChainOk(matrix.compactResumeLedger.transitions);
+	}
 	if (id === "remote-provider-sample-missing") {
 		matrix.remoteProviderContinuationSampleMatrix.samples.pop();
 		matrix.remoteProviderContinuationSampleMatrix.sampleCount = matrix.remoteProviderContinuationSampleMatrix.samples.length;
@@ -664,14 +753,16 @@ function main() {
 		checks.push(check("runtime:remote-provider-continuation-sample-matrix", report.matrix.remoteProviderContinuationSampleMatrix.sampleCount >= 5 && report.matrix.remoteProviderContinuationSampleMatrix.providerCount >= 3 && report.matrix.remoteProviderContinuationSampleMatrix.allAfterExactResume && report.matrix.remoteProviderContinuationSampleMatrix.secretFree && report.matrix.remoteProviderContinuationSampleMatrix.noPiPollution, report.matrix.remoteProviderContinuationSampleMatrix));
 		checks.push(check("runtime:operator-proof-loop-budget-closure", report.matrix.operatorProofClosures.every((row) => TERMINAL_STATES.has(row.proofLoopStatus) && row.proofLoopEntered && (row.proofLoopStatus !== "exhausted" || row.budget.remaining === 0)), { closures: report.matrix.operatorProofClosures }));
 		checks.push(check("runtime:terminal-resume-rows-not-reopened", report.matrix.compactResumeLedger.terminalRowsNotReopened && ledgerHashChainOk(report.matrix.compactResumeLedger.transitions), { transitionCount: report.matrix.compactResumeLedger.transitions.length, tipHash: report.matrix.compactResumeLedger.transitions.at(-1)?.entryHash }));
+		const ledgerAlignment = validateLedgerCycleTerminalAlignment(report.matrix);
+		checks.push(check("runtime:compact-resume-ledger-cycle-terminal-alignment", ledgerAlignment.ok && report.matrix.compactResumeLedger.cycleTerminalAlignmentOk === true, ledgerAlignment));
 		const negativeResults = REQUIRED_NEGATIVE_CASES.map((id) => ({ id, validation: validateMatrix(tempRoot, mutateReport(report, id)) }));
 		checks.push(check("fixture:negative-rejections", negativeResults.every((row) => !row.validation.ok), { negativeResults: negativeResults.map((row) => ({ id: row.id, ok: row.validation.ok, errors: row.validation.errors })) }));
-		checks.push(markerCheck("harness:cross-session-multi-compact-matrix", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:cross-session-multi-compact-matrix", "CrossSessionMultiCompactMatrixGateV1", "child:gate:cross-session-multi-compact-matrix"]));
-		checks.push(markerCheck("autonomy:cross-session-multi-compact-matrix", "scripts/reverse-agent/autonomy-control-plane.mjs", ["CrossSessionMultiCompactMatrixGateV1", "cross_session_multi_compact_matrix_gate", "provider_continuation_after_exact_resume", "provider_continuation_matrix_multi_provider", "longer_cross_session_compaction_chain", "five_cycle_cross_session_compaction_chain", "remote_provider_continuation_sample_matrix"]));
+		checks.push(markerCheck("harness:cross-session-multi-compact-matrix", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:cross-session-multi-compact-matrix", "CrossSessionMultiCompactMatrixGateV1", "runtime:compact-resume-ledger-cycle-terminal-alignment", "ledger-terminal-missing-after-rehash", "child:gate:cross-session-multi-compact-matrix"]));
+		checks.push(markerCheck("autonomy:cross-session-multi-compact-matrix", "scripts/reverse-agent/autonomy-control-plane.mjs", ["CrossSessionMultiCompactMatrixGateV1", "cross_session_multi_compact_matrix_gate", "provider_continuation_after_exact_resume", "provider_continuation_matrix_multi_provider", "longer_cross_session_compaction_chain", "five_cycle_cross_session_compaction_chain", "remote_provider_continuation_sample_matrix", "compact_resume_ledger_cycle_terminal_alignment"]));
 		checks.push(markerCheck("npm:cross-session-multi-compact-matrix", "package.json", ["gate:cross-session-multi-compact-matrix", "cross-session-multi-compact-matrix-gate.mjs"]));
-		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-readme", "README.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "五轮", "remote provider"]));
-		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-control-plane", "docs/reverse-agent/autonomous-control-plane.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "五轮", "remote provider"]));
-		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-reverse", "docs/reverse-agent/README.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "五轮", "remote provider"]));
+		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-readme", "README.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "五轮", "remote provider", "compact_resume_ledger_cycle_terminal_alignment"]));
+		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-control-plane", "docs/reverse-agent/autonomous-control-plane.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "五轮", "remote provider", "compact_resume_ledger_cycle_terminal_alignment"]));
+		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-reverse", "docs/reverse-agent/README.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "五轮", "remote provider", "compact_resume_ledger_cycle_terminal_alignment"]));
 	} catch (error) {
 		checks.push(check("gate:exception", false, { error: String(error), stack: error?.stack }));
 	} finally {

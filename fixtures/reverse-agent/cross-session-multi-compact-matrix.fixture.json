@@ -12,6 +12,7 @@
     "longer_cross_session_compaction_chain",
     "operator_proof_loop_budget_closure",
     "terminal_resume_rows_not_reopened",
+    "compact_resume_ledger_cycle_terminal_alignment",
     "compact_resume_ledger_v2_hash_chain_quality",
     "five_cycle_cross_session_compaction_chain",
     "remote_provider_continuation_sample_matrix"
@@ -27,7 +28,8 @@
     "at least three compact cycles in one matrix run with nine CompactResumeLedgerV2 transitions",
     "provider continuation matrix covers OpenAI-compatible and Anthropic-compatible provider styles after exact resume",
     "at least five compact cycles in one matrix run with fifteen CompactResumeLedgerV2 transitions",
-    "remote provider continuation sample matrix covers at least five exact-resume samples, three provider names, both OpenAI-compatible and Anthropic-compatible styles, env-ref-only secrets and request-log hashes"
+    "remote provider continuation sample matrix covers at least five exact-resume samples, three provider names, both OpenAI-compatible and Anthropic-compatible styles, env-ref-only secrets and request-log hashes",
+    "each compact cycle has CompactResumeLedgerV2 queued→running→terminal alignment, terminal state matches resumeClosure and operatorProofClosure, contextPath/contextSha256 match, and no orphan transitions"
   ],
   "negativeCases": [
     {
@@ -103,6 +105,12 @@
       "mustNotPromote": true
     },
     {
+      "id": "ledger-terminal-missing-after-rehash",
+      "mutates": "compactResumeLedger.transitions terminal row becomes running and hash chain is recomputed",
+      "expect": "reject",
+      "mustNotPromote": true
+    },
+    {
       "id": "remote-provider-sample-missing",
       "mutates": "remoteProviderContinuationSampleMatrix.samples remove one sample",
       "expect": "reject",
@@ -125,7 +133,8 @@
     "requiresProviderContinuationMatrix": true,
     "requiresLongerCompactionChain": true,
     "requiresRemoteProviderContinuationSampleMatrix": true,
-    "requiresFiveCycleCompactionChain": true
+    "requiresFiveCycleCompactionChain": true,
+    "requiresLedgerCycleTerminalAlignment": true
   },
   "invariants": [
     "cross_session_multi_compact_matrix_gate",
@@ -137,6 +146,7 @@
     "longer_cross_session_compaction_chain",
     "operator_proof_loop_budget_closure",
     "terminal_resume_rows_not_reopened",
+    "compact_resume_ledger_cycle_terminal_alignment",
     "compact_resume_ledger_v2_hash_chain_quality",
     "five_cycle_cross_session_compaction_chain",
     "remote_provider_continuation_sample_matrix"
