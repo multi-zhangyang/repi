@@ -2688,6 +2688,9 @@ type KnowledgeNode = {
 	label: string;
 	path?: string;
 	route?: string;
+	scopeVerdict?: MemoryScopeIsolationVerdict;
+	scopeReasons?: string[];
+	scopeEventId?: string;
 	score: number;
 	tags: string[];
 };
@@ -2697,6 +2700,37 @@ type KnowledgeEdge = {
 	to: string;
 	kind: "contains" | "derived_from" | "suggests" | "repairs" | "verifies" | "replays" | "resembles";
 	label?: string;
+};
+
+type KnowledgeScopeIsolationSourceV1 = {
+	path: string;
+	kind: string;
+	eventId?: string;
+	caseSignature?: string;
+	verdict: MemoryScopeIsolationVerdict;
+	reasons: string[];
+	blocksKnowledgeReuse: boolean;
+};
+
+type KnowledgeScopeIsolationV1 = {
+	kind: "repi-knowledge-scope-isolation";
+	schemaVersion: 1;
+	MemoryScopeIsolationV1: true;
+	scope_filter_by_mission_session_workspace_target: true;
+	reportPath: string;
+	currentScope: MemoryScopeV1;
+	checkedSourceCount: number;
+	blockedSourceCount: number;
+	warnSourceCount: number;
+	allowedSourceCount: number;
+	blockedEventIds: string[];
+	warnEventIds: string[];
+	allowedEventIds: string[];
+	quarantinedSourceArtifacts: string[];
+	warnSourceArtifacts: string[];
+	allowedSourceArtifacts: string[];
+	sourceRows: KnowledgeScopeIsolationSourceV1[];
+	requiredGates: string[];
 };
 
 type KnowledgeGraphArtifact = {
@@ -2720,6 +2754,7 @@ type KnowledgeGraphArtifact = {
 	compactResumeTelemetry: string[];
 	compactResumeCaseMemory: string[];
 	compactResumeRoutingHints: string[];
+	knowledgeScopeIsolation: KnowledgeScopeIsolationV1;
 	autonomousBudget: AutonomousExecutionBudget;
 	dispatcherScoreDecay: string[];
 	repeatedFailureDemotions: string[];
@@ -22392,6 +22427,90 @@ function knowledgeArtifactSources(limitPerKind = 5): Array<{ kind: string; path:
 	);
 }
 
+function knowledgeScopePathKey(path: string): string {
+	return path.trim().replace(/\\/g, "/").toLowerCase();
+}
+
+function knowledgeScopeRowForSource(
+	source: { path: string; text: string },
+	rows: MemoryScopeIsolationRowV1[],
+	byArtifactPath: Map<string, MemoryScopeIsolationRowV1>,
+): MemoryScopeIsolationRowV1 | undefined {
+	const direct = byArtifactPath.get(knowledgeScopePathKey(source.path));
+	if (direct) return direct;
+	const text = `${source.path}\n${source.text}`;
+	const matches = rows.filter(
+		(row) =>
+			text.includes(row.eventId) ||
+			text.includes(row.caseSignature) ||
+			(row.eventScope?.target && text.toLowerCase().includes(row.eventScope.target.toLowerCase())),
+	);
+	if (!matches.length) return undefined;
+	return (
+		matches.find((row) => row.verdict === "block") ??
+		matches.find((row) => row.verdict === "warn") ??
+		matches[0]
+	);
+}
+
+function buildKnowledgeScopeIsolation(options: {
+	target?: string;
+	sources: Array<{ kind: string; path: string; text: string }>;
+}): KnowledgeScopeIsolationV1 {
+	const events = readMemoryEvents();
+	const report = buildMemoryScopeIsolationReport({ target: options.target, events });
+	const rowsByEvent = new Map(report.rows.map((row) => [row.eventId, row]));
+	const byArtifactPath = new Map<string, MemoryScopeIsolationRowV1>();
+	for (const event of events) {
+		const row = rowsByEvent.get(event.id);
+		if (!row) continue;
+		for (const artifact of event.artifactHashes) {
+			byArtifactPath.set(knowledgeScopePathKey(artifact.path), row);
+		}
+	}
+	const sourceRows = options.sources.map((source): KnowledgeScopeIsolationSourceV1 => {
+		const row = knowledgeScopeRowForSource(source, report.rows, byArtifactPath);
+		const verdict = row?.verdict ?? "allow";
+		const reasons = row?.reasons ?? [];
+		return {
+			path: source.path,
+			kind: source.kind,
+			eventId: row?.eventId,
+			caseSignature: row?.caseSignature,
+			verdict,
+			reasons,
+			blocksKnowledgeReuse: verdict === "block",
+		};
+	});
+	return {
+		kind: "repi-knowledge-scope-isolation",
+		schemaVersion: 1,
+		MemoryScopeIsolationV1: true,
+		scope_filter_by_mission_session_workspace_target: true,
+		reportPath: report.scopeIsolationReportPath,
+		currentScope: report.currentScope,
+		checkedSourceCount: sourceRows.length,
+		blockedSourceCount: sourceRows.filter((row) => row.verdict === "block").length,
+		warnSourceCount: sourceRows.filter((row) => row.verdict === "warn").length,
+		allowedSourceCount: sourceRows.filter((row) => row.verdict === "allow").length,
+		blockedEventIds: report.blockedEventIds,
+		warnEventIds: report.warnEventIds,
+		allowedEventIds: report.allowedEventIds,
+		quarantinedSourceArtifacts: sourceRows.filter((row) => row.verdict === "block").map((row) => row.path),
+		warnSourceArtifacts: sourceRows.filter((row) => row.verdict === "warn").map((row) => row.path),
+		allowedSourceArtifacts: sourceRows.filter((row) => row.verdict === "allow").map((row) => row.path),
+		sourceRows,
+		requiredGates: [
+			"KnowledgeScopeIsolationV1",
+			"MemoryScopeIsolationV1",
+			"scope_filter_by_mission_session_workspace_target",
+			"knowledge_graph_scope_filter_blocks_quarantined_artifacts",
+			"knowledge_graph_command_hints_exclude_scope_blocked_sources",
+			"knowledge_scope_isolation_report_in_artifact",
+		],
+	};
+}
+
 function knowledgeTags(text: string, kind: string): string[] {
 	const tags = new Set<string>([kind]);
 	const patterns: Array<[RegExp, string]> = [
@@ -22490,6 +22609,19 @@ function buildKnowledgeGraph(
 	const route = mission?.route.domain;
 	const missionId = mission?.id;
 	const missionNodeId = missionId ? `mission:${missionId}` : "mission:none";
+	const candidateSources = query
+		? sources.filter((source) => `${source.kind}\n${source.path}\n${source.text}`.toLowerCase().includes(query))
+		: sources;
+	const knowledgeScopeIsolation = buildKnowledgeScopeIsolation({ target: options.target, sources: candidateSources });
+	const scopeBySourcePath = new Map(
+		knowledgeScopeIsolation.sourceRows.map((row) => [knowledgeScopePathKey(row.path), row]),
+	);
+	const usableSources = candidateSources.filter(
+		(source) => scopeBySourcePath.get(knowledgeScopePathKey(source.path))?.blocksKnowledgeReuse !== true,
+	);
+	const quarantinedSources = candidateSources.filter(
+		(source) => scopeBySourcePath.get(knowledgeScopePathKey(source.path))?.blocksKnowledgeReuse === true,
+	);
 	nodes.push({
 		id: missionNodeId,
 		kind: "mission",
@@ -22498,10 +22630,8 @@ function buildKnowledgeGraph(
 		score: 50,
 		tags: ["mission"],
 	});
-	const filtered = query
-		? sources.filter((source) => `${source.kind}\n${source.path}\n${source.text}`.toLowerCase().includes(query))
-		: sources;
-	for (const [index, source] of filtered.entries()) {
+	for (const [index, source] of usableSources.entries()) {
+		const scopeRow = scopeBySourcePath.get(knowledgeScopePathKey(source.path));
 		const tags = knowledgeTags(source.text, source.kind);
 		const id = `artifact:${index + 1}:${source.kind}:${slug(source.path).slice(0, 28)}`;
 		nodes.push({
@@ -22510,12 +22640,15 @@ function buildKnowledgeGraph(
 			label: `${source.kind}: ${source.path}`,
 			path: source.path,
 			route,
+			scopeVerdict: scopeRow?.verdict ?? "allow",
+			scopeReasons: scopeRow?.reasons ?? [],
+			scopeEventId: scopeRow?.eventId,
 			score: knowledgeScore(source.kind, source.text),
-			tags,
+			tags: [...tags, "knowledge-scope-allowed"],
 		});
 		edges.push({ from: missionNodeId, to: id, kind: "contains", label: source.kind });
 		if (index > 0) {
-			const previous = filtered[index - 1]!;
+			const previous = usableSources[index - 1]!;
 			edges.push({
 				from: `artifact:${index}:${previous.kind}:${slug(previous.path).slice(0, 28)}`,
 				to: id,
@@ -22544,6 +22677,28 @@ function buildKnowledgeGraph(
 				label: tag,
 			});
 		}
+	}
+	for (const [index, source] of quarantinedSources.entries()) {
+		const scopeRow = scopeBySourcePath.get(knowledgeScopePathKey(source.path));
+		const id = `scope-quarantine:${index + 1}:${source.kind}:${slug(source.path).slice(0, 28)}`;
+		nodes.push({
+			id,
+			kind: "scope_quarantine",
+			label: `scope blocked ${source.kind}: ${source.path}`,
+			path: source.path,
+			route,
+			scopeVerdict: scopeRow?.verdict ?? "block",
+			scopeReasons: scopeRow?.reasons ?? [],
+			scopeEventId: scopeRow?.eventId,
+			score: 5,
+			tags: ["memory-scope-isolation", "knowledge-scope-quarantine", "quarantine"],
+		});
+		edges.push({
+			from: missionNodeId,
+			to: id,
+			kind: "repairs",
+			label: `knowledge_graph_scope_filter:${scopeRow?.reasons.join(",") || "blocked"}`,
+		});
 	}
 	const scoreboard = latestWorkerScoreboard();
 	for (const entry of scoreboard.entries) {
@@ -22699,7 +22854,11 @@ function buildKnowledgeGraph(
 		`route=${route ?? "unknown"}`,
 		`target=${options.target ?? mission?.task ?? "<none>"}`,
 		`tags=${allTags.slice(0, 16).join(",") || "none"}`,
-		`artifacts=${filtered.length}`,
+		`artifacts=${usableSources.length}`,
+		`scope_checked=${knowledgeScopeIsolation.checkedSourceCount}`,
+		`scope_blocked=${knowledgeScopeIsolation.blockedSourceCount}`,
+		`scope_warn=${knowledgeScopeIsolation.warnSourceCount}`,
+		`knowledge_graph_scope_filter_blocks_quarantined_artifacts=${knowledgeScopeIsolation.blockedSourceCount}`,
 		`high_score=${nodes.filter((node) => node.score >= 70).length}`,
 		`worker_scoreboard=${scoreboard.entries.length}`,
 		`adaptive_routes=${adaptiveRoutingHints.length}`,
@@ -22715,7 +22874,7 @@ function buildKnowledgeGraph(
 		`compact_resume_routes=${compactResumeSignals.routingHints.length}`,
 	];
 	const similarityIndex = nodes
-		.filter((node) => node.path)
+		.filter((node) => node.path && node.kind !== "scope_quarantine")
 		.sort((a, b) => b.score - a.score)
 		.slice(0, 16)
 		.map((node) => `${node.score} ${node.kind} ${node.tags.join(",")} ${node.path}`);
@@ -22725,7 +22884,7 @@ function buildKnowledgeGraph(
 	);
 	const commandStrategyHints = Array.from(
 		new Set([
-			...filtered.flatMap((source) => knowledgeCommandHints(source.text)),
+			...usableSources.flatMap((source) => knowledgeCommandHints(source.text)),
 			...adaptiveRoutingHints.flatMap((hint) => knowledgeCommandHints(hint)),
 			...workerPromotionQueue.flatMap((hint) => knowledgeCommandHints(hint)),
 			...dispatcherRoutingHints.flatMap((hint) => knowledgeCommandHints(hint)),
@@ -22776,6 +22935,7 @@ function buildKnowledgeGraph(
 		compactResumeTelemetry: compactResumeSignals.lines,
 		compactResumeCaseMemory: compactResumeSignals.caseMemory,
 		compactResumeRoutingHints: compactResumeSignals.routingHints,
+		knowledgeScopeIsolation,
 		autonomousBudget,
 		dispatcherScoreDecay,
 		repeatedFailureDemotions,
@@ -22783,9 +22943,11 @@ function buildKnowledgeGraph(
 		nextActions,
 		sourceArtifacts: Array.from(
 			new Set(
-				[
-					...filtered.map((source) => source.path),
-					dispatcherBoard.path,
+					[
+						...usableSources.map((source) => source.path),
+						knowledgeScopeIsolation.reportPath,
+						...knowledgeScopeIsolation.quarantinedSourceArtifacts,
+						dispatcherBoard.path,
 					autonomousBudget.promotionPlaybookPath,
 					...compactResumeSignals.sourceArtifacts,
 				].filter(Boolean) as string[],
@@ -22808,6 +22970,17 @@ function formatKnowledgeGraph(graph: KnowledgeGraphArtifact, path?: string): str
 		`edges: ${graph.edges.length}`,
 		"case_signatures:",
 		...(graph.caseSignatures.length ? graph.caseSignatures.map((item) => `- ${item}`) : ["- none"]),
+		"knowledge_scope_isolation:",
+		`- MemoryScopeIsolationV1=${graph.knowledgeScopeIsolation.MemoryScopeIsolationV1}`,
+		`- scope_filter_by_mission_session_workspace_target=${graph.knowledgeScopeIsolation.scope_filter_by_mission_session_workspace_target}`,
+		`- checked_sources=${graph.knowledgeScopeIsolation.checkedSourceCount}`,
+		`- blocked_sources=${graph.knowledgeScopeIsolation.blockedSourceCount}`,
+		`- warn_sources=${graph.knowledgeScopeIsolation.warnSourceCount}`,
+		`- report=${graph.knowledgeScopeIsolation.reportPath}`,
+		"scope_quarantined_artifacts:",
+		...(graph.knowledgeScopeIsolation.quarantinedSourceArtifacts.length
+			? graph.knowledgeScopeIsolation.quarantinedSourceArtifacts.map((item) => `- ${item}`)
+			: ["- none"]),
 		"artifact_nodes:",
 		...graph.nodes
 			.filter((node) => node.path)
@@ -22899,6 +23072,17 @@ function writeKnowledgeGraphArtifact(graph: KnowledgeGraphArtifact): string {
 			"## Case signatures",
 			...graph.caseSignatures.map((item) => `- ${item}`),
 			"",
+			"## Knowledge scope isolation",
+			`- MemoryScopeIsolationV1=${graph.knowledgeScopeIsolation.MemoryScopeIsolationV1}`,
+			`- scope_filter_by_mission_session_workspace_target=${graph.knowledgeScopeIsolation.scope_filter_by_mission_session_workspace_target}`,
+			`- checked_sources=${graph.knowledgeScopeIsolation.checkedSourceCount}`,
+			`- blocked_sources=${graph.knowledgeScopeIsolation.blockedSourceCount}`,
+			`- warn_sources=${graph.knowledgeScopeIsolation.warnSourceCount}`,
+			`- report=${graph.knowledgeScopeIsolation.reportPath}`,
+			...(graph.knowledgeScopeIsolation.quarantinedSourceArtifacts.length
+				? graph.knowledgeScopeIsolation.quarantinedSourceArtifacts.map((item) => `- quarantined=${item}`)
+				: ["- quarantined=none"]),
+			"",
 			"## Similarity index",
 			...graph.similarityIndex.map((item) => `- ${item}`),
 			"",
@@ -22966,7 +23150,7 @@ function writeKnowledgeGraphArtifact(graph: KnowledgeGraphArtifact): string {
 	appendEvidence({
 		kind: "artifact",
 		title: `knowledge-graph-${graph.mode} ${graph.missionId ?? "no-mission"}`,
-		fact: `Knowledge graph ${graph.mode}: nodes=${graph.nodes.length}, edges=${graph.edges.length}, signatures=${graph.caseSignatures.length}, adaptive_routes=${graph.adaptiveRoutingHints.length}, promotions=${graph.workerPromotionQueue.length}, dispatcher_feedback=${graph.dispatcherFeedbackScoreboard.length}, dispatcher_routes=${graph.dispatcherRoutingHints.length}, compact_resume_case_memory=${graph.compactResumeCaseMemory.length}, compact_resume_routes=${graph.compactResumeRoutingHints.length}, autonomous_budget=${graph.autonomousBudget?.maxTurns ?? "none"}/${graph.autonomousBudget?.maxDispatch ?? "none"}, score_decay=${(graph.dispatcherScoreDecay ?? []).length}, demotions=${(graph.repeatedFailureDemotions ?? []).length}, high_score_promotions=${(graph.highScorePromotions ?? []).length}`,
+		fact: `Knowledge graph ${graph.mode}: nodes=${graph.nodes.length}, edges=${graph.edges.length}, signatures=${graph.caseSignatures.length}, scope_blocked=${graph.knowledgeScopeIsolation.blockedSourceCount}, scope_warn=${graph.knowledgeScopeIsolation.warnSourceCount}, adaptive_routes=${graph.adaptiveRoutingHints.length}, promotions=${graph.workerPromotionQueue.length}, dispatcher_feedback=${graph.dispatcherFeedbackScoreboard.length}, dispatcher_routes=${graph.dispatcherRoutingHints.length}, compact_resume_case_memory=${graph.compactResumeCaseMemory.length}, compact_resume_routes=${graph.compactResumeRoutingHints.length}, autonomous_budget=${graph.autonomousBudget?.maxTurns ?? "none"}/${graph.autonomousBudget?.maxDispatch ?? "none"}, score_decay=${(graph.dispatcherScoreDecay ?? []).length}, demotions=${(graph.repeatedFailureDemotions ?? []).length}, high_score_promotions=${(graph.highScorePromotions ?? []).length}`,
 		command: `re_knowledge_graph ${graph.mode}`,
 		path,
 		verify: `cat ${path}`,

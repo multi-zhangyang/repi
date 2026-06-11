@@ -339,7 +339,7 @@ Compact/resume chain hard-eval is covered by `npm run gate:compact-resume-chain`
 
 ## Knowledge graph 长期知识图谱闭环
 
-`/re-knowledge-graph build|show|query` / `re_knowledge_graph` 汇总 `.repi/evidence/*` 下的 map、browser、run、attack_graph、campaign、operation、delegation、supervisor、reflection、context、operator、verifier、compiler、replayer、autofix artifacts，生成 `knowledge_graph` 与 `knowledge_artifact`。输出包含 `case_signatures`、`artifact_nodes`、`high_value_edges`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_telemetry`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints` 和 `next_knowledge_command`，同时写入 `memory/knowledge-graph-index.md` 并闭合 `knowledge_graph_ready`，用于跨任务迁移和相似案例检索。
+`/re-knowledge-graph build|show|query` / `re_knowledge_graph` 汇总 `.repi/evidence/*` 下的 map、browser、run、attack_graph、campaign、operation、delegation、supervisor、reflection、context、operator、verifier、compiler、replayer、autofix artifacts，生成 `knowledge_graph` 与 `knowledge_artifact`。输出包含 `case_signatures`、`artifact_nodes`、`high_value_edges`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_telemetry`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints`、`knowledge_scope_isolation` 和 `next_knowledge_command`，同时写入 `memory/knowledge-graph-index.md` 并闭合 `knowledge_graph_ready`，用于跨任务迁移和相似案例检索。`KnowledgeScopeIsolationV1` 会读取 `memory/scope-isolation-report.json`，阻断 scope-blocked artifact 进入 `command_strategy_hints` / `similarity_index`，并由 `npm run gate:knowledge-scope-isolation` 保护。
 
 ## REPI native-deep execution kernel update
 

@@ -162,7 +162,7 @@ marker: model_provider_configuration_runtime
 
 ## Knowledge graph 长期知识图谱闭环
 
-`/re-knowledge-graph build|show|query` / `re_knowledge_graph` 汇总 map/browser/web-authz/mobile-runtime/native-runtime/run/graph/campaign/operation/delegation/swarm/supervisor/reflection/context/operator/verifier/compiler/replayer/autofix/proof-loop artifacts，输出 `knowledge_graph` / `knowledge_artifact`、`case_signatures`、`artifact_nodes`、`high_value_edges`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_telemetry`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints` 与 `next_knowledge_command`，写入 `memory/knowledge-graph-index.md` 并闭合 `knowledge_graph_ready`；后续计划优先复用 knowledge graph 中由 runtime/replay/verifier 支撑的高分链路。
+`/re-knowledge-graph build|show|query` / `re_knowledge_graph` 汇总 map/browser/web-authz/mobile-runtime/native-runtime/run/graph/campaign/operation/delegation/swarm/supervisor/reflection/context/operator/verifier/compiler/replayer/autofix/proof-loop artifacts，输出 `knowledge_graph` / `knowledge_artifact`、`case_signatures`、`artifact_nodes`、`high_value_edges`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_telemetry`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints`、`knowledge_scope_isolation` 与 `next_knowledge_command`，写入 `memory/knowledge-graph-index.md` 并闭合 `knowledge_graph_ready`；后续计划优先复用 knowledge graph 中由 runtime/replay/verifier 支撑、且通过 `KnowledgeScopeIsolationV1` 的高分链路；scope-blocked artifact 只能作为 `scope_quarantine` 审计节点，不得进入 command hints/similarity。
 
 ## REPI native-deep execution kernel update
 

@@ -82,6 +82,7 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `scripts/reverse-agent/memory-feedback-gate.mjs` | Memory reuse feedback hard-eval：验证 `re_lane run` 复用结构化记忆后的在线学习闭环，成功 promote、失败 demote，并阻断失败 case 命令继续污染；对应 `npm run gate:memory-feedback` |
 | `scripts/reverse-agent/memory-feedback-closure-gate.mjs` | Memory feedback closure hard-eval：真实调用 `re_memory feedback/supervise`，验证 `MemoryFeedbackClosureV1` report schema、成功反馈 promote、失败反馈 demote、pending writeback 和 supervisor demotion；对应 `npm run gate:memory-feedback-closure` |
 | `scripts/reverse-agent/memory-scope-isolation-gate.mjs` | Memory scope isolation hard-eval：真实调用 `re_memory scope/sediment` 与 `re_context pack`，验证 `MemoryScopeIsolationV1`、同 scope allow、cross_session/workspace/target contamination 负例、legacy manual-review、sedimentation 阻断和 context pack 中的 `memory_scope_isolation`；对应 `npm run gate:memory-scope-isolation` |
+| `scripts/reverse-agent/knowledge-scope-isolation-gate.mjs` | Knowledge scope isolation hard-eval：真实调用 `re_knowledge_graph build`，验证 `KnowledgeScopeIsolationV1`、scope-blocked artifact quarantine、command hints/similarity 过滤和 allowed artifact 保留；对应 `npm run gate:knowledge-scope-isolation` |
 | `scripts/reverse-agent/memory-hybrid-gate.mjs` | Memory hybrid retrieval hard-eval：验证语义轻量召回、case-memory 文本召回、artifact path/tier 召回和 route 隔离；对应 `npm run gate:memory-hybrid` |
 | `scripts/reverse-agent/memory-vector-gate.mjs` | Memory vector rerank hard-eval：真实调用 `re_memory vector/search-events`，验证 `MemoryVectorIndexV1` / `MemoryVectorSearchV1` / `MemoryEmbeddingProviderV1` schema、OpenAI-compatible provider fallback、`memory_vector_rerank` reason、跨 route forbidden leak 和 quality-weighted rerank；对应 `npm run gate:memory-vector` |
 | `scripts/reverse-agent/memory-usefulness-gate.mjs` | Memory usefulness eval hard-eval：验证 hit@1/hit@k/MRR、forbiddenHitIds 污染阻断、route 隔离和并发 append hash-chain；对应 `npm run gate:memory-usefulness` |
@@ -190,7 +191,7 @@ REPI 的 `re_kernel` 内置 `authorized_task_bias`、`public_target_no_auto_refu
   - `/re-replayer plan|show|run [target] [max-steps]`：消费 compiler 的 `repro_commands`，生成/执行 bounded `replay_matrix`，记录 exit、stdout/stderr SHA256、blocked commands 和 `replay_artifact`，并在 run 后闭合 `replay_ready`。
   - `/re-autofix plan|show|apply [target]`：消费 replay failed/blocked rows 和 compiler gaps，生成 `autofix_plan` / `autofix_artifact`、`patch_queue`、`command_substitutions`、`bootstrap_queue`、`evidence_recapture_queue` 与 `next_operator_queue`，并闭合 `autofix_ready`。
   - `/re-proof-loop plan|show|run [target] [max-steps] [replay-steps]`：执行 verifier→compiler→replayer→autofix bounded proof loop，并在 partial/needs_repair 时输出/执行 `specialist_queue`、`swarm_bridge`、`bridge_artifacts`，把 gap 接入 `re_delegate plan` → `re_swarm run` → `re_swarm merge` → `re_supervisor repair`，再由 `commander_merge_queue` 回流 `re_context pack` / `re_operator dispatch` / `re_proof_loop run`，并闭合 `proof_loop_ready`。
-  - `/re-knowledge-graph build|show|query [term]`：把 map/browser/web-authz/mobile-runtime/native-runtime/run/graph/campaign/operator/verifier/compiler/replayer/autofix/proof-loop artifacts 汇总为 `knowledge_graph` / `knowledge_artifact`，输出 `case_signatures`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints`，并闭合 `knowledge_graph_ready`。
+  - `/re-knowledge-graph build|show|query [term]`：把 map/browser/web-authz/mobile-runtime/native-runtime/run/graph/campaign/operator/verifier/compiler/replayer/autofix/proof-loop artifacts 汇总为 `knowledge_graph` / `knowledge_artifact`，输出 `case_signatures`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints` 和 `knowledge_scope_isolation`，并闭合 `knowledge_graph_ready`。
   - `/re-bootstrap plan|install ...`：按 tool-index 和 bootstrap catalog 补齐当前 lane 所需工具。
   - `/re-complete audit|scaffold`：审计 completion gates，必要时生成报告脚手架。
   - `/re-self-review`：触发自审计 checkpoint。
@@ -222,7 +223,7 @@ REPI 的 `re_kernel` 内置 `authorized_task_bias`、`public_target_no_auto_refu
   - `re_compiler`：模型可把 verifier matrix 编译为 final report scaffold、`key_evidence_block`、`repro_commands`、`contradictions`、`gaps` 和 `next_operator_queue`。
   - `re_replayer`：模型可把 compiler repro_commands 转成可执行 replay_matrix，沉淀 stdout/stderr hash、失败/阻塞行与 replay_ready gate。
   - `re_autofix`：模型可把 replay failed/blocked rows 和 compiler gaps 转成 patch_queue、command_substitutions、bootstrap_queue、evidence_recapture_queue 与 next_operator_queue。
-  - `re_knowledge_graph`：模型可跨 artifacts 构建/查询长期知识图谱，输出 case signatures、相似案例索引、worker 路由与命令策略。
+  - `re_knowledge_graph`：模型可跨 artifacts 构建/查询长期知识图谱，输出 case signatures、相似案例索引、worker 路由与命令策略；先消费 `KnowledgeScopeIsolationV1`，阻断 scope-blocked artifact 进入 command hints/similarity。
   - `re_bootstrap`：模型可规划/执行缺失工具自举并刷新工具索引。
   - `re_complete`：模型可审计完成门槛或生成报告脚手架。
 - Hooks:
@@ -256,6 +257,7 @@ npm run gate:memory-utility
 npm run gate:memory-feedback
 npm run gate:memory-feedback-closure
 npm run gate:memory-scope-isolation
+npm run gate:knowledge-scope-isolation
 npm run gate:memory-hybrid
 npm run gate:memory-vector
 npm run gate:memory-usefulness
@@ -477,7 +479,7 @@ re_memory { "action": "eval" }
 
 ## Knowledge graph 长期知识图谱闭环
 
-`/re-knowledge-graph build|show|query` / `re_knowledge_graph` 汇总 `.repi-harness/evidence/*` 下的 map、browser、run、attack_graph、campaign、operation、delegation、supervisor、reflection、context、operator、verifier、compiler、replayer、autofix artifacts，生成 `knowledge_graph` 与 `knowledge_artifact`。输出包含 `case_signatures`、`artifact_nodes`、`high_value_edges`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_telemetry`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints` 和 `next_knowledge_command`，同时写入 `memory/knowledge-graph-index.md` 并闭合 `knowledge_graph_ready`，用于跨任务迁移和相似案例检索。
+`/re-knowledge-graph build|show|query` / `re_knowledge_graph` 汇总 `.repi-harness/evidence/*` 下的 map、browser、run、attack_graph、campaign、operation、delegation、supervisor、reflection、context、operator、verifier、compiler、replayer、autofix artifacts，生成 `knowledge_graph` 与 `knowledge_artifact`。输出包含 `case_signatures`、`artifact_nodes`、`high_value_edges`、`similarity_index`、`worker_routing_hints`、`worker_scoreboard`、`adaptive_routing_hints`、`worker_promotion_queue`、`compact_resume_telemetry`、`compact_resume_case_memory`、`compact_resume_routing_hints`、`command_strategy_hints`、`knowledge_scope_isolation` 和 `next_knowledge_command`，同时写入 `memory/knowledge-graph-index.md` 并闭合 `knowledge_graph_ready`，用于跨任务迁移和相似案例检索。`KnowledgeScopeIsolationV1` 会读取 `memory/scope-isolation-report.json`，把跨 workspace/target/route 污染 artifact 从 `command_strategy_hints` 与 `similarity_index` 剔除，只留下 `scope_quarantine` 节点供审计；`npm run gate:knowledge-scope-isolation` 保护该链路。
 
 
 ## Decision Core 决策内核层

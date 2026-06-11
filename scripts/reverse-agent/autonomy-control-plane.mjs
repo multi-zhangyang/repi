@@ -596,6 +596,30 @@ const REQUIREMENTS = [
 				markers: ["repi-memory-scope-isolation-fixture", "same-scope-allows-injection", "cross-session-workspace-blocks-injection", "legacy-scope-warns-manual-review"],
 			},
 			{
+				id: "knowledge_scope_isolation_runtime",
+				description: "Knowledge Graph 继续消费 MemoryScopeIsolationV1，把跨 workspace/target/route 污染 artifact 从 command_strategy_hints 和 similarity_index 中剔除，只保留 quarantine 证据节点。",
+				files: ["packages/coding-agent/src/core/recon-profile.ts", "repi-profile/extensions/reverse-pentest-core.ts"],
+				markers: ["KnowledgeScopeIsolationV1", "buildKnowledgeScopeIsolation", "knowledge_graph_scope_filter_blocks_quarantined_artifacts", "knowledge_graph_command_hints_exclude_scope_blocked_sources", "knowledge_scope_isolation"],
+			},
+			{
+				id: "knowledge_scope_isolation_gate",
+				description: "Knowledge Scope Isolation hard-eval 真实构造跨目标 memory artifact，调用 re_knowledge_graph build，验证 blocked artifact 不进入 command hints/similarity，allowed artifact 仍可复用。",
+				files: ["scripts/reverse-agent/knowledge-scope-isolation-gate.mjs"],
+				markers: ["repi-knowledge-scope-isolation-gate", "runtime:blocked-artifact-quarantined", "runtime:command-hints-exclude-blocked", "runtime:similarity-excludes-blocked-artifact"],
+			},
+			{
+				id: "knowledge_scope_isolation_schema",
+				description: "Knowledge Scope Isolation schema 固化 knowledgeScopeIsolation/sourceRows 的可机读合同。",
+				files: ["schemas/reverse-agent/knowledge-scope-isolation.schema.json"],
+				markers: ["KnowledgeScopeIsolationV1", "KnowledgeScopeIsolationSourceV1", "knowledge_graph_scope_filter_blocks_quarantined_artifacts", "knowledge_graph_command_hints_exclude_scope_blocked_sources"],
+			},
+			{
+				id: "knowledge_scope_isolation_fixture",
+				description: "Knowledge Scope Isolation fixture 覆盖 blocked artifact、allowed artifact 和 embedded scope report 三类场景。",
+				files: ["fixtures/reverse-agent/knowledge-scope-isolation.fixture.json"],
+				markers: ["repi-knowledge-scope-isolation-fixture", "blocked-artifact-excluded-from-command-hints", "allowed-artifact-remains-queryable", "scope-report-embedded-in-knowledge-graph"],
+			},
+			{
 				id: "memory_vector_rerank_runtime",
 				description: "Memory Vector Index 用本地 deterministic hash embedding 生成 vector-index/vector-search-report，并把 memory_vector_rerank 接入 search-events 排序。",
 				files: ["packages/coding-agent/src/core/recon-profile.ts", "repi-profile/extensions/reverse-pentest-core.ts"],
@@ -640,14 +664,14 @@ const REQUIREMENTS = [
 			},
 		],
 		hardeningNeeded: [
-			"knowledge graph/latest artifact 查询继续消费 MemoryScopeIsolationV1 行级 verdict，避免非 memory artifact 的跨任务污染。",
+			"latest artifact 查询的非 knowledge graph 旁路线继续消费 KnowledgeScopeIsolationV1 verdict，避免绕过图谱直接复用污染 artifact。",
 			"compact resume ledger 继续扩展 queue 状态机：running/done/blocked/exhausted、auto-resume budget 和多次 compact 幂等回放。",
-				"Memory v5 后续继续补真实远程 embedding live 回归、knowledge graph scope 过滤和 re_swarm 多进程 worker memory writeback 压力回归；embedding provider contract、scope isolation 与 injection feedback closure 已接入 gate。",
+				"Memory v5 后续继续补真实远程 embedding live 回归、latest-artifact side-channel scope 过滤和 re_swarm 多进程 worker memory writeback 压力回归；embedding provider contract、scope isolation、knowledge graph scope isolation 与 injection feedback closure 已接入 gate。",
 		],
 		recommendedWork: [
 			"保持 ContextPackV2 / ResumeContractV2 runtime markers 与 context-compact-audit.mjs 同步。",
 			"把 memory/compaction-resume-ledger.jsonl 与 re_operator/re_proof_loop 的执行闭环做状态回写。",
-			"继续补静态/单元级假 artifact 场景：multi compact、target unresolved、knowledge graph scope verdict propagation。",
+			"继续补静态/单元级假 artifact 场景：multi compact、target unresolved、latest artifact side-channel scope verdict propagation。",
 		],
 	},
 	{
