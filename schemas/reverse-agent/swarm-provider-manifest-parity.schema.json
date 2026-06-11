@@ -27,7 +27,7 @@
       "items": {
         "$ref": "#/$defs/SwarmProviderManifestParityRequiredGateV1"
       },
-      "minItems": 12,
+      "minItems": 14,
       "uniqueItems": true
     },
     "parityReport": {
@@ -38,14 +38,14 @@
       "items": {
         "$ref": "#/$defs/SwarmProviderManifestParityNegativeCaseV1"
       },
-      "minItems": 11
+      "minItems": 14
     },
     "invariants": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "minItems": 12,
+      "minItems": 14,
       "uniqueItems": true
     }
   },
@@ -76,7 +76,7 @@
           "items": {
             "$ref": "#/$defs/SwarmProviderManifestParityRequiredGateV1"
           },
-          "minItems": 12,
+          "minItems": 14,
           "uniqueItems": true
         },
         "parityReport": {
@@ -87,14 +87,14 @@
           "items": {
             "$ref": "#/$defs/SwarmProviderManifestParityNegativeCaseV1"
           },
-          "minItems": 11
+          "minItems": 14
         },
         "invariants": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "minItems": 12,
+          "minItems": 14,
           "uniqueItems": true
         }
       },
@@ -110,7 +110,9 @@
         "provider_worker_retry_repair_rows_bound_to_worker_manifest",
         "narrative_only_provider_worker_not_promoted",
         "live_provider_backed_multi_provider_shared_ledger_matrix",
-        "provider_worker_retry_window_manifest_binding_chain"
+        "provider_worker_retry_window_manifest_binding_chain",
+        "provider_backed_long_window_shared_merge_ledger",
+        "provider_worker_extended_retry_manifest_chain"
       ]
     },
     "SwarmProviderManifestParityRequiredGateV1": {
@@ -126,7 +128,9 @@
         "runtime_artifacts_have_hashes",
         "narrative_only_provider_worker_not_promoted",
         "live_provider_backed_multi_provider_shared_ledger_matrix",
-        "provider_worker_retry_window_manifest_binding_chain"
+        "provider_worker_retry_window_manifest_binding_chain",
+        "provider_backed_long_window_shared_merge_ledger",
+        "provider_worker_extended_retry_manifest_chain"
       ]
     },
     "HashTripletV1": {
@@ -272,7 +276,9 @@
         "sharedMergeLedger",
         "retryRepairBindings",
         "liveProviderBackedSharedLedgerMatrix",
-        "retryWindowManifestBindingChain"
+        "retryWindowManifestBindingChain",
+        "providerBackedLongWindowSharedMergeLedger",
+        "providerWorkerExtendedRetryManifestChain"
       ],
       "properties": {
         "kind": {
@@ -317,6 +323,12 @@
         },
         "retryWindowManifestBindingChain": {
           "$ref": "#/$defs/ProviderWorkerRetryWindowManifestBindingChainV1"
+        },
+        "providerBackedLongWindowSharedMergeLedger": {
+          "$ref": "#/$defs/ProviderBackedLongWindowSharedMergeLedgerV1"
+        },
+        "providerWorkerExtendedRetryManifestChain": {
+          "$ref": "#/$defs/ProviderWorkerExtendedRetryManifestChainV1"
         }
       }
     },
@@ -341,7 +353,10 @@
             "retry-repair-manifest-unbound",
             "shared-ledger-window-provider-missing",
             "retry-window-nonmonotonic",
-            "retry-window-manifest-drift"
+            "retry-window-manifest-drift",
+            "long-shared-ledger-window-too-short",
+            "extended-retry-chain-too-short",
+            "long-shared-ledger-secret-leak"
           ]
         },
         "mutates": {
@@ -788,6 +803,400 @@
           "minItems": 2
         }
       }
+    },
+    "ProviderBackedLongWindowManifestRefV1": {
+      "type": "object",
+      "required": [
+        "workerId",
+        "runtimeManifestFile",
+        "runtimeManifestSha256"
+      ],
+      "properties": {
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeManifestFile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeManifestSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "ProviderBackedLongWindowSharedMergeLedgerWindowV1": {
+      "type": "object",
+      "required": [
+        "sequence",
+        "windowId",
+        "providerBacked",
+        "providerNames",
+        "workerIds",
+        "claimRefs",
+        "failureRepairRefs",
+        "sharedClaimLedgerPath",
+        "sharedFailureLedgerPath",
+        "sharedRepairQueuePath",
+        "ledgerTipSha256",
+        "hashChain",
+        "manifestRefs",
+        "envRefOnlySecrets",
+        "literalSecretsPresent",
+        "promotionPolicy"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "windowId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerBacked": {
+          "const": true
+        },
+        "providerNames": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "workerIds": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "claimRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "failureRepairRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sharedClaimLedgerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sharedFailureLedgerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sharedRepairQueuePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ledgerTipSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "hashChain": {
+          "const": true
+        },
+        "manifestRefs": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/ProviderBackedLongWindowManifestRefV1"
+          }
+        },
+        "envRefOnlySecrets": {
+          "const": true
+        },
+        "literalSecretsPresent": {
+          "const": false
+        },
+        "promotionPolicy": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ProviderBackedLongWindowSharedMergeLedgerV1": {
+      "type": "object",
+      "required": [
+        "kind",
+        "ledgerId",
+        "providerBacked",
+        "windowCount",
+        "providerNames",
+        "sharedClaimLedgerPath",
+        "sharedFailureLedgerPath",
+        "sharedRepairQueuePath",
+        "ledgerTipSha256",
+        "hashChain",
+        "envRefOnlySecrets",
+        "literalSecretsPresent",
+        "forbiddenSecretPatterns",
+        "windows"
+      ],
+      "properties": {
+        "kind": {
+          "const": "ProviderBackedLongWindowSharedMergeLedgerV1"
+        },
+        "ledgerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerBacked": {
+          "const": true
+        },
+        "windowCount": {
+          "type": "integer",
+          "minimum": 4
+        },
+        "providerNames": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "sharedClaimLedgerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sharedFailureLedgerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sharedRepairQueuePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ledgerTipSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "hashChain": {
+          "const": true
+        },
+        "envRefOnlySecrets": {
+          "const": true
+        },
+        "literalSecretsPresent": {
+          "const": false
+        },
+        "forbiddenSecretPatterns": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "string"
+          }
+        },
+        "windows": {
+          "type": "array",
+          "minItems": 4,
+          "items": {
+            "$ref": "#/$defs/ProviderBackedLongWindowSharedMergeLedgerWindowV1"
+          }
+        }
+      }
+    },
+    "ProviderWorkerExtendedRetryAttemptBindingRowV1": {
+      "type": "object",
+      "required": [
+        "attempt",
+        "status",
+        "runtimeManifestFile",
+        "runtimeManifestSha256",
+        "retrySignature",
+        "failureRef",
+        "repairRef",
+        "rollbackPolicyRef",
+        "regressionGate",
+        "manifestBound"
+      ],
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "failed",
+            "repaired",
+            "exhausted",
+            "escalated"
+          ]
+        },
+        "runtimeManifestFile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeManifestSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "retrySignature": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failureRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repairRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rollbackPolicyRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "regressionGate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifestBound": {
+          "const": true
+        }
+      }
+    },
+    "ProviderWorkerExtendedRetryWindowManifestBindingV1": {
+      "type": "object",
+      "required": [
+        "windowId",
+        "workerId",
+        "providerName",
+        "modelId",
+        "runtimeManifestFile",
+        "runtimeManifestSha256",
+        "retrySignature",
+        "regressionGate",
+        "manifestBound",
+        "monotonicAttempts",
+        "sameSignatureAcrossAttempts",
+        "terminalStatus",
+        "attemptRows"
+      ],
+      "properties": {
+        "windowId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeManifestFile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeManifestSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "retrySignature": {
+          "type": "string",
+          "minLength": 1
+        },
+        "regressionGate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifestBound": {
+          "const": true
+        },
+        "monotonicAttempts": {
+          "const": true
+        },
+        "sameSignatureAcrossAttempts": {
+          "const": true
+        },
+        "terminalStatus": {
+          "enum": [
+            "repaired",
+            "exhausted",
+            "escalated"
+          ]
+        },
+        "attemptRows": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "$ref": "#/$defs/ProviderWorkerExtendedRetryAttemptBindingRowV1"
+          }
+        }
+      }
+    },
+    "ProviderWorkerExtendedRetryManifestChainV1": {
+      "type": "object",
+      "required": [
+        "kind",
+        "chainId",
+        "sharedRetryLedgerPath",
+        "ledgerTipSha256",
+        "hashChain",
+        "totalAttemptRows",
+        "minAttemptsPerFailureWorker",
+        "envRefOnlySecrets",
+        "literalSecretsPresent",
+        "retryWindows"
+      ],
+      "properties": {
+        "kind": {
+          "const": "ProviderWorkerExtendedRetryManifestChainV1"
+        },
+        "chainId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sharedRetryLedgerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ledgerTipSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "hashChain": {
+          "const": true
+        },
+        "totalAttemptRows": {
+          "type": "integer",
+          "minimum": 7
+        },
+        "minAttemptsPerFailureWorker": {
+          "type": "integer",
+          "minimum": 3
+        },
+        "envRefOnlySecrets": {
+          "const": true
+        },
+        "literalSecretsPresent": {
+          "const": false
+        },
+        "retryWindows": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/ProviderWorkerExtendedRetryWindowManifestBindingV1"
+          }
+        }
+      }
     }
   },
   "x-repiInvariants": [
@@ -802,6 +1211,8 @@
     "provider_worker_retry_repair_rows_bound_to_worker_manifest",
     "narrative_only_provider_worker_not_promoted",
     "live_provider_backed_multi_provider_shared_ledger_matrix",
-    "provider_worker_retry_window_manifest_binding_chain"
+    "provider_worker_retry_window_manifest_binding_chain",
+    "provider_backed_long_window_shared_merge_ledger",
+    "provider_worker_extended_retry_manifest_chain"
   ]
 }
