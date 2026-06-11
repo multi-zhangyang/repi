@@ -1,6 +1,15 @@
 import { initializeRepiProfile } from "../core/repi-profile-init.ts";
 
-const PACKAGE_COMMANDS = new Set(["install", "remove", "uninstall", "update", "list", "config"]);
+const PACKAGE_COMMANDS = new Set([
+	"install",
+	"remove",
+	"uninstall",
+	"update",
+	"list",
+	"config",
+	"provider-doctor",
+	"doctor-provider",
+]);
 const DEFAULT_CLEAN_ROOM_FLAGS = [
 	"--no-extensions",
 	"--no-skills",

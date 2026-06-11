@@ -253,7 +253,9 @@ ${updateCommandLine}
                                  List installed extensions from settings
   ${APP_NAME} config [--no-approve]
                                  Open TUI to enable/disable package resources
-  ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list
+  ${APP_NAME} provider-doctor --base-url <url> --model <id>
+                                 Probe OpenAI/Anthropic-compatible endpoints and print a REPI models.json template
+  ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list/provider-doctor
 
 ${chalk.bold("Options:")}
   --provider <name>              Provider name (default: configured provider/model)
@@ -322,6 +324,9 @@ ${chalk.bold("Examples:")}
 
   # Use a configured OpenAI-compatible provider/model
   ${APP_NAME} --provider openai-compatible --model provider/model-id "分析 Web/API 授权状态机"
+
+  # Diagnose a custom gateway and generate a REPI models.json template
+  ${APP_NAME} provider-doctor --base-url https://gateway.example/v1 --model provider/model-id --api auto
 
   # Use model with provider prefix (no --provider needed)
   ${APP_NAME} --model openai-compatible/provider-model "生成 exploit-lab 复现矩阵"

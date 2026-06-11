@@ -13,6 +13,7 @@ import { type Args, type Mode, parseArgs, printHelp } from "./cli/args.ts";
 import { processFileArguments } from "./cli/file-processor.ts";
 import { buildInitialMessage } from "./cli/initial-message.ts";
 import { listModels } from "./cli/list-models.ts";
+import { handleProviderDoctorCommand } from "./cli/provider-doctor.ts";
 import { selectSession } from "./cli/session-picker.ts";
 import {
 	APP_NAME,
@@ -575,6 +576,10 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 
 	if (await handleConfigCommand(args)) {
+		return;
+	}
+
+	if (await handleProviderDoctorCommand(args)) {
 		return;
 	}
 

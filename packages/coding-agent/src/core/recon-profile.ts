@@ -5195,6 +5195,7 @@ marker: model_provider_configuration_runtime
 - 自定义模型支持 OpenAI Chat Completions compatible（api: "openai-completions"）、OpenAI Responses compatible（openai-responses）、Anthropic Messages compatible（anthropic-messages）、Google/Azure/Bedrock/Vertex、OpenRouter/Cloudflare/Vercel 网关，以及 vLLM/SGLang/LM Studio/Ollama 等本地 OpenAI-compatible 服务。
 - 凭据优先用环境变量引用："apiKey": "$OPENAI_COMPAT_API_KEY"；不要把真实 token 写进文档、示例或仓库。
 - 最小 OpenAI-compatible 示例：provider 写入 ~/.repi/agent/models.json，baseUrl 通常是 https://host/v1 或 http://127.0.0.1:8000/v1，模型条目必须有 id、contextWindow、maxTokens。
+- 网关格式不确定时先给 repi provider-doctor --base-url <url> --model <id> --api auto；它会探测 OpenAI Chat Completions / OpenAI Responses / Anthropic Messages endpoint，输出 env-ref-only models.json template，并把 /v1/responses 的 endpoint_not_found 诊断成应改用 openai-completions。
 - 验证命令：repi --offline --list-models 与 repi --offline --list-models <provider-or-model>；这是 parse-only，不调用 provider。真实调用用 repi --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK" 并设置对应环境变量。
 - auto compact 默认：triggerPercent: 85、warningPercent: 80、reserveTokens: 16384、keepRecentTokens: 36000；触发阈值是 min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)，可在 ~/.repi/agent/settings.json 覆盖。
 - 详细文档入口：README.md 的“模型 / provider 配置”和 docs/reverse-agent/model-provider-formats.md、docs/reverse-agent/repi-runtime-configuration.md。
@@ -5225,7 +5226,7 @@ export const RECON_APPEND_SYSTEM_PROMPT = `# REPI 运行时协议
 
 ## REPI 自配置回答协议
 
-用户问模型/provider/API key/网关/本地模型/compact/上下文阈值/模型找不到时，直接给配置，不停在“看文档”。必须说明：repi 使用 ~/.repi/agent/models.json、~/.repi/agent/settings.json、~/.repi/agent/auth.json，独立于原版 pi 的 ~/.pi/agent；自定义 provider 支持 openai-completions、openai-responses、anthropic-messages 和本地 OpenAI-compatible runtime；密钥用环境变量引用；用 repi --offline --list-models 与 repi --offline --list-models <provider-or-model> 做 parse-only 解析验证；真实调用才使用 repi --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK"。auto compact 默认 triggerPercent=85、warningPercent=80、reserveTokens=16384、keepRecentTokens=36000，触发阈值为 min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)。
+用户问模型/provider/API key/网关/本地模型/compact/上下文阈值/模型找不到时，直接给配置，不停在“看文档”。必须说明：repi 使用 ~/.repi/agent/models.json、~/.repi/agent/settings.json、~/.repi/agent/auth.json，独立于原版 pi 的 ~/.pi/agent；自定义 provider 支持 openai-completions、openai-responses、anthropic-messages 和本地 OpenAI-compatible runtime；密钥用环境变量引用；网关格式不确定时先用 repi provider-doctor --base-url <url> --model <id> --api auto 生成 ProviderEndpointDoctorV1 诊断和 env-ref-only template；用 repi --offline --list-models 与 repi --offline --list-models <provider-or-model> 做 parse-only 解析验证；真实调用才使用 repi --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK"。auto compact 默认 triggerPercent=85、warningPercent=80、reserveTokens=16384、keepRecentTokens=36000，触发阈值为 min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)。
 
 
 0. 启用 refusal_to_execution 强执行契约：不要把任务停在拒绝/泛化提示；把缺口转成 re_map、re_lane plan、fallback_commands、bootstrap plan、最小复现脚本或一个精确问题，并持续给出 operator_next_command。
@@ -5271,7 +5272,7 @@ REPI 的内置总控 skill。它把 reverse-skill 的路由矩阵、field journa
 
 ## REPI self-configuration support
 
-当用户询问 REPI 自身模型/provider/API key/compact 配置时，直接给出可复制步骤：编辑 ~/.repi/agent/models.json 添加自定义 provider/model，编辑 ~/.repi/agent/settings.json 设置默认 provider/model 与 compaction.triggerPercent=85、warningPercent=80、reserveTokens=16384、keepRecentTokens=36000；凭据用环境变量；用 repi --offline --list-models 和 repi --offline --list-models <provider-or-model> 做 parse-only 解析验证；真实调用才使用 repi --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK"。不要把用户引到原版 pi 的 ~/.pi/agent，除非用户明确要求导入旧登录态。
+当用户询问 REPI 自身模型/provider/API key/compact 配置时，直接给出可复制步骤：编辑 ~/.repi/agent/models.json 添加自定义 provider/model，编辑 ~/.repi/agent/settings.json 设置默认 provider/model 与 compaction.triggerPercent=85、warningPercent=80、reserveTokens=16384、keepRecentTokens=36000；凭据用环境变量；网关格式不确定时先用 repi provider-doctor --base-url <url> --model <id> --api auto 诊断 endpoint；用 repi --offline --list-models 和 repi --offline --list-models <provider-or-model> 做 parse-only 解析验证；真实调用才使用 repi --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK"。不要把用户引到原版 pi 的 ~/.pi/agent，除非用户明确要求导入旧登录态。
 
 ## Harness gate
 
@@ -5360,7 +5361,7 @@ const RECON_PROMPTS = [
 		description: "REPI 模型/provider/API key/auto compact 配置说明",
 		argumentHint: "[provider-or-error]",
 		content:
-			"REPI configuration help: $ARGUMENTS\n\n直接给出 ~/.repi/agent/models.json、~/.repi/agent/settings.json、~/.repi/agent/auth.json 的配置步骤；给 OpenAI Chat Completions-compatible / OpenAI Responses-compatible / Anthropic-compatible / local runtime 示例；说明 repi 独立于 pi；给 repi --offline --list-models 和 repi --offline --list-models <provider-or-model> 做 parse-only 验证；真实调用才用 repi --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p \"Reply exactly: PROVIDER_OK\"；说明 auto compact 默认 triggerPercent=85、warningPercent=80、reserveTokens=16384、keepRecentTokens=36000，阈值 min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)。",
+			"REPI configuration help: $ARGUMENTS\n\n直接给出 ~/.repi/agent/models.json、~/.repi/agent/settings.json、~/.repi/agent/auth.json 的配置步骤；给 OpenAI Chat Completions-compatible / OpenAI Responses-compatible / Anthropic-compatible / local runtime 示例；说明 repi 独立于 pi；网关格式不确定时先给 repi provider-doctor --base-url <url> --model <id> --api auto；给 repi --offline --list-models 和 repi --offline --list-models <provider-or-model> 做 parse-only 验证；真实调用才用 repi --provider <provider-id> --model <model-id> --thinking off --no-tools --no-session -p \"Reply exactly: PROVIDER_OK\"；说明 auto compact 默认 triggerPercent=85、warningPercent=80、reserveTokens=16384、keepRecentTokens=36000，阈值 min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)。",
 	},
 	{
 		name: "reverse",

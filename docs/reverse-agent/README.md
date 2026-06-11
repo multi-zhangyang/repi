@@ -122,6 +122,7 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `scripts/reverse-agent/repair-rollback-policy-gate.mjs` | RepairRollbackPolicyV1 runtime wiring：验证 baseline snapshot → allowlisted repair → regression gate → rollback restore，并真实触发 `re_autofix` state-changing patch_queue 生成 `repairRollbackPolicyPath` / `*-repair-rollback-policy.json`，检查 `runtime:repair-rollback-live-wiring`、rollback 型 failure/repair ledger 和 baseline/allowlist/rollback/regression 负例；对应 `npm run gate:repair-rollback-policy` |
 | `scripts/reverse-agent/tool-call-trace-ledger-gate.mjs` | ToolCallTraceLedgerV1 hard-eval：触发真实 REPI `tool_call` / `tool_result` hook，验证 append-only tool trace、输入/输出 hash、脱敏预览、replay hint、prior-call 链接和 hash-chain 负例；对应 `npm run gate:tool-call-trace-ledger` |
 | `scripts/reverse-agent/parallel-provider-worker-matrix-gate.mjs` | Parallel provider worker matrix hard-eval：并发启动多个真实 `repi --provider ...` child worker，验证 OpenAI/Anthropic pass、provider failure repair、timeout/cancel、claim-aware provider worker merge、failure/repair writeback 和 secret redaction；对应 `npm run gate:parallel-provider-worker-matrix` |
+| `scripts/reverse-agent/provider-endpoint-doctor-gate.mjs` | ProviderEndpointDoctorV1 hard-eval：验证 `repi provider-doctor` 能探测 OpenAI Chat Completions / OpenAI Responses / Anthropic Messages endpoint，输出 env-ref-only `models.json` template，诊断 `endpoint_not_found`，且不泄漏密钥、不污染 `.pi`；对应 `npm run gate:provider-endpoint-doctor` |
 | `scripts/reverse-agent/remote-provider-longrun-gate.mjs` | Remote provider long-run opt-in hard-eval：默认无密钥 skip/pass；显式 `REPI_REMOTE_PROVIDER_LIVE=1` 后真实运行远程 OpenAI Chat Completions / OpenAI Responses / Anthropic-compatible provider 多轮长跑，验证 timeout、session/profile 隔离、env-ref-only、脱敏和 failure/repair writeback；对应 `npm run gate:remote-provider-longrun` |
 | `scripts/reverse-agent/provider-backed-dogfood-gate.mjs` | Provider-backed dogfood opt-in release gate：默认无密钥 skip/pass；显式 `REPI_PROVIDER_BACKED_DOGFOOD_LIVE=1` 后运行 `agent-dogfood/parallel-run.mjs` 多 worker + synthesizer，验证非 plan-only、真实模型/工具调用、subagent manifest、runtime claim ledger、non-mock runtime、parallel overlap 和 orchestration/platform split；对应 `npm run gate:provider-backed-dogfood` |
 | `pi` | 非拥有型兼容 shim；不会启动 REPI，只会转交给 PATH 中的原版 Pi，找不到则提示使用 `repi` |
@@ -690,6 +691,16 @@ npm run gate:provider-runtime-matrix
 ```
 
 它验证 `ProviderRuntimeMatrixV1`：gate 会起本地 mock OpenAI Chat Completions-compatible、OpenAI Responses-compatible 与 Anthropic-compatible provider，在 isolated `~/.repi/agent/models.json` 中只写 `$ENV` 引用，然后分别真实运行 `repi --provider child-openai-compatible --model child/openai-mock ...`、`repi --provider child-openai-responses --model child/responses-mock ...` 与 `repi --provider child-anthropic-compatible --model child/anthropic-mock ...`。通过条件包括 `repi --list-models` 能看到三个 provider、OpenAI Chat Completions-compatible 请求到 `/v1/chat/completions`、OpenAI Responses-compatible 请求到 `/v1/responses`、Anthropic-compatible 请求到 `/v1/messages`、streaming=true、Authorization/x-api-key 来自环境变量、request-log/transcript/stdout/stderr hash 可追踪、evidence 脱敏、无 `.pi` profile 污染和无 update banner。负例覆盖缺 env-ref、错误 endpoint、update banner 泄漏、Responses case 缺失、Anthropic case 缺失和 list-models 缺 provider。
+
+Provider Endpoint Doctor contract 约束“自定义网关配置错误要能自动诊断，而不是让用户猜 api 格式”：
+
+```bash
+export REPI_PROVIDER_DOCTOR_API_KEY=...
+repi provider-doctor --base-url https://gateway.example/v1 --model provider/model-id --api auto
+npm run gate:provider-endpoint-doctor
+```
+
+`ProviderEndpointDoctorV1` 会探测 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 三类 endpoint，输出推荐 `api` / `baseUrl` 和可复制到 `~/.repi/agent/models.json` 的 env-ref-only template。若 `openai-responses` 的 `/v1/responses` 返回 `endpoint_not_found`，但 `/v1/chat/completions` 可用，会明确推荐 `openai-completions`，不会静默 fallback。gate 使用本地 mock 网关验证 live 诊断、template-only 模式、Responses 404 diagnostic、secret redaction、无 `.pi` 污染和无 update banner。
 
 Parallel provider worker matrix contract 约束“多模型 worker 并行不是串行 smoke”：
 

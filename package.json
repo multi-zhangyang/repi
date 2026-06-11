@@ -44,6 +44,7 @@
 		"gate:worker-runtime-pool": "node scripts/reverse-agent/worker-runtime-pool-gate.mjs . --strict",
 		"gate:worker-child-session": "node scripts/reverse-agent/worker-child-session-gate.mjs . --strict",
 		"gate:provider-runtime-matrix": "node scripts/reverse-agent/provider-runtime-matrix-gate.mjs . --strict",
+		"gate:provider-endpoint-doctor": "node scripts/reverse-agent/provider-endpoint-doctor-gate.mjs . --strict",
 		"gate:provider-failure-injection": "node scripts/reverse-agent/provider-failure-injection-gate.mjs . --strict",
 		"gate:parallel-provider-worker-matrix": "node scripts/reverse-agent/parallel-provider-worker-matrix-gate.mjs . --strict",
 		"gate:remote-provider-longrun": "node scripts/reverse-agent/remote-provider-longrun-gate.mjs . --strict",

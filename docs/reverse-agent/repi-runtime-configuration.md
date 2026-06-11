@@ -72,6 +72,20 @@ repi --offline --list-models provider/model-id
 
 OpenAI Responses-compatible provider 使用 `api: "openai-responses"`，运行时必须能接收 `POST /v1/responses`。如果 smoke 显示 `/v1/responses` 404，而 `/v1/chat/completions` 可用，就说明该网关当前按 Chat Completions 暴露，应改用 `api: "openai-completions"`，不要依赖自动降级。
 
+### 自动诊断网关格式
+
+不确定网关到底支持 OpenAI Chat Completions、OpenAI Responses 还是 Anthropic Messages 时，先让 REPI 诊断 endpoint：
+
+```bash
+export REPI_PROVIDER_DOCTOR_API_KEY=<your-token>
+repi provider-doctor \
+  --base-url https://api.example.com/v1 \
+  --model provider/model-id \
+  --api auto
+```
+
+`provider-doctor` 会输出 `ProviderEndpointDoctorV1` 诊断结果和可复制到 `~/.repi/agent/models.json` 的 template。密钥只从 `--api-key-env` 指定的环境变量读取，template 只写 `$REPI_PROVIDER_DOCTOR_API_KEY`，不会写明文 key。若 `openai-responses` 探测结果是 `endpoint_not_found`，应优先按通过的 `openai-completions` 或 `anthropic-messages` 配；需要机器可读输出时加 `--json`。
+
 ### 可选远程 provider 长跑回归
 
 REPI 的默认 CI 不要求真实密钥；需要验证某个真实网关/模型时，用 opt-in live gate：

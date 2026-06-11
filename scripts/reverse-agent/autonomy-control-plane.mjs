@@ -1057,6 +1057,27 @@ const REQUIREMENTS = [
 				markers: ["gate:provider-runtime-matrix", "provider-runtime-matrix-gate.mjs"],
 			},
 			{
+				id: "provider_endpoint_doctor",
+				description: "ProviderEndpointDoctorV1 把自定义网关接入诊断做成 REPI runtime 子命令和 hard-eval：自动探测 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages endpoint，输出 env-ref-only models.json template，并诊断 Responses 404 不静默 fallback。",
+				files: ["packages/coding-agent/src/cli/provider-doctor.ts", "scripts/reverse-agent/provider-endpoint-doctor-gate.mjs"],
+				markers: [
+					"ProviderEndpointDoctorV1",
+					"provider-doctor",
+					"openai-completions",
+					"openai-responses",
+					"anthropic-messages",
+					"endpoint_not_found",
+					"models.json template",
+					"runtime:provider-endpoint-doctor-live",
+				],
+			},
+			{
+				id: "provider_endpoint_doctor_npm_gate",
+				description: "package 暴露 gate:provider-endpoint-doctor，供顶级 harness 与 CI 验证 provider doctor 不泄漏密钥且能给出正确配置建议。",
+				files: ["package.json"],
+				markers: ["gate:provider-endpoint-doctor", "provider-endpoint-doctor-gate.mjs"],
+			},
+			{
 				id: "parallel_provider_worker_matrix_core_contract",
 				description: "ParallelProviderWorkerMatrixV1 把 provider matrix 提升为多 worker 并发 runtime 合同，绑定 claim-aware provider worker merge、timeout cancel 与 failure/repair。",
 				files: ["packages/coding-agent/src/core/recon-profile.ts"],
