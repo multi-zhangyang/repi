@@ -83,11 +83,11 @@ export const CONTEXT_COMPACT_REQUIREMENTS = [
 		checks: [
 			{
 				file: "packages/coding-agent/src/core/recon-profile.ts",
-				markers: ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --list-models", "triggerPercent=85"],
+				markers: ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --offline --list-models", "triggerPercent=85"],
 			},
 			{
 				file: "repi-profile/SYSTEM.md",
-				markers: ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --list-models"],
+				markers: ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --offline --list-models"],
 			},
 			{
 				file: "repi-profile/prompts/repi-config.md",

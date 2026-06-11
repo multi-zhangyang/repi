@@ -586,6 +586,15 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 
 			case "update": {
 				const target = options.updateTarget ?? (IS_REPI_PRODUCT ? { type: "extensions" } : { type: "all" });
+				if (IS_REPI_PRODUCT && options.source === "pi") {
+					console.error(
+						chalk.red(
+							`${APP_NAME} does not manage upstream pi. Use the upstream pi command to update pi; repi update only updates REPI packages.`,
+						),
+					);
+					process.exitCode = 1;
+					return true;
+				}
 				if (IS_REPI_PRODUCT && updateTargetIncludesSelf(target)) {
 					console.error(
 						chalk.red(

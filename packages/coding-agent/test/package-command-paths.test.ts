@@ -251,6 +251,20 @@ describe("package commands", () => {
 		}
 	});
 
+	it("rejects `repi update pi` as an upstream pi boundary request", async () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			await expect(main(["update", "pi"])).resolves.toBeUndefined();
+			expect(process.exitCode).toBe(1);
+			const stderr = errorSpy.mock.calls.map(([message]) => String(message)).join("\n");
+			expect(stderr).toContain("does not manage upstream pi");
+			expect(stderr).toContain("repi update only updates REPI packages");
+			expect(stderr).not.toContain("No matching package found for pi");
+		} finally {
+			errorSpy.mockRestore();
+		}
+	});
+
 	it("suggests the configured source when update input omits the npm prefix", async () => {
 		const settingsPath = join(agentDir, "settings.json");
 		writeFileSync(settingsPath, JSON.stringify({ packages: ["npm:pi-formatter"] }, null, 2));

@@ -63,17 +63,12 @@ export OPENAI_COMPAT_API_KEY=<your-token>
 验证解析，不调用真实模型：
 
 ```bash
-repi --list-models
-repi --offline \
-  --provider openai-compatible \
-  --model provider/model-id \
-  --thinking off \
-  --no-tools \
-  --no-session \
-  -p "Reply exactly: PROVIDER_OK"
+repi --offline --list-models
+repi --offline --list-models openai-compatible
+repi --offline --list-models provider/model-id
 ```
 
-真实调用时去掉 `--offline`。
+真实调用时使用 `repi --provider openai-compatible --model provider/model-id --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK"` 并设置对应环境变量。
 
 ### 可选远程 provider 长跑回归
 

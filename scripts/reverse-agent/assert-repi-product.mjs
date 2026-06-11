@@ -83,6 +83,12 @@ try {
 		if (pattern.test(combinedUpdateHelp)) fail("repi update help leaked upstream pi update/branding text", { pattern: String(pattern) });
 	}
 
+	const updatePi = runRepi(["update", "pi"]);
+	const combinedUpdatePi = `${updatePi.stdout}\n${updatePi.stderr}`;
+	if (updatePi.status === 0 || !combinedUpdatePi.includes("does not manage upstream pi") || !combinedUpdatePi.includes("repi update only updates REPI packages") || /No matching package found for pi/i.test(combinedUpdatePi)) {
+		fail("repi update pi did not clearly preserve upstream pi boundary", { code: updatePi.status, stdout: updatePi.stdout.slice(-2000), stderr: updatePi.stderr.slice(-2000) });
+	}
+
 	const models = runRepi(["--offline", "--list-models"]);
 	if (models.status !== 0) {
 		fail("repi --offline --list-models failed", {

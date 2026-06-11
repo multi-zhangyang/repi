@@ -147,7 +147,7 @@ repi list                      # List installed packages
 repi config                    # Enable/disable package resources
 ```
 
-These commands manage repi packages, not the repi CLI installation. To uninstall repi itself, see [Quickstart](quickstart.md#uninstall). Project package commands accept `--approve`/`--no-approve` to trust or ignore project-local package settings for one command.
+These commands manage repi packages, not the repi CLI installation. `repi update pi` is intentionally rejected because REPI keeps the upstream `pi` command separate; `repi update` only updates REPI packages. To uninstall repi itself, see [Quickstart](quickstart.md#uninstall). Project package commands accept `--approve`/`--no-approve` to trust or ignore project-local package settings for one command.
 
 See [REPI Packages](packages.md) for package sources and security notes.
 
@@ -164,7 +164,7 @@ See [REPI Packages](packages.md) for package sources and security notes.
 In print mode, repi also reads piped stdin and merges it into the initial prompt:
 
 ```bash
-cat README.md | repi -p "Summarize this text"
+cat README.md | repi -p "从这份材料提取接口、鉴权和复现命令"
 ```
 
 ### Model Options
@@ -240,29 +240,29 @@ Prefix files with `@` to include them in the message:
 ```bash
 repi @prompt.md "Answer this"
 repi -p @screenshot.png "What's in this image?"
-repi @code.ts @test.ts "Review these files"
+repi @code.ts @test.ts "提取入口、验证路径和证据缺口"
 ```
 
 ### Examples
 
 ```bash
 # Interactive with initial prompt
-repi "List all .ts files in src/"
+repi "对 ./challenge 做入口、路由、鉴权被动 mapping"
 
 # Non-interactive
-repi -p "Summarize this codebase"
+repi -p "提取当前仓库的攻击面、验证路径和证据缺口"
 
 # Non-interactive with piped stdin
-cat README.md | repi -p "Summarize this text"
+cat README.md | repi -p "从这份材料提取接口、鉴权和复现命令"
 
 # Named one-shot session
 repi --name "release audit" -p "Audit this repository"
 
 # Different model
-repi --provider openai --model gpt-4o "Help me refactor"
+repi --provider openai --model gpt-4o "生成 Web/API 授权状态机审计计划"
 
 # Model with provider prefix
-repi --model openai/gpt-4o "Help me refactor"
+repi --model openai/gpt-4o "生成 exploit-lab 复现矩阵"
 
 # Model with thinking level shorthand
 repi --model sonnet:high "Solve this complex problem"
@@ -271,7 +271,7 @@ repi --model sonnet:high "Solve this complex problem"
 repi --models "claude-*,gpt-4o"
 
 # Read-only mode
-repi --tools read,grep,find,ls -p "Review the code"
+repi --tools read,grep,find,ls -p "只读审计 src/ 的路由、鉴权和危险 sink"
 
 # Disable one extension or built-in tool while keeping the rest available
 repi --exclude-tools ask_question

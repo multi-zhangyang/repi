@@ -35,6 +35,7 @@ repi update --extension npm:@foo/bar
 ```
 
 These commands manage repi packages, not the repi CLI installation. To uninstall repi itself, see [Quickstart](quickstart.md#uninstall).
+`repi update pi` is intentionally rejected in REPI product mode: REPI does not manage the upstream `pi` command, and `repi update` only reconciles REPI packages.
 
 By default, `install` and `remove` write to user settings (`~/.repi/agent/settings.json`). Use `-l` to write to project settings (`.repi/settings.json`) instead. Project settings can be shared with your team, and repi installs any missing packages automatically on startup after the project is trusted.
 

@@ -650,20 +650,16 @@ export MODEL_PROVIDER_API_KEY=<your-token>
 }
 ```
 
-配置解析 smoke test（不调用 provider，只确认 profile 与 provider 名称能被解析）：
+配置解析 smoke test（不调用 provider，只确认 profile、provider 与 model 名称能被解析）：
 
 ```bash
 export MODEL_PROVIDER_API_KEY=<token>
-repi --offline \
-  --provider openai-compatible \
-  --model provider/model-id \
-  --thinking off \
-  --no-tools \
-  --no-session \
-  -p "Reply exactly: PROVIDER_OK"
+repi --offline --list-models
+repi --offline --list-models openai-compatible
+repi --offline --list-models provider/model-id
 ```
 
-如果要真实调用模型，把 `--offline` 去掉，并确保对应 `baseUrl`、`apiKey`、`model id` 可用。
+如果要真实调用模型，使用 `repi --provider openai-compatible --model provider/model-id --thinking off --no-tools --no-session -p "Reply exactly: PROVIDER_OK"`，并确保对应 `baseUrl`、`apiKey`、`model id` 可用。
 
 ### Anthropic Messages 示例
 
@@ -726,6 +722,7 @@ npm run gate:repi-harness
 - `repi` 独立安装、独立 profile、独立 session/storage。
 - 旧 `~/.pi/agent` 污染样本不会被默认读取或改写；auth/models 只有 `--import-pi-auth` 才单向导入。
 - `repi --help` / `repi update --help` 不泄漏 `pi update`、`Update Available`、`pi.dev/changelog` 等 upstream Pi 文案。
+- `repi update pi` 会明确拒绝并提示 REPI 不管理 upstream Pi；`repi update` 只更新 REPI packages，避免把两个产品的升级路径混在一起。
 - 串联 `gate:repi-product`、`gate:repi-isolation`、`gate:context-compact`、`gate:autonomous-runtime`、`gate:autonomy-control`，确认安装独立性和逆向/渗透控制面能力同时成立。
 - `gate:compact-resume-chain` 作为 context-compact 的 hard-eval 补充，覆盖跨 session 精确恢复、append-only ledger、状态机和负例阻断。
 - `gate:compact-resume-ledger-v2` 验证 `CompactResumeLedgerV2`：transition ledger hash、`queued/running/done/blocked/exhausted` 状态机、idempotent replay、auto-resume budget 和 context pack 嵌入。

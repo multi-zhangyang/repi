@@ -402,6 +402,7 @@ repi config                                   # enable/disable extensions, skill
 ```
 
 Packages install to `~/.repi/agent/git/` (git) or `~/.repi/agent/npm/` (npm). Use `-l` for project-local installs (`.repi/git/`, `.repi/npm/`). Git `@ref` values are pinned tags or commits; pinned packages are skipped by `repi update`, so use `repi install git:host/user/repo@new-ref` to move an existing package to a new ref. Git packages install dependencies with `npm install --omit=dev` by default, so runtime deps must be listed under `dependencies`; when `npmCommand` is configured, git packages use plain `install` for compatibility with wrappers. If you use a Node version manager and want package installs to reuse a stable npm context, set `npmCommand` in `settings.json`, for example `["mise", "exec", "node@20", "--", "npm"]`.
+REPI does not manage the upstream `pi` command: `repi update pi` is rejected, and `repi update` only updates REPI packages.
 
 Create a package by adding a `repi` key to `package.json`:
 

@@ -519,10 +519,10 @@ repi --offline --list-models
 repi --offline --list-models <provider-or-model>
 ```
 
-文本 smoke test：
+真实文本 smoke test（会调用 provider；先设置对应环境变量）：
 
 ```bash
-repi --offline \
+repi \
   --provider <provider-id> \
   --model <model-id> \
   --thinking off \
@@ -531,10 +531,10 @@ repi --offline \
   -p "Reply exactly: PROVIDER_OK"
 ```
 
-工具调用 smoke test：
+真实工具调用 smoke test（会调用 provider；只给窄工具 allowlist）：
 
 ```bash
-repi --offline \
+repi \
   --provider <provider-id> \
   --model <model-id> \
   --thinking off \

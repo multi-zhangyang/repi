@@ -221,6 +221,7 @@ function staticContractChecks() {
 			"warningPercent: existingCompaction.warningPercent ?? 80",
 		], []),
 	);
+	checks.push(markerCheck("code:repi-update-pi-boundary", "packages/coding-agent/src/package-manager-cli.ts", ["does not manage upstream pi", "repi update only updates REPI packages", 'options.source === "pi"'], []));
 	checks.push(markerCheck("launcher:pi-non-owning-shim", "pi", ["no longer owns the `pi` command", "exec \"$candidate\" \"$@\""], ["ARGS=(--recon", "REPI_PRODUCT=1", "REPI_PRIMARY=1", "PI_RECON_PRODUCT=1", "PI_RECON_PRIMARY=1"]));
 	checks.push(
 		markerCheck(
@@ -242,7 +243,7 @@ function staticContractChecks() {
 	checks.push(markerCheck("kernel:false-refusal-rewrite-source", "packages/coding-agent/src/core/recon-profile.ts", ["authorized_task_bias", "public_target_no_auto_refusal", "scope_gap_to_passive_mapping", "authorization_context_missing", "public_target_request"], []));
 	checks.push(markerCheck("kernel:false-refusal-rewrite-profile", "repi-profile/extensions/reverse-pentest-core.ts", ["authorized_task_bias", "scope_gap_to_passive_mapping", "authorization_context_missing", "public_target_request"], []));
 	checks.push(markerCheck("profile:false-refusal-rewrite-docs", "repi-profile/SYSTEM.md", ["authorized_task_bias", "public_target_no_auto_refusal", "scope_gap_to_passive_mapping"], []));
-	checks.push(markerCheck("profile:runtime-config-knowledge", "repi-profile/SYSTEM.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --list-models", "triggerPercent"], []));
+	checks.push(markerCheck("profile:runtime-config-knowledge", "repi-profile/SYSTEM.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "openai-completions", "anthropic-messages", "repi --offline --list-models", "triggerPercent"], []));
 	checks.push(markerCheck("prompt:repi-config", "repi-profile/prompts/repi-config.md", ["~/.repi/agent/models.json", "OpenAI-compatible", "anthropic-messages", "triggerPercent=85"], []));
 	checks.push(markerCheck("docs:runtime-configuration", "docs/reverse-agent/repi-runtime-configuration.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "repi --offline", "openai-completions", "triggerPercent"], []));
 	checks.push(markerCheck("npm:top-harness-script", "package.json", ["gate:repi-harness", "gate:repi-product", "gate:repi-isolation", "gate:repi-product-surface", "gate:context-compact", "gate:compact-resume-chain", "gate:compact-resume-ledger-v2", "gate:multi-compact-pressure", "gate:cross-session-resume-live", "gate:cross-session-multi-compact-matrix", "gate:context-runtime-schema", "gate:memory-contract", "gate:memory-utility", "gate:memory-feedback", "gate:memory-feedback-closure", "gate:memory-scope-isolation", "gate:knowledge-scope-isolation", "gate:artifact-scope-filter", "gate:latest-artifact-consumer-scope", "gate:failure-signature-priority", "gate:memory-orchestrator", "gate:memory-deposition", "gate:memory-experience", "gate:memory-quality-ledger", "gate:memory-replay-evaluator", "gate:memory-strategy-capsule", "gate:memory-active-kernel", "gate:memory-maturation-runtime", "gate:memory-ux", "gate:memory-hybrid", "gate:memory-vector", "gate:memory-usefulness", "gate:memory-distiller", "gate:memory-sedimentation", "gate:memory-store", "gate:memory-swarm-writeback", "gate:memory-supervisor", "gate:worker-runtime-pool", "gate:worker-lease-scheduler", "gate:worker-child-session", "gate:provider-runtime-matrix", "gate:provider-failure-injection", "gate:repair-rollback-policy", "gate:worker-provider-repair-rollback-unification", "gate:tool-call-trace-ledger", "gate:parallel-provider-worker-matrix", "gate:remote-provider-longrun", "gate:structured-claim-merge", "gate:live-conflict-arbitration-matrix", "gate:autonomous-hardening-gap-ledger", "gate:autonomous-closure-readiness", "gate:capability-release-bundle", "gate:release-ci-pipeline", "gate:release-evidence-index", "install:repi", "clean:repi-legacy-profile"], ["install:recon-pi", "gate:pi-recon-primary"]));
@@ -494,6 +495,7 @@ function runtimeInstallProbe() {
 	const piProbe = run(fakePi, ["--version"], { env });
 	const help = run(repiPath, ["--offline", "--help"], { env });
 	const updateHelp = run(repiPath, ["update", "--help"], { env });
+	const updatePi = run(repiPath, ["update", "pi"], { env });
 	const listModels = run(repiPath, ["--offline", "--list-models"], { env });
 	const modelsBeforeImport = existsSync(join(home, ".repi", "agent", "models.json"));
 	const authBeforeImport = existsSync(join(home, ".repi", "agent", "auth.json"));
@@ -541,6 +543,7 @@ function runtimeInstallProbe() {
 	checks.push(resultCheck("runtime:normal-pi-profile-unchanged", beforePiHash === afterPiHash ? "pass" : "fail", { beforePiHash, afterPiHash }));
 	checks.push(resultCheck("runtime:repi-help-product", help.code === 0 && help.combined.includes("repi - REPI reverse/pentest autonomous agent") && help.combined.includes("built-in reverse/pentest kernel is enabled") ? "pass" : "fail", { code: help.code, head: help.combined.slice(0, 1200) }));
 	checks.push(resultCheck("runtime:repi-update-help-independent", updateHelp.code === 0 && updateHelp.combined.includes("repi update [source]") && !/--self|--force|Update pi|source\|self\|pi/i.test(updateHelp.combined) ? "pass" : "fail", { code: updateHelp.code, text: updateHelp.combined.slice(0, 1200) }));
+	checks.push(resultCheck("runtime:repi-update-pi-boundary", updatePi.code !== 0 && updatePi.combined.includes("does not manage upstream pi") && updatePi.combined.includes("repi update only updates REPI packages") && !/No matching package found for pi/i.test(updatePi.combined) ? "pass" : "fail", { code: updatePi.code, text: updatePi.combined.slice(0, 1200) }));
 	checks.push(resultCheck("runtime:repi-list-models", listModels.code === 0 ? "pass" : "fail", { code: listModels.code, stdout: listModels.stdout.trim().slice(0, 1200), stderrTail: listModels.stderr.slice(-1000) }));
 	checks.push(resultCheck("runtime:no-upstream-warning-leak", forbidden.length === 0 ? "pass" : "fail", { forbidden: forbidden.map(String) }));
 	checks.push(resultCheck("runtime:profile-in-repi-home", profile?.agentDir === join(home, ".repi", "agent") ? "pass" : "fail", { profilePath, agentDir: profile?.agentDir ?? null }));
