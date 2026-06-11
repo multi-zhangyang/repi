@@ -6,6 +6,7 @@
     "SwarmProviderManifestParityGateV1",
     "swarm_subagent_manifest_fields_match_provider_worker",
     "child_session_runtime_bridge_matches_provider_worker",
+    "all_child_sessions_match_parity_rows",
     "claim_refs_preserved_across_manifest_provider_merge",
     "failure_repair_refs_preserved_across_provider_worker",
     "provider_env_refs_only",
@@ -22,6 +23,7 @@
     "swarm_provider_manifest_parity_gate",
     "swarm_subagent_manifest_fields_match_provider_worker",
     "child_session_runtime_bridge_matches_provider_worker",
+    "all_child_sessions_match_parity_rows",
     "claim_refs_preserved_across_manifest_provider_merge",
     "failure_repair_refs_preserved_across_provider_worker",
     "provider_env_refs_only",
@@ -953,8 +955,8 @@
           "baseUrlRef": "$LOCAL_ANTHROPIC_BASE_URL"
         },
         "runtime": {
-          "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/beta",
-          "transcriptPath": "~/.repi/agent/recon/evidence/swarms/demo/beta/transcript.jsonl"
+          "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/worker-beta",
+          "transcriptPath": "~/.repi/agent/recon/evidence/swarms/demo/worker-beta/transcript.jsonl"
         },
         "hashes": {
           "stdoutSha256": "1212121212121212121212121212121212121212121212121212121212121212",
@@ -978,8 +980,8 @@
           "baseUrlRef": "$LOCAL_OPENAI_BASE_URL"
         },
         "runtime": {
-          "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/gamma",
-          "transcriptPath": "~/.repi/agent/recon/evidence/swarms/demo/gamma/transcript.jsonl"
+          "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/worker-gamma",
+          "transcriptPath": "~/.repi/agent/recon/evidence/swarms/demo/worker-gamma/transcript.jsonl"
         },
         "hashes": {
           "stdoutSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
@@ -994,7 +996,11 @@
         },
         "failureRepairRefs": [
           "fail:parallel_provider_worker_matrix:gamma",
-          "repair:parallel_provider_worker_matrix:gamma"
+          "repair:parallel_provider_worker_matrix:gamma",
+          "fail:parallel_provider_worker_matrix:gamma:attempt-2",
+          "repair:parallel_provider_worker_matrix:gamma:attempt-2",
+          "fail:parallel_provider_worker_matrix:gamma:attempt-3",
+          "repair:parallel_provider_worker_matrix:gamma:attempt-3"
         ]
       },
       {
@@ -1006,8 +1012,8 @@
           "baseUrlRef": "$LOCAL_ANTHROPIC_BASE_URL"
         },
         "runtime": {
-          "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/delta",
-          "transcriptPath": "~/.repi/agent/recon/evidence/swarms/demo/delta/transcript.jsonl"
+          "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta",
+          "transcriptPath": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta/transcript.jsonl"
         },
         "hashes": {
           "stdoutSha256": "4646464646464646464646464646464646464646464646464646464646464646",
@@ -1026,7 +1032,9 @@
           "fail:parallel_provider_worker_matrix:delta:attempt-2",
           "repair:parallel_provider_worker_matrix:delta:attempt-2",
           "fail:parallel_provider_worker_matrix:delta:attempt-3",
-          "repair:parallel_provider_worker_matrix:delta:attempt-3"
+          "repair:parallel_provider_worker_matrix:delta:attempt-3",
+          "fail:parallel_provider_worker_matrix:delta:attempt-4",
+          "repair:parallel_provider_worker_matrix:delta:attempt-4"
         ]
       }
     ]
@@ -1165,6 +1173,16 @@
       ]
     },
     {
+      "id": "child-session-nonfirst-row-drift",
+      "mutates": [
+        "childSession.sessions[2].hashes.stdoutSha256 drift"
+      ],
+      "expect": "fail",
+      "mustNotPromote": [
+        "all_child_sessions_match_parity_rows"
+      ]
+    },
+    {
       "id": "long-shared-ledger-window-too-short",
       "mutates": [
         "parityReport.providerBackedLongWindowSharedMergeLedger.windows keeps only one window"
@@ -1194,5 +1212,8 @@
         "claim-parallel-beta-provider-runtime"
       ]
     }
+  ],
+  "positiveRequirements": [
+    "all WorkerChildSessionRuntimeBatchV1 sessions match parityRows by workerId, modelId, sessionDir, hashes, mergeKey, claimRefs, failureRepairRefs, and env-ref-only provider refs"
   ]
 }

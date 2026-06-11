@@ -15,6 +15,7 @@ const REQUIRED_GATES = [
   "SwarmProviderManifestParityGateV1",
   "swarm_subagent_manifest_fields_match_provider_worker",
   "child_session_runtime_bridge_matches_provider_worker",
+  "all_child_sessions_match_parity_rows",
   "claim_refs_preserved_across_manifest_provider_merge",
   "failure_repair_refs_preserved_across_provider_worker",
   "multi_provider_workers_share_claim_failure_merge_ledger",
@@ -39,6 +40,7 @@ const REQUIRED_NEGATIVE_CASES = [
   "shared-ledger-window-provider-missing",
   "retry-window-nonmonotonic",
   "retry-window-manifest-drift",
+  "child-session-nonfirst-row-drift",
   "long-shared-ledger-window-too-short",
   "extended-retry-chain-too-short",
   "long-shared-ledger-secret-leak",
@@ -250,6 +252,61 @@ function validateProviderWorkerExtendedRetryManifestChain({ report, rowByWorkerI
   return errors;
 }
 
+
+function setEquals(left = [], right = []) {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  if (leftSet.size !== rightSet.size) return false;
+  for (const value of leftSet) if (!rightSet.has(value)) return false;
+  return true;
+}
+
+function validateAllChildSessionsMatchParityRows({ pkg, rowByWorkerId, rowWorkerIds, rowClaimRefs, rowFailureRepairRefs, sharedLedger }) {
+  const errors = [];
+  const batch = pkg.childSession;
+  const sessions = batch?.sessions || [];
+  if (batch?.kind !== "WorkerChildSessionRuntimeBatchV1") errors.push("childSession.kind");
+  if (sessions.length < rowWorkerIds.size) errors.push("childSession.sessions_not_covering_parity_rows");
+  const batchWorkerIds = new Set(batch?.poolBridge?.workerIds || []);
+  const batchClaimRefs = new Set(batch?.poolBridge?.claimRefs || []);
+  for (const workerId of rowWorkerIds) if (!batchWorkerIds.has(workerId)) errors.push(`childSession.poolBridge.worker_missing:${workerId}`);
+  for (const workerId of batchWorkerIds) if (!rowWorkerIds.has(workerId)) errors.push(`childSession.poolBridge.unknown_worker:${workerId}`);
+  for (const claimRef of rowClaimRefs) if (!batchClaimRefs.has(claimRef)) errors.push(`childSession.poolBridge.claim_missing:${claimRef}`);
+  if (sharedLedger) {
+    if (batch?.poolBridge?.sharedClaimLedgerPath !== sharedLedger.claimLedgerPath) errors.push("childSession.poolBridge.sharedClaimLedgerPath_mismatch");
+    if (batch?.poolBridge?.sharedFailureLedgerPath !== sharedLedger.failureLedgerPath) errors.push("childSession.poolBridge.sharedFailureLedgerPath_mismatch");
+    if (batch?.poolBridge?.sharedRepairQueuePath !== sharedLedger.repairQueuePath) errors.push("childSession.poolBridge.sharedRepairQueuePath_mismatch");
+  }
+  const sessionByWorkerId = new Map();
+  for (const session of sessions) {
+    if (!session?.workerId) {
+      errors.push("childSession.session.workerId_missing");
+      continue;
+    }
+    if (sessionByWorkerId.has(session.workerId)) errors.push(`childSession.duplicate_worker:${session.workerId}`);
+    sessionByWorkerId.set(session.workerId, session);
+    const parityRow = rowByWorkerId.get(session.workerId);
+    if (!parityRow) {
+      errors.push(`childSession.unknown_worker:${session.workerId}`);
+      continue;
+    }
+    if (session.provider?.modelId !== parityRow.modelId) errors.push(`${session.workerId}.childSession.modelId_mismatch`);
+    if (!envRef(session.provider?.apiKeyRef) || !envRef(session.provider?.baseUrlRef)) errors.push(`${session.workerId}.childSession.env_ref_invalid`);
+    if (session.runtime?.sessionDir !== parityRow.sessionDir) errors.push(`${session.workerId}.childSession.sessionDir_mismatch`);
+    if (!String(session.runtime?.transcriptPath || "").startsWith(`${parityRow.sessionDir}/`)) errors.push(`${session.workerId}.childSession.transcriptPath_mismatch`);
+    if (session.hashes?.stdoutSha256 !== parityRow.hashes?.stdoutSha256 || session.hashes?.stderrSha256 !== parityRow.hashes?.stderrSha256 || session.hashes?.transcriptSha256 !== parityRow.hashes?.transcriptSha256) errors.push(`${session.workerId}.childSession.hash_mismatch`);
+    if (session.poolBridge?.mergeKey !== parityRow.mergeKey) errors.push(`${session.workerId}.childSession.mergeKey_mismatch`);
+    if (!setEquals(session.poolBridge?.claimRefs || [], parityRow.claimRefs || [])) errors.push(`${session.workerId}.childSession.claimRefs_mismatch`);
+    if (!setEquals(session.failureRepairRefs || [], parityRow.failureRepairRefs || [])) errors.push(`${session.workerId}.childSession.failureRepairRefs_mismatch`);
+    for (const claimRef of session.poolBridge?.claimRefs || []) if (!rowClaimRefs.has(claimRef)) errors.push(`${session.workerId}.childSession.unknown_claim:${claimRef}`);
+    for (const failureRepairRef of session.failureRepairRefs || []) if (!rowFailureRepairRefs.has(failureRepairRef)) errors.push(`${session.workerId}.childSession.unknown_failure_repair:${failureRepairRef}`);
+  }
+  for (const workerId of rowWorkerIds) if (!sessionByWorkerId.has(workerId)) errors.push(`childSession.session_missing_for_parity_row:${workerId}`);
+  const text = JSON.stringify(batch || {});
+  if (/ghp_[A-Za-z0-9]|github_pat_[A-Za-z0-9]|sk-[A-Za-z0-9]{8,}/i.test(text)) errors.push("childSession.literal_secret_leak");
+  return errors;
+}
+
 function validateParityPackage(pkg) {
   const errors = [];
   const report = pkg.parityReport;
@@ -296,6 +353,7 @@ function validateParityPackage(pkg) {
   for (const workerId of rowWorkerIds) if (!sharedLedger?.workerIds?.includes(workerId)) errors.push(`sharedMergeLedger.worker_missing:${workerId}`);
   for (const claimRef of rowClaimRefs) if (!sharedLedger?.claimRefs?.includes(claimRef)) errors.push(`sharedMergeLedger.claim_missing:${claimRef}`);
   for (const failureRepairRef of rowFailureRepairRefs) if (!sharedLedger?.failureRepairRefs?.includes(failureRepairRef)) errors.push(`sharedMergeLedger.failure_repair_missing:${failureRepairRef}`);
+  errors.push(...validateAllChildSessionsMatchParityRows({ pkg, rowByWorkerId, rowWorkerIds, rowClaimRefs, rowFailureRepairRefs, sharedLedger }));
   errors.push(...validateLiveProviderBackedSharedLedgerMatrix({ report, providerNames, rowWorkerIds, rowClaimRefs, rowFailureRepairRefs }));
   errors.push(...validateProviderBackedLongWindowSharedMergeLedger({ report, providerNames, rowWorkerIds, rowClaimRefs, rowFailureRepairRefs, rowByWorkerId }));
 
@@ -354,6 +412,7 @@ function mutatePackage(pkg, id) {
   if (id === "shared-ledger-window-provider-missing") row.parityReport.liveProviderBackedSharedLedgerMatrix[0].providerNames = row.parityReport.liveProviderBackedSharedLedgerMatrix[0].providerNames.filter((providerName) => providerName !== "parallel-anthropic-compatible");
   if (id === "retry-window-nonmonotonic") row.parityReport.retryWindowManifestBindingChain.retryWindows[0].attemptRows[1].attempt = 1;
   if (id === "retry-window-manifest-drift") row.parityReport.retryWindowManifestBindingChain.retryWindows[0].attemptRows[1].runtimeManifestSha256 = "4444444444444444444444444444444444444444444444444444444444444444";
+  if (id === "child-session-nonfirst-row-drift") row.childSession.sessions[2].hashes.stdoutSha256 = "9999999999999999999999999999999999999999999999999999999999999999";
   if (id === "long-shared-ledger-window-too-short") row.parityReport.providerBackedLongWindowSharedMergeLedger.windows = row.parityReport.providerBackedLongWindowSharedMergeLedger.windows.slice(0, 1);
   if (id === "extended-retry-chain-too-short") row.parityReport.providerWorkerExtendedRetryManifestChain.retryWindows[0].attemptRows = row.parityReport.providerWorkerExtendedRetryManifestChain.retryWindows[0].attemptRows.slice(0, 2);
   if (id === "long-shared-ledger-secret-leak") row.parityReport.providerBackedLongWindowSharedMergeLedger.windows[0].sharedClaimLedgerPath = "ghp_deadbeef";
@@ -390,6 +449,14 @@ function main() {
     checks.push(check("fixture:retry-window-manifest-binding-chain", fixture.parityReport.retryWindowManifestBindingChain?.retryWindows?.length >= 2 && fixture.parityReport.retryWindowManifestBindingChain.retryWindows.every((row) => row.manifestBound === true && row.monotonicAttempts === true && row.attemptRows.length >= 2), { retryWindowManifestBindingChain: fixture.parityReport.retryWindowManifestBindingChain }));
     checks.push(check("fixture:provider-backed-long-window-shared-merge-ledger", fixture.parityReport.providerBackedLongWindowSharedMergeLedger?.windows?.length >= 4 && fixture.parityReport.providerBackedLongWindowSharedMergeLedger.windows.every((row) => row.providerBacked === true && row.providerNames.length >= 2 && row.hashChain === true && row.envRefOnlySecrets === true), { providerBackedLongWindowSharedMergeLedger: fixture.parityReport.providerBackedLongWindowSharedMergeLedger }));
     checks.push(check("fixture:provider-worker-extended-retry-manifest-chain", fixture.parityReport.providerWorkerExtendedRetryManifestChain?.retryWindows?.length >= 2 && fixture.parityReport.providerWorkerExtendedRetryManifestChain.totalAttemptRows >= 7 && fixture.parityReport.providerWorkerExtendedRetryManifestChain.retryWindows.every((row) => row.manifestBound === true && row.monotonicAttempts === true && row.sameSignatureAcrossAttempts === true && row.attemptRows.length >= 3), { providerWorkerExtendedRetryManifestChain: fixture.parityReport.providerWorkerExtendedRetryManifestChain }));
+    checks.push(check("fixture:all-child-sessions-match-parity-rows", validateAllChildSessionsMatchParityRows({
+      pkg: fixture,
+      rowByWorkerId: new Map(fixture.parityReport.parityRows.map((row) => [row.workerId, row])),
+      rowWorkerIds: new Set(fixture.parityReport.parityRows.map((row) => row.workerId)),
+      rowClaimRefs: new Set(fixture.parityReport.parityRows.flatMap((row) => row.claimRefs || [])),
+      rowFailureRepairRefs: new Set(fixture.parityReport.parityRows.flatMap((row) => row.failureRepairRefs || [])),
+      sharedLedger: fixture.parityReport.sharedMergeLedger,
+    }).length === 0, { sessionCount: fixture.childSession?.sessions?.length ?? 0, parityRowCount: fixture.parityReport.parityRows.length }));
     checks.push(markerCheck("runtime:swarm-provider-manifest-parity-core", "packages/coding-agent/src/core/recon-profile.ts", [
       "SubagentRuntimeManifestV1",
       "WorkerChildSessionRuntimeBatchV1",
@@ -400,11 +467,11 @@ function main() {
     ]));
     checks.push(markerCheck("runtime:swarm-provider-manifest-parity-worker-child", "scripts/reverse-agent/worker-child-session-gate.mjs", ["runtime:worker-child-session-batch", "runtime:worker-provider-child-process-smoke", "WorkerProviderChildProcessProbeV1", "provider runtime"]));
     checks.push(markerCheck("runtime:swarm-provider-manifest-parity-provider-worker", "scripts/reverse-agent/parallel-provider-worker-matrix-gate.mjs", ["ParallelProviderWorkerMatrixV1", "runtime:parallel-provider-worker-claim-merge", "runtime:parallel-provider-worker-failure-repair", "claimAwareProviderWorkerMerge"]));
-    checks.push(markerCheck("harness:swarm-provider-manifest-parity", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:swarm-provider-manifest-parity", "SwarmProviderManifestParityGateV1", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1", "child:gate:swarm-provider-manifest-parity"]));
-    checks.push(markerCheck("autonomy:swarm-provider-manifest-parity", "scripts/reverse-agent/autonomy-control-plane.mjs", ["swarm_provider_manifest_parity_gate", "SwarmProviderManifestParityGateV1", "gate:swarm-provider-manifest-parity", "SwarmProviderSharedMergeLedgerV1", "SwarmProviderRetryRepairBindingV1", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1"]));
+    checks.push(markerCheck("harness:swarm-provider-manifest-parity", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:swarm-provider-manifest-parity", "SwarmProviderManifestParityGateV1", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1", "all_child_sessions_match_parity_rows", "child-session-nonfirst-row-drift", "child:gate:swarm-provider-manifest-parity"]));
+    checks.push(markerCheck("autonomy:swarm-provider-manifest-parity", "scripts/reverse-agent/autonomy-control-plane.mjs", ["swarm_provider_manifest_parity_gate", "SwarmProviderManifestParityGateV1", "gate:swarm-provider-manifest-parity", "SwarmProviderSharedMergeLedgerV1", "SwarmProviderRetryRepairBindingV1", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1", "all_child_sessions_match_parity_rows", "child-session-nonfirst-row-drift"]));
     checks.push(markerCheck("npm:swarm-provider-manifest-parity", "package.json", ["gate:swarm-provider-manifest-parity", "swarm-provider-manifest-parity-gate.mjs"]));
-    checks.push(markerCheck("docs:swarm-provider-manifest-parity-readme", "README.md", ["SwarmProviderManifestParityGateV1", "gate:swarm-provider-manifest-parity", "multi-provider", "retry/repair", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1"]));
-    checks.push(markerCheck("docs:swarm-provider-manifest-parity-control-plane", "docs/reverse-agent/autonomous-control-plane.md", ["SwarmProviderManifestParityGateV1", "gate:swarm-provider-manifest-parity", "multi-provider", "retry/repair", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1"]));
+    checks.push(markerCheck("docs:swarm-provider-manifest-parity-readme", "README.md", ["SwarmProviderManifestParityGateV1", "gate:swarm-provider-manifest-parity", "multi-provider", "retry/repair", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1", "all_child_sessions_match_parity_rows"]));
+    checks.push(markerCheck("docs:swarm-provider-manifest-parity-control-plane", "docs/reverse-agent/autonomous-control-plane.md", ["SwarmProviderManifestParityGateV1", "gate:swarm-provider-manifest-parity", "multi-provider", "retry/repair", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1", "all_child_sessions_match_parity_rows"]));
   } catch (error) {
     checks.push(check("gate:exception", false, { error: String(error), stack: error?.stack }));
   }

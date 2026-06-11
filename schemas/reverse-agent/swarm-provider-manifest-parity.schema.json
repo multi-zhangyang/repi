@@ -9,6 +9,7 @@
     "SwarmProviderManifestParityGateV1",
     "requiredGates",
     "parityReport",
+    "childSession",
     "negativeCases",
     "invariants"
   ],
@@ -27,7 +28,7 @@
       "items": {
         "$ref": "#/$defs/SwarmProviderManifestParityRequiredGateV1"
       },
-      "minItems": 14,
+      "minItems": 15,
       "uniqueItems": true
     },
     "parityReport": {
@@ -38,15 +39,18 @@
       "items": {
         "$ref": "#/$defs/SwarmProviderManifestParityNegativeCaseV1"
       },
-      "minItems": 14
+      "minItems": 15
     },
     "invariants": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "minItems": 14,
+      "minItems": 15,
       "uniqueItems": true
+    },
+    "childSession": {
+      "$ref": "#/$defs/WorkerChildSessionRuntimeBatchV1"
     }
   },
   "$defs": {
@@ -58,6 +62,7 @@
         "SwarmProviderManifestParityGateV1",
         "requiredGates",
         "parityReport",
+        "childSession",
         "negativeCases",
         "invariants"
       ],
@@ -76,7 +81,7 @@
           "items": {
             "$ref": "#/$defs/SwarmProviderManifestParityRequiredGateV1"
           },
-          "minItems": 14,
+          "minItems": 15,
           "uniqueItems": true
         },
         "parityReport": {
@@ -87,21 +92,25 @@
           "items": {
             "$ref": "#/$defs/SwarmProviderManifestParityNegativeCaseV1"
           },
-          "minItems": 14
+          "minItems": 15
         },
         "invariants": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "minItems": 14,
+          "minItems": 15,
           "uniqueItems": true
+        },
+        "childSession": {
+          "$ref": "#/$defs/WorkerChildSessionRuntimeBatchV1"
         }
       },
       "x-repiInvariants": [
         "swarm_provider_manifest_parity_gate",
         "swarm_subagent_manifest_fields_match_provider_worker",
         "child_session_runtime_bridge_matches_provider_worker",
+        "all_child_sessions_match_parity_rows",
         "claim_refs_preserved_across_manifest_provider_merge",
         "failure_repair_refs_preserved_across_provider_worker",
         "provider_env_refs_only",
@@ -120,6 +129,7 @@
         "SwarmProviderManifestParityGateV1",
         "swarm_subagent_manifest_fields_match_provider_worker",
         "child_session_runtime_bridge_matches_provider_worker",
+        "all_child_sessions_match_parity_rows",
         "claim_refs_preserved_across_manifest_provider_merge",
         "failure_repair_refs_preserved_across_provider_worker",
         "multi_provider_workers_share_claim_failure_merge_ledger",
@@ -354,6 +364,7 @@
             "shared-ledger-window-provider-missing",
             "retry-window-nonmonotonic",
             "retry-window-manifest-drift",
+            "child-session-nonfirst-row-drift",
             "long-shared-ledger-window-too-short",
             "extended-retry-chain-too-short",
             "long-shared-ledger-secret-leak"
@@ -1197,6 +1208,179 @@
           }
         }
       }
+    },
+    "WorkerChildSessionProviderRefV1": {
+      "type": "object",
+      "required": [
+        "name",
+        "modelId",
+        "apiKeyRef",
+        "baseUrlRef"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "apiKeyRef": {
+          "type": "string",
+          "pattern": "^\\$[A-Z0-9_]+$"
+        },
+        "baseUrlRef": {
+          "type": "string",
+          "pattern": "^\\$[A-Z0-9_]+$"
+        }
+      }
+    },
+    "WorkerChildSessionRuntimeRefV1": {
+      "type": "object",
+      "required": [
+        "sessionDir",
+        "transcriptPath"
+      ],
+      "properties": {
+        "sessionDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transcriptPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "WorkerChildSessionPoolBridgeV1": {
+      "type": "object",
+      "required": [
+        "mergeKey",
+        "claimRefs"
+      ],
+      "properties": {
+        "mergeKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claimRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "WorkerChildSessionRuntimeV1": {
+      "type": "object",
+      "required": [
+        "workerId",
+        "provider",
+        "runtime",
+        "hashes",
+        "poolBridge",
+        "failureRepairRefs"
+      ],
+      "properties": {
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "$ref": "#/$defs/WorkerChildSessionProviderRefV1"
+        },
+        "runtime": {
+          "$ref": "#/$defs/WorkerChildSessionRuntimeRefV1"
+        },
+        "hashes": {
+          "$ref": "#/$defs/HashTripletV1"
+        },
+        "poolBridge": {
+          "$ref": "#/$defs/WorkerChildSessionPoolBridgeV1"
+        },
+        "failureRepairRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "WorkerChildSessionRuntimeBatchBridgeV1": {
+      "type": "object",
+      "required": [
+        "childSessionRuntimeCaptured",
+        "claimAwareMerge",
+        "workerIds",
+        "claimRefs",
+        "sharedClaimLedgerPath",
+        "sharedFailureLedgerPath",
+        "sharedRepairQueuePath"
+      ],
+      "properties": {
+        "childSessionRuntimeCaptured": {
+          "const": true
+        },
+        "claimAwareMerge": {
+          "const": true
+        },
+        "workerIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "uniqueItems": true
+        },
+        "claimRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2
+        },
+        "sharedClaimLedgerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sharedFailureLedgerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sharedRepairQueuePath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "WorkerChildSessionRuntimeBatchV1": {
+      "type": "object",
+      "required": [
+        "kind",
+        "poolBridge",
+        "sessions"
+      ],
+      "properties": {
+        "kind": {
+          "const": "WorkerChildSessionRuntimeBatchV1"
+        },
+        "poolBridge": {
+          "$ref": "#/$defs/WorkerChildSessionRuntimeBatchBridgeV1"
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkerChildSessionRuntimeV1"
+          },
+          "minItems": 2
+        }
+      },
+      "x-repiInvariants": [
+        "all_child_sessions_match_parity_rows",
+        "child_session_runtime_bridge_matches_provider_worker"
+      ]
     }
   },
   "x-repiInvariants": [
