@@ -486,6 +486,8 @@ Built-in REPI handles `session_before_compact` as a first-class compaction provi
 
 `npm run gate:autonomous-hardening-gap-ledger` 会检查 `AutonomousHardeningGapLedgerV1`：`autonomy-control-plane --json` 必须输出机器可执行 `hardeningGapLedger`，把剩余顶级 harness 缺口绑定到 closureGate、regressionCommands、nextCommand、artifacts 和 acceptanceCriteria；负例覆盖缺 closure gate、缺 regression command、缺 acceptance criteria，以及 open gaps 时误置 `topAutonomousDefinition=true`。
 
+`npm run gate:autonomous-closure-readiness` 会检查 `AutonomousClosureReadinessGateV1`：从实时 `hardeningGapLedger` 派生 closure readiness matrix，确保每个 `closureGate` 都有 package script、真实 gate script、top harness child gate、autonomy contract、README/docs 覆盖，并能以 `--strict --no-write` 通过。它还明确 `ready_for_live` 不等于 `closed`，未 closed gap 仍会让 `topAutonomousDefinition=false`。
+
 `npm run gate:swarm-provider-manifest-parity` 会检查 `SwarmProviderManifestParityGateV1`：re_swarm `SubagentRuntimeManifestV1`、WorkerChildSessionRuntimeBatchV1 和 ParallelProviderWorkerMatrixV1 必须在 workerId、claimRefs、mergeKey、stdout/stderr/transcript hash、provider env-ref-only 与 failure/repair refs 上保持同源，防止 provider worker claim 绕过 swarm manifest 或 child-session runtime 直接 promotion。
 
 `npm run gate:worker-provider-repair-rollback-unification` 会检查 `WorkerProviderRepairRollbackUnificationGateV1`：provider-worker、re_swarm worker、compound-frontier 和 operator repair rows 必须共享同一 `FailureLedgerEventV1` / `RepairQueueItemV1` signature、`RepairRollbackPolicyV1`、retry window closure 与 regression gate refs；provider/worker state-changing repair 必须保留 runtimeManifestFile、requestLogFile 和 rollbackPolicyFile，exhausted 后不能继续 unpaused rerun。
