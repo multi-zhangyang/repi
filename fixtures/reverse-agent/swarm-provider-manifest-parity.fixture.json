@@ -12,7 +12,9 @@
     "runtime_artifacts_have_hashes",
     "narrative_only_provider_worker_not_promoted",
     "multi_provider_workers_share_claim_failure_merge_ledger",
-    "provider_worker_retry_repair_rows_bound_to_worker_manifest"
+    "provider_worker_retry_repair_rows_bound_to_worker_manifest",
+    "live_provider_backed_multi_provider_shared_ledger_matrix",
+    "provider_worker_retry_window_manifest_binding_chain"
   ],
   "invariants": [
     "swarm_provider_manifest_parity_gate",
@@ -26,7 +28,9 @@
     "fixture:positive-parity",
     "fixture:negative-parity",
     "multi_provider_workers_share_claim_failure_merge_ledger",
-    "provider_worker_retry_repair_rows_bound_to_worker_manifest"
+    "provider_worker_retry_repair_rows_bound_to_worker_manifest",
+    "live_provider_backed_multi_provider_shared_ledger_matrix",
+    "provider_worker_retry_window_manifest_binding_chain"
   ],
   "parityReport": {
     "kind": "SwarmProviderManifestParityReportV1",
@@ -132,7 +136,9 @@
         },
         "failureRepairRefs": [
           "fail:parallel_provider_worker_matrix:gamma",
-          "repair:parallel_provider_worker_matrix:gamma"
+          "repair:parallel_provider_worker_matrix:gamma",
+          "fail:parallel_provider_worker_matrix:gamma:attempt-2",
+          "repair:parallel_provider_worker_matrix:gamma:attempt-2"
         ],
         "parityChecks": {
           "workerIdMatch": true,
@@ -157,6 +163,53 @@
           "failureLedgerPath": ".repi-harness/evidence/failures/ledger.jsonl",
           "repairQueuePath": ".repi-harness/evidence/repairs/queue.jsonl"
         }
+      },
+      {
+        "workerId": "worker-delta-anthropic-timeout-repair",
+        "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta/runtime-manifest.json",
+        "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta",
+        "providerName": "parallel-anthropic-compatible",
+        "modelId": "parallel/anthropic-delta-timeout",
+        "claimRefs": [
+          "claim-parallel-delta-timeout-repair"
+        ],
+        "mergeKey": "claim:provider-timeout-repair",
+        "hashes": {
+          "stdoutSha256": "4646464646464646464646464646464646464646464646464646464646464646",
+          "stderrSha256": "5757575757575757575757575757575757575757575757575757575757575757",
+          "transcriptSha256": "6868686868686868686868686868686868686868686868686868686868686868"
+        },
+        "failureRepairRefs": [
+          "fail:parallel_provider_worker_matrix:delta:attempt-1",
+          "repair:parallel_provider_worker_matrix:delta:attempt-1",
+          "fail:parallel_provider_worker_matrix:delta:attempt-2",
+          "repair:parallel_provider_worker_matrix:delta:attempt-2",
+          "fail:parallel_provider_worker_matrix:delta:attempt-3",
+          "repair:parallel_provider_worker_matrix:delta:attempt-3"
+        ],
+        "parityChecks": {
+          "workerIdMatch": true,
+          "claimRefsPreserved": true,
+          "hashesPresent": true,
+          "providerEnvRefsOnly": true,
+          "failureRepairLinked": true,
+          "multiProviderSharedLedger": true,
+          "retryRepairManifestBound": true
+        },
+        "promotionAllowed": false,
+        "runtimeManifestSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "retryBudget": {
+          "signature": "re_swarm:worker-delta",
+          "attempt": 3,
+          "maxAttempts": 3,
+          "remaining": 0,
+          "exhausted": false
+        },
+        "ledgerPaths": {
+          "claimLedgerPath": "~/.repi/agent/recon/evidence/swarms/demo/claim-ledger.jsonl",
+          "failureLedgerPath": ".repi-harness/evidence/failures/ledger.jsonl",
+          "repairQueuePath": ".repi-harness/evidence/repairs/queue.jsonl"
+        }
       }
     ],
     "sharedMergeLedger": {
@@ -167,7 +220,8 @@
       "workerIds": [
         "worker-alpha-openai-pass",
         "worker-beta-anthropic-pass",
-        "worker-gamma-openai-failure-repair"
+        "worker-gamma-openai-failure-repair",
+        "worker-delta-anthropic-timeout-repair"
       ],
       "providerNames": [
         "parallel-anthropic-compatible",
@@ -176,15 +230,24 @@
       "claimRefs": [
         "claim-parallel-alpha-provider-runtime",
         "claim-parallel-beta-provider-runtime",
-        "claim-parallel-gamma-failure-repair"
+        "claim-parallel-gamma-failure-repair",
+        "claim-parallel-delta-timeout-repair"
       ],
       "failureRepairRefs": [
         "fail:parallel_provider_worker_matrix:gamma",
-        "repair:parallel_provider_worker_matrix:gamma"
+        "repair:parallel_provider_worker_matrix:gamma",
+        "fail:parallel_provider_worker_matrix:gamma:attempt-2",
+        "repair:parallel_provider_worker_matrix:gamma:attempt-2",
+        "fail:parallel_provider_worker_matrix:delta:attempt-1",
+        "repair:parallel_provider_worker_matrix:delta:attempt-1",
+        "fail:parallel_provider_worker_matrix:delta:attempt-2",
+        "repair:parallel_provider_worker_matrix:delta:attempt-2",
+        "fail:parallel_provider_worker_matrix:delta:attempt-3",
+        "repair:parallel_provider_worker_matrix:delta:attempt-3"
       ],
-      "ledgerTipSha256": "4545454545454545454545454545454545454545454545454545454545454545",
+      "ledgerTipSha256": "7878787878787878787878787878787878787878787878787878787878787878",
       "hashChain": true,
-      "promotionPolicy": "multi-provider provider-worker rows must share one claim/failure/repair merge ledger before any final claim is promotable"
+      "promotionPolicy": "multi-provider provider-worker rows must share one live provider-backed claim/failure/repair merge ledger across pass and retry windows before any final claim is promotable"
     },
     "retryRepairBindings": [
       {
@@ -196,10 +259,212 @@
         "retrySignature": "re_swarm:worker-gamma",
         "failureRef": "fail:parallel_provider_worker_matrix:gamma",
         "repairRef": "repair:parallel_provider_worker_matrix:gamma",
-        "rollbackPolicyRef": "rollback:parallel_provider_worker_matrix:gamma",
+        "rollbackPolicyRef": "rollback:worker-gamma-openai-failure-repair:1",
+        "regressionGate": "gate:parallel-provider-worker-matrix"
+      },
+      {
+        "workerId": "worker-gamma-openai-failure-repair",
+        "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-gamma/runtime-manifest.json",
+        "runtimeManifestSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "providerName": "parallel-openai-compatible",
+        "modelId": "parallel/openai-gamma-500",
+        "retrySignature": "re_swarm:worker-gamma",
+        "failureRef": "fail:parallel_provider_worker_matrix:gamma:attempt-2",
+        "repairRef": "repair:parallel_provider_worker_matrix:gamma:attempt-2",
+        "rollbackPolicyRef": "rollback:worker-gamma-openai-failure-repair:2",
+        "regressionGate": "gate:parallel-provider-worker-matrix"
+      },
+      {
+        "workerId": "worker-delta-anthropic-timeout-repair",
+        "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta/runtime-manifest.json",
+        "runtimeManifestSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "providerName": "parallel-anthropic-compatible",
+        "modelId": "parallel/anthropic-delta-timeout",
+        "retrySignature": "re_swarm:worker-delta",
+        "failureRef": "fail:parallel_provider_worker_matrix:delta:attempt-1",
+        "repairRef": "repair:parallel_provider_worker_matrix:delta:attempt-1",
+        "rollbackPolicyRef": "rollback:worker-delta-anthropic-timeout-repair:1",
+        "regressionGate": "gate:parallel-provider-worker-matrix"
+      },
+      {
+        "workerId": "worker-delta-anthropic-timeout-repair",
+        "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta/runtime-manifest.json",
+        "runtimeManifestSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "providerName": "parallel-anthropic-compatible",
+        "modelId": "parallel/anthropic-delta-timeout",
+        "retrySignature": "re_swarm:worker-delta",
+        "failureRef": "fail:parallel_provider_worker_matrix:delta:attempt-2",
+        "repairRef": "repair:parallel_provider_worker_matrix:delta:attempt-2",
+        "rollbackPolicyRef": "rollback:worker-delta-anthropic-timeout-repair:2",
+        "regressionGate": "gate:parallel-provider-worker-matrix"
+      },
+      {
+        "workerId": "worker-delta-anthropic-timeout-repair",
+        "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta/runtime-manifest.json",
+        "runtimeManifestSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "providerName": "parallel-anthropic-compatible",
+        "modelId": "parallel/anthropic-delta-timeout",
+        "retrySignature": "re_swarm:worker-delta",
+        "failureRef": "fail:parallel_provider_worker_matrix:delta:attempt-3",
+        "repairRef": "repair:parallel_provider_worker_matrix:delta:attempt-3",
+        "rollbackPolicyRef": "rollback:worker-delta-anthropic-timeout-repair:3",
         "regressionGate": "gate:parallel-provider-worker-matrix"
       }
-    ]
+    ],
+    "liveProviderBackedSharedLedgerMatrix": [
+      {
+        "kind": "LiveProviderBackedSharedLedgerMatrixV1",
+        "windowId": "provider-live-window-runtime-ready",
+        "providerBacked": true,
+        "providerNames": [
+          "parallel-openai-compatible",
+          "parallel-anthropic-compatible"
+        ],
+        "workerIds": [
+          "worker-alpha-openai-pass",
+          "worker-beta-anthropic-pass"
+        ],
+        "claimRefs": [
+          "claim-parallel-alpha-provider-runtime",
+          "claim-parallel-beta-provider-runtime"
+        ],
+        "failureRepairRefs": [],
+        "sharedClaimLedgerPath": "~/.repi/agent/recon/evidence/swarms/demo/claim-ledger.jsonl",
+        "sharedFailureLedgerPath": ".repi-harness/evidence/failures/ledger.jsonl",
+        "sharedRepairQueuePath": ".repi-harness/evidence/repairs/queue.jsonl",
+        "ledgerTipSha256": "8989898989898989898989898989898989898989898989898989898989898989",
+        "hashChain": true,
+        "promotionPolicy": "pass workers share the same live provider-backed merge ledger before promotion"
+      },
+      {
+        "kind": "LiveProviderBackedSharedLedgerMatrixV1",
+        "windowId": "provider-live-window-retry-repair",
+        "providerBacked": true,
+        "providerNames": [
+          "parallel-openai-compatible",
+          "parallel-anthropic-compatible"
+        ],
+        "workerIds": [
+          "worker-gamma-openai-failure-repair",
+          "worker-delta-anthropic-timeout-repair"
+        ],
+        "claimRefs": [
+          "claim-parallel-gamma-failure-repair",
+          "claim-parallel-delta-timeout-repair"
+        ],
+        "failureRepairRefs": [
+          "fail:parallel_provider_worker_matrix:gamma",
+          "repair:parallel_provider_worker_matrix:gamma",
+          "fail:parallel_provider_worker_matrix:gamma:attempt-2",
+          "repair:parallel_provider_worker_matrix:gamma:attempt-2",
+          "fail:parallel_provider_worker_matrix:delta:attempt-1",
+          "repair:parallel_provider_worker_matrix:delta:attempt-1",
+          "fail:parallel_provider_worker_matrix:delta:attempt-2",
+          "repair:parallel_provider_worker_matrix:delta:attempt-2",
+          "fail:parallel_provider_worker_matrix:delta:attempt-3",
+          "repair:parallel_provider_worker_matrix:delta:attempt-3"
+        ],
+        "sharedClaimLedgerPath": "~/.repi/agent/recon/evidence/swarms/demo/claim-ledger.jsonl",
+        "sharedFailureLedgerPath": ".repi-harness/evidence/failures/ledger.jsonl",
+        "sharedRepairQueuePath": ".repi-harness/evidence/repairs/queue.jsonl",
+        "ledgerTipSha256": "9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a",
+        "hashChain": true,
+        "promotionPolicy": "retry/repair workers stay on the same claim/failure/repair ledger while terminal state is decided"
+      }
+    ],
+    "retryWindowManifestBindingChain": {
+      "kind": "ProviderWorkerRetryWindowManifestBindingChainV1",
+      "sharedRetryLedgerPath": ".repi-harness/evidence/repairs/queue.jsonl",
+      "ledgerTipSha256": "abababababababababababababababababababababababababababababababab",
+      "hashChain": true,
+      "retryWindows": [
+        {
+          "windowId": "retry-window-gamma-openai",
+          "workerId": "worker-gamma-openai-failure-repair",
+          "providerName": "parallel-openai-compatible",
+          "modelId": "parallel/openai-gamma-500",
+          "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-gamma/runtime-manifest.json",
+          "runtimeManifestSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "retrySignature": "re_swarm:worker-gamma",
+          "regressionGate": "gate:parallel-provider-worker-matrix",
+          "manifestBound": true,
+          "monotonicAttempts": true,
+          "terminalStatus": "repaired",
+          "attemptRows": [
+            {
+              "attempt": 1,
+              "status": "failed",
+              "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-gamma/runtime-manifest.json",
+              "runtimeManifestSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+              "retrySignature": "re_swarm:worker-gamma",
+              "failureRef": "fail:parallel_provider_worker_matrix:gamma",
+              "repairRef": "repair:parallel_provider_worker_matrix:gamma",
+              "rollbackPolicyRef": "rollback:worker-gamma-openai-failure-repair:1",
+              "regressionGate": "gate:parallel-provider-worker-matrix"
+            },
+            {
+              "attempt": 2,
+              "status": "repaired",
+              "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-gamma/runtime-manifest.json",
+              "runtimeManifestSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+              "retrySignature": "re_swarm:worker-gamma",
+              "failureRef": "fail:parallel_provider_worker_matrix:gamma:attempt-2",
+              "repairRef": "repair:parallel_provider_worker_matrix:gamma:attempt-2",
+              "rollbackPolicyRef": "rollback:worker-gamma-openai-failure-repair:2",
+              "regressionGate": "gate:parallel-provider-worker-matrix"
+            }
+          ]
+        },
+        {
+          "windowId": "retry-window-delta-anthropic",
+          "workerId": "worker-delta-anthropic-timeout-repair",
+          "providerName": "parallel-anthropic-compatible",
+          "modelId": "parallel/anthropic-delta-timeout",
+          "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta/runtime-manifest.json",
+          "runtimeManifestSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "retrySignature": "re_swarm:worker-delta",
+          "regressionGate": "gate:parallel-provider-worker-matrix",
+          "manifestBound": true,
+          "monotonicAttempts": true,
+          "terminalStatus": "repaired",
+          "attemptRows": [
+            {
+              "attempt": 1,
+              "status": "failed",
+              "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta/runtime-manifest.json",
+              "runtimeManifestSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+              "retrySignature": "re_swarm:worker-delta",
+              "failureRef": "fail:parallel_provider_worker_matrix:delta:attempt-1",
+              "repairRef": "repair:parallel_provider_worker_matrix:delta:attempt-1",
+              "rollbackPolicyRef": "rollback:worker-delta-anthropic-timeout-repair:1",
+              "regressionGate": "gate:parallel-provider-worker-matrix"
+            },
+            {
+              "attempt": 2,
+              "status": "failed",
+              "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta/runtime-manifest.json",
+              "runtimeManifestSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+              "retrySignature": "re_swarm:worker-delta",
+              "failureRef": "fail:parallel_provider_worker_matrix:delta:attempt-2",
+              "repairRef": "repair:parallel_provider_worker_matrix:delta:attempt-2",
+              "rollbackPolicyRef": "rollback:worker-delta-anthropic-timeout-repair:2",
+              "regressionGate": "gate:parallel-provider-worker-matrix"
+            },
+            {
+              "attempt": 3,
+              "status": "repaired",
+              "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-delta/runtime-manifest.json",
+              "runtimeManifestSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+              "retrySignature": "re_swarm:worker-delta",
+              "failureRef": "fail:parallel_provider_worker_matrix:delta:attempt-3",
+              "repairRef": "repair:parallel_provider_worker_matrix:delta:attempt-3",
+              "rollbackPolicyRef": "rollback:worker-delta-anthropic-timeout-repair:3",
+              "regressionGate": "gate:parallel-provider-worker-matrix"
+            }
+          ]
+        }
+      ]
+    }
   },
   "swarmManifest": {
     "kind": "SubagentRuntimeManifestV1",
@@ -233,12 +498,15 @@
       "claimAwareMerge": true,
       "workerIds": [
         "worker-alpha-openai-pass",
-        "worker-gamma-openai-failure-repair"
+        "worker-gamma-openai-failure-repair",
+        "worker-beta-anthropic-pass",
+        "worker-delta-anthropic-timeout-repair"
       ],
       "claimRefs": [
         "claim-parallel-alpha-provider-runtime",
         "claim-parallel-beta-provider-runtime",
-        "claim-parallel-gamma-failure-repair"
+        "claim-parallel-gamma-failure-repair",
+        "claim-parallel-delta-timeout-repair"
       ],
       "sharedClaimLedgerPath": "~/.repi/agent/recon/evidence/swarms/demo/claim-ledger.jsonl",
       "sharedFailureLedgerPath": ".repi-harness/evidence/failures/ledger.jsonl",
@@ -321,6 +589,38 @@
         "failureRepairRefs": [
           "fail:parallel_provider_worker_matrix:gamma",
           "repair:parallel_provider_worker_matrix:gamma"
+        ]
+      },
+      {
+        "workerId": "worker-delta-anthropic-timeout-repair",
+        "provider": {
+          "name": "re_swarm-command-session",
+          "modelId": "parallel/anthropic-delta-timeout",
+          "apiKeyRef": "$LOCAL_ANTHROPIC_API_KEY",
+          "baseUrlRef": "$LOCAL_ANTHROPIC_BASE_URL"
+        },
+        "runtime": {
+          "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/delta",
+          "transcriptPath": "~/.repi/agent/recon/evidence/swarms/demo/delta/transcript.jsonl"
+        },
+        "hashes": {
+          "stdoutSha256": "4646464646464646464646464646464646464646464646464646464646464646",
+          "stderrSha256": "5757575757575757575757575757575757575757575757575757575757575757",
+          "transcriptSha256": "6868686868686868686868686868686868686868686868686868686868686868"
+        },
+        "poolBridge": {
+          "mergeKey": "claim:provider-timeout-repair",
+          "claimRefs": [
+            "claim-parallel-delta-timeout-repair"
+          ]
+        },
+        "failureRepairRefs": [
+          "fail:parallel_provider_worker_matrix:delta:attempt-1",
+          "repair:parallel_provider_worker_matrix:delta:attempt-1",
+          "fail:parallel_provider_worker_matrix:delta:attempt-2",
+          "repair:parallel_provider_worker_matrix:delta:attempt-2",
+          "fail:parallel_provider_worker_matrix:delta:attempt-3",
+          "repair:parallel_provider_worker_matrix:delta:attempt-3"
         ]
       }
     ]
@@ -426,6 +726,36 @@
       "expect": "fail",
       "mustNotPromote": [
         "provider_worker_retry_repair_rows_bound_to_worker_manifest"
+      ]
+    },
+    {
+      "id": "shared-ledger-window-provider-missing",
+      "mutates": [
+        "liveProviderBackedSharedLedgerMatrix[0].providerNames drops parallel-anthropic-compatible"
+      ],
+      "expect": "fail",
+      "mustNotPromote": [
+        "live_provider_backed_multi_provider_shared_ledger_matrix"
+      ]
+    },
+    {
+      "id": "retry-window-nonmonotonic",
+      "mutates": [
+        "retryWindowManifestBindingChain.retryWindows[0].attemptRows[1].attempt=1"
+      ],
+      "expect": "fail",
+      "mustNotPromote": [
+        "provider_worker_retry_window_manifest_binding_chain"
+      ]
+    },
+    {
+      "id": "retry-window-manifest-drift",
+      "mutates": [
+        "retryWindowManifestBindingChain.retryWindows[0].attemptRows[1].runtimeManifestSha256 changes"
+      ],
+      "expect": "fail",
+      "mustNotPromote": [
+        "provider_worker_retry_window_manifest_binding_chain"
       ]
     }
   ]

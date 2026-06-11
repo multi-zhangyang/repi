@@ -19,6 +19,8 @@ const REQUIRED_GATES = [
   "failure_repair_refs_preserved_across_provider_worker",
   "multi_provider_workers_share_claim_failure_merge_ledger",
   "provider_worker_retry_repair_rows_bound_to_worker_manifest",
+  "live_provider_backed_multi_provider_shared_ledger_matrix",
+  "provider_worker_retry_window_manifest_binding_chain",
   "provider_env_refs_only",
   "runtime_artifacts_have_hashes",
   "narrative_only_provider_worker_not_promoted",
@@ -32,6 +34,9 @@ const REQUIRED_NEGATIVE_CASES = [
   "single-provider-matrix",
   "shared-ledger-worker-missing",
   "retry-repair-manifest-unbound",
+  "shared-ledger-window-provider-missing",
+  "retry-window-nonmonotonic",
+  "retry-window-manifest-drift",
 ];
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const check = (id, ok, evidence = {}) => ({ id, status: ok ? "pass" : "fail", evidence });
@@ -53,6 +58,84 @@ function hasHash(value) {
 
 function envRef(value) {
   return typeof value === "string" && value.startsWith("$") && !/^\$?(sk-|ghp_|github_pat_)/i.test(value);
+}
+
+function validateLiveProviderBackedSharedLedgerMatrix({ report, providerNames, rowWorkerIds, rowClaimRefs, rowFailureRepairRefs }) {
+  const errors = [];
+  const rows = report?.liveProviderBackedSharedLedgerMatrix || [];
+  if (rows.length < 2) errors.push("liveProviderBackedSharedLedgerMatrix.minItems");
+  const coveredProviders = new Set();
+  const coveredWorkers = new Set();
+  const coveredClaims = new Set();
+  const coveredFailureRepairs = new Set();
+  for (const window of rows) {
+    if (window.kind !== "LiveProviderBackedSharedLedgerMatrixV1") errors.push(`${window.windowId || "window"}.kind`);
+    if (window.providerBacked !== true) errors.push(`${window.windowId || "window"}.providerBacked_not_true`);
+    if ((window.providerNames || []).length < 2) errors.push(`${window.windowId || "window"}.provider_count_lt_2`);
+    if ((window.workerIds || []).length < 2) errors.push(`${window.windowId || "window"}.worker_count_lt_2`);
+    if (window.hashChain !== true || !hasHash(window.ledgerTipSha256)) errors.push(`${window.windowId || "window"}.hash_chain_invalid`);
+    if (!window.sharedClaimLedgerPath || !window.sharedFailureLedgerPath || !window.sharedRepairQueuePath) errors.push(`${window.windowId || "window"}.shared_paths_missing`);
+    for (const providerName of providerNames) if (!window.providerNames?.includes(providerName)) errors.push(`${window.windowId || "window"}.provider_missing:${providerName}`);
+    for (const workerId of window.workerIds || []) {
+      coveredWorkers.add(workerId);
+      if (!rowWorkerIds.has(workerId)) errors.push(`${window.windowId || "window"}.unknown_worker:${workerId}`);
+    }
+    for (const providerName of window.providerNames || []) coveredProviders.add(providerName);
+    for (const claimRef of window.claimRefs || []) {
+      coveredClaims.add(claimRef);
+      if (!rowClaimRefs.has(claimRef)) errors.push(`${window.windowId || "window"}.unknown_claim:${claimRef}`);
+    }
+    for (const failureRepairRef of window.failureRepairRefs || []) {
+      coveredFailureRepairs.add(failureRepairRef);
+      if (!rowFailureRepairRefs.has(failureRepairRef)) errors.push(`${window.windowId || "window"}.unknown_failure_repair:${failureRepairRef}`);
+    }
+  }
+  for (const providerName of providerNames) if (!coveredProviders.has(providerName)) errors.push(`liveProviderBackedSharedLedgerMatrix.provider_uncovered:${providerName}`);
+  for (const workerId of rowWorkerIds) if (!coveredWorkers.has(workerId)) errors.push(`liveProviderBackedSharedLedgerMatrix.worker_uncovered:${workerId}`);
+  for (const claimRef of rowClaimRefs) if (!coveredClaims.has(claimRef)) errors.push(`liveProviderBackedSharedLedgerMatrix.claim_uncovered:${claimRef}`);
+  for (const failureRepairRef of rowFailureRepairRefs) if (!coveredFailureRepairs.has(failureRepairRef)) errors.push(`liveProviderBackedSharedLedgerMatrix.failure_repair_uncovered:${failureRepairRef}`);
+  return errors;
+}
+
+function validateRetryWindowManifestBindingChain({ report, rowByWorkerId, rowFailureRepairRefs }) {
+  const errors = [];
+  const chain = report?.retryWindowManifestBindingChain;
+  if (chain?.kind !== "ProviderWorkerRetryWindowManifestBindingChainV1") errors.push("retryWindowManifestBindingChain.kind");
+  if (!chain?.sharedRetryLedgerPath || chain?.hashChain !== true || !hasHash(chain?.ledgerTipSha256)) errors.push("retryWindowManifestBindingChain.ledger_invalid");
+  const windows = chain?.retryWindows || [];
+  if (windows.length < 2) errors.push("retryWindowManifestBindingChain.minWindows");
+  const providerNames = new Set();
+  for (const window of windows) {
+    const parityRow = rowByWorkerId.get(window.workerId);
+    if (!parityRow) {
+      errors.push(`${window.windowId || "retry-window"}.worker_missing:${window.workerId || ""}`);
+      continue;
+    }
+    providerNames.add(window.providerName);
+    if (window.runtimeManifestFile !== parityRow.runtimeManifestFile) errors.push(`${window.workerId}.retryWindow.runtimeManifestFile_mismatch`);
+    if (window.runtimeManifestSha256 !== parityRow.runtimeManifestSha256 || !hasHash(window.runtimeManifestSha256)) errors.push(`${window.workerId}.retryWindow.runtimeManifestSha256_mismatch`);
+    if (window.retrySignature !== parityRow.retryBudget?.signature) errors.push(`${window.workerId}.retryWindow.signature_mismatch`);
+    if (window.providerName !== parityRow.providerName || window.modelId !== parityRow.modelId) errors.push(`${window.workerId}.retryWindow.provider_mismatch`);
+    if (!window.regressionGate) errors.push(`${window.workerId}.retryWindow.regression_missing`);
+    if (window.manifestBound !== true || window.monotonicAttempts !== true) errors.push(`${window.workerId}.retryWindow.binding_flags_invalid`);
+    let prevAttempt = 0;
+    const attempts = window.attemptRows || [];
+    if (attempts.length < 2) errors.push(`${window.workerId}.retryWindow.attempt_count_lt_2`);
+    for (const attempt of attempts) {
+      if (attempt.attempt <= prevAttempt) errors.push(`${window.workerId}.retryWindow.attempt_not_monotonic:${attempt.attempt}`);
+      prevAttempt = attempt.attempt;
+      if (attempt.runtimeManifestFile !== parityRow.runtimeManifestFile) errors.push(`${window.workerId}.retryWindow.attempt_manifest_file_mismatch:${attempt.attempt}`);
+      if (attempt.runtimeManifestSha256 !== parityRow.runtimeManifestSha256 || !hasHash(attempt.runtimeManifestSha256)) errors.push(`${window.workerId}.retryWindow.attempt_manifest_hash_mismatch:${attempt.attempt}`);
+      if (attempt.retrySignature !== parityRow.retryBudget?.signature) errors.push(`${window.workerId}.retryWindow.attempt_signature_mismatch:${attempt.attempt}`);
+      if (!rowFailureRepairRefs.has(attempt.failureRef) || !rowFailureRepairRefs.has(attempt.repairRef)) errors.push(`${window.workerId}.retryWindow.failure_repair_ref_mismatch:${attempt.attempt}`);
+      if (!attempt.rollbackPolicyRef || !attempt.regressionGate || attempt.regressionGate !== window.regressionGate) errors.push(`${window.workerId}.retryWindow.regression_binding_missing:${attempt.attempt}`);
+    }
+    const terminal = attempts.at(-1);
+    if (window.terminalStatus !== terminal?.status) errors.push(`${window.workerId}.retryWindow.terminal_status_mismatch`);
+    if (!["repaired", "exhausted", "escalated"].includes(window.terminalStatus)) errors.push(`${window.workerId}.retryWindow.terminal_status_invalid`);
+  }
+  if (providerNames.size < 2) errors.push("retryWindowManifestBindingChain.provider_count_lt_2");
+  return errors;
 }
 
 function validateParityPackage(pkg) {
@@ -101,6 +184,7 @@ function validateParityPackage(pkg) {
   for (const workerId of rowWorkerIds) if (!sharedLedger?.workerIds?.includes(workerId)) errors.push(`sharedMergeLedger.worker_missing:${workerId}`);
   for (const claimRef of rowClaimRefs) if (!sharedLedger?.claimRefs?.includes(claimRef)) errors.push(`sharedMergeLedger.claim_missing:${claimRef}`);
   for (const failureRepairRef of rowFailureRepairRefs) if (!sharedLedger?.failureRepairRefs?.includes(failureRepairRef)) errors.push(`sharedMergeLedger.failure_repair_missing:${failureRepairRef}`);
+  errors.push(...validateLiveProviderBackedSharedLedgerMatrix({ report, providerNames, rowWorkerIds, rowClaimRefs, rowFailureRepairRefs }));
 
   const failureRows = rows.filter((row) => row.failureRepairRefs?.length);
   if (failureRows.length < 1) errors.push("provider_worker_retry_repair_rows_bound_to_worker_manifest.no_failure_rows");
@@ -120,6 +204,7 @@ function validateParityPackage(pkg) {
       if (!binding.rollbackPolicyRef || !binding.regressionGate) errors.push(`${row.workerId}.retryRepairBinding.rollback_or_regression_missing`);
     }
   }
+  errors.push(...validateRetryWindowManifestBindingChain({ report, rowByWorkerId, rowFailureRepairRefs }));
   if (manifest && provider) {
     if (manifest.workerId !== provider.workerId) errors.push("manifest_provider.workerId_mismatch");
     if (manifest.stdoutSha256 !== provider.stdoutSha256 || manifest.stderrSha256 !== provider.stderrSha256) errors.push("manifest_provider.hash_mismatch");
@@ -152,6 +237,9 @@ function mutatePackage(pkg, id) {
   }
   if (id === "shared-ledger-worker-missing") row.parityReport.sharedMergeLedger.workerIds = row.parityReport.sharedMergeLedger.workerIds.filter((workerId) => workerId !== "worker-beta-anthropic-pass");
   if (id === "retry-repair-manifest-unbound") row.parityReport.retryRepairBindings[0].retrySignature = "re_swarm:other-worker";
+  if (id === "shared-ledger-window-provider-missing") row.parityReport.liveProviderBackedSharedLedgerMatrix[0].providerNames = row.parityReport.liveProviderBackedSharedLedgerMatrix[0].providerNames.filter((providerName) => providerName !== "parallel-anthropic-compatible");
+  if (id === "retry-window-nonmonotonic") row.parityReport.retryWindowManifestBindingChain.retryWindows[0].attemptRows[1].attempt = 1;
+  if (id === "retry-window-manifest-drift") row.parityReport.retryWindowManifestBindingChain.retryWindows[0].attemptRows[1].runtimeManifestSha256 = "4444444444444444444444444444444444444444444444444444444444444444";
   return row;
 }
 
@@ -181,6 +269,8 @@ function main() {
     checks.push(check("fixture:coverage", fixtureEval.missingGates.length === 0 && fixtureEval.missingNegativeCases.length === 0, fixtureEval));
     checks.push(check("fixture:positive-parity", fixtureEval.positive.ok, fixtureEval.positive));
     checks.push(check("fixture:negative-parity", fixtureEval.negativeResults.every((row) => row.rejected), { negativeResults: fixtureEval.negativeResults }));
+    checks.push(check("fixture:live-provider-backed-shared-ledger-matrix", (fixture.parityReport.liveProviderBackedSharedLedgerMatrix || []).length >= 2 && fixture.parityReport.liveProviderBackedSharedLedgerMatrix.every((row) => row.providerBacked === true && row.providerNames.length >= 2 && row.hashChain === true), { liveProviderBackedSharedLedgerMatrix: fixture.parityReport.liveProviderBackedSharedLedgerMatrix }));
+    checks.push(check("fixture:retry-window-manifest-binding-chain", fixture.parityReport.retryWindowManifestBindingChain?.retryWindows?.length >= 2 && fixture.parityReport.retryWindowManifestBindingChain.retryWindows.every((row) => row.manifestBound === true && row.monotonicAttempts === true && row.attemptRows.length >= 2), { retryWindowManifestBindingChain: fixture.parityReport.retryWindowManifestBindingChain }));
     checks.push(markerCheck("runtime:swarm-provider-manifest-parity-core", "packages/coding-agent/src/core/recon-profile.ts", [
       "SubagentRuntimeManifestV1",
       "WorkerChildSessionRuntimeBatchV1",
