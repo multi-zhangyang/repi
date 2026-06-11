@@ -1128,6 +1128,88 @@ const totals = allRuns.reduce((acc, role) => {
 }, { messages: 0, modelCalls: 0, toolCalls: 0, toolResults: 0, toolResultErrors: 0, toolResultBytes: 0, usageTokens: 0, toolNames: {}, toolResultNames: {}, providers: {}, models: {} });
 const gateNames = ['exitOk', 'modelCalled', 'toolUsed', 'sectionsOk', 'platformsOk', 'hardScoreMentioned', 'artifactPathsOk', 'roleSpecific'];
 const roleGateMatrix = Object.fromEntries(allRuns.map((role) => [role.id, role.checks]));
+function roleFailedGateNames(role) {
+  return Object.entries(role.checks || {}).filter(([, passed]) => !passed).map(([name]) => name);
+}
+function roleFailureRepairInput(role) {
+  const failedGates = roleFailedGateNames(role);
+  const artifacts = [
+    role.runtimeManifestFile,
+    role.stdoutFile,
+    role.stderrFile,
+    ...(role.attempts || []).flatMap((attempt) => [attempt.runtimeManifestFile, attempt.stdoutFile, attempt.stderrFile]),
+    ...(role.session?.fileDigests || []).map((item) => item.path),
+  ].filter(Boolean);
+  return {
+    root: repoRoot,
+    source: 'agent-dogfood',
+    scope: `agent-dogfood:${role.id}`,
+    category: role.retryExhausted ? 'runtime_failed' : 'contract_gap',
+    status: role.retryExhausted ? 'exhausted' : 'repair_queued',
+    failedGates: failedGates.length ? failedGates : ['role_strict_run_passed'],
+    reason: `${role.id} failed role gate(s): ${failedGates.join(',') || 'strictRunPassed=false'}`,
+    attempt: (role.attempts || []).length || 1,
+    maxAttempts: roleRetries + 1,
+    commands: [`RECON_PARALLEL_ROLES=${role.id} node bench/recon-remote/agent-dogfood/parallel-run.mjs ${provider} ${model}`],
+    artifacts,
+    providerAllowed: true,
+    paused: false,
+    unblock: `rerun role ${role.id} with tighter prompt/tool evidence or inspect per-attempt artifacts`,
+    verificationCommand: 'npm run gate:agent-parallel',
+    regressionGates: gateNames,
+  };
+}
+const roleFailureRepairRows = allRuns
+  .filter((role) => role.retryExhausted || !strictRunPassed(role))
+  .map((role) => ({ role, ...failureRepairFromGap(roleFailureRepairInput(role)) }));
+const failureLedgerEvents = roleFailureRepairRows.map((row) => row.failure);
+const repairQueue = roleFailureRepairRows.map((row) => row.repair);
+function roleFailureSignatureBinding(row) {
+  const role = row.role;
+  return {
+    kind: 'AgentDogfoodFailureSignatureBindingV1',
+    schemaVersion: 1,
+    source: 'agent-dogfood',
+    planId: loadedParallelPlan?.planId || '',
+    roleId: role.id,
+    runtimeManifestFile: role.runtimeManifestFile || '',
+    failureId: row.failure.id,
+    repairId: row.repair.repairId,
+    signature: row.failure.signature,
+    status: row.failure.status,
+    scope: row.failure.scope,
+    failedGates: row.failure.failedGates,
+    retryBudget: row.failure.retryBudget,
+    attempt: row.failure.attempt,
+    maxAttempts: row.failure.maxAttempts,
+    repairAction: row.repair.action,
+    repairPaused: row.repair.paused,
+    evidenceWriteback: row.failure.evidenceWriteback,
+    dedupeWindow: {
+      source: 'agent-dogfood',
+      roleId: role.id,
+      mergeKeys: role.planWorker?.mergeKeys || [],
+      attemptCount: (role.attempts || []).length || 1,
+      retryKey: row.failure.retryBudget.retryKey,
+    },
+  };
+}
+const failureSignatureManifestBindings = roleFailureRepairRows.map(roleFailureSignatureBinding);
+const failureBindingByRole = new Map(failureSignatureManifestBindings.map((binding) => [binding.roleId, binding]));
+for (const role of allRuns) {
+  const binding = failureBindingByRole.get(role.id);
+  if (!binding || !role.runtimeManifestFile) continue;
+  const manifestPath = join(repoRoot, role.runtimeManifestFile);
+  const manifest = existsSync(manifestPath) ? safeJson(readFileSync(manifestPath, 'utf8'), role.runtimeManifest || {}) : (role.runtimeManifest || {});
+  manifest.failureSignatureBinding = binding;
+  manifest.failureSignature = binding.signature;
+  manifest.retryBudget = binding.retryBudget;
+  manifest.failureLedgerEventId = binding.failureId;
+  manifest.repairQueueItemId = binding.repairId;
+  if (existsSync(manifestPath)) await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}
+`);
+  role.runtimeManifest = manifest;
+}
 function subagentRuntimeManifestCaptured(role) {
   const manifest = role.runtimeManifest || {};
   const stdout = manifest.stdout || {};
@@ -1161,9 +1243,39 @@ const subagentRuntimeManifests = allRuns.map((role) => ({
   sessionFiles: role.runtimeManifest?.sessionFiles || [],
   toolResultCount: role.runtimeManifest?.toolResultCount ?? 0,
   modelProvider: role.runtimeManifest?.modelProvider || null,
+  failureSignatureBinding: role.runtimeManifest?.failureSignatureBinding || null,
+  failureSignature: role.runtimeManifest?.failureSignature || '',
+  retryBudget: role.runtimeManifest?.retryBudget || null,
   captured: subagentRuntimeManifestCaptured(role),
 }));
 const subagentRuntimeManifestIndexPath = rel(join(outDir, 'subagent-runtime-manifests.json'));
+function failureSignatureManifestBindingsCaptured() {
+  if (failureSignatureManifestBindings.length !== roleFailureRepairRows.length) return false;
+  const byRole = new Map(allRuns.map((role) => [role.id, role]));
+  return failureSignatureManifestBindings.every((binding) => {
+    const role = byRole.get(binding.roleId);
+    const manifest = role?.runtimeManifest || {};
+    return Boolean(role)
+      && binding.kind === 'AgentDogfoodFailureSignatureBindingV1'
+      && binding.schemaVersion === 1
+      && binding.source === 'agent-dogfood'
+      && Boolean(binding.runtimeManifestFile)
+      && binding.runtimeManifestFile === (role.runtimeManifestFile || '')
+      && Boolean(binding.failureId)
+      && Boolean(binding.repairId)
+      && Boolean(binding.signature)
+      && binding.retryBudget?.retryKey === binding.signature
+      && binding.dedupeWindow?.retryKey === binding.signature
+      && binding.dedupeWindow?.source === 'agent-dogfood'
+      && binding.dedupeWindow?.roleId === binding.roleId
+      && manifest.failureSignature === binding.signature
+      && manifest.retryBudget?.retryKey === binding.signature
+      && manifest.failureLedgerEventId === binding.failureId
+      && manifest.repairQueueItemId === binding.repairId
+      && manifest.failureSignatureBinding?.signature === binding.signature
+      && manifest.failureSignatureBinding?.dedupeWindow?.retryKey === binding.signature;
+  });
+}
 function appendClaimLedgerEvent(events, event) {
   const prevHash = events.at(-1)?.eventHash || '0'.repeat(64);
   const row = { seq: events.length + 1, prevHash, ...event };
@@ -1179,6 +1291,7 @@ function buildRuntimeClaimLedgerEvents() {
       type: 'artifact_handoff',
       role: role.id,
       scope: `agent-dogfood:${role.id}`,
+      failureSignatureBinding: failureBindingByRole.get(role.id) || null,
       artifactRefs: [
         role.runtimeManifestFile,
         role.stdoutFile,
@@ -1209,6 +1322,7 @@ function buildRuntimeClaimLedgerEvents() {
       statement: passed
         ? `${role.id} satisfied its bounded role contract with model/tool/runtime evidence.`
         : `${role.id} has unresolved role gate gaps: ${failedGates.join(',') || 'strictRunPassed=false'}.`,
+      failureSignatureBinding: failureBindingByRole.get(role.id) || null,
       evidenceRefs: [
         role.runtimeManifestFile,
         role.stdoutFile,
@@ -1223,6 +1337,7 @@ function buildRuntimeClaimLedgerEvents() {
       role: 'synthesizer',
       result: passed ? 'pass' : 'fail',
       checks: role.checks || {},
+      failureSignatureBinding: failureBindingByRole.get(role.id) || null,
       evidenceRefs: [role.runtimeManifestFile, role.stdoutFile, role.stderrFile].filter(Boolean),
     });
     if (!passed) {
@@ -1232,6 +1347,7 @@ function buildRuntimeClaimLedgerEvents() {
         role: 'adversary',
         scope: `agent-dogfood:${role.id}`,
         challenge: `role gate failed: ${failedGates.join(',') || 'strictRunPassed=false'}`,
+        failureSignatureBinding: failureBindingByRole.get(role.id) || null,
         evidenceRefs: [role.runtimeManifestFile, role.stdoutFile, role.stderrFile].filter(Boolean),
       });
       appendClaimLedgerEvent(events, {
@@ -1240,6 +1356,7 @@ function buildRuntimeClaimLedgerEvents() {
         role: 'synthesizer',
         result: 'downgraded',
         resolution: 'role claim remains gap until repair queue and regression gates pass',
+        failureSignatureBinding: failureBindingByRole.get(role.id) || null,
         evidenceRefs: [role.runtimeManifestFile, 'failure-ledger.jsonl', 'repair-queue.jsonl'].filter(Boolean),
       });
     }
@@ -1322,6 +1439,7 @@ const gates = {
   toolResultsCaptured: totals.toolCalls > 0 && totals.toolResults >= totals.toolCalls && allRuns.every((role) => role.session.toolCalls === 0 || role.session.toolResults >= role.session.toolCalls),
   sessionDigestsCaptured: allRuns.every((role) => (role.session.fileDigests || []).length > 0 && (role.session.fileDigests || []).every((item) => item.sha256 && item.bytes > 0)),
   subagentRuntimeManifestsCaptured: allRuns.every(subagentRuntimeManifestCaptured),
+  failureSignatureManifestBindingsCaptured: failureSignatureManifestBindingsCaptured(),
   runtimeClaimLedgerCaptured: claimLedgerHashChainOk(claimLedgerEvents)
     && ['artifact_handoff', 'claim', 'validation', 'challenge', 'resolution'].every((type) => claimLedgerEvents.some((event) => event.type === type)),
   nonMockRuntimeExpected: audit.nonMockRuntimeExpected,
@@ -1339,37 +1457,6 @@ const verdict = confirmed
   : partial
     ? 'agent-parallel-dogfood-partial'
     : 'agent-parallel-dogfood-failed';
-const roleFailureRepairRows = allRuns
-  .filter((role) => role.retryExhausted || !strictRunPassed(role))
-  .map((role) => {
-    const failedGates = Object.entries(role.checks || {}).filter(([, passed]) => !passed).map(([name]) => name);
-    const artifacts = [
-      role.stdoutFile,
-      role.stderrFile,
-      ...(role.attempts || []).flatMap((attempt) => [attempt.stdoutFile, attempt.stderrFile]),
-      ...(role.session?.fileDigests || []).map((item) => item.path),
-    ].filter(Boolean);
-    return failureRepairFromGap({
-      root: repoRoot,
-      source: 'agent-dogfood',
-      scope: `agent-dogfood:${role.id}`,
-      category: role.retryExhausted ? 'runtime_failed' : 'contract_gap',
-      status: role.retryExhausted ? 'exhausted' : 'repair_queued',
-      failedGates: failedGates.length ? failedGates : ['role_strict_run_passed'],
-      reason: `${role.id} failed role gate(s): ${failedGates.join(',') || 'strictRunPassed=false'}`,
-      attempt: (role.attempts || []).length || 1,
-      maxAttempts: roleRetries + 1,
-      commands: [`RECON_PARALLEL_ROLES=${role.id} node bench/recon-remote/agent-dogfood/parallel-run.mjs ${provider} ${model}`],
-      artifacts,
-      providerAllowed: true,
-      paused: false,
-      unblock: `rerun role ${role.id} with tighter prompt/tool evidence or inspect per-attempt artifacts`,
-      verificationCommand: 'npm run gate:agent-parallel',
-      regressionGates: gateNames,
-    });
-  });
-const failureLedgerEvents = roleFailureRepairRows.map((row) => row.failure);
-const repairQueue = roleFailureRepairRows.map((row) => row.repair);
 const result = {
   target: 'REPI multi-agent parallel dogfood against hardest real-platform evidence',
   profile: 'agent-parallel-dogfood',
@@ -1442,6 +1529,7 @@ const result = {
   claimLedgerEvents,
   failureLedgerEvents,
   repairQueue,
+  failureSignatureManifestBindings,
   failureRepairWriteback: failureLedgerEvents[0]?.evidenceWriteback || {
     failureLedgerPath: '.repi-harness/evidence/failures/ledger.jsonl',
     repairQueuePath: '.repi-harness/evidence/repairs/queue.jsonl',
@@ -1472,6 +1560,8 @@ await writeFile(join(outDir, 'subagent-runtime-manifests.json'), `${JSON.stringi
   kind: 'pi-recon-subagent-runtime-manifest-index',
   schemaVersion: 1,
   manifestCount: subagentRuntimeManifests.length,
+  failureSignatureManifestBindingCount: failureSignatureManifestBindings.length,
+  failureSignatureManifestBindings,
   manifests: subagentRuntimeManifests,
 }, null, 2)}\n`);
 await writeFile(join(outDir, 'claim-ledger.jsonl'), `${claimLedgerEvents.map((event) => JSON.stringify(event)).join('\n')}${claimLedgerEvents.length ? '\n' : ''}`);
@@ -1498,6 +1588,7 @@ const md = [
   `- hard_eval_control verdict=${hardEvalJson?.verdict || 'missing'} code=${hardEvalRun.code} orchestration_score=${hardEvalJson?.scores?.orchestration?.score ?? 'n/a'} platform_required_score=${hardEvalJson?.scores?.platformRequired?.score ?? 'n/a'} required_gaps=${hardEvalRequiredPlatformGaps.map((claim) => claim.gate).join(',') || 'none'}`,
   `- parallel_plan source=${planPreview.source} plan_id=${planPreview.planId || 'builtin'} workers=${planPreview.workerCount} merge=${planPreview.merge?.strategy || 'none'} validation=${planPreview.validation?.valid}`,
   `- subagent_runtime_manifest_index=${subagentRuntimeManifestIndexPath} captured=${gates.subagentRuntimeManifestsCaptured}`,
+  `- failure_signature_manifest_bindings=${failureSignatureManifestBindings.length} captured=${gates.failureSignatureManifestBindingsCaptured}`,
   `- runtime_claim_ledger=${claimLedgerPath} events=${claimLedgerEvents.length} hash_chain=${gates.runtimeClaimLedgerCaptured}`,
   `- same_window_live=${evidencePaths.bestSameWindowLive || evidencePaths.latestSameWindowLive || 'none'}`,
   `- best_bilibili=${evidencePaths.bestBilibili || 'none'}`,
@@ -1531,6 +1622,8 @@ console.log(JSON.stringify({
   gates,
   subagentRuntimeManifestIndex: subagentRuntimeManifestIndexPath,
   subagentRuntimeManifestFiles: subagentRuntimeManifests.map((row) => row.file),
+  failureSignatureManifestBindingCount: failureSignatureManifestBindings.length,
+  failureSignatureManifestBindings,
   claimLedgerPath,
   claimLedgerEventCount: claimLedgerEvents.length,
   claimLedgerTipHash: claimLedgerEvents.at(-1)?.eventHash || '',

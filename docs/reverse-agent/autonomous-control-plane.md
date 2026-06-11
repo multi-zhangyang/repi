@@ -156,7 +156,7 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 
 - `re_operation → re_delegate → re_swarm → re_supervisor` 已能把 operation queue 拆成 specialist worker packets，再组织 `worker_runtime_packets`、`parallel_groups`、`merge_protocol`、`collision_matrix` 和 `commander_next_actions`。
 - `frontier-orchestrator` 已有 case catalog、`agentLane`、`--shards=N` 分片计划，并能在 `--plan --json` 输出 `ReconParallelPlanV1`。
-- `agent-dogfood/parallel-run.mjs` 已有 mapper/verifier/adversary/planner/synthesizer 多角色并发 runner，并记录 PID、session digest、model/tool call digest、overlap/speedup 等运行证据；每个 role / synthesizer attempt 还会写 `pi-recon-subagent-runtime-manifest`，包含 attempt、PID、exit code、stdout/stderr digest、session dir/files/tool result count 和 provider/model 摘要，并输出 runtime `claim-ledger.jsonl` 把 artifact_handoff、claim、validation、challenge、resolution 串成 hash chain。
+- `agent-dogfood/parallel-run.mjs` 已有 mapper/verifier/adversary/planner/synthesizer 多角色并发 runner，并记录 PID、session digest、model/tool call digest、overlap/speedup 等运行证据；每个 role / synthesizer attempt 还会写 `pi-recon-subagent-runtime-manifest`，包含 attempt、PID、exit code、stdout/stderr digest、session dir/files/tool result count 和 provider/model 摘要，并输出 runtime `claim-ledger.jsonl` 把 artifact_handoff、claim、validation、challenge、resolution 串成 hash chain；失败 role/synthesizer 会写 `AgentDogfoodFailureSignatureBindingV1`，把 `failureSignatureBinding`、`failureLedgerEventId`、`repairQueueItemId`、`retryBudget` 和 `dedupeWindow` 反写 runtime manifest / manifest index / claim ledger event。
 - `re_swarm` 与 `compound-frontier` 已写 runtime `claim-ledger.jsonl` / `claimLedger*` 字段，把 worker 或 compound frontier 的 artifact handoff、claim、validation、challenge、resolution 绑定到 hash chain 和 failure/repair queue。
 - `agent-dogfood/parallel-run.mjs --plan-json <path> --plan-only` 已能离线读取 `ReconParallelPlanV1`，归一化 workers/merge/evidence contract，并在不调用模型的情况下预览调度边界。
 - `gate:worker-runtime-pool` 已新增 `WorkerRuntimePoolV1` hard-eval，覆盖 `maxConcurrency`、resource lease、timeout/cancel、retryBudget、stdout/stderr hash、claim refs、claim-aware merge 与 exhausted retry 负例。
@@ -165,7 +165,6 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 
 仍需硬化：
 
-- 把 `re_swarm` 的 command-level worker packet 升级为可选独立 Pi agent/session runtime。
 - 将同类 runtime manifest 推广到通用 `re_swarm` worker，并把 `WorkerRuntimePoolV1` / `WorkerChildSessionRuntimeBatchV1` 合同接入真实 child process/provider runtime，而不是只停在离线 fixture。
 - shard plan 支持真实并发执行、多 shard result merge、取消/超时/重排队。
 - merge 前做 structured claim coverage，不再只靠文本摘要；final promotion 走 `StructuredClaimMergeV1` gate。
@@ -174,7 +173,7 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 
 1. 保持 `frontier-orchestrator --plan --json --shards=N | agent-dogfood --plan-json ... --plan-only` 作为静态合同 smoke check。
 2. `re_swarm plan` 输出同一 `parallel_plan` 区块。
-3. `agent-dogfood` 执行态继续把 planId/source/worker merge keys 与 failure signature 绑定到每个 subagent runtime manifest。
+3. `agent-dogfood` 执行态已通过 `AgentDogfoodFailureSignatureBindingGateV1` / `gate:agent-dogfood-failure-signature-binding` 把 planId/source/worker merge keys 与 failure signature / retryBudget / dedupeWindow 绑定到每个失败 subagent runtime manifest。
 4. `re_supervisor` 消费 worker runtime digest 和 structured merge keys。
 
 ## 2. 长期上下文 / compact / resume
@@ -210,12 +209,12 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 - parallel dogfood runner 已有 role/synthesizer bounded retry。
 - `hard-eval-control-plane --write` 同时写 per-run failure/repair artifact，并追加 canonical `.repi-harness/evidence/failures/ledger.jsonl` 与 `.repi-harness/evidence/repairs/queue.jsonl`；failure event 带 `retryBudget/evidenceWriteback/blockedConditions`，repair item 带 `repairAction/evidenceWriteback/blockedConditions`。
 - `schemas/reverse-agent/failure-repair-contract.schema.json` 已开启 strict additionalProperties=false，并绑定 `fixtures/reverse-agent/failure-repair-strict.fixture.json`；`gate:autonomous-contracts` 会验证 valid fixture 通过、duplicate signature/attempt、loose extra field、exhausted 后继续 unpaused rerun/retry 都被拒绝。
-- compound-frontier failed gates、agent-dogfood role retry 和 plan-only invalid fixture 已输出 canonical failure/repair rows。
+- compound-frontier failed gates、agent-dogfood role retry 和 plan-only invalid fixture 已输出 canonical failure/repair rows；agent-dogfood 失败 role/synthesizer 已把同一 signature/retryBudget 写回 runtime manifest、repair queue、failure ledger 与 claim ledger event。
 - `RepairRollbackPolicyV1` / `gate:repair-rollback-policy` 已把 state-changing repair 的 baseline snapshot、allowlist、passed regression gate、rollback restore 和 restored tree hash 校验接成 hard-eval；负例覆盖 baseline missing、allowlist violation、rollback not restored、missing regression gate 和 failure/repair unlinked。
 
 仍需硬化：
 
-- 把 strict failure/repair validator 接入独立 sub-agent/session runtime regression gates。
+- 继续把 strict failure/repair validator 扩展到更多 re_swarm/provider worker live regression gates。
 - 继续把所有 runtime retry 接入同一失败签名和预算；strict validator 已阻断 exhausted 后未闭合 budget 或 unpaused rerun/retry 的盲重试。
 - 继续把 `RepairRollbackPolicyV1` 从 re_autofix 扩展到 re_operator、compound-frontier 和 provider-worker 的更多真实 state-changing repair。
 
@@ -223,7 +222,7 @@ claim ledger、hard-eval score split 和 autonomous contracts gate，输出
 
 1. 已补 `FailureSignaturePriorityGateV1` / `gate:failure-signature-priority`：proof-loop 与 knowledge graph 会查询当前 target 的 failure signature，优先处理 exhausted 与重复失败；后续只需扩大更多 runtime producer 样本。
 2. autofix/apply 前记录 git HEAD、git status、allowlist、source artifact hash 和上一轮 passed gates。
-3. 把 agent-dogfood subagent runtime manifest 与 failure signature / retry budget 去重窗口绑定。
+3. 已补 `AgentDogfoodFailureSignatureBindingGateV1` / `gate:agent-dogfood-failure-signature-binding`：agent-dogfood subagent runtime manifest 与 failure signature / retry budget / role-scoped dedupe window 已绑定；后续扩展到更多 worker 类型。
 
 ## 4. 自动分工验证 / claim 合同 / 冲突合成
 
@@ -283,7 +282,7 @@ They validate these contract families without running live benchmarks or provide
 - `ContextPackV2` and `ResumeContractV2`: exact context path/hash fields, cwd/session/mission/target scope fields, artifact hash policy, append-only compaction ledger, resume queue status and closure values.
 - `MultiCompactPressureGateV1`: bounded offline pressure contract for repeated compact/resume cycles, old contextPath over latest fallback, duplicate replay idempotency, target/scope/artifact drift negatives, and operator/proof-loop compact writeback.
 - `LatestArtifactConsumerScopeGateV1`: bounded offline pressure contract for operator feedback, proof-loop gap/evidence/source, and compiler claim gate latest artifact consumers; cross-target newer artifacts must be blocked while same-target older artifacts remain selectable.
-- `FailureLedgerEventV1` and `RepairQueueItemV1`: strict schema, strict fixture, duplicate signature/attempt rejection, failure signature, bounded attempts, exhausted/repair status, artifact hashes, rollback criteria, linked paused repair action. `FailureSignaturePriorityGateV1` now verifies proof-loop / knowledge graph priority consumption, ready repair command requirements, and target-scoped failure isolation.
+- `FailureLedgerEventV1` and `RepairQueueItemV1`: strict schema, strict fixture, duplicate signature/attempt rejection, failure signature, bounded attempts, exhausted/repair status, artifact hashes, rollback criteria, linked paused repair action. `FailureSignaturePriorityGateV1` now verifies proof-loop / knowledge graph priority consumption, ready repair command requirements, and target-scoped failure isolation. `AgentDogfoodFailureSignatureBindingGateV1` verifies that failed agent-dogfood runtime manifests, failure ledger rows, repair queue items, claim ledger events, and role-scoped dedupe windows share the same signature/retryBudget; run it with `npm run gate:agent-dogfood-failure-signature-binding`.
 - `DivisionValidationContractV1`, `RoleContractV1` and `ClaimLedgerEventV1`: mapper/verifier/adversary/synthesizer contract, handoff targets, claim ledger hash chain, evidence refs, challenge/resolution for required gaps, conflict policy.
 
 新增 schema：
@@ -294,4 +293,4 @@ They validate these contract families without running live benchmarks or provide
 
 `hard-eval-control-plane.mjs` 的离线 failure/repair 输出也已补齐 `signature`、`artifactHashes`、`budget`、`rollback`、`expectedGates`、`rollbackCriteria`；role contract 已补齐 `ledgerPolicy`、`conflictPolicy`、`claimGatePolicy`、`handoffTargets`、`evidenceContract`。
 
-This means REPI now has a usable professional control plane with machine-readable schemas, validators, agent-dogfood subagent runtime manifests plus agent-dogfood / re_swarm / compound runtime claim ledger rows, provider runtime matrix/failure injection/parallel provider worker gates, WorkerLeaseSchedulerV1 live re_swarm scheduler artifact wiring, opt-in remote provider long-run regression, exact-resume negative fixtures, strict failure/repair fixtures, RepairRollbackPolicyV1 baseline/allowlist/regression/rollback gates, ToolCallTraceLedgerV1 append-only tool traces, failure/repair writeback hooks, strict claim release markers, and runtime final-path gates. Remaining work is limited to hardening such as broader cross-session live fixtures, deeper real conflict arbitration, strict validator regression, and runtime ledger regression wiring; multi-compact pressure is now covered by `gate:multi-compact-pressure`, and latest artifact consumer target-scope propagation is covered by `gate:latest-artifact-consumer-scope`, and failure signature priority consumption is covered by `gate:failure-signature-priority`.
+This means REPI now has a usable professional control plane with machine-readable schemas, validators, agent-dogfood subagent runtime manifests plus `AgentDogfoodFailureSignatureBindingGateV1` and agent-dogfood / re_swarm / compound runtime claim ledger rows, provider runtime matrix/failure injection/parallel provider worker gates, WorkerLeaseSchedulerV1 live re_swarm scheduler artifact wiring, opt-in remote provider long-run regression, exact-resume negative fixtures, strict failure/repair fixtures, RepairRollbackPolicyV1 baseline/allowlist/regression/rollback gates, ToolCallTraceLedgerV1 append-only tool traces, failure/repair writeback hooks, strict claim release markers, and runtime final-path gates. Remaining work is limited to hardening such as broader cross-session live fixtures, deeper real conflict arbitration, strict validator regression, and runtime ledger regression wiring; multi-compact pressure is now covered by `gate:multi-compact-pressure`, and latest artifact consumer target-scope propagation is covered by `gate:latest-artifact-consumer-scope`, and failure signature priority consumption is covered by `gate:failure-signature-priority`, and agent-dogfood failure binding is covered by `gate:agent-dogfood-failure-signature-binding`.
