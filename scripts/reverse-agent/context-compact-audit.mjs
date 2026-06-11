@@ -171,6 +171,51 @@ export const CONTEXT_COMPACT_REQUIREMENTS = [
 		],
 	},
 	{
+		id: "multi_compact_pressure",
+		description: "MultiCompactPressureGateV1 stress-tests repeated pack/resume cycles, old contextPath over latest fallback, idempotent replay, drift/scope negatives, and operator/proof-loop writeback.",
+		checks: [
+			{
+				file: "scripts/reverse-agent/multi-compact-pressure-gate.mjs",
+				markers: [
+					"repi-multi-compact-pressure-gate",
+					"MultiCompactPressureGateV1",
+					"runtime:multi-cycle-append-only",
+					"runtime:old-context-path-beats-latest",
+					"runtime:duplicate-resume-idempotent",
+					"runtime:operator-proof-writeback",
+					"negative:artifact-drift",
+				],
+			},
+			{
+				file: "schemas/reverse-agent/multi-compact-pressure.schema.json",
+				markers: [
+					"MultiCompactPressureGateV1",
+					"multi_compact_append_only_pressure",
+					"old_context_path_over_latest_fallback",
+					"operator_proof_loop_compact_writeback",
+				],
+			},
+			{
+				file: "fixtures/reverse-agent/multi-compact-pressure.fixture.json",
+				markers: [
+					"repi-multi-compact-pressure-fixture",
+					"two-independent-compact-cycles",
+					"old-context-path-beats-latest",
+					"operator-proof-loop-writeback",
+					"budget-exhausted",
+				],
+			},
+			{
+				file: "package.json",
+				markers: ["gate:multi-compact-pressure", "multi-compact-pressure-gate.mjs"],
+			},
+			{
+				file: "docs/reverse-agent/README.md",
+				markers: ["MultiCompactPressureGateV1", "gate:multi-compact-pressure", "multi-compact-pressure-gate.mjs"],
+			},
+		],
+	},
+	{
 		id: "evidence_summarization",
 		description: "Evidence summarization survives compaction through evidence digest, artifact index, compiler key evidence, and proof-loop evidence summary.",
 		checks: RUNTIME_MIRRORS.map((file) => ({

@@ -80,6 +80,7 @@
 		"gate:artifact-scope-filter": "node scripts/reverse-agent/artifact-scope-filter-gate.mjs . --strict",
 		"gate:memory-orchestrator": "node scripts/reverse-agent/memory-orchestrator-gate.mjs . --strict",
 		"gate:compact-resume-ledger-v2": "node scripts/reverse-agent/compact-resume-ledger-v2-gate.mjs . --strict",
+		"gate:multi-compact-pressure": "node scripts/reverse-agent/multi-compact-pressure-gate.mjs . --strict",
 		"gate:cross-session-resume-live": "node scripts/reverse-agent/cross-session-resume-live-gate.mjs . --strict",
 		"gate:memory-deposition": "node scripts/reverse-agent/memory-deposition-gate.mjs . --strict",
 		"gate:memory-experience": "node scripts/reverse-agent/memory-experience-gate.mjs . --strict",

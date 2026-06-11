@@ -60,6 +60,7 @@ re_kernel → re_decision_core → re_map → re_operation → re_delegate
 - exact context resume：`re_context resume <contextPath>` / tool `contextPath` / `compactionEntryId` 精确加载指定 pack，并校验 hash、artifact drift、workspace/target/branch scope；`npm run gate:context-runtime-schema` 会真实运行 pack→resume，按 schema 校验 memory hash contract 和 closed resume。
 - `memory/compaction-resume-ledger.jsonl`：legacy append-only compact/resume ledger。
 - `memory/compaction-resume-transitions.jsonl` / `memory/compaction-resume-ledger-v2-report.json`：`CompactResumeLedgerV2` 状态机，把 compact/resume 明确记录为 `queued → running → done|blocked|exhausted`，并校验 append-only hash、idempotencyKey 去重、多次 compact/replay 幂等和 auto-resume budget；`re_context resume-ledger` / `re_memory compact-resume` 可直接查看。
+- `MultiCompactPressureGateV1`：`npm run gate:multi-compact-pressure` 会在临时 REPI home 中真实跑多轮 `re_context pack/resume`、old `contextPath` 覆盖 latest fallback、duplicate resume 幂等 replay、target unresolved / scope mismatch / artifact drift 负例，并触发 `session_before_compact → session_compact → re_operator dispatch → re_proof_loop run`，确认 operator/proof-loop 恢复结果会反写 `CompactResumeLedgerV2`。
 - Memory v2：`~/.repi/agent/recon/memory/events.jsonl` 是 append-only `MemoryEventV1` 哈希链；`case-memory.jsonl` 是按 case signature 聚合后的复用视图；`retrieval-report.json` 记录每次 `re_memory search-events` 的召回、分数、原因和 hash-chain 状态。Markdown journal/playbook 仍保留给人读，但不再是唯一事实源。
 - Memory utility hard-eval：`npm run gate:memory-utility` 用跨目标 authz 与 pwn 负例 fixture 验证“正确召回”——高置信、已复现、同 route 的成功经验应排第一并给出可迁移命令；失败、过旧、跨 route 的噪声不能进入高位或污染命令建议。
 - Memory reuse feedback：`re_lane run` 复用 `memory-event:*` 命令后会自动写回在线学习闭环；强证据会追加 `memory_reuse_feedback_promote` 事件并提升同 case，弱证据/失败会追加 `memory_reuse_feedback_demote` 事件并让后续检索降权。`npm run gate:memory-feedback` 用成功提升和失败降权双场景保护该行为。
@@ -293,6 +294,8 @@ npm run gate:memory-active-kernel
 npm run gate:memory-maturation-runtime
 # 单独验证 CompactResumeLedgerV2 状态机
 npm run gate:compact-resume-ledger-v2
+# 单独验证 MultiCompactPressureGateV1 多轮 compact/resume 压力
+npm run gate:multi-compact-pressure
 npm run gate:repi-product
 npm run gate:repi-isolation
 ```
@@ -414,7 +417,7 @@ pack 中包含：
 - `idempotencyKey`
 - `next_operator_commands`
 
-Compact/resume chain hard-eval：`npm run gate:compact-resume-chain` 会离线验证跨 session 精确恢复链路，不只看 marker。它检查 `ContextPackV2` / `ResumeContractV2` 的 `contextSha256`、artifact hash、target/workspace/branch scope、append-only `compaction-resume-ledger.jsonl` 的 `prevHash/entryHash`、resume 状态机 `queued→running→done`、auto-resume telemetry 的 proof-loop entry，以及 context drift、artifact drift、duplicate idempotency、invalid transition、budget exhausted/open closure 等负例。`npm run gate:compact-resume-ledger-v2` 会真实调用 `re_context pack/resume` 和 `re_memory compact-resume`，验证 `CompactResumeLedgerV2` 的 transition ledger、`queued→running→done`、幂等 replay、预算和 context pack embedding。`npm run gate:context-runtime-schema` 则用临时 REPI home 真实调用 `re_mission new → re_map → re_memory verify/sediment → re_context pack → re_context resume`，校验 pack/resume JSON 符合 `ContextPackV2` / `ResumeContractV2`、`contextSha256` 实际匹配、required memory artifacts 未 drift、`exactResumeVerification` 无 blocked，避免 context/compact 只停留在 marker 或 fixture。运行时 `re_complete audit` 也会校验 compaction resume ledger，发现 ledger drift 会阻断最终完成。
+Compact/resume chain hard-eval：`npm run gate:compact-resume-chain` 会离线验证跨 session 精确恢复链路，不只看 marker。它检查 `ContextPackV2` / `ResumeContractV2` 的 `contextSha256`、artifact hash、target/workspace/branch scope、append-only `compaction-resume-ledger.jsonl` 的 `prevHash/entryHash`、resume 状态机 `queued→running→done`、auto-resume telemetry 的 proof-loop entry，以及 context drift、artifact drift、duplicate idempotency、invalid transition、budget exhausted/open closure 等负例。`npm run gate:compact-resume-ledger-v2` 会真实调用 `re_context pack/resume` 和 `re_memory compact-resume`，验证 `CompactResumeLedgerV2` 的 transition ledger、`queued→running→done`、幂等 replay、预算和 context pack embedding。`npm run gate:multi-compact-pressure` 在此基础上做压力门禁：两轮独立 pack/resume、显式旧 contextPath 优先于 latest、duplicate resume 不新增 transition、target unresolved / scope mismatch / artifact drift 阻断，以及 compaction hook 后 operator/proof-loop writeback。`npm run gate:context-runtime-schema` 则用临时 REPI home 真实调用 `re_mission new → re_map → re_memory verify/sediment → re_context pack → re_context resume`，校验 pack/resume JSON 符合 `ContextPackV2` / `ResumeContractV2`、`contextSha256` 实际匹配、required memory artifacts 未 drift、`exactResumeVerification` 无 blocked，避免 context/compact 只停留在 marker 或 fixture。运行时 `re_complete audit` 也会校验 compaction resume ledger，发现 ledger drift 会阻断最终完成。
 
 ## 长期记忆沉淀 / Memory v5 store + Memory v4 sedimentation
 
@@ -709,6 +712,7 @@ npm run gate:repi-harness
 - 串联 `gate:repi-product`、`gate:repi-isolation`、`gate:context-compact`、`gate:autonomous-runtime`、`gate:autonomy-control`，确认安装独立性和逆向/渗透控制面能力同时成立。
 - `gate:compact-resume-chain` 作为 context-compact 的 hard-eval 补充，覆盖跨 session 精确恢复、append-only ledger、状态机和负例阻断。
 - `gate:compact-resume-ledger-v2` 验证 `CompactResumeLedgerV2`：transition ledger hash、`queued/running/done/blocked/exhausted` 状态机、idempotent replay、auto-resume budget 和 context pack 嵌入。
+- `gate:multi-compact-pressure` 验证 `MultiCompactPressureGateV1`：multi compact append-only pressure、old contextPath over latest fallback、duplicate replay、scope/artifact drift 负例和 operator/proof-loop compact writeback。
 - `gate:context-runtime-schema` 真实运行 `re_context pack/resume`，验证 `ContextPackV2` / `ResumeContractV2`、memory hash contract 与 exact resume closure。
 
 
@@ -734,6 +738,7 @@ node --check repi-profile/extensions/reverse-pentest-core.ts  # legacy mirror; r
 node --check scripts/reverse-agent/context-compact-audit.mjs
 node --check scripts/reverse-agent/compact-resume-chain-gate.mjs
 node --check scripts/reverse-agent/compact-resume-ledger-v2-gate.mjs
+node --check scripts/reverse-agent/multi-compact-pressure-gate.mjs
 node --check scripts/reverse-agent/memory-contract-gate.mjs
 node --check scripts/reverse-agent/memory-utility-gate.mjs
 node --check scripts/reverse-agent/memory-feedback-gate.mjs
@@ -750,6 +755,7 @@ env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY -u OPENAI_API_KEY \
 
 npm run gate:context-compact
 npm run gate:compact-resume-chain
+npm run gate:multi-compact-pressure
 npm run gate:context-runtime-schema
 npm run gate:memory-contract
 npm run gate:memory-utility
@@ -990,7 +996,7 @@ claim_release_marker
 - 把 FailureLedgerEventV1 / RepairQueueItemV1 strict validator 接入更多独立 sub-agent/session runtime regression gates。
 - runtime ClaimLedgerEventV1 已覆盖 agent-dogfood / re_swarm / compound-frontier；后续重点是 strict validator regression、claim promotion 阻断和 unresolved challenge 自动回流。
 - Memory v2 已有结构化 ledger、case 聚合和检索 gate；后续可继续接向量/embedding rerank 与跨机器同步，但当前不再依赖纯 Markdown 记忆。
-- exact resume / CompactResumeLedgerV2 继续扩展 live 回归：multi compact、target unresolved、cross-session contamination。
+- exact resume / CompactResumeLedgerV2 已有 `MultiCompactPressureGateV1` 覆盖 multi compact、target unresolved、scope mismatch 和 artifact drift；后续可继续扩大到更多 latest artifact consumer 与跨机器同步。
 - 通用 re_swarm 独立子会话 runtime 与 provider live benchmark 可在需要时另行接入；当前仓库默认以离线可复现 harness 为准。
 
 
