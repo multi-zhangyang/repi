@@ -17502,7 +17502,9 @@ function splitRetryNextCommands(next: string): string[] {
 }
 
 function latestSwarmRetryQueue(target?: string): { path?: string; rows: string[]; commands: string[] } {
-	const path = latestSwarmArtifactPath();
+	const path = latestSwarmArtifactPath(
+		target ? { target, requestedBy: "swarm_retry_queue_latest_artifact_consumer" } : {},
+	);
 	const swarm = path ? parseSwarmArtifact(path) : undefined;
 	if (!swarm) return { path, rows: [], commands: [] };
 	if (target && swarm.target && target !== swarm.target) return { path, rows: [], commands: [] };
@@ -21148,8 +21150,9 @@ function buildContextPack(options: { target?: string; mode?: "pack" | "resume"; 
 	const timestamp = new Date().toISOString();
 	const mission = readCurrentMission();
 	const active = mission ? activeLane(mission) : undefined;
-	const supervisorPath = latestSupervisorArtifactPath();
-	const reflectionPath = latestReflectionArtifactPath();
+	const contextLatestScope = options.target ? { target: options.target, requestedBy: "context_pack_latest_artifact_consumer" } : {};
+	const supervisorPath = latestSupervisorArtifactPath(contextLatestScope);
+	const reflectionPath = latestReflectionArtifactPath(contextLatestScope);
 	const supervisor = supervisorPath ? parseSupervisorArtifact(supervisorPath) : undefined;
 	const reflection = reflectionPath ? parseReflectionArtifact(reflectionPath) : undefined;
 	const target = options.target ?? reflection?.target ?? supervisor?.target;
@@ -21240,7 +21243,7 @@ function buildContextPack(options: { target?: string; mode?: "pack" | "resume"; 
 		`repair_queue_items=${repairQueue.length}`,
 		`swarm_retry_queue=${swarmRetryQueue.length}`,
 		`autonomous_budget=max_turns:${autonomousBudget.maxTurns},max_dispatch:${autonomousBudget.maxDispatch},score_decay:${autonomousBudget.scoreDecay.length},demotions:${autonomousBudget.demotionRules.length},promotions:${autonomousBudget.promotionRules.length}`,
-		`commander_merge_queue=${supervisor?.commanderMergeQueue.length ?? 0}`,
+		`commander_merge_queue=${supervisor?.commanderMergeQueue?.length ?? 0}`,
 		`commander_budget=${commanderMergeBudget.join(";") || "none"}`,
 		`case_memory_lane_plan=${caseMemoryPlan?.action ?? "none"}:${caseMemoryPlan?.targetLane ?? caseMemoryPlan?.addedLane ?? active?.name ?? "none"}`,
 			`first_command=${nextCommands[0] ?? "re_mission show"}`,
@@ -23956,36 +23959,27 @@ function latestOperatorFeedback(target?: string): {
 	commands: string[];
 	sourceArtifacts: string[];
 } {
+	const scope = target ? { target, requestedBy: "operator_feedback_latest_artifact_consumer" } : {};
 	const specs: Array<
 		[string | undefined, (path: string) => { target?: string; operatorFeedback?: string[] } | undefined]
 	> = [
-		[latestAutofixArtifactPath(), parseAutofixArtifact],
-		[latestReplayerArtifactPath(), parseReplayArtifact],
-		[latestCompilerArtifactPath(), parseCompilerArtifact],
-		[latestVerifierArtifactPath(), parseVerifierArtifact],
+		[latestAutofixArtifactPath(scope), parseAutofixArtifact],
+		[latestReplayerArtifactPath(scope), parseReplayArtifact],
+		[latestCompilerArtifactPath(scope), parseCompilerArtifact],
+		[latestVerifierArtifactPath(scope), parseVerifierArtifact],
 	];
-	const exactRows: string[] = [];
-	const exactSources: string[] = [];
-	const fallbackRows: string[] = [];
-	const fallbackSources: string[] = [];
+	const rows: string[] = [];
+	const sourceArtifacts: string[] = [];
 	for (const [path, parse] of specs) {
 		if (!path || !existsSync(path)) continue;
 		const artifact = parse(path);
-		if (!artifact) continue;
+		if (!artifact || !artifactTargetMatches(target, artifact.target)) continue;
 		const feedback = artifact.operatorFeedback ?? [];
 		if (feedback.length) {
-			const exact = !target || !artifact.target || artifact.target === target;
-			if (exact) {
-				exactSources.push(path);
-				exactRows.push(...feedback);
-			} else {
-				fallbackSources.push(path);
-				fallbackRows.push(...feedback);
-			}
+			sourceArtifacts.push(path);
+			rows.push(...feedback);
 		}
 	}
-	const rows = exactRows.length ? exactRows : fallbackRows;
-	const sourceArtifacts = exactRows.length ? exactSources : fallbackSources;
 	const dedupedRows = Array.from(new Set(rows)).slice(0, 48);
 	const commands = operatorFeedbackNextCommands(dedupedRows)
 		.map((command) => operatorCommandConcrete(command, target).command)
@@ -24410,7 +24404,18 @@ function compilerClaimGateReady(compiler: CompilerArtifact): boolean {
 	);
 }
 
-function latestCompilerClaimGateInputs(): {
+function artifactTargetMatches(target: string | undefined, artifactTarget: string | undefined): boolean {
+	return !target || !artifactTarget || artifactTarget === target;
+}
+
+function artifactScopeVerdictPriority(verdict: MemoryScopeIsolationRowV1["verdict"] | undefined): number {
+	if (verdict === "block") return 3;
+	if (verdict === "warn") return 2;
+	if (verdict === "allow") return 1;
+	return 0;
+}
+
+function latestCompilerClaimGateInputs(options: { target?: string } = {}): {
 	supervisor?: SupervisorArtifact;
 	supervisorPath?: string;
 	swarm?: SwarmArtifact;
@@ -24421,10 +24426,15 @@ function latestCompilerClaimGateInputs(): {
 	claimGateResult: string[];
 	structuredClaimMergeGate: StructuredClaimMergeGateSnapshot;
 } {
-	const supervisorPath = latestSupervisorArtifactPath();
-	const supervisor = supervisorPath ? parseSupervisorArtifact(supervisorPath) : undefined;
-	const swarmPath = latestSwarmArtifactPath();
-	const swarm = swarmPath ? parseSwarmArtifact(swarmPath) : undefined;
+	const scope = options.target ? { target: options.target, requestedBy: "compiler_claim_gate" } : {};
+	const candidateSupervisorPath = latestSupervisorArtifactPath(scope);
+	const candidateSupervisor = candidateSupervisorPath ? parseSupervisorArtifact(candidateSupervisorPath) : undefined;
+	const supervisorPath = artifactTargetMatches(options.target, candidateSupervisor?.target) ? candidateSupervisorPath : undefined;
+	const supervisor = supervisorPath ? candidateSupervisor : undefined;
+	const candidateSwarmPath = latestSwarmArtifactPath(scope);
+	const candidateSwarm = candidateSwarmPath ? parseSwarmArtifact(candidateSwarmPath) : undefined;
+	const swarmPath = artifactTargetMatches(options.target, candidateSwarm?.target) ? candidateSwarmPath : undefined;
+	const swarm = swarmPath ? candidateSwarm : undefined;
 	const releaseGateMetadata = supervisor?.releaseGateMetadata ?? swarm?.releaseGateMetadata ?? [];
 	const claimGatePolicy =
 		supervisor?.claimGatePolicy ?? supervisorClaimGatePolicy(swarm?.parallelPlan, supervisorPlanCoverage(swarm));
@@ -24525,7 +24535,7 @@ function writeCompiledReport(compiler: CompilerArtifact): string {
 function buildCompiler(options: { target?: string; mode?: "draft" | "final" } = {}): CompilerArtifact {
 	ensureReconStorage();
 	const { verifier, path: verifierArtifact } = latestOrBuildVerifier(options);
-	const claimGateInputs = latestCompilerClaimGateInputs();
+	const claimGateInputs = latestCompilerClaimGateInputs({ target: options.target });
 	const summary = compilerStatusSummary(verifier.assertions);
 	const mode = options.mode ?? "draft";
 	const strictBlocksFinal = mode === "final" && claimGateInputs.strictClaimGate.status !== "pass";
@@ -25346,30 +25356,32 @@ function latestProofLoopArtifactPath(options: ArtifactScopeFilterOptions = {}): 
 	return latestScopedMarkdownArtifact("proof_loop", evidenceProofLoopsDir(), options);
 }
 
-function proofLoopSourceArtifacts(): string[] {
+function proofLoopSourceArtifacts(target?: string): string[] {
+	const scope = target ? { target, requestedBy: "proof_loop_source_latest_artifact_consumer" } : {};
 	return Array.from(
 		new Set(
 			[
 				currentMissionPath(),
 				evidenceLedgerPath(),
-				latestDecisionCoreArtifactPath(),
-				latestOperatorArtifactPath(),
-				latestDelegateArtifactPath(),
-				latestSwarmArtifactPath(),
-				latestSupervisorArtifactPath(),
-				latestVerifierArtifactPath(),
-				latestCompilerArtifactPath(),
-				latestReplayerArtifactPath(),
-				latestAutofixArtifactPath(),
-				latestKnowledgeGraphArtifactPath(),
-				...contextArtifactIndex().map((artifact) => artifact.path),
+				latestDecisionCoreArtifactPath(scope),
+				latestOperatorArtifactPath(scope),
+				latestDelegateArtifactPath(scope),
+				latestSwarmArtifactPath(scope),
+				latestSupervisorArtifactPath(scope),
+				latestVerifierArtifactPath(scope),
+				latestCompilerArtifactPath(scope),
+				latestReplayerArtifactPath(scope),
+				latestAutofixArtifactPath(scope),
+				latestKnowledgeGraphArtifactPath(scope),
+				...contextArtifactIndex({ target, requestedBy: "proof_loop_source_artifact_index" }).map((artifact) => artifact.path),
 			].filter((path): path is string => Boolean(path && existsSync(path))),
 		),
 	).slice(0, 64);
 }
 
-function proofLoopBridgeArtifacts(): string[] {
-	return [latestDelegateArtifactPath(), latestSwarmArtifactPath(), latestSupervisorArtifactPath()].filter(
+function proofLoopBridgeArtifacts(target?: string): string[] {
+	const scope = target ? { target, requestedBy: "proof_loop_bridge_latest_artifact_consumer" } : {};
+	return [latestDelegateArtifactPath(scope), latestSwarmArtifactPath(scope), latestSupervisorArtifactPath(scope)].filter(
 		(path): path is string => Boolean(path && existsSync(path)),
 	);
 }
@@ -25390,10 +25402,13 @@ function proofLoopGateStatus(): string[] {
 }
 
 function proofLoopVerdict(target?: string): ProofLoopVerdict {
-	const replayPath = latestReplayerArtifactPath();
-	const replay = replayPath ? parseReplayArtifact(replayPath) : undefined;
-	const compilerPath = latestCompilerArtifactPath();
-	const compiler = compilerPath ? parseCompilerArtifact(compilerPath) : undefined;
+	const scope = target ? { target, requestedBy: "proof_loop_verdict_latest_artifact_consumer" } : {};
+	const replayPath = latestReplayerArtifactPath(scope);
+	const candidateReplay = replayPath ? parseReplayArtifact(replayPath) : undefined;
+	const replay = artifactTargetMatches(target, candidateReplay?.target) ? candidateReplay : undefined;
+	const compilerPath = latestCompilerArtifactPath(scope);
+	const candidateCompiler = compilerPath ? parseCompilerArtifact(compilerPath) : undefined;
+	const compiler = artifactTargetMatches(target, candidateCompiler?.target) ? candidateCompiler : undefined;
 	const compactResume = latestReconCompactionResumeTelemetry().telemetry;
 	const feedbackRows = latestOperatorFeedback(target).rows.filter(
 		(row) => !/category=(strong_evidence|worker_retry_progress)/i.test(row),
@@ -25427,14 +25442,19 @@ function proofLoopVerdict(target?: string): ProofLoopVerdict {
 }
 
 function proofLoopEvidenceSummary(target?: string): string[] {
-	const verifierPath = latestVerifierArtifactPath();
-	const verifier = verifierPath ? parseVerifierArtifact(verifierPath) : undefined;
-	const compilerPath = latestCompilerArtifactPath();
-	const compiler = compilerPath ? parseCompilerArtifact(compilerPath) : undefined;
-	const replayPath = latestReplayerArtifactPath();
-	const replay = replayPath ? parseReplayArtifact(replayPath) : undefined;
-	const autofixPath = latestAutofixArtifactPath();
-	const autofix = autofixPath ? parseAutofixArtifact(autofixPath) : undefined;
+	const scope = target ? { target, requestedBy: "proof_loop_evidence_latest_artifact_consumer" } : {};
+	const verifierPath = latestVerifierArtifactPath(scope);
+	const candidateVerifier = verifierPath ? parseVerifierArtifact(verifierPath) : undefined;
+	const verifier = artifactTargetMatches(target, candidateVerifier?.target) ? candidateVerifier : undefined;
+	const compilerPath = latestCompilerArtifactPath(scope);
+	const candidateCompiler = compilerPath ? parseCompilerArtifact(compilerPath) : undefined;
+	const compiler = artifactTargetMatches(target, candidateCompiler?.target) ? candidateCompiler : undefined;
+	const replayPath = latestReplayerArtifactPath(scope);
+	const candidateReplay = replayPath ? parseReplayArtifact(replayPath) : undefined;
+	const replay = artifactTargetMatches(target, candidateReplay?.target) ? candidateReplay : undefined;
+	const autofixPath = latestAutofixArtifactPath(scope);
+	const candidateAutofix = autofixPath ? parseAutofixArtifact(autofixPath) : undefined;
+	const autofix = artifactTargetMatches(target, candidateAutofix?.target) ? candidateAutofix : undefined;
 	const feedback = latestOperatorFeedback(target);
 	const compactResume = latestReconCompactionResumeTelemetry();
 	return [
@@ -25497,9 +25517,10 @@ function proofLoopGapItems(target?: string): ProofLoopGapItem[] {
 			sourceArtifacts: Array.from(new Set(sourceArtifacts.filter((path) => existsSync(path)))).slice(0, 16),
 		});
 	};
-	const verifierPath = latestVerifierArtifactPath();
+	const scope = targetRef ? { target: targetRef, requestedBy: "proof_loop_gap_latest_artifact_consumer" } : {};
+	const verifierPath = latestVerifierArtifactPath(scope);
 	const verifier = verifierPath ? parseVerifierArtifact(verifierPath) : undefined;
-	if (verifierPath && verifier) {
+	if (verifierPath && verifier && artifactTargetMatches(targetRef, verifier.target)) {
 		const sourceArtifacts = [verifierPath, ...verifier.sourceArtifacts];
 		for (const gap of verifier.gaps.slice(0, 8)) add("verifier", `gap: ${gap}`, sourceArtifacts);
 		for (const contradiction of verifier.contradictions.slice(0, 8))
@@ -25514,9 +25535,9 @@ function proofLoopGapItems(target?: string): ProofLoopGapItem[] {
 	} else {
 		add("artifact", "verifier artifact missing: run re_verifier matrix before final claim", []);
 	}
-	const compilerPath = latestCompilerArtifactPath();
+	const compilerPath = latestCompilerArtifactPath(scope);
 	const compiler = compilerPath ? parseCompilerArtifact(compilerPath) : undefined;
-	if (compilerPath && compiler) {
+	if (compilerPath && compiler && artifactTargetMatches(targetRef, compiler.target)) {
 		const sourceArtifacts = [compilerPath, ...compiler.sourceArtifacts];
 		for (const gap of compiler.gaps.slice(0, 10)) add("compiler", `gap: ${gap}`, sourceArtifacts);
 		for (const contradiction of compiler.contradictions.slice(0, 10))
@@ -25531,9 +25552,9 @@ function proofLoopGapItems(target?: string): ProofLoopGapItem[] {
 	} else {
 		add("artifact", "compiler artifact missing: run re_compiler draft before proof-loop completion", []);
 	}
-	const replayPath = latestReplayerArtifactPath();
+	const replayPath = latestReplayerArtifactPath(scope);
 	const replay = replayPath ? parseReplayArtifact(replayPath) : undefined;
-	if (replayPath && replay) {
+	if (replayPath && replay && artifactTargetMatches(targetRef, replay.target)) {
 		const sourceArtifacts = [replayPath, ...replay.sourceArtifacts];
 		for (const blocked of replay.blocked.slice(0, 10)) add("replayer", `blocked: ${blocked}`, sourceArtifacts);
 		for (const execution of replay.executions.filter((item) => item.status === "failed").slice(0, 10)) {
@@ -25548,9 +25569,9 @@ function proofLoopGapItems(target?: string): ProofLoopGapItem[] {
 	} else {
 		add("artifact", "replayer artifact missing: run re_replayer run <target> 1", []);
 	}
-	const autofixPath = latestAutofixArtifactPath();
+	const autofixPath = latestAutofixArtifactPath(scope);
 	const autofix = autofixPath ? parseAutofixArtifact(autofixPath) : undefined;
-	if (autofixPath && autofix) {
+	if (autofixPath && autofix && artifactTargetMatches(targetRef, autofix.target)) {
 		const sourceArtifacts = [autofixPath, ...autofix.sourceArtifacts];
 		for (const failure of autofix.failures.slice(0, 8)) add("autofix", `failure: ${failure}`, sourceArtifacts);
 		for (const item of [
@@ -25602,7 +25623,7 @@ function proofLoopGapItems(target?: string): ProofLoopGapItem[] {
 	for (const gate of proofLoopGateStatus()
 		.filter((item) => /pending|blocked|missing/i.test(item))
 		.slice(0, 12))
-		add("gate", gate, proofLoopSourceArtifacts());
+		add("gate", gate, proofLoopSourceArtifacts(targetRef));
 	const deduped = new Map<string, Omit<ProofLoopGapItem, "worker">>();
 	for (const item of items) {
 		const key = `${item.source}:${item.text}`;
@@ -25670,7 +25691,7 @@ function proofLoopCommandTarget(target?: string): string {
 function buildProofLoopSteps(target?: string): ProofLoopStep[] {
 	const suffix = proofLoopCommandTarget(target);
 	const replayTarget = target?.trim() || "<target>";
-	const sourceArtifacts = proofLoopSourceArtifacts();
+	const sourceArtifacts = proofLoopSourceArtifacts(target);
 	const operatorFeedbackCommands = latestOperatorFeedback(target).commands;
 	const swarmRetryCommands = latestSwarmRetryQueue(target).commands;
 	const compactResume = latestReconCompactionResumeTelemetry();
@@ -25780,7 +25801,7 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 	const swarmRetry = proofLoopSwarmRetryQueue(proof.target);
 	const specialistQueue = proofLoopSpecialistQueue(proof.target);
 	const swarmBridge = proofLoopSwarmBridge(proof.target);
-	const bridgeArtifacts = proofLoopBridgeArtifacts();
+	const bridgeArtifacts = proofLoopBridgeArtifacts(proof.target);
 	const caseMemoryLanePlan = currentCaseMemoryLanePlan(proof.target);
 	const caseMemoryBridge = caseMemoryProofBridge(caseMemoryLanePlan, proof.target);
 	const autonomousBudget = autonomousExecutionBudget(proof.target);
@@ -25826,7 +25847,7 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 		sourceArtifacts: Array.from(
 			new Set(
 				[
-					...proofLoopSourceArtifacts(),
+					...proofLoopSourceArtifacts(proof.target),
 					autonomousBudget.dispatcherBoardPath,
 					autonomousBudget.promotionPlaybookPath,
 					compactResume.path,
@@ -25873,7 +25894,7 @@ function buildProofLoop(
 		swarmBridge: [],
 		bridgeArtifacts: [],
 		nextActions: [],
-		sourceArtifacts: proofLoopSourceArtifacts(),
+		sourceArtifacts: proofLoopSourceArtifacts(options.target),
 	});
 }
 
@@ -26362,11 +26383,15 @@ function buildKnowledgeScopeIsolation(options: {
 	const report = buildMemoryScopeIsolationReport({ target: options.target, events });
 	const rowsByEvent = new Map(report.rows.map((row) => [row.eventId, row]));
 	const byArtifactPath = new Map<string, MemoryScopeIsolationRowV1>();
+	const verdictPriority = (verdict: MemoryScopeIsolationRowV1["verdict"]): number =>
+		verdict === "block" ? 3 : verdict === "warn" ? 2 : 1;
 	for (const event of events) {
 		const row = rowsByEvent.get(event.id);
 		if (!row) continue;
 		for (const artifact of event.artifactHashes) {
-			byArtifactPath.set(knowledgeScopePathKey(artifact.path), row);
+			const key = knowledgeScopePathKey(artifact.path);
+			const existing = byArtifactPath.get(key);
+			if (!existing || verdictPriority(row.verdict) > verdictPriority(existing.verdict)) byArtifactPath.set(key, row);
 		}
 	}
 	const sourceRows = options.sources.map((source): KnowledgeScopeIsolationSourceV1 => {
@@ -35206,7 +35231,10 @@ function buildArtifactScopeFilterReport(options: {
 		const row = rowsByEvent.get(event.id);
 		if (!row) continue;
 		for (const artifact of event.artifactHashes) {
-			byArtifactPath.set(knowledgeScopePathKey(artifact.path), row);
+			const key = knowledgeScopePathKey(artifact.path);
+			const existing = byArtifactPath.get(key);
+			if (!existing || artifactScopeVerdictPriority(row.verdict) > artifactScopeVerdictPriority(existing.verdict))
+				byArtifactPath.set(key, row);
 		}
 	}
 	const decisions = options.artifacts.map((artifact): ArtifactScopeFilterDecisionV1 => {
