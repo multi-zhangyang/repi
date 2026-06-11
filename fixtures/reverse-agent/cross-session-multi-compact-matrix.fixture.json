@@ -12,7 +12,9 @@
     "longer_cross_session_compaction_chain",
     "operator_proof_loop_budget_closure",
     "terminal_resume_rows_not_reopened",
-    "compact_resume_ledger_v2_hash_chain_quality"
+    "compact_resume_ledger_v2_hash_chain_quality",
+    "five_cycle_cross_session_compaction_chain",
+    "remote_provider_continuation_sample_matrix"
   ],
   "positiveRequirements": [
     "at least two compact cycles in one matrix run",
@@ -23,7 +25,9 @@
     "operator/proof-loop closure reaches done|blocked|exhausted and exhausted has remaining budget zero",
     "CompactResumeLedgerV2 transition hash chain is append-only and terminal rows are not reopened",
     "at least three compact cycles in one matrix run with nine CompactResumeLedgerV2 transitions",
-    "provider continuation matrix covers OpenAI-compatible and Anthropic-compatible provider styles after exact resume"
+    "provider continuation matrix covers OpenAI-compatible and Anthropic-compatible provider styles after exact resume",
+    "at least five compact cycles in one matrix run with fifteen CompactResumeLedgerV2 transitions",
+    "remote provider continuation sample matrix covers at least five exact-resume samples, three provider names, both OpenAI-compatible and Anthropic-compatible styles, env-ref-only secrets and request-log hashes"
   ],
   "negativeCases": [
     {
@@ -91,6 +95,24 @@
       "mutates": "providerContinuations[0].continuationAfterExactResume=false",
       "expect": "reject",
       "mustNotPromote": true
+    },
+    {
+      "id": "five-cycle-chain-too-short",
+      "mutates": "compactCycles truncate below five cycles",
+      "expect": "reject",
+      "mustNotPromote": true
+    },
+    {
+      "id": "remote-provider-sample-missing",
+      "mutates": "remoteProviderContinuationSampleMatrix.samples remove one sample",
+      "expect": "reject",
+      "mustNotPromote": true
+    },
+    {
+      "id": "remote-provider-secret-leak",
+      "mutates": "remoteProviderContinuationSampleMatrix.samples[0].noLiteralSecrets=false",
+      "expect": "reject",
+      "mustNotPromote": true
     }
   ],
   "promotionPolicy": {
@@ -101,7 +123,9 @@
     "requiresProviderContinuation": true,
     "requiresOperatorProofClosure": true,
     "requiresProviderContinuationMatrix": true,
-    "requiresLongerCompactionChain": true
+    "requiresLongerCompactionChain": true,
+    "requiresRemoteProviderContinuationSampleMatrix": true,
+    "requiresFiveCycleCompactionChain": true
   },
   "invariants": [
     "cross_session_multi_compact_matrix_gate",
@@ -113,6 +137,8 @@
     "longer_cross_session_compaction_chain",
     "operator_proof_loop_budget_closure",
     "terminal_resume_rows_not_reopened",
-    "compact_resume_ledger_v2_hash_chain_quality"
+    "compact_resume_ledger_v2_hash_chain_quality",
+    "five_cycle_cross_session_compaction_chain",
+    "remote_provider_continuation_sample_matrix"
   ]
 }
