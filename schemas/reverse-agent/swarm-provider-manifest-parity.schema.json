@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repi.local/schemas/swarm-provider-manifest-parity.schema.json",
+  "title": "SwarmProviderManifestParityGateV1",
+  "type": "object",
+  "required": [
+    "kind",
+    "schemaVersion",
+    "SwarmProviderManifestParityGateV1",
+    "requiredGates",
+    "parityReport",
+    "negativeCases",
+    "invariants"
+  ],
+  "properties": {
+    "kind": { "const": "repi-swarm-provider-manifest-parity-fixture" },
+    "schemaVersion": { "const": 1 },
+    "SwarmProviderManifestParityGateV1": { "const": true },
+    "requiredGates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SwarmProviderManifestParityRequiredGateV1" },
+      "minItems": 8,
+      "uniqueItems": true
+    },
+    "parityReport": { "$ref": "#/$defs/SwarmProviderManifestParityReportV1" },
+    "negativeCases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SwarmProviderManifestParityNegativeCaseV1" },
+      "minItems": 5
+    },
+    "invariants": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 8,
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "SwarmProviderManifestParityGateV1": {
+      "type": "object",
+      "required": ["kind", "schemaVersion", "SwarmProviderManifestParityGateV1", "requiredGates", "parityReport", "negativeCases", "invariants"],
+      "properties": {
+        "kind": { "const": "repi-swarm-provider-manifest-parity-fixture" },
+        "schemaVersion": { "const": 1 },
+        "SwarmProviderManifestParityGateV1": { "const": true },
+        "requiredGates": { "type": "array", "items": { "$ref": "#/$defs/SwarmProviderManifestParityRequiredGateV1" }, "minItems": 8, "uniqueItems": true },
+        "parityReport": { "$ref": "#/$defs/SwarmProviderManifestParityReportV1" },
+        "negativeCases": { "type": "array", "items": { "$ref": "#/$defs/SwarmProviderManifestParityNegativeCaseV1" }, "minItems": 5 },
+        "invariants": { "type": "array", "items": { "type": "string" }, "minItems": 8, "uniqueItems": true }
+      },
+      "x-repiInvariants": [
+        "swarm_provider_manifest_parity_gate",
+        "swarm_subagent_manifest_fields_match_provider_worker",
+        "child_session_runtime_bridge_matches_provider_worker",
+        "claim_refs_preserved_across_manifest_provider_merge",
+        "failure_repair_refs_preserved_across_provider_worker",
+        "provider_env_refs_only",
+        "runtime_artifacts_have_hashes",
+        "narrative_only_provider_worker_not_promoted"
+      ]
+    },
+    "SwarmProviderManifestParityRequiredGateV1": {
+      "enum": [
+        "SwarmProviderManifestParityGateV1",
+        "swarm_subagent_manifest_fields_match_provider_worker",
+        "child_session_runtime_bridge_matches_provider_worker",
+        "claim_refs_preserved_across_manifest_provider_merge",
+        "failure_repair_refs_preserved_across_provider_worker",
+        "provider_env_refs_only",
+        "runtime_artifacts_have_hashes",
+        "narrative_only_provider_worker_not_promoted"
+      ]
+    },
+    "HashTripletV1": {
+      "type": "object",
+      "required": ["stdoutSha256", "stderrSha256", "transcriptSha256"],
+      "properties": {
+        "stdoutSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "stderrSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "transcriptSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "SwarmProviderParityRowV1": {
+      "type": "object",
+      "required": [
+        "workerId",
+        "runtimeManifestFile",
+        "sessionDir",
+        "providerName",
+        "modelId",
+        "claimRefs",
+        "mergeKey",
+        "hashes",
+        "failureRepairRefs",
+        "parityChecks",
+        "promotionAllowed"
+      ],
+      "properties": {
+        "workerId": { "type": "string", "minLength": 1 },
+        "runtimeManifestFile": { "type": "string", "minLength": 1 },
+        "sessionDir": { "type": "string", "minLength": 1 },
+        "providerName": { "type": "string", "minLength": 1 },
+        "modelId": { "type": "string", "minLength": 1 },
+        "claimRefs": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "mergeKey": { "type": "string", "minLength": 1 },
+        "hashes": { "$ref": "#/$defs/HashTripletV1" },
+        "failureRepairRefs": { "type": "array", "items": { "type": "string" } },
+        "parityChecks": {
+          "type": "object",
+          "required": ["workerIdMatch", "claimRefsPreserved", "hashesPresent", "providerEnvRefsOnly", "failureRepairLinked"],
+          "properties": {
+            "workerIdMatch": { "const": true },
+            "claimRefsPreserved": { "const": true },
+            "hashesPresent": { "const": true },
+            "providerEnvRefsOnly": { "const": true },
+            "failureRepairLinked": { "const": true }
+          }
+        },
+        "promotionAllowed": { "type": "boolean" }
+      }
+    },
+    "SwarmProviderManifestParityReportV1": {
+      "type": "object",
+      "required": ["kind", "schemaVersion", "source", "parityRows", "promotionPolicy", "closureGate"],
+      "properties": {
+        "kind": { "const": "SwarmProviderManifestParityReportV1" },
+        "schemaVersion": { "const": 1 },
+        "source": { "const": "swarm-provider-manifest-parity" },
+        "parityRows": { "type": "array", "items": { "$ref": "#/$defs/SwarmProviderParityRowV1" }, "minItems": 2 },
+        "promotionPolicy": { "type": "string", "minLength": 1 },
+        "closureGate": { "const": "gate:swarm-provider-manifest-parity" }
+      }
+    },
+    "SwarmProviderManifestParityNegativeCaseV1": {
+      "type": "object",
+      "required": ["id", "mutates", "expect", "mustNotPromote"],
+      "properties": {
+        "id": {
+          "enum": [
+            "worker-id-mismatch",
+            "claim-ref-dropped",
+            "missing-runtime-hash",
+            "literal-provider-secret",
+            "failure-repair-unlinked"
+          ]
+        },
+        "mutates": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "expect": { "const": "fail" },
+        "mustNotPromote": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    }
+  },
+  "x-repiInvariants": [
+    "swarm_provider_manifest_parity_gate",
+    "swarm_subagent_manifest_fields_match_provider_worker",
+    "child_session_runtime_bridge_matches_provider_worker",
+    "claim_refs_preserved_across_manifest_provider_merge",
+    "failure_repair_refs_preserved_across_provider_worker",
+    "provider_env_refs_only",
+    "runtime_artifacts_have_hashes",
+    "narrative_only_provider_worker_not_promoted"
+  ]
+}

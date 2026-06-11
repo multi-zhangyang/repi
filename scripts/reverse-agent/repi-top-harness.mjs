@@ -284,6 +284,9 @@ function staticContractChecks() {
 	checks.push(markerCheck("runtime:autonomous-hardening-gap-ledger-autonomy", "scripts/reverse-agent/autonomy-control-plane.mjs", ["AutonomousHardeningGapLedgerV1", "hardeningGapLedger", "closureGate", "readyForImplementation"], []));
 	checks.push(markerCheck("runtime:autonomous-hardening-gap-ledger-schema", "schemas/reverse-agent/autonomous-hardening-gap-ledger.schema.json", ["AutonomousHardeningGapLedgerV1", "AutonomousHardeningGapV1", "every_gap_has_closure_gate"], []));
 	checks.push(markerCheck("runtime:autonomous-hardening-gap-ledger-fixture", "fixtures/reverse-agent/autonomous-hardening-gap-ledger.fixture.json", ["AutonomousHardeningGapLedgerV1", "missing-closure-gate", "top-autonomous-true-with-open-gaps"], []));
+	checks.push(markerCheck("parallel:swarm-provider-manifest-parity-hard-eval", "scripts/reverse-agent/swarm-provider-manifest-parity-gate.mjs", ["repi-swarm-provider-manifest-parity-gate", "SwarmProviderManifestParityGateV1", "fixture:positive-parity", "fixture:negative-parity"], []));
+	checks.push(markerCheck("parallel:swarm-provider-manifest-parity-schema", "schemas/reverse-agent/swarm-provider-manifest-parity.schema.json", ["SwarmProviderManifestParityGateV1", "provider_env_refs_only", "failure_repair_refs_preserved_across_provider_worker"], []));
+	checks.push(markerCheck("parallel:swarm-provider-manifest-parity-fixture", "fixtures/reverse-agent/swarm-provider-manifest-parity.fixture.json", ["repi-swarm-provider-manifest-parity-fixture", "worker-id-mismatch", "literal-provider-secret", "failure-repair-unlinked"], []));
 	checks.push(markerCheck("memory:orchestrator-runtime", "packages/coding-agent/src/core/recon-profile.ts", ["MemoryOrchestratorV6", "buildMemoryOrchestratorReport", "formatMemoryOrchestrator", "memoryOrchestratorReportPath", "mandatory_memory_control_loop", "pre_task_retrieve_before_operator", "post_tool_writeback_contract", "post_compact_resume_memory_injection", "memory_orchestrator_report_in_context_pack"], []));
 	checks.push(markerCheck("memory:orchestrator-profile", "repi-profile/extensions/reverse-pentest-core.ts", ["MemoryOrchestratorV6", "buildMemoryOrchestratorReport", "formatMemoryOrchestrator", "memoryOrchestratorReportPath", "mandatory_memory_control_loop", "pre_task_retrieve_before_operator", "post_tool_writeback_contract", "post_compact_resume_memory_injection"], []));
 	checks.push(markerCheck("memory:orchestrator-hard-eval", "scripts/reverse-agent/memory-orchestrator-gate.mjs", ["repi-memory-orchestrator-gate", "runtime:pre-task-retrieval-before-operator", "runtime:post-tool-writeback-contract", "runtime:compact-resume-memory-injection", "runtime:context-pack-embeds-orchestrator"], []));
@@ -573,6 +576,8 @@ function childGateChecks() {
 			["gate:agent-dogfood-structured-claims", ["scripts/reverse-agent/agent-dogfood-structured-claims-gate.mjs", root, "--strict"]],
 			// child:gate:autonomous-hardening-gap-ledger
 			["gate:autonomous-hardening-gap-ledger", ["scripts/reverse-agent/autonomous-hardening-gap-ledger-gate.mjs", root, "--strict"]],
+			// child:gate:swarm-provider-manifest-parity
+			["gate:swarm-provider-manifest-parity", ["scripts/reverse-agent/swarm-provider-manifest-parity-gate.mjs", root, "--strict"]],
 			["gate:memory-orchestrator", ["scripts/reverse-agent/memory-orchestrator-gate.mjs", root, "--strict"]],
 		["gate:memory-deposition", ["scripts/reverse-agent/memory-deposition-gate.mjs", root, "--strict"]],
 		["gate:memory-experience", ["scripts/reverse-agent/memory-experience-gate.mjs", root, "--strict"]],

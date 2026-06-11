@@ -101,7 +101,8 @@
 		"gate:failure-signature-priority": "node scripts/reverse-agent/failure-signature-priority-gate.mjs . --strict",
 		"gate:agent-dogfood-failure-signature-binding": "node scripts/reverse-agent/agent-dogfood-failure-signature-binding-gate.mjs . --strict",
 		"gate:agent-dogfood-structured-claims": "node scripts/reverse-agent/agent-dogfood-structured-claims-gate.mjs . --strict",
-		"gate:autonomous-hardening-gap-ledger": "node scripts/reverse-agent/autonomous-hardening-gap-ledger-gate.mjs . --strict"
+		"gate:autonomous-hardening-gap-ledger": "node scripts/reverse-agent/autonomous-hardening-gap-ledger-gate.mjs . --strict",
+		"gate:swarm-provider-manifest-parity": "node scripts/reverse-agent/swarm-provider-manifest-parity-gate.mjs . --strict"
 	},
 	"devDependencies": {
 		"@anthropic-ai/sandbox-runtime": "0.0.26",

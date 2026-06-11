@@ -1,0 +1,129 @@
+{
+  "kind": "repi-swarm-provider-manifest-parity-fixture",
+  "schemaVersion": 1,
+  "SwarmProviderManifestParityGateV1": true,
+  "requiredGates": [
+    "SwarmProviderManifestParityGateV1",
+    "swarm_subagent_manifest_fields_match_provider_worker",
+    "child_session_runtime_bridge_matches_provider_worker",
+    "claim_refs_preserved_across_manifest_provider_merge",
+    "failure_repair_refs_preserved_across_provider_worker",
+    "provider_env_refs_only",
+    "runtime_artifacts_have_hashes",
+    "narrative_only_provider_worker_not_promoted"
+  ],
+  "invariants": [
+    "swarm_provider_manifest_parity_gate",
+    "swarm_subagent_manifest_fields_match_provider_worker",
+    "child_session_runtime_bridge_matches_provider_worker",
+    "claim_refs_preserved_across_manifest_provider_merge",
+    "failure_repair_refs_preserved_across_provider_worker",
+    "provider_env_refs_only",
+    "runtime_artifacts_have_hashes",
+    "narrative_only_provider_worker_not_promoted",
+    "fixture:positive-parity",
+    "fixture:negative-parity"
+  ],
+  "parityReport": {
+    "kind": "SwarmProviderManifestParityReportV1",
+    "schemaVersion": 1,
+    "source": "swarm-provider-manifest-parity",
+    "closureGate": "gate:swarm-provider-manifest-parity",
+    "promotionPolicy": "Provider worker claims can promote only when swarm manifest, child-session runtime, provider transcript, claim refs, hashes, and failure/repair refs agree.",
+    "parityRows": [
+      {
+        "workerId": "worker-alpha-openai-pass",
+        "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-alpha/runtime-manifest.json",
+        "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/worker-alpha",
+        "providerName": "parallel-openai-compatible",
+        "modelId": "parallel/openai-alpha",
+        "claimRefs": ["claim-parallel-alpha-provider-runtime"],
+        "mergeKey": "claim:provider-runtime-ready",
+        "hashes": {
+          "stdoutSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stderrSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "transcriptSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "failureRepairRefs": [],
+        "parityChecks": {
+          "workerIdMatch": true,
+          "claimRefsPreserved": true,
+          "hashesPresent": true,
+          "providerEnvRefsOnly": true,
+          "failureRepairLinked": true
+        },
+        "promotionAllowed": true
+      },
+      {
+        "workerId": "worker-gamma-openai-failure-repair",
+        "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-gamma/runtime-manifest.json",
+        "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/worker-gamma",
+        "providerName": "parallel-openai-compatible",
+        "modelId": "parallel/openai-gamma-500",
+        "claimRefs": ["claim-parallel-gamma-failure-repair"],
+        "mergeKey": "claim:provider-failure-repair",
+        "hashes": {
+          "stdoutSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "stderrSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "transcriptSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "failureRepairRefs": ["fail:parallel_provider_worker_matrix:gamma", "repair:parallel_provider_worker_matrix:gamma"],
+        "parityChecks": {
+          "workerIdMatch": true,
+          "claimRefsPreserved": true,
+          "hashesPresent": true,
+          "providerEnvRefsOnly": true,
+          "failureRepairLinked": true
+        },
+        "promotionAllowed": false
+      }
+    ]
+  },
+  "swarmManifest": {
+    "kind": "SubagentRuntimeManifestV1",
+    "workerId": "worker-alpha-openai-pass",
+    "runtimeManifestFile": "~/.repi/agent/recon/evidence/swarms/demo/worker-alpha/runtime-manifest.json",
+    "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/worker-alpha",
+    "stdoutSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stderrSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "claimLedgerPath": "~/.repi/agent/recon/evidence/swarms/demo/claim-ledger.jsonl",
+    "failureLedgerPath": ".repi-harness/evidence/failures/ledger.jsonl",
+    "repairQueuePath": ".repi-harness/evidence/repairs/queue.jsonl",
+    "retryBudget": { "signature": "re_swarm:worker-alpha", "attempt": 1, "maxAttempts": 3, "remaining": 2, "exhausted": false },
+    "mergeKeys": ["claim:provider-runtime-ready"]
+  },
+  "childSession": {
+    "kind": "WorkerChildSessionRuntimeBatchV1",
+    "poolBridge": { "childSessionRuntimeCaptured": true, "claimAwareMerge": true, "workerIds": ["worker-alpha-openai-pass", "worker-gamma-openai-failure-repair"] },
+    "sessions": [
+      {
+        "workerId": "worker-alpha-openai-pass",
+        "provider": { "name": "re_swarm-command-session", "modelId": "parallel/openai-alpha", "apiKeyRef": "$LOCAL_OPENAI_API_KEY", "baseUrlRef": "$LOCAL_OPENAI_BASE_URL" },
+        "runtime": { "sessionDir": "~/.repi/agent/recon/evidence/swarms/demo/worker-alpha", "transcriptPath": "~/.repi/agent/recon/evidence/swarms/demo/worker-alpha/transcript.jsonl" },
+        "hashes": { "stdoutSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "stderrSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "transcriptSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+        "poolBridge": { "mergeKey": "claim:provider-runtime-ready", "claimRefs": ["claim-parallel-alpha-provider-runtime"] },
+        "failureRepairRefs": []
+      }
+    ]
+  },
+  "providerWorker": {
+    "kind": "ParallelProviderWorkerMatrixWorkerV1",
+    "workerId": "worker-alpha-openai-pass",
+    "providerName": "parallel-openai-compatible",
+    "modelId": "parallel/openai-alpha",
+    "status": "pass",
+    "mergeKey": "claim:provider-runtime-ready",
+    "claimRefs": ["claim-parallel-alpha-provider-runtime"],
+    "stdoutSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stderrSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "transcriptSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "assertions": { "apiKeyEnvRefOnly": true, "authorizationFromEnv": true, "noLiteralSecrets": true, "providerWorkerFailureRepairLinked": true }
+  },
+  "negativeCases": [
+    { "id": "worker-id-mismatch", "mutates": ["providerWorker.workerId=other"], "expect": "fail", "mustNotPromote": ["swarm_subagent_manifest_fields_match_provider_worker"] },
+    { "id": "claim-ref-dropped", "mutates": ["providerWorker.claimRefs=[]"], "expect": "fail", "mustNotPromote": ["claim_refs_preserved_across_manifest_provider_merge"] },
+    { "id": "missing-runtime-hash", "mutates": ["providerWorker.stdoutSha256=''"], "expect": "fail", "mustNotPromote": ["runtime_artifacts_have_hashes"] },
+    { "id": "literal-provider-secret", "mutates": ["childSession.sessions[0].provider.apiKeyRef=sk-live-secret"], "expect": "fail", "mustNotPromote": ["provider_env_refs_only"] },
+    { "id": "failure-repair-unlinked", "mutates": ["parityRows[1].parityChecks.failureRepairLinked=false"], "expect": "fail", "mustNotPromote": ["failure_repair_refs_preserved_across_provider_worker"] }
+  ]
+}
