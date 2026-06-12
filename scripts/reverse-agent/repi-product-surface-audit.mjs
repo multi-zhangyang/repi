@@ -103,7 +103,7 @@ for (const path of [
 
 const requiredMarkers = [
 	["README.md", "# REPI Agent"],
-	["README.md", "repi  -> REPI reverse/pentest agent"],
+	["README.md", "基于 Pi Coding Agent 底层深度改造"],
 	["packages/coding-agent/src/cli/args.ts", "REPI reverse/pentest autonomous agent"],
 	["packages/coding-agent/src/core/auth-guidance.ts", "~/.repi/agent/models.json"],
 	["packages/coding-agent/docs/repi-runtime-configuration.md", "triggerPercent"],

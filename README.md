@@ -1,15 +1,10 @@
 # REPI Agent
 
-REPI Agent 是一个独立的逆向 / 渗透工程型 coding agent。它以 `repi` 作为唯一产品入口，把复杂安全研究任务拆成可恢复的上下文、可审计的证据、可执行的工具 adapter、可验证的 proof-exit 和可回放的修复闭环。
+REPI Agent 是面向逆向工程、漏洞研究和渗透测试任务组织的 autonomous coding agent。项目基于 Pi Coding Agent 底层深度改造，重构了运行时 profile、工具调度、证据账本、长期记忆、上下文恢复、runtime adapter 和 release harness。
 
-REPI 的目标不是替换单个工具，而是把 `r2 / Ghidra / Frida / CDP / pwntools / tshark / binwalk` 等工具、长期记忆、多 agent 分工、provider 调度和 release gates 组织成一套可运行的 harness。
+REPI 的设计目标是把复杂安全研究任务推进为可执行、可验证、可恢复的工程流程，而不是只输出建议。它会把 `r2 / Ghidra / Frida / CDP / pwntools / tshark / binwalk` 等工具、多 agent 分工、provider 调度和 release gates 组织成一套可运行的 harness。
 
-```text
-repi  -> REPI reverse/pentest agent
-pi    -> 你本机安装的原版 Pi
-```
-
-REPI 不接管 `pi` 命令，不写入普通 Pi 的 `~/.pi/agent`，默认使用独立运行时目录：
+默认命令是 `repi`，默认运行时目录是：
 
 ```text
 ~/.repi/agent
@@ -38,13 +33,12 @@ REPI 不接管 `pi` 命令，不写入普通 Pi 的 `~/.pi/agent`，默认使用
 
 ## 特性概览
 
-### 独立产品边界
+### 运行时边界
 
-- `repi` 启动 REPI。
-- `pi` 保持为上游 Pi。
-- REPI 使用 `~/.repi/agent`，不污染 `~/.pi/agent`。
-- REPI 默认关闭上游 Pi 更新提示和遥测类启动噪声。
-- 安装脚本只创建 / 更新 `repi` 入口。
+- 默认入口：`repi`。
+- 默认运行时目录：`~/.repi/agent`。
+- 启动时加载内置 reverse/pentest kernel、profile、tools、commands 和 provider 配置。
+- 安装脚本只创建 / 更新 REPI 入口，不需要额外的全局 profile。
 
 ### 工程型任务组织
 
@@ -96,7 +90,7 @@ cd pi-recon-agent
 npm install
 ```
 
-### 2. 安装独立 `repi`
+### 2. 安装 CLI
 
 ```bash
 npm run install:repi
@@ -114,13 +108,6 @@ scripts/reverse-agent/install-repi.sh "$PWD"
 repi --offline --help
 repi --offline --list-models
 npm run gate:repi-harness
-```
-
-如果你本机也装了原版 Pi，命令边界应该是：
-
-```text
-repi  -> REPI reverse/pentest agent
-pi    -> 你本机安装的原版 Pi
 ```
 
 ---
@@ -464,7 +451,7 @@ npm run gate:tool-call-trace-ledger
 ├── package.json                          # workspace scripts / gates
 ├── packages/coding-agent/src/core/
 │   └── recon-profile.ts                  # REPI 内置 profile / tools / commands
-├── repi-profile/                         # legacy mirror，不默认污染 Pi
+├── repi-profile/                         # 兼容 profile mirror / 发布锚点
 ├── scripts/reverse-agent/                # harness / gates / installer
 ├── schemas/reverse-agent/                # gate schemas
 ├── fixtures/reverse-agent/               # hard-eval fixtures
@@ -475,7 +462,7 @@ npm run gate:tool-call-trace-ledger
 
 ## 故障排查
 
-### `repi` 不是 REPI
+### 启动命令异常
 
 ```bash
 which repi
@@ -483,20 +470,13 @@ repi --offline --help
 npm run install:repi
 ```
 
-确认输出包含：
+确认帮助信息包含：
 
 ```text
 REPI: independent product; built-in reverse/pentest kernel is enabled.
 ```
 
-### 原版 `pi` 与 REPI 混在一起
-
-```bash
-echo "pi   : ${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
-echo "repi : ${REPI_CODING_AGENT_DIR:-$HOME/.repi/agent}"
-```
-
-REPI 不应要求你删除原版 Pi。
+如 PATH 指向旧入口，重新执行 `npm run install:repi` 后打开一个新的 shell。
 
 ### 模型不可用
 
