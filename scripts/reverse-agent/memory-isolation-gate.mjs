@@ -46,8 +46,20 @@ const checks = [
 		pass:
 			/formatScopedMemoryRecallPacket/.test(source) &&
 			/memory_recall_packet/.test(source) &&
-			/scoped_summary_cards/.test(source),
+			/scoped_summary_cards/.test(source) &&
+			/formatCoreMemoryPacket/.test(source),
 		evidence: "runtime has bounded scoped memory cards",
+	},
+	{
+		id: "core-project-procedural-memory-layer",
+		pass:
+			/memoryCorePath/.test(source) &&
+			/memoryProjectPath/.test(source) &&
+			/memoryProceduralPath/.test(source) &&
+			/core-memory\.md/.test(init) &&
+			/project-memory\.md/.test(init) &&
+			/procedural-memory\.md/.test(init),
+		evidence: "core/project/procedural notes are first-class bounded memory layers",
 	},
 	{
 		id: "context-memory-tail-scoped-helper",

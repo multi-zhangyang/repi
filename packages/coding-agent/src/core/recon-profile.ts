@@ -5852,6 +5852,18 @@ function caseMemoryPath(): string {
 	return memoryPath("case-memory.jsonl");
 }
 
+function memoryCorePath(): string {
+	return memoryPath("core-memory.md");
+}
+
+function memoryProjectPath(): string {
+	return memoryPath("project-memory.md");
+}
+
+function memoryProceduralPath(): string {
+	return memoryPath("procedural-memory.md");
+}
+
 function memoryRetrievalReportPath(): string {
 	return memoryPath("retrieval-report.json");
 }
@@ -6240,6 +6252,32 @@ function memoryFileStatusLine(label: string, path: string): string {
 	return `${label}=present rows=${memoryLineCount(path)} bytes=${stat.size}`;
 }
 
+function readMemoryNote(path: string, emptyTitle: string, limit = 900): string {
+	const text = readText(path).trim();
+	if (!text) return `${emptyTitle}=empty`;
+	const meaningful = text
+		.split(/\r?\n/)
+		.filter((line) => {
+			const trimmed = line.trim();
+			return trimmed && !/^#\s*REPI\s+/i.test(trimmed) && !/^(?:固定偏好|当前 workspace|可复用 workflow)/i.test(trimmed);
+		})
+		.join("\n")
+		.trim();
+	if (!meaningful) return `${emptyTitle}=empty`;
+	return truncateMiddle(meaningful, limit);
+}
+
+function formatCoreMemoryPacket(): string {
+	return [
+		"core_memory:",
+		readMemoryNote(memoryCorePath(), "core_memory"),
+		"project_memory:",
+		readMemoryNote(memoryProjectPath(), "project_memory"),
+		"procedural_memory:",
+		readMemoryNote(memoryProceduralPath(), "procedural_memory"),
+	].join("\n");
+}
+
 function formatMemoryRuntimeStatus(
 	settings = repiMemorySettings(),
 	options: { route?: string; target?: string } = {},
@@ -6264,6 +6302,9 @@ function formatMemoryRuntimeStatus(
 		"raw_history=external_only_by_default",
 		memoryFileStatusLine("events", memoryEventsPath()),
 		memoryFileStatusLine("case_memory", caseMemoryPath()),
+		memoryFileStatusLine("core_memory", memoryCorePath()),
+		memoryFileStatusLine("project_memory", memoryProjectPath()),
+		memoryFileStatusLine("procedural_memory", memoryProceduralPath()),
 	].join("\n");
 }
 
@@ -6334,6 +6375,7 @@ function formatScopedMemoryRecallPacket(
 	});
 	const packet = [
 		formatMemoryRuntimeStatus(settings, options),
+		formatCoreMemoryPacket(),
 		"memory_recall_packet:",
 		"recall_type=scoped_summary_cards",
 		`query=${memoryRecallQuery(options) || "none"}`,
@@ -6609,6 +6651,18 @@ function ensureReconStorage(): void {
 		[memoryPath("field-journal.md"), "# REPI Field Journal\n\n"],
 		[memoryPath("case-index.md"), "# REPI Case Index\n\n"],
 		[memoryPath("evolution-log.md"), "# REPI Evolution Log\n\n"],
+		[
+			memoryCorePath(),
+			"# REPI Core Memory\n\n固定偏好、项目不变量、长期稳定事实写在这里；保持短小，默认随 scoped memory packet 加载。\n\n",
+		],
+		[
+			memoryProjectPath(),
+			"# REPI Project Memory\n\n当前 workspace 的构建、运行、测试、入口、常用命令写在这里；避免写临时任务输出。\n\n",
+		],
+		[
+			memoryProceduralPath(),
+			"# REPI Procedural Memory\n\n可复用 workflow / checklist / verified command template 写在这里；不要写未验证猜测。\n\n",
+		],
 		[memoryEventsPath(), ""],
 		[caseMemoryPath(), ""],
 		[

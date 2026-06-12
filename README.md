@@ -539,6 +539,16 @@ REPI 默认启用“作用域自动记忆”：自动沉淀高价值经验，启
 - `memory.contextMemoryMode=scoped`：context pack 只带 scoped memory cards，不带全局 memory tail / active injection pack。
 - `memory.rawTranscriptRetention=external-only`：原始 events/case-memory 保存在磁盘，默认不进 prompt。
 
+记忆分层：
+
+```text
+core-memory.md       固定偏好、长期稳定事实，短小，默认随 scoped packet 加载
+project-memory.md    当前 workspace 的构建/运行/测试/入口/常用命令
+procedural-memory.md 可复用 workflow、checklist、verified command template
+events.jsonl         事件级长期记忆，自动 high-value 沉淀
+case-memory.jsonl    案例索引/摘要，召回时只转成 bounded cards
+```
+
 默认配置：
 
 ```json
@@ -608,6 +618,9 @@ REPI_MEMORY_RAW_AUTO_INJECT=1 REPI_MEMORY_AUTO_INJECT=1 REPI_MEMORY_STARTUP_DIGE
 核心文件：
 
 ```text
+~/.repi/agent/recon/memory/core-memory.md
+~/.repi/agent/recon/memory/project-memory.md
+~/.repi/agent/recon/memory/procedural-memory.md
 ~/.repi/agent/recon/memory/events.jsonl
 ~/.repi/agent/recon/memory/case-memory.jsonl
 ~/.repi/agent/recon/memory/compaction-resume-transitions.jsonl
