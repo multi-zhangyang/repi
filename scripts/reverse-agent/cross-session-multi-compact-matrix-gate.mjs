@@ -23,7 +23,9 @@ const REQUIRED_GATES = [
 	"provider_continuation_matrix_multi_provider",
 	"longer_cross_session_compaction_chain",
 	"five_cycle_cross_session_compaction_chain",
+	"eight_cycle_cross_session_compaction_chain",
 	"remote_provider_continuation_sample_matrix",
+	"remote_provider_continuation_eight_sample_matrix",
 	"operator_proof_loop_budget_closure",
 	"terminal_resume_rows_not_reopened",
 	"compact_resume_ledger_cycle_terminal_alignment",
@@ -55,7 +57,9 @@ const INVARIANTS = [
 	"provider_continuation_matrix_multi_provider",
 	"longer_cross_session_compaction_chain",
 	"five_cycle_cross_session_compaction_chain",
+	"eight_cycle_cross_session_compaction_chain",
 	"remote_provider_continuation_sample_matrix",
+	"remote_provider_continuation_eight_sample_matrix",
 	"operator_proof_loop_budget_closure",
 	"terminal_resume_rows_not_reopened",
 	"compact_resume_ledger_cycle_terminal_alignment",
@@ -281,99 +285,34 @@ function buildRuntimeMatrix(tempRoot) {
 		writeJson(path, { name, target, missionId, verified: true });
 		artifacts.push(fileArtifact(tempRoot, path));
 	}
-	const cycleOnePack = buildContextPack(tempRoot, "compact-cycle-001", sourceSessionId, target, artifacts);
-	const cycleTwoPack = buildContextPack(tempRoot, "compact-cycle-002", sourceSessionId, target, artifacts);
-	const cycleThreePack = buildContextPack(tempRoot, "compact-cycle-003", sourceSessionId, target, artifacts);
-	const cycleFourPack = buildContextPack(tempRoot, "compact-cycle-004", sourceSessionId, target, artifacts);
-	const cycleFivePack = buildContextPack(tempRoot, "compact-cycle-005", sourceSessionId, target, artifacts);
 	const latestDecoyPack = buildContextPack(tempRoot, "compact-cycle-latest-decoy", latestDecoySessionId, "https://wrong-latest.local/app", artifacts);
-	const compactCycles = [
-		{
-			cycleId: "compact-cycle-001",
+	const cycleStatuses = ["done", "exhausted", "blocked", "done", "exhausted", "done", "blocked", "exhausted"];
+	const compactPacks = cycleStatuses.map((_, index) => buildContextPack(tempRoot, `compact-cycle-${String(index + 1).padStart(3, "0")}`, sourceSessionId, target, artifacts));
+	const compactCycles = compactPacks.map((pack, index) => {
+		const status = cycleStatuses[index];
+		const cycleNo = String(index + 1).padStart(3, "0");
+		return {
+			cycleId: `compact-cycle-${cycleNo}`,
 			sourceSessionId,
 			resumeSessionId,
 			packTarget: target,
 			resumeTarget: target,
-			contextPath: cycleOnePack.contextPath,
-			contextSha256: cycleOnePack.contextSha256,
-			artifactHashes: cycleOnePack.artifactHashes,
+			contextPath: pack.contextPath,
+			contextSha256: pack.contextSha256,
+			artifactHashes: pack.artifactHashes,
 			latestFallbackCandidate: latestDecoyPack.contextPath,
 			loadedBy: "contextPath",
 			explicitContextPathUsed: true,
 			oldContextPathBeatsLatestFallback: true,
 			exactResumeVerification: { contextSha256Match: true, artifactHashesOk: true, scopeOk: true, loadedBy: "contextPath" },
-			resumeClosure: { status: "done", closedAt: new Date().toISOString(), verifiedBy: ["re_context resume", "CompactResumeLedgerV2"] },
-			providerContinuationId: "provider-continuation-001",
-		},
-		{
-			cycleId: "compact-cycle-002",
-			sourceSessionId,
-			resumeSessionId,
-			packTarget: target,
-			resumeTarget: target,
-			contextPath: cycleTwoPack.contextPath,
-			contextSha256: cycleTwoPack.contextSha256,
-			artifactHashes: cycleTwoPack.artifactHashes,
-			latestFallbackCandidate: latestDecoyPack.contextPath,
-			loadedBy: "contextPath",
-			explicitContextPathUsed: true,
-			oldContextPathBeatsLatestFallback: true,
-			exactResumeVerification: { contextSha256Match: true, artifactHashesOk: true, scopeOk: true, loadedBy: "contextPath" },
-			resumeClosure: { status: "exhausted", closedAt: new Date().toISOString(), verifiedBy: ["re_operator dispatch", "re_proof_loop run", "CompactResumeLedgerV2"] },
-			providerContinuationId: "provider-continuation-002",
-		},
-		{
-			cycleId: "compact-cycle-003",
-			sourceSessionId,
-			resumeSessionId,
-			packTarget: target,
-			resumeTarget: target,
-			contextPath: cycleThreePack.contextPath,
-			contextSha256: cycleThreePack.contextSha256,
-			artifactHashes: cycleThreePack.artifactHashes,
-			latestFallbackCandidate: latestDecoyPack.contextPath,
-			loadedBy: "contextPath",
-			explicitContextPathUsed: true,
-			oldContextPathBeatsLatestFallback: true,
-			exactResumeVerification: { contextSha256Match: true, artifactHashesOk: true, scopeOk: true, loadedBy: "contextPath" },
-			resumeClosure: { status: "blocked", closedAt: new Date().toISOString(), verifiedBy: ["re_operator dispatch", "re_proof_loop run", "CompactResumeLedgerV2"] },
-			providerContinuationId: "provider-continuation-003",
-		},
-		{
-			cycleId: "compact-cycle-004",
-			sourceSessionId,
-			resumeSessionId,
-			packTarget: target,
-			resumeTarget: target,
-			contextPath: cycleFourPack.contextPath,
-			contextSha256: cycleFourPack.contextSha256,
-			artifactHashes: cycleFourPack.artifactHashes,
-			latestFallbackCandidate: latestDecoyPack.contextPath,
-			loadedBy: "contextPath",
-			explicitContextPathUsed: true,
-			oldContextPathBeatsLatestFallback: true,
-			exactResumeVerification: { contextSha256Match: true, artifactHashesOk: true, scopeOk: true, loadedBy: "contextPath" },
-			resumeClosure: { status: "done", closedAt: new Date().toISOString(), verifiedBy: ["re_context resume", "re_memory compact-resume", "CompactResumeLedgerV2"] },
-			providerContinuationId: "provider-continuation-004",
-		},
-		{
-			cycleId: "compact-cycle-005",
-			sourceSessionId,
-			resumeSessionId,
-			packTarget: target,
-			resumeTarget: target,
-			contextPath: cycleFivePack.contextPath,
-			contextSha256: cycleFivePack.contextSha256,
-			artifactHashes: cycleFivePack.artifactHashes,
-			latestFallbackCandidate: latestDecoyPack.contextPath,
-			loadedBy: "contextPath",
-			explicitContextPathUsed: true,
-			oldContextPathBeatsLatestFallback: true,
-			exactResumeVerification: { contextSha256Match: true, artifactHashesOk: true, scopeOk: true, loadedBy: "contextPath" },
-			resumeClosure: { status: "exhausted", closedAt: new Date().toISOString(), verifiedBy: ["re_operator dispatch", "re_proof_loop run", "CompactResumeLedgerV2"] },
-			providerContinuationId: "provider-continuation-005",
-		},
-	];
+			resumeClosure: {
+				status,
+				closedAt: new Date().toISOString(),
+				verifiedBy: status === "done" ? ["re_context resume", "re_memory compact-resume", "CompactResumeLedgerV2"] : ["re_operator dispatch", "re_proof_loop run", "CompactResumeLedgerV2"],
+			},
+			providerContinuationId: `provider-continuation-${cycleNo}`,
+		};
+	});
 	const providerProfiles = [
 		{
 			providerName: "cross-session-openai-compatible",
@@ -412,32 +351,14 @@ function buildRuntimeMatrix(tempRoot) {
 		},
 	];
 	const providerContinuations = compactCycles.map((cycle, index) => buildProviderContinuation(tempRoot, cycle.cycleId, resumeSessionId, providerProfiles[index % providerProfiles.length]));
-	const ledgerTransitions = buildLedgerTransitions([
-		{ cycleId: "compact-cycle-001", sessionId: sourceSessionId, state: "queued", contextPath: cycleOnePack.contextPath, contextSha256: cycleOnePack.contextSha256, idempotencyKey: "compact-cycle-001:resume" },
-		{ cycleId: "compact-cycle-001", sessionId: resumeSessionId, state: "running", contextPath: cycleOnePack.contextPath, contextSha256: cycleOnePack.contextSha256, idempotencyKey: "compact-cycle-001:resume" },
-		{ cycleId: "compact-cycle-001", sessionId: resumeSessionId, state: "done", contextPath: cycleOnePack.contextPath, contextSha256: cycleOnePack.contextSha256, idempotencyKey: "compact-cycle-001:resume" },
-		{ cycleId: "compact-cycle-002", sessionId: sourceSessionId, state: "queued", contextPath: cycleTwoPack.contextPath, contextSha256: cycleTwoPack.contextSha256, idempotencyKey: "compact-cycle-002:resume" },
-		{ cycleId: "compact-cycle-002", sessionId: resumeSessionId, state: "running", contextPath: cycleTwoPack.contextPath, contextSha256: cycleTwoPack.contextSha256, idempotencyKey: "compact-cycle-002:resume" },
-		{ cycleId: "compact-cycle-002", sessionId: resumeSessionId, state: "exhausted", contextPath: cycleTwoPack.contextPath, contextSha256: cycleTwoPack.contextSha256, idempotencyKey: "compact-cycle-002:resume" },
-		{ cycleId: "compact-cycle-003", sessionId: sourceSessionId, state: "queued", contextPath: cycleThreePack.contextPath, contextSha256: cycleThreePack.contextSha256, idempotencyKey: "compact-cycle-003:resume" },
-		{ cycleId: "compact-cycle-003", sessionId: resumeSessionId, state: "running", contextPath: cycleThreePack.contextPath, contextSha256: cycleThreePack.contextSha256, idempotencyKey: "compact-cycle-003:resume" },
-		{ cycleId: "compact-cycle-003", sessionId: resumeSessionId, state: "blocked", contextPath: cycleThreePack.contextPath, contextSha256: cycleThreePack.contextSha256, idempotencyKey: "compact-cycle-003:resume" },
-		{ cycleId: "compact-cycle-004", sessionId: sourceSessionId, state: "queued", contextPath: cycleFourPack.contextPath, contextSha256: cycleFourPack.contextSha256, idempotencyKey: "compact-cycle-004:resume" },
-		{ cycleId: "compact-cycle-004", sessionId: resumeSessionId, state: "running", contextPath: cycleFourPack.contextPath, contextSha256: cycleFourPack.contextSha256, idempotencyKey: "compact-cycle-004:resume" },
-		{ cycleId: "compact-cycle-004", sessionId: resumeSessionId, state: "done", contextPath: cycleFourPack.contextPath, contextSha256: cycleFourPack.contextSha256, idempotencyKey: "compact-cycle-004:resume" },
-		{ cycleId: "compact-cycle-005", sessionId: sourceSessionId, state: "queued", contextPath: cycleFivePack.contextPath, contextSha256: cycleFivePack.contextSha256, idempotencyKey: "compact-cycle-005:resume" },
-		{ cycleId: "compact-cycle-005", sessionId: resumeSessionId, state: "running", contextPath: cycleFivePack.contextPath, contextSha256: cycleFivePack.contextSha256, idempotencyKey: "compact-cycle-005:resume" },
-		{ cycleId: "compact-cycle-005", sessionId: resumeSessionId, state: "exhausted", contextPath: cycleFivePack.contextPath, contextSha256: cycleFivePack.contextSha256, idempotencyKey: "compact-cycle-005:resume" },
-	]);
+	const ledgerTransitions = buildLedgerTransitions(compactCycles.flatMap((cycle) => [
+		{ cycleId: cycle.cycleId, sessionId: sourceSessionId, state: "queued", contextPath: cycle.contextPath, contextSha256: cycle.contextSha256, idempotencyKey: `${cycle.cycleId}:resume` },
+		{ cycleId: cycle.cycleId, sessionId: resumeSessionId, state: "running", contextPath: cycle.contextPath, contextSha256: cycle.contextSha256, idempotencyKey: `${cycle.cycleId}:resume` },
+		{ cycleId: cycle.cycleId, sessionId: resumeSessionId, state: cycle.resumeClosure.status, contextPath: cycle.contextPath, contextSha256: cycle.contextSha256, idempotencyKey: `${cycle.cycleId}:resume` },
+	]));
 	const transitionPath = join(tempRoot, "memory", "compaction-resume-transitions.jsonl");
 	writeFile(transitionPath, `${ledgerTransitions.map((row) => JSON.stringify(row)).join("\n")}\n`);
-	const operatorProofClosures = [
-		buildOperatorProofClosure("compact-cycle-001", "done", 1),
-		buildOperatorProofClosure("compact-cycle-002", "exhausted", 0),
-		buildOperatorProofClosure("compact-cycle-003", "blocked", 0),
-		buildOperatorProofClosure("compact-cycle-004", "done", 1),
-		buildOperatorProofClosure("compact-cycle-005", "exhausted", 0),
-	];
+	const operatorProofClosures = compactCycles.map((cycle) => buildOperatorProofClosure(cycle.cycleId, cycle.resumeClosure.status, cycle.resumeClosure.status === "done" ? 1 : 0));
 	const providerContinuationMatrix = {
 		kind: "ProviderContinuationMatrixV1",
 		providerCount: new Set(providerContinuations.map((row) => row.providerName)).size,
@@ -561,7 +482,7 @@ function validateMatrix(tempRoot, report) {
 	const resumeSessions = new Set((matrix?.compactCycles ?? []).map((cycle) => cycle.resumeSessionId));
 	if (sessions.length < 2 || [...sourceSessions].some((session) => resumeSessions.has(session))) errors.push("cross_session_not_proven");
 	if ((matrix?.compactCycles ?? []).length < 3) errors.push("compact_cycle_count_lt_3");
-	if ((matrix?.compactCycles ?? []).length < 5) errors.push("compact_cycle_count_lt_5");
+	if ((matrix?.compactCycles ?? []).length < 8) errors.push("compact_cycle_count_lt_8");
 	const continuationByCycle = new Map((matrix?.providerContinuations ?? []).map((row) => [row.cycleId, row]));
 	const providerNames = new Set((matrix?.providerContinuations ?? []).map((row) => row.providerName).filter(Boolean));
 	const apiStyles = new Set((matrix?.providerContinuations ?? []).map((row) => row.apiStyle).filter(Boolean));
@@ -598,7 +519,7 @@ function validateMatrix(tempRoot, report) {
 	for (const hash of continuationMatrix?.requestLogHashes ?? []) if (!/^[a-f0-9]{64}$/.test(hash)) errors.push("providerContinuationMatrix.requestLogHash_invalid");
 	const remoteMatrix = matrix?.remoteProviderContinuationSampleMatrix;
 	if (remoteMatrix?.kind !== "RemoteProviderContinuationSampleMatrixV1") errors.push("remoteProviderContinuationSampleMatrix.kind");
-	if ((remoteMatrix?.sampleCount ?? 0) < 5) errors.push("remoteProviderContinuationSampleMatrix.sample_count_lt_5");
+	if ((remoteMatrix?.sampleCount ?? 0) < 8) errors.push("remoteProviderContinuationSampleMatrix.sample_count_lt_8");
 	if ((remoteMatrix?.providerCount ?? 0) < 3) errors.push("remoteProviderContinuationSampleMatrix.provider_count_lt_3");
 	if (!remoteMatrix?.apiStyles?.includes("openai-compatible") || !remoteMatrix?.apiStyles?.includes("anthropic-compatible")) errors.push("remoteProviderContinuationSampleMatrix.api_styles_missing");
 	for (const key of ["allAfterExactResume", "envRefOnly", "allRequestLogsHashed", "secretFree", "noPiPollution"]) if (remoteMatrix?.[key] !== true) errors.push(`remoteProviderContinuationSampleMatrix.${key}_not_true`);
@@ -746,11 +667,12 @@ function main() {
 		checks.push(check("runtime:cross-session-same-run", new Set(report.matrix.compactCycles.map((cycle) => cycle.sourceSessionId)).size === 1 && new Set(report.matrix.compactCycles.map((cycle) => cycle.resumeSessionId)).size === 1 && report.matrix.compactCycles.every((cycle) => cycle.sourceSessionId !== cycle.resumeSessionId), { cycles: report.matrix.compactCycles.map((cycle) => ({ cycleId: cycle.cycleId, sourceSessionId: cycle.sourceSessionId, resumeSessionId: cycle.resumeSessionId })) }));
 		checks.push(check("runtime:old-context-path-over-latest-after-multiple-compacts", report.matrix.compactCycles.length >= 2 && report.matrix.compactCycles.every((cycle) => cycle.explicitContextPathUsed && cycle.loadedBy === "contextPath" && cycle.oldContextPathBeatsLatestFallback), { cycles: report.matrix.compactCycles.map((cycle) => ({ cycleId: cycle.cycleId, contextPath: cycle.contextPath, latestFallbackCandidate: cycle.latestFallbackCandidate, loadedBy: cycle.loadedBy })) }));
 		checks.push(check("runtime:longer-cross-session-compaction-chain", report.matrix.compactCycles.length >= 3 && report.matrix.compactResumeLedger.transitions.length >= 9, { cycleCount: report.matrix.compactCycles.length, transitionCount: report.matrix.compactResumeLedger.transitions.length }));
+		checks.push(check("runtime:eight-cycle-cross-session-compaction-chain", report.matrix.compactCycles.length >= 8 && report.matrix.compactResumeLedger.transitions.length >= 24, { cycleCount: report.matrix.compactCycles.length, transitionCount: report.matrix.compactResumeLedger.transitions.length }));
 		checks.push(check("runtime:five-cycle-cross-session-compaction-chain", report.matrix.compactCycles.length >= 5 && report.matrix.compactResumeLedger.transitions.length >= 15, { cycleCount: report.matrix.compactCycles.length, transitionCount: report.matrix.compactResumeLedger.transitions.length }));
 		checks.push(check("runtime:context-sha-artifact-hashes-verified", report.matrix.compactCycles.every((cycle) => cycle.exactResumeVerification.contextSha256Match && cycle.exactResumeVerification.artifactHashesOk && cycle.exactResumeVerification.scopeOk), { cycles: report.matrix.compactCycles.map((cycle) => ({ cycleId: cycle.cycleId, exactResumeVerification: cycle.exactResumeVerification, artifactHashes: cycle.artifactHashes.length })) }));
 		checks.push(check("runtime:provider-continuation-after-exact-resume", report.matrix.providerContinuations.length === report.matrix.compactCycles.length && report.matrix.providerContinuations.every((row) => row.continuationStatus === "pass" && row.continuationAfterExactResume && row.apiKeyEnvRefOnly && row.noLiteralSecrets && row.noPiHomeImport && row.noUpdateBanner), { providerContinuations: report.matrix.providerContinuations.map((row) => ({ cycleId: row.cycleId, providerName: row.providerName, apiStyle: row.apiStyle, requestLogSha256: row.requestLogSha256, stdoutSha256: row.stdoutSha256 })) }));
 		checks.push(check("runtime:provider-continuation-matrix-multi-provider", report.matrix.providerContinuationMatrix.providerCount >= 2 && report.matrix.providerContinuationMatrix.apiStyles.includes("openai-compatible") && report.matrix.providerContinuationMatrix.apiStyles.includes("anthropic-compatible") && report.matrix.providerContinuationMatrix.allAfterExactResume, report.matrix.providerContinuationMatrix));
-		checks.push(check("runtime:remote-provider-continuation-sample-matrix", report.matrix.remoteProviderContinuationSampleMatrix.sampleCount >= 5 && report.matrix.remoteProviderContinuationSampleMatrix.providerCount >= 3 && report.matrix.remoteProviderContinuationSampleMatrix.allAfterExactResume && report.matrix.remoteProviderContinuationSampleMatrix.secretFree && report.matrix.remoteProviderContinuationSampleMatrix.noPiPollution, report.matrix.remoteProviderContinuationSampleMatrix));
+		checks.push(check("runtime:remote-provider-continuation-sample-matrix", report.matrix.remoteProviderContinuationSampleMatrix.sampleCount >= 8 && report.matrix.remoteProviderContinuationSampleMatrix.providerCount >= 3 && report.matrix.remoteProviderContinuationSampleMatrix.allAfterExactResume && report.matrix.remoteProviderContinuationSampleMatrix.secretFree && report.matrix.remoteProviderContinuationSampleMatrix.noPiPollution, report.matrix.remoteProviderContinuationSampleMatrix));
 		checks.push(check("runtime:operator-proof-loop-budget-closure", report.matrix.operatorProofClosures.every((row) => TERMINAL_STATES.has(row.proofLoopStatus) && row.proofLoopEntered && (row.proofLoopStatus !== "exhausted" || row.budget.remaining === 0)), { closures: report.matrix.operatorProofClosures }));
 		checks.push(check("runtime:terminal-resume-rows-not-reopened", report.matrix.compactResumeLedger.terminalRowsNotReopened && ledgerHashChainOk(report.matrix.compactResumeLedger.transitions), { transitionCount: report.matrix.compactResumeLedger.transitions.length, tipHash: report.matrix.compactResumeLedger.transitions.at(-1)?.entryHash }));
 		const ledgerAlignment = validateLedgerCycleTerminalAlignment(report.matrix);
@@ -760,9 +682,9 @@ function main() {
 		checks.push(markerCheck("harness:cross-session-multi-compact-matrix", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:cross-session-multi-compact-matrix", "CrossSessionMultiCompactMatrixGateV1", "runtime:compact-resume-ledger-cycle-terminal-alignment", "ledger-terminal-missing-after-rehash", "child:gate:cross-session-multi-compact-matrix"]));
 		checks.push(markerCheck("autonomy:cross-session-multi-compact-matrix", "scripts/reverse-agent/autonomy-control-plane.mjs", ["CrossSessionMultiCompactMatrixGateV1", "cross_session_multi_compact_matrix_gate", "provider_continuation_after_exact_resume", "provider_continuation_matrix_multi_provider", "longer_cross_session_compaction_chain", "five_cycle_cross_session_compaction_chain", "remote_provider_continuation_sample_matrix", "compact_resume_ledger_cycle_terminal_alignment"]));
 		checks.push(markerCheck("npm:cross-session-multi-compact-matrix", "package.json", ["gate:cross-session-multi-compact-matrix", "cross-session-multi-compact-matrix-gate.mjs"]));
-		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-readme", "README.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "五轮", "remote provider", "compact_resume_ledger_cycle_terminal_alignment"]));
-		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-control-plane", "docs/reverse-agent/autonomous-control-plane.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "五轮", "remote provider", "compact_resume_ledger_cycle_terminal_alignment"]));
-		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-reverse", "docs/reverse-agent/README.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "五轮", "remote provider", "compact_resume_ledger_cycle_terminal_alignment"]));
+		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-readme", "README.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "八轮", "remote provider", "compact_resume_ledger_cycle_terminal_alignment"]));
+		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-control-plane", "docs/reverse-agent/autonomous-control-plane.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "八轮", "remote provider", "compact_resume_ledger_cycle_terminal_alignment"]));
+		checks.push(markerCheck("docs:cross-session-multi-compact-matrix-reverse", "docs/reverse-agent/README.md", ["CrossSessionMultiCompactMatrixGateV1", "gate:cross-session-multi-compact-matrix", "multi-provider", "八轮", "remote provider", "compact_resume_ledger_cycle_terminal_alignment"]));
 	} catch (error) {
 		checks.push(check("gate:exception", false, { error: String(error), stack: error?.stack }));
 	} finally {

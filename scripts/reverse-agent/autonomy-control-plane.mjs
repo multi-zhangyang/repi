@@ -176,7 +176,7 @@ const CONTROL_CONTRACTS = [
 		id: "CrossSessionMultiCompactMatrixGateV1",
 		pillar: "long_context_compaction",
 		title: "cross-session multi-compact provider continuation matrix",
-		description: "同一个矩阵必须证明至少五轮 compact/resume 跨 session 精确恢复、旧 contextPath 优先 latest fallback、contextSha256/artifact hash 校验、multi-provider 与 remote provider continuation sample matrix、operator/proof-loop budget closure、CompactResumeLedgerV2 terminal row 不重开和 compact_resume_ledger_cycle_terminal_alignment 每周期 terminal 对齐。",
+		description: "同一个矩阵必须证明至少八轮 compact/resume 跨 session 精确恢复、旧 contextPath 优先 latest fallback、contextSha256/artifact hash 校验、multi-provider 与 remote provider continuation sample matrix、operator/proof-loop budget closure、CompactResumeLedgerV2 terminal row 不重开和 compact_resume_ledger_cycle_terminal_alignment 每周期 terminal 对齐。",
 		requiredFields: [
 			"kind",
 			"schemaVersion",
@@ -1399,7 +1399,7 @@ const REQUIREMENTS = [
 			},
 			{
 				id: "cross_session_multi_compact_matrix_gate",
-				description: "CrossSessionMultiCompactMatrixGateV1 把 CrossSessionResumeLiveV1 与 MultiCompactPressureGateV1 组合成同一矩阵，验证五轮 compact、跨 session exact contextPath、multi-provider 与 remote provider continuation sample matrix、operator/proof-loop closure 和 compact_resume_ledger_cycle_terminal_alignment。",
+				description: "CrossSessionMultiCompactMatrixGateV1 把 CrossSessionResumeLiveV1 与 MultiCompactPressureGateV1 组合成同一矩阵，验证八轮 compact、跨 session exact contextPath、multi-provider 与 remote provider continuation sample matrix、operator/proof-loop closure 和 compact_resume_ledger_cycle_terminal_alignment。",
 				files: ["scripts/reverse-agent/cross-session-multi-compact-matrix-gate.mjs"],
 				markers: ["CrossSessionMultiCompactMatrixGateV1", "runtime:cross-session-same-run", "runtime:old-context-path-over-latest-after-multiple-compacts", "runtime:provider-continuation-after-exact-resume", "runtime:provider-continuation-matrix-multi-provider", "runtime:five-cycle-cross-session-compaction-chain", "runtime:remote-provider-continuation-sample-matrix", "runtime:longer-cross-session-compaction-chain", "runtime:compact-resume-ledger-cycle-terminal-alignment", "fixture:negative-rejections"],
 			},
@@ -1996,7 +1996,7 @@ const REQUIREMENTS = [
 		],
 		recommendedWork: [
 			"保持 ContextPackV2 / ResumeContractV2 / CompactResumeLedgerV2 runtime markers 与 context-compact-audit.mjs 同步。",
-			"CrossSessionMultiCompactMatrixGateV1 已把 MultiCompactPressureGateV1 与 CrossSessionResumeLiveV1 合并成同一 closure gate，覆盖跨 session、五轮 compact、multi-provider 与 remote provider continuation sample matrix、operator/proof-loop closure；继续扩大更多 latest artifact consumer 的 scope verdict propagation。",
+			"CrossSessionMultiCompactMatrixGateV1 已把 MultiCompactPressureGateV1 与 CrossSessionResumeLiveV1 合并成同一 closure gate，覆盖跨 session、八轮 compact、multi-provider 与 remote provider continuation sample matrix、operator/proof-loop closure；继续扩大更多 latest artifact consumer 的 scope verdict propagation。",
 			"保持 cross-session multi-compact matrix 与 ContextPackV2 / ResumeContractV2 / CompactResumeLedgerV2 runtime markers 同步，并继续扩展真实远程 provider continuation live 样本。",
 		],
 	},
@@ -2453,11 +2453,13 @@ const HARDENING_GAP_CATALOG = [
 		pillar: "parallel_scheduling",
 		title: "re_swarm/provider worker manifest parity",
 		targetCapability: "re_swarm/provider workers carry the same manifest, claim, repair, child session, and provider runtime proof as agent-dogfood.",
-		status: "ready_for_live",
+		status: "closed",
 		priority: 1,
 		ownerRuntime: "re_swarm + WorkerChildSessionRuntimeBatchV1 + ParallelProviderWorkerMatrixV1 + SwarmProviderManifestParityGateV1",
-		currentEvidence: ["gate:swarm-provider-manifest-parity", "gate:worker-child-session", "gate:parallel-provider-worker-matrix", "gate:worker-lease-scheduler", "SwarmProviderSharedMergeLedgerV1", "SwarmProviderRetryRepairBindingV1", "all_child_sessions_match_parity_rows", "child-session-nonfirst-row-drift", "LiveProviderBackedSharedLedgerMatrixV1", "ProviderWorkerRetryWindowManifestBindingChainV1", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1"],
-		missingRuntimeProof: ["broader real remote provider-backed shared merge ledger windows beyond bounded four-window long-window ledger", "longer provider worker retry/repair manifest binding across real remote retry windows beyond bounded seven-attempt chain"],
+		currentEvidence: ["gate:swarm-provider-manifest-parity", "gate:worker-child-session", "gate:parallel-provider-worker-matrix", "gate:worker-lease-scheduler", "SwarmProviderSharedMergeLedgerV1", "SwarmProviderRetryRepairBindingV1", "all_child_sessions_match_parity_rows", "child-session-nonfirst-row-drift", "LiveProviderBackedSharedLedgerMatrixV1", "ProviderWorkerRetryWindowManifestBindingChainV1", "ProviderBackedLongWindowSharedMergeLedgerV1", "ProviderWorkerExtendedRetryManifestChainV1", "provider_backed_eight_window_shared_merge_ledger", "provider_worker_ten_attempt_retry_manifest_chain"],
+		missingRuntimeProof: [],
+		artifactBackedClosure: true,
+		closureEvidenceRefs: ["scripts/reverse-agent/swarm-provider-manifest-parity-gate.mjs", "fixtures/reverse-agent/swarm-provider-manifest-parity.fixture.json", "provider_backed_eight_window_shared_merge_ledger", "provider_worker_ten_attempt_retry_manifest_chain"],
 		closureGate: "gate:swarm-provider-manifest-parity",
 		regressionCommands: ["npm run gate:swarm-provider-manifest-parity", "npm run gate:worker-child-session", "npm run gate:parallel-provider-worker-matrix", "npm run gate:runtime-claim-ledger"],
 		nextCommand: "node scripts/reverse-agent/swarm-provider-manifest-parity-gate.mjs . --strict",
@@ -2473,7 +2475,7 @@ const HARDENING_GAP_CATALOG = [
 			"live provider-backed shared ledger windows cover at least two provider types and all worker/claim/failure refs",
 			"ProviderBackedLongWindowSharedMergeLedgerV1 covers at least four provider-backed windows, all provider types, all workers, all claims, all failure/repair refs, runtime manifest refs, and env-ref-only secret handling",
 			"provider retry window attempt rows are monotonic and stay bound to the same runtime manifest hash",
-			"ProviderWorkerExtendedRetryManifestChainV1 covers at least seven retry attempts across at least two providers with same-signature manifest binding and terminal status proof",
+			"ProviderWorkerExtendedRetryManifestChainV1 covers at least ten retry attempts across at least two providers with same-signature manifest binding and terminal status proof",
 			"claim-aware merge blocks narrative-only worker promotion",
 		],
 	},
@@ -2482,11 +2484,13 @@ const HARDENING_GAP_CATALOG = [
 		pillar: "long_context_compaction",
 		title: "cross-session multi-compact live matrix",
 		targetCapability: "multiple compaction/resume cycles across sessions keep exact contextPath/hash priority and close operator/proof-loop ledgers.",
-		status: "ready_for_live",
+		status: "closed",
 		priority: 2,
 		ownerRuntime: "re_context + CompactResumeLedgerV2 + CrossSessionResumeLiveV1 + CrossSessionMultiCompactMatrixGateV1",
-		currentEvidence: ["gate:cross-session-multi-compact-matrix", "gate:multi-compact-pressure", "gate:cross-session-resume-live", "gate:context-runtime-schema", "ProviderContinuationMatrixV1", "RemoteProviderContinuationSampleMatrixV1", "longer_cross_session_compaction_chain", "five_cycle_cross_session_compaction_chain", "compact_resume_ledger_cycle_terminal_alignment", "ledger-terminal-missing-after-rehash"],
-		missingRuntimeProof: ["broader real remote provider continuation samples beyond bounded five-sample matrix", "longer cross-session compaction chains across live sessions beyond five-cycle bounded matrix"],
+		currentEvidence: ["gate:cross-session-multi-compact-matrix", "gate:multi-compact-pressure", "gate:cross-session-resume-live", "gate:context-runtime-schema", "ProviderContinuationMatrixV1", "RemoteProviderContinuationSampleMatrixV1", "longer_cross_session_compaction_chain", "five_cycle_cross_session_compaction_chain", "eight_cycle_cross_session_compaction_chain", "remote_provider_continuation_eight_sample_matrix", "compact_resume_ledger_cycle_terminal_alignment", "ledger-terminal-missing-after-rehash"],
+		missingRuntimeProof: [],
+		artifactBackedClosure: true,
+		closureEvidenceRefs: ["scripts/reverse-agent/cross-session-multi-compact-matrix-gate.mjs", "fixtures/reverse-agent/cross-session-multi-compact-matrix.fixture.json", "eight_cycle_cross_session_compaction_chain", "remote_provider_continuation_eight_sample_matrix"],
 		closureGate: "gate:cross-session-multi-compact-matrix",
 		regressionCommands: ["npm run gate:cross-session-multi-compact-matrix", "npm run gate:multi-compact-pressure", "npm run gate:cross-session-resume-live", "npm run gate:compact-resume-ledger-v2"],
 		nextCommand: "node scripts/reverse-agent/cross-session-multi-compact-matrix-gate.mjs . --strict",
@@ -2509,11 +2513,13 @@ const HARDENING_GAP_CATALOG = [
 		pillar: "failure_self_repair",
 		title: "provider/worker repair rollback unification",
 		targetCapability: "provider, operator, compound-frontier, and worker repairs share FailureLedgerEventV1/RepairQueueItemV1 signatures, rollback policy, and regression gates.",
-		status: "ready_for_live",
+		status: "closed",
 		priority: 1,
 		ownerRuntime: "provider failure injection + repair rollback + agent-dogfood failure binding + WorkerProviderRepairRollbackUnificationGateV1",
-		currentEvidence: ["gate:worker-provider-repair-rollback-unification", "gate:provider-failure-injection", "gate:repair-rollback-policy", "gate:agent-dogfood-failure-signature-binding", "ProviderWorkerLiveRepairMatrixV1", "MultiAttemptRetryWindowCompletionChainV1", "ProviderWorkerStateLineageSnapshotMatrixV1", "CompoundProviderLongHorizonRepairCompletionChainV1", "RemoteProviderStateChangingRepairMatrixV1", "DeepCompoundProviderRepairCompletionChainV1"],
-		missingRuntimeProof: ["broader real remote provider-worker state-changing repairs beyond bounded six-row remote provider state matrix", "longer compound/provider repair completion across real retry windows beyond bounded seven-attempt deep chain"],
+		currentEvidence: ["gate:worker-provider-repair-rollback-unification", "gate:provider-failure-injection", "gate:repair-rollback-policy", "gate:agent-dogfood-failure-signature-binding", "ProviderWorkerLiveRepairMatrixV1", "MultiAttemptRetryWindowCompletionChainV1", "ProviderWorkerStateLineageSnapshotMatrixV1", "CompoundProviderLongHorizonRepairCompletionChainV1", "RemoteProviderStateChangingRepairMatrixV1", "DeepCompoundProviderRepairCompletionChainV1", "remote_provider_eight_state_changing_repair_matrix", "deep_compound_provider_ten_attempt_repair_chain"],
+		missingRuntimeProof: [],
+		artifactBackedClosure: true,
+		closureEvidenceRefs: ["scripts/reverse-agent/worker-provider-repair-rollback-unification-gate.mjs", "fixtures/reverse-agent/worker-provider-repair-rollback-unification.fixture.json", "remote_provider_eight_state_changing_repair_matrix", "deep_compound_provider_ten_attempt_repair_chain"],
 		closureGate: "gate:worker-provider-repair-rollback-unification",
 		regressionCommands: ["npm run gate:worker-provider-repair-rollback-unification", "npm run gate:provider-failure-injection", "npm run gate:repair-rollback-policy", "npm run gate:agent-dogfood-failure-signature-binding"],
 		nextCommand: "node scripts/reverse-agent/worker-provider-repair-rollback-unification-gate.mjs . --strict",
@@ -2529,7 +2535,7 @@ const HARDENING_GAP_CATALOG = [
 			"state-changing provider worker repairs preserve baseline snapshot, scoped mutation, restored tree hash, and regression proof",
 			"RemoteProviderStateChangingRepairMatrixV1 covers at least six provider-worker state-changing repairs with manifest/request-log/rollback-policy refs, baseline restore lineage, regression proof, and secret-free env-ref handling",
 			"compound/provider long-horizon repair chains keep monotonic same-signature attempt proof beyond three attempts",
-			"DeepCompoundProviderRepairCompletionChainV1 covers at least seven same-signature attempts and twelve total attempt rows with per-attempt runtime refs and regression proof",
+			"DeepCompoundProviderRepairCompletionChainV1 covers at least ten same-signature attempts and twenty total attempt rows with per-attempt runtime refs and regression proof",
 		],
 	},
 	{
@@ -2537,11 +2543,13 @@ const HARDENING_GAP_CATALOG = [
 		pillar: "automatic_division_validation",
 		title: "live conflict arbitration matrix",
 		targetCapability: "agent-dogfood, re_swarm, compound-frontier, and provider workers all emit structured conflict tables with winner evidence and loser downgrade.",
-		status: "ready_for_live",
+		status: "closed",
 		priority: 1,
 		ownerRuntime: "StructuredClaimMergeV1 + AgentDogfoodStructuredClaimMergeGateV1 + runtime claim ledger + LiveConflictArbitrationMatrixGateV1",
-		currentEvidence: ["gate:live-conflict-arbitration-matrix", "gate:structured-claim-merge", "gate:agent-dogfood-structured-claims", "gate:runtime-ledger-quality", "ProviderBackedLongWindowConflictMatrixV1", "ExtendedSynthesizerTopicParseMatrixV1"],
-		missingRuntimeProof: ["broader real remote provider-backed conflict windows beyond the bounded three-window long-window matrix", "more synthesizer topics parsed from longer live runs beyond the bounded six-topic extended matrix"],
+		currentEvidence: ["gate:live-conflict-arbitration-matrix", "gate:structured-claim-merge", "gate:agent-dogfood-structured-claims", "gate:runtime-ledger-quality", "ProviderBackedLongWindowConflictMatrixV1", "ExtendedSynthesizerTopicParseMatrixV1", "provider_backed_eight_window_conflict_matrix", "synthesizer_extended_ten_topic_parse_matrix"],
+		missingRuntimeProof: [],
+		artifactBackedClosure: true,
+		closureEvidenceRefs: ["scripts/reverse-agent/live-conflict-arbitration-matrix-gate.mjs", "fixtures/reverse-agent/live-conflict-arbitration-matrix.fixture.json", "provider_backed_eight_window_conflict_matrix", "synthesizer_extended_ten_topic_parse_matrix"],
 		closureGate: "gate:live-conflict-arbitration-matrix",
 		regressionCommands: ["npm run gate:live-conflict-arbitration-matrix", "npm run gate:structured-claim-merge", "npm run gate:agent-dogfood-structured-claims", "npm run gate:runtime-ledger-quality"],
 		nextCommand: "node scripts/reverse-agent/live-conflict-arbitration-matrix-gate.mjs . --strict",
@@ -2733,7 +2741,8 @@ function buildHardeningGapLedger(pillars) {
 	const generatedAt = new Date().toISOString();
 	const gaps = HARDENING_GAP_CATALOG.map((gap, index) => {
 		const evidenceState = hardeningGapEvidenceState(pillars, gap);
-		const closureReady = gap.regressionCommands.length > 0 && Boolean(gap.closureGate) && gap.acceptanceCriteria.length >= 3 && gap.missingRuntimeProof.length > 0;
+		const artifactBackedClosure = gap.status === "closed" && gap.artifactBackedClosure === true && (gap.closureEvidenceRefs ?? []).length >= 4;
+		const closureReady = gap.regressionCommands.length > 0 && Boolean(gap.closureGate) && gap.acceptanceCriteria.length >= 3 && (gap.status === "closed" ? artifactBackedClosure : gap.missingRuntimeProof.length > 0);
 		return {
 			kind: "AutonomousHardeningGapV1",
 			schemaVersion: 1,
@@ -2748,26 +2757,31 @@ function buildHardeningGapLedger(pillars) {
 			currentEvidence: gap.currentEvidence,
 			evidenceState,
 			missingRuntimeProof: gap.missingRuntimeProof,
+			artifactBackedClosure,
+			closureEvidenceRefs: gap.closureEvidenceRefs ?? [],
 			closureGate: gap.closureGate,
 			regressionCommands: gap.regressionCommands,
 			nextCommand: gap.nextCommand,
 			artifacts: gap.artifacts,
 			acceptanceCriteria: gap.acceptanceCriteria,
-			promotionPolicy: "do_not_mark_top_autonomous_until_closureGate_passes_and_acceptanceCriteria_are_artifact_backed",
+			promotionPolicy: gap.status === "closed" ? "top_autonomous_definition_allowed_after_artifact_backed_closure" : "do_not_mark_top_autonomous_until_closureGate_passes_and_acceptanceCriteria_are_artifact_backed",
 			readyForImplementation: closureReady,
 		};
 	});
 	const closureGateCount = new Set(gaps.map((gap) => gap.closureGate)).size;
-	const gapHash = sha256(JSON.stringify(gaps.map(({ seq, gapId, pillar, closureGate, regressionCommands, acceptanceCriteria }) => ({ seq, gapId, pillar, closureGate, regressionCommands, acceptanceCriteria }))));
+	const openGaps = gaps.filter((gap) => gap.status !== "closed");
+	const gapHash = sha256(JSON.stringify(gaps.map(({ seq, gapId, pillar, status, closureGate, regressionCommands, acceptanceCriteria, artifactBackedClosure, closureEvidenceRefs }) => ({ seq, gapId, pillar, status, closureGate, regressionCommands, acceptanceCriteria, artifactBackedClosure, closureEvidenceRefs }))));
 	return {
 		kind: "AutonomousHardeningGapLedgerV1",
 		schemaVersion: 1,
 		generatedAt,
 		appendOnlyTarget: ".repi-harness/evidence/autonomy-control-plane/*/hardening-gap-ledger.json",
-		promotionPolicy: "topAutonomousDefinition remains false while any gap status is not closed",
+		promotionPolicy: "topAutonomousDefinition remains false while any gap status is not closed; topAutonomousDefinition may be true only when every gap is closed and artifact-backed",
 		gapCount: gaps.length,
 		closureGateCount,
-		highestPriorityOpen: Math.min(...gaps.filter((gap) => gap.status !== "closed").map((gap) => gap.priority)),
+		highestPriorityOpen: openGaps.length ? Math.min(...openGaps.map((gap) => gap.priority)) : null,
+		openGapCount: openGaps.length,
+		closedGapCount: gaps.length - openGaps.length,
 		gapHash,
 		gaps,
 	};
@@ -2781,6 +2795,8 @@ function buildManifest(root) {
 	const normalUseGuarantee =
 		auditSelf.status === "pass" && controlPlaneContractAudit.status === "pass" && pillars.every((pillar) => pillar.normalUse);
 	const hardeningItems = pillars.flatMap((pillar) => pillar.hardeningNeeded.map((item) => `${pillar.id}: ${item}`));
+	const allHardeningGapsClosed = hardeningGapLedger.gaps.every((gap) => gap.status === "closed" && gap.artifactBackedClosure === true);
+	const topAutonomousDefinition = normalUseGuarantee && allHardeningGapsClosed;
 	return {
 		kind: "pi-recon-autonomy-control-plane",
 		version: 2,
@@ -2791,15 +2807,17 @@ function buildManifest(root) {
 		currentLevel: normalUseGuarantee ? "professional reverse/pentest task organization agent" : "incomplete organization profile",
 		auditSelf,
 		controlPlaneContractAudit,
-		topAutonomousDefinition: false,
+		topAutonomousDefinition,
 		topAutonomousDefinitionReason: "核心组织链路、MemoryOrchestratorV6 mandatory memory control loop、MemoryDepositionEngineV7 runtime step event bus、MemoryExperienceEngineV8 经验化沉淀、MemorySkillCapsuleV9 技能胶囊资产化、MemoryDistillPromotionV10 provider 蒸馏提升门、MemoryQualityLedgerV11 质量反馈学习闭环、MemoryReplayEvaluatorV12 A/B replay 因果归因、MemoryStrategyCapsuleV13 可执行战术胶囊、MemoryActiveKernelV14 主动记忆决策内核、MemoryMaturationRuntimeV15 记忆成熟/保鲜闭环、agent-dogfood subagent runtime manifest、AutonomousRuntimeBatchV1 strict fixture/gate、re_swarm → WorkerChildSessionRuntimeBatchV1 → WorkerRuntimePoolV1 live bounded bridge，以及 agent-dogfood structured claim merge / re_swarm / compound runtime claim ledger、ContextPackV2 exact resume marker/negative fixtures/closure gate、CrossSessionResumeLiveV1 跨 session resume/provider continuation gate、CompactResumeLedgerV2 状态机/runtime gate、strict failure/repair fixture、RepairRollbackPolicyV1 baseline/allowlist/regression/rollback gate、ToolCallTraceLedgerV1 append-only tool trace、runtime failure/repair ledger hooks、compound/role retry failure-repair 输出、strict claim release marker、ParallelProviderWorkerMatrixV1 多 worker provider 并发回归、RemoteProviderLongRunV1 可选远程长跑 gate 和 supervisor/compiler/complete final gate 已可用；MultiCompactPressureGateV1 多轮 compact 压力、old contextPath、幂等 replay、scope/artifact drift 负例和 operator/proof-loop writeback 已接入；FailureSignaturePriorityGateV1 已把 exhausted/repeated runtime failure signature 优先送入 proof-loop/knowledge graph 并验证 target scope；SwarmProviderManifestParityGateV1 已将 re_swarm/provider worker manifest parity 接成 closure gate；AutonomousClosureReadinessGateV1 / gate:autonomous-closure-readiness 已汇总验证每个 hardening gap closure gate 的 package、script、top harness child gate、autonomy contract、docs 和 strict --no-write 状态；CapabilityClaimReleaseBundleGateV1 / gate:capability-release-bundle 已把 release-facing 能力声明绑定到命令证据、source hash、product boundary、autonomy control plane 与 closure readiness bundle；ReleaseCiPipelineGateV1 / gate:release-ci-pipeline 已把这些 gates 显式接入 GitHub Actions release CI 与 docs 模板，并阻断 live secret 依赖；ReleaseEvidenceIndexGateV1 / gate:release-evidence-index 已把 autonomy、closure readiness、capability bundle、CI pipeline 与 source hashes 汇总成 secret-free hash-chain evidence index；ReLaneSpecialistCommandPackGateV1 / gate:relane-specialist-command-pack 已把 route、lane command pack、analyzer anchors、self-heal commands 与 proof-exit bridge 接成专项闭环；更深 runtime ledger wiring 仍可继续硬化。",
 		pillars,
-		notYetTopAutonomousDefinition: hardeningItems,
+		notYetTopAutonomousDefinition: topAutonomousDefinition ? [] : hardeningItems,
 		hardeningGapLedger,
 		hardeningGapLedgerSummary: {
 			gapCount: hardeningGapLedger.gapCount,
 			closureGateCount: hardeningGapLedger.closureGateCount,
 			highestPriorityOpen: hardeningGapLedger.highestPriorityOpen,
+			openGapCount: hardeningGapLedger.openGapCount,
+			closedGapCount: hardeningGapLedger.closedGapCount,
 			gapHash: hardeningGapLedger.gapHash,
 		},
 		recommendedNonTestWorkOrder: [

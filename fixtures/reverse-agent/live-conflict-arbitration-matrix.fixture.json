@@ -14,6 +14,8 @@
     "provider_backed_same_window_multi_worker_conflict_table",
     "long_run_synthesizer_topic_parse_matrix",
     "provider_backed_long_window_conflict_matrix",
+    "synthesizer_extended_ten_topic_parse_matrix",
+    "provider_backed_eight_window_conflict_matrix",
     "synthesizer_extended_topic_parse_matrix"
   ],
   "requiredSources": [
@@ -45,7 +47,9 @@
     "narrative-only synthesizer rows must remain blocked and must not promote final claims",
     "provider-backed long-window conflict matrix must cover at least two windows, at least two provider workers per window, at least five provider-backed claims, request log refs, runtime manifest refs and env-ref-only secret handling",
     "extended synthesizer topic parse matrix must cover authz, JS replay, provider timeout, API rate-limit, session token scope and API idempotency replay topics",
-    "provider-backed long-window rows must reject literal secrets and must keep loser claims blocked across windows"
+    "provider-backed long-window rows must reject literal secrets and must keep loser claims blocked across windows",
+    "provider-backed long-window conflict matrix covers eight provider-backed windows",
+    "extended synthesizer topic parse matrix covers ten structured topics with final winners only"
   ],
   "negativeCases": [
     {
@@ -143,7 +147,9 @@
     "requiresProviderBackedSameWindowMultiWorkerConflictTable": true,
     "requiresLongRunSynthesizerTopicParseMatrix": true,
     "requiresProviderBackedLongWindowConflictMatrix": true,
-    "requiresExtendedSynthesizerTopicParseMatrix": true
+    "requiresExtendedSynthesizerTopicParseMatrix": true,
+    "requiresProviderBackedEightWindowConflictMatrix": true,
+    "requiresExtendedTenTopicParseMatrix": true
   },
   "invariants": [
     "live_conflict_arbitration_matrix_gate",
@@ -157,6 +163,8 @@
     "provider_backed_same_window_multi_worker_conflict_table",
     "long_run_synthesizer_topic_parse_matrix",
     "provider_backed_long_window_conflict_matrix",
+    "synthesizer_extended_ten_topic_parse_matrix",
+    "provider_backed_eight_window_conflict_matrix",
     "synthesizer_extended_topic_parse_matrix"
   ]
 }

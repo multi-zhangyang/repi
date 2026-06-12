@@ -366,7 +366,7 @@
         },
         "requiredGates": {
           "type": "array",
-          "minItems": 13,
+          "minItems": 15,
           "items": {
             "enum": [
               "WorkerProviderRepairRollbackUnificationGateV1",
@@ -381,7 +381,9 @@
               "provider_worker_state_lineage_snapshot_matrix",
               "compound_provider_long_horizon_repair_completion_chain",
               "remote_provider_state_changing_repair_matrix",
-              "deep_compound_provider_repair_completion_chain"
+              "remote_provider_eight_state_changing_repair_matrix",
+              "deep_compound_provider_repair_completion_chain",
+              "deep_compound_provider_ten_attempt_repair_chain"
             ]
           }
         },
@@ -434,7 +436,7 @@
         },
         "invariants": {
           "type": "array",
-          "minItems": 13,
+          "minItems": 15,
           "items": {
             "enum": [
               "worker_provider_repair_rollback_unification_gate",
@@ -449,7 +451,9 @@
               "provider_worker_state_lineage_snapshot_matrix",
               "compound_provider_long_horizon_repair_completion_chain",
               "remote_provider_state_changing_repair_matrix",
-              "deep_compound_provider_repair_completion_chain"
+              "remote_provider_eight_state_changing_repair_matrix",
+              "deep_compound_provider_repair_completion_chain",
+              "deep_compound_provider_ten_attempt_repair_chain"
             ]
           }
         }
@@ -467,7 +471,9 @@
         "provider_worker_state_lineage_snapshot_matrix",
         "compound_provider_long_horizon_repair_completion_chain",
         "remote_provider_state_changing_repair_matrix",
-        "deep_compound_provider_repair_completion_chain"
+        "remote_provider_eight_state_changing_repair_matrix",
+        "deep_compound_provider_repair_completion_chain",
+        "deep_compound_provider_ten_attempt_repair_chain"
       ]
     },
     "ProviderWorkerLiveRepairMatrixRowV1": {
@@ -615,11 +621,11 @@
         },
         "stateChangingRepairCount": {
           "type": "integer",
-          "minimum": 6
+          "minimum": 8
         },
         "rows": {
           "type": "array",
-          "minItems": 6,
+          "minItems": 8,
           "items": {
             "$ref": "#/$defs/ProviderWorkerLiveRepairMatrixRowV1"
           }
@@ -948,7 +954,7 @@
         },
         "rowCount": {
           "type": "integer",
-          "minimum": 6
+          "minimum": 8
         },
         "providerCount": {
           "type": "integer",
@@ -966,7 +972,7 @@
         },
         "rows": {
           "type": "array",
-          "minItems": 6,
+          "minItems": 8,
           "items": {
             "$ref": "#/$defs/ProviderWorkerStateLineageSnapshotMatrixRowV1"
           }
@@ -1160,7 +1166,7 @@
         },
         "longestAttemptCount": {
           "type": "integer",
-          "minimum": 7
+          "minimum": 10
         },
         "chains": {
           "type": "array",
@@ -1365,7 +1371,7 @@
         },
         "rowCount": {
           "type": "integer",
-          "minimum": 6
+          "minimum": 8
         },
         "providerCount": {
           "type": "integer",
@@ -1383,7 +1389,7 @@
         },
         "rows": {
           "type": "array",
-          "minItems": 6,
+          "minItems": 8,
           "items": {
             "$ref": "#/$defs/RemoteProviderStateChangingRepairMatrixRowV1"
           }
@@ -1600,11 +1606,11 @@
         },
         "longestAttemptCount": {
           "type": "integer",
-          "minimum": 7
+          "minimum": 10
         },
         "totalAttemptCount": {
           "type": "integer",
-          "minimum": 12
+          "minimum": 20
         },
         "chains": {
           "type": "array",

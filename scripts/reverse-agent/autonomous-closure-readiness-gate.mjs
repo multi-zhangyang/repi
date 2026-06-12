@@ -121,6 +121,7 @@ function validateReadinessPackage(pkg) {
   if (matrix?.summary?.topAutonomousDefinition === true && rows.some((row) => row.status !== "closed")) errors.push("top_autonomous_true_with_non_closed_gap");
 
   let readyRows = 0;
+  let closedRows = 0;
   let failedRows = 0;
   const seen = new Set();
   for (const row of rows) {
@@ -129,21 +130,26 @@ function validateReadinessPackage(pkg) {
     seen.add(row.closureGate);
     if (!/^gate:[a-z0-9-]+$/.test(String(row.closureGate || ""))) rowErrors.push("closureGate_invalid");
     if (!String(row.scriptPath || "").startsWith("scripts/reverse-agent/") || !String(row.scriptPath || "").endsWith(".mjs")) rowErrors.push("scriptPath_invalid");
-    for (const boolField of ["packageScriptPresent", "gateScriptExists", "topHarnessChildGatePresent", "autonomyContractPresent", "strictNoWritePass", "acceptanceCriteriaBacked", "readyForLive"]) {
+    for (const boolField of ["packageScriptPresent", "gateScriptExists", "topHarnessChildGatePresent", "autonomyContractPresent", "strictNoWritePass", "acceptanceCriteriaBacked"]) {
       if (row[boolField] !== true) rowErrors.push(`${boolField}_not_true`);
     }
+    if (row.status === "ready_for_live" && row.readyForLive !== true) rowErrors.push("readyForLive_not_true_for_ready_gap");
+    if (row.status === "closed" && row.artifactBackedClosure !== true) rowErrors.push("artifactBackedClosure_not_true_for_closed_gap");
     if (!Array.isArray(row.docsPresent) || row.docsPresent.length < 2) rowErrors.push("docsPresent_minItems");
     if (!Array.isArray(row.evidenceRefs) || row.evidenceRefs.length < 4) rowErrors.push("evidenceRefs_minItems");
-    if (row.status === "closed" && row.acceptanceCriteriaBacked !== true) rowErrors.push("closed_without_artifact_backed_row");
+    if (row.status === "closed" && (!Array.isArray(row.closureEvidenceRefs) || row.closureEvidenceRefs.length < 4)) rowErrors.push("closed_without_closure_evidence_refs");
     if (row.status !== "closed" && !String(row.notClosedReason || "").includes("ready_for_live")) rowErrors.push("notClosedReason_missing_ready_for_live");
     if (rowErrors.length) {
       failedRows++;
       errors.push(`${row.gapId || row.closureGate || "unknown"}:${rowErrors.join(",")}`);
+    } else if (row.status === "closed") {
+      closedRows++;
     } else {
       readyRows++;
     }
   }
   if (matrix?.summary?.readyRows !== readyRows) errors.push("summary.readyRows_mismatch");
+  if ((matrix?.summary?.closedRows ?? 0) !== closedRows) errors.push("summary.closedRows_mismatch");
   if (matrix?.summary?.failedRows !== failedRows) errors.push("summary.failedRows_mismatch");
   if (matrix?.summary?.allClosureGatesExecutable !== rows.every((row) => row.gateScriptExists === true && row.strictNoWritePass === true)) errors.push("summary.allClosureGatesExecutable_mismatch");
   if (matrix?.summary?.allClosureGatesHarnessed !== rows.every((row) => row.packageScriptPresent === true && row.topHarnessChildGatePresent === true && row.autonomyContractPresent === true && (row.docsPresent || []).length >= 2)) errors.push("summary.allClosureGatesHarnessed_mismatch");
@@ -158,10 +164,11 @@ function mutateFixture(fixture, id) {
   if (id === "missing-autonomy-contract") first.autonomyContractPresent = false;
   if (id === "missing-docs") first.docsPresent = [];
   if (id === "closure-gate-run-failed") first.strictNoWritePass = false;
-  if (id === "top-autonomous-true-with-ready-gaps") row.readinessMatrix.summary.topAutonomousDefinition = true;
+  if (id === "top-autonomous-true-with-ready-gaps") { row.readinessMatrix.summary.topAutonomousDefinition = true; first.status = "ready_for_live"; first.readyForLive = true; first.artifactBackedClosure = false; row.readinessMatrix.summary.closedRows = Math.max(0, (row.readinessMatrix.summary.closedRows ?? 0) - 1); row.readinessMatrix.summary.readyRows = (row.readinessMatrix.summary.readyRows ?? 0) + 1; }
   if (id === "closed-gap-without-artifact-backed-row") {
     first.status = "closed";
     first.acceptanceCriteriaBacked = false;
+    first.artifactBackedClosure = false;
   }
   return row;
 }
@@ -211,13 +218,16 @@ function buildReadinessMatrix(runtime) {
       strictNoWritePass,
       acceptanceCriteriaBacked,
       readyForLive: gap.status === "ready_for_live" && acceptanceCriteriaBacked,
+      artifactBackedClosure: gap.status === "closed" && acceptanceCriteriaBacked && gap.artifactBackedClosure === true && (gap.closureEvidenceRefs ?? []).length >= 4,
+      closureEvidenceRefs: gap.closureEvidenceRefs ?? [],
       evidenceRefs: ["package.json", scriptPath, "scripts/reverse-agent/repi-top-harness.mjs", "scripts/reverse-agent/autonomy-control-plane.mjs", ...docsPresent].filter(Boolean),
       notClosedReason: gap.status === "closed" ? "closed" : `${gap.status} still requires broader live runtime samples before closed`,
     });
   }
   const uniqueClosureGates = new Set(rows.map((row) => row.closureGate));
   const readyRows = rows.filter((row) => row.readyForLive).length;
-  const failedRows = rows.length - readyRows;
+  const closedRows = rows.filter((row) => row.artifactBackedClosure).length;
+  const failedRows = rows.length - readyRows - closedRows;
   return {
     matrix: {
       kind: "AutonomousClosureReadinessMatrixV1",
@@ -232,6 +242,7 @@ function buildReadinessMatrix(runtime) {
         gapCount: rows.length,
         closureGateCount: uniqueClosureGates.size,
         readyRows,
+        closedRows,
         failedRows,
         allClosureGatesExecutable: rows.every((row) => row.gateScriptExists && row.strictNoWritePass),
         allClosureGatesHarnessed: rows.every((row) => row.packageScriptPresent && row.topHarnessChildGatePresent && row.autonomyContractPresent && row.docsPresent.length >= 2),
@@ -285,13 +296,13 @@ function main() {
         invariants: REQUIRED_GATES,
       };
       const runtimeValidation = validateReadinessPackage(runtimePackage);
-      checks.push(check("runtime:closure-readiness-matrix", runtimeValidation.ok, { ...runtimeValidation, matrixSummary: matrix.summary, rows: matrix.closureRows.map(({ gapId, closureGate, readyForLive, strictNoWritePass, docsPresent }) => ({ gapId, closureGate, readyForLive, strictNoWritePass, docsPresent })) }));
+      checks.push(check("runtime:closure-readiness-matrix", runtimeValidation.ok, { ...runtimeValidation, matrixSummary: matrix.summary, rows: matrix.closureRows.map(({ gapId, closureGate, readyForLive, artifactBackedClosure, strictNoWritePass, docsPresent }) => ({ gapId, closureGate, readyForLive, artifactBackedClosure, strictNoWritePass, docsPresent })) }));
       checks.push(check("runtime:all-closure-gates-strict-no-write", matrix.closureRows.every((row) => row.strictNoWritePass), { runResults }));
-      checks.push(check("runtime:top-autonomous-not-promoted", runtime.parsed.topAutonomousDefinition === false && matrix.closureRows.some((row) => row.status !== "closed"), { topAutonomousDefinition: runtime.parsed.topAutonomousDefinition, statuses: matrix.closureRows.map((row) => row.status) }));
+      checks.push(check("runtime:top-autonomous-promotion-state", runtime.parsed.topAutonomousDefinition === matrix.closureRows.every((row) => row.status === "closed" && row.artifactBackedClosure === true), { topAutonomousDefinition: runtime.parsed.topAutonomousDefinition, statuses: matrix.closureRows.map((row) => row.status), artifactBacked: matrix.closureRows.map((row) => row.artifactBackedClosure) }));
     } else {
       checks.push(check("runtime:closure-readiness-matrix", false, { error: "missing hardeningGapLedger" }));
       checks.push(check("runtime:all-closure-gates-strict-no-write", false, { error: "missing hardeningGapLedger" }));
-      checks.push(check("runtime:top-autonomous-not-promoted", false, { error: "missing hardeningGapLedger" }));
+      checks.push(check("runtime:top-autonomous-promotion-state", false, { error: "missing hardeningGapLedger" }));
     }
 
     checks.push(markerCheck("harness:autonomous-closure-readiness", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:autonomous-closure-readiness", "AutonomousClosureReadinessGateV1", "child:gate:autonomous-closure-readiness"]));

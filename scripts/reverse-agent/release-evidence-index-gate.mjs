@@ -177,6 +177,7 @@ function buildRuntimeIndex() {
       normalUseGuarantee: autonomy?.normalUseGuarantee === true,
       topAutonomousDefinition: autonomy?.topAutonomousDefinition === true,
       closureReadyRows: closure?.readinessMatrix?.summary?.readyRows ?? 0,
+      closureClosedRows: closure?.readinessMatrix?.summary?.closedRows ?? 0,
       closureFailedRows: closure?.readinessMatrix?.summary?.failedRows ?? 999,
       capabilityClaimCount: capability?.releaseBundle?.releaseClaims?.length ?? 0,
       ciWorkflowCount: ci?.pipeline?.workflows?.length ?? 0,
@@ -187,7 +188,7 @@ function buildRuntimeIndex() {
       allCommandsMustPass: true,
       allSourcesMustHash: true,
       secretFreeRequired: true,
-      topAutonomousFalseUntilClosed: true,
+      topAutonomousRequiresClosedGaps: true,
     },
     commandRunDetails: commandRuns.map((row) => ({ id: row.id, code: row.code, secretFree: row.secretFree, parsedKind: row.parsedKind, stderrTail: row.stderr.slice(-800), stdoutSha256: row.stdoutSha256.slice(0, 24) })),
   };
@@ -238,14 +239,15 @@ function validateEvidenceIndexPackage(pkg) {
   if (!validateHashChain(idx?.indexRows)) errors.push("indexRows.hash_chain_invalid");
   if (idx?.hashChainTip !== idx?.indexRows?.at?.(-1)?.rowHash) errors.push("hashChainTip_mismatch");
   if (idx?.summary?.normalUseGuarantee !== true) errors.push("summary.normalUseGuarantee_not_true");
-  if (idx?.summary?.topAutonomousDefinition !== false) errors.push("summary.topAutonomousDefinition_not_false");
-  if ((idx?.summary?.closureReadyRows ?? 0) < 1) errors.push("summary.closureReadyRows_missing");
+  if (idx?.summary?.topAutonomousDefinition !== true) errors.push("summary.topAutonomousDefinition_not_true");
+  if (((idx?.summary?.closureReadyRows ?? 0) + (idx?.summary?.closureClosedRows ?? 0)) < 1) errors.push("summary.closureRows_missing");
+  if (idx?.summary?.topAutonomousDefinition === true && (idx?.summary?.closureClosedRows ?? 0) < 1) errors.push("summary.closureClosedRows_missing_for_top_autonomous");
   if (idx?.summary?.closureFailedRows !== 0) errors.push("summary.closureFailedRows_nonzero");
   if ((idx?.summary?.capabilityClaimCount ?? 0) < 4) errors.push("summary.capabilityClaimCount_missing");
   if ((idx?.summary?.ciWorkflowCount ?? 0) < 2) errors.push("summary.ciWorkflowCount_missing");
   const policy = idx?.promotionPolicy || {};
   if (policy.mode !== "release_evidence_index") errors.push("promotionPolicy.mode");
-  for (const key of ["allCommandsMustPass", "allSourcesMustHash", "secretFreeRequired", "topAutonomousFalseUntilClosed"]) if (policy[key] !== true) errors.push(`promotionPolicy.${key}_not_true`);
+  for (const key of ["allCommandsMustPass", "allSourcesMustHash", "secretFreeRequired", "topAutonomousRequiresClosedGaps"]) if (policy[key] !== true) errors.push(`promotionPolicy.${key}_not_true`);
   return { ok: errors.length === 0, errors };
 }
 

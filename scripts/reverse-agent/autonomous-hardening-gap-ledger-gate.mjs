@@ -42,13 +42,16 @@ function validateLedger(ledger, manifest = { topAutonomousDefinition: false }) {
     if (!Array.isArray(gap.regressionCommands) || gap.regressionCommands.length < 1) errors.push(`${gap.gapId}.regressionCommands_missing`);
     if (!gap.nextCommand) errors.push(`${gap.gapId}.nextCommand_missing`);
     if (!Array.isArray(gap.acceptanceCriteria) || gap.acceptanceCriteria.length < 3) errors.push(`${gap.gapId}.acceptanceCriteria_missing`);
-    if (!Array.isArray(gap.missingRuntimeProof) || gap.missingRuntimeProof.length < 1) errors.push(`${gap.gapId}.missingRuntimeProof_missing`);
+    if (!Array.isArray(gap.missingRuntimeProof)) errors.push(`${gap.gapId}.missingRuntimeProof_missing`);
+    if (gap.status !== "closed" && (!Array.isArray(gap.missingRuntimeProof) || gap.missingRuntimeProof.length < 1)) errors.push(`${gap.gapId}.missingRuntimeProof_missing_for_open_gap`);
+    if (gap.status === "closed" && gap.missingRuntimeProof.length !== 0) errors.push(`${gap.gapId}.closed_gap_still_has_missingRuntimeProof`);
+    if (gap.status === "closed" && (gap.artifactBackedClosure !== true || !Array.isArray(gap.closureEvidenceRefs) || gap.closureEvidenceRefs.length < 4)) errors.push(`${gap.gapId}.closed_gap_requires_artifact_backed_closure`);
     if (!Array.isArray(gap.artifacts) || gap.artifacts.length < 1) errors.push(`${gap.gapId}.artifacts_missing`);
     if (gap.readyForImplementation !== true) errors.push(`${gap.gapId}.readyForImplementation_not_true`);
   }
   if (ledger?.gapCount !== ledger?.gaps?.length) errors.push("ledger.gapCount_mismatch");
   if (ledger?.closureGateCount !== closureGates.size) errors.push("ledger.closureGateCount_mismatch");
-  if (manifest.topAutonomousDefinition === true && (ledger?.gaps || []).some((gap) => gap.status !== "closed")) errors.push("top_autonomous_true_with_open_gaps");
+  if (manifest.topAutonomousDefinition === true && (ledger?.gaps || []).some((gap) => gap.status !== "closed" || gap.artifactBackedClosure !== true)) errors.push("top_autonomous_true_with_open_or_unbacked_gaps");
   if (!String(ledger?.promotionPolicy || "").includes("topAutonomousDefinition")) errors.push("ledger.promotionPolicy_missing_top_autonomous_guard");
   return { ok: errors.length === 0, errors };
 }
@@ -58,6 +61,7 @@ function mutateFixture(fixture, id) {
   if (id === "missing-closure-gate") delete row.gaps[0].closureGate;
   if (id === "missing-regression-command") row.gaps[0].regressionCommands = [];
   if (id === "missing-acceptance-criteria") row.gaps[0].acceptanceCriteria = [];
+  if (id === "top-autonomous-true-with-open-gaps") { row.gaps[0].status = "ready_for_live"; row.gaps[0].missingRuntimeProof = ["forced open gap"]; row.gaps[0].artifactBackedClosure = false; }
   return row;
 }
 
@@ -74,7 +78,7 @@ function main() {
     const schema = readJson(SCHEMA_PATH);
     const fixture = readJson(FIXTURE_PATH);
     checks.push(check("schema:parse", Boolean(schema?.$defs?.AutonomousHardeningGapLedgerV1 && schema?.$defs?.AutonomousHardeningGapV1), { path: SCHEMA_PATH }));
-    const fixturePositive = validateLedger(fixture, { topAutonomousDefinition: false });
+    const fixturePositive = validateLedger(fixture, { topAutonomousDefinition: fixture.topAutonomousDefinition === true });
     const negativeResults = (fixture.negativeCases || []).map((negative) => {
       const mutated = mutateFixture(fixture, negative.id);
       const manifest = { topAutonomousDefinition: negative.id === "top-autonomous-true-with-open-gaps" };
@@ -88,12 +92,12 @@ function main() {
     if (runtime.parsed?.hardeningGapLedger) {
       const runtimeValidation = validateLedger(runtime.parsed.hardeningGapLedger, runtime.parsed);
       checks.push(check("runtime:hardening-gap-ledger", runtimeValidation.ok, runtimeValidation));
-      checks.push(check("runtime:gap-summary", runtime.parsed.hardeningGapLedgerSummary?.gapCount === runtime.parsed.hardeningGapLedger.gapCount && runtime.parsed.topAutonomousDefinition === false, { summary: runtime.parsed.hardeningGapLedgerSummary, topAutonomousDefinition: runtime.parsed.topAutonomousDefinition }));
+      checks.push(check("runtime:gap-summary", runtime.parsed.hardeningGapLedgerSummary?.gapCount === runtime.parsed.hardeningGapLedger.gapCount && (runtime.parsed.topAutonomousDefinition === runtime.parsed.hardeningGapLedger.gaps.every((gap) => gap.status === "closed" && gap.artifactBackedClosure === true)), { summary: runtime.parsed.hardeningGapLedgerSummary, topAutonomousDefinition: runtime.parsed.topAutonomousDefinition }));
     } else {
       checks.push(check("runtime:hardening-gap-ledger", false, { error: "missing runtime ledger" }));
       checks.push(check("runtime:gap-summary", false, { error: "missing runtime ledger" }));
     }
-    checks.push(markerCheck("autonomy:hardening-gap-ledger", "scripts/reverse-agent/autonomy-control-plane.mjs", ["AutonomousHardeningGapLedgerV1", "hardeningGapLedger", "closureGate", "readyForImplementation", "topAutonomousDefinition remains false"]));
+    checks.push(markerCheck("autonomy:hardening-gap-ledger", "scripts/reverse-agent/autonomy-control-plane.mjs", ["AutonomousHardeningGapLedgerV1", "hardeningGapLedger", "closureGate", "readyForImplementation", "artifactBackedClosure", "topAutonomousDefinition may be true only when every gap is closed"]));
     checks.push(markerCheck("harness:hardening-gap-ledger", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:autonomous-hardening-gap-ledger", "AutonomousHardeningGapLedgerV1", "child:gate:autonomous-hardening-gap-ledger"]));
     checks.push(markerCheck("npm:hardening-gap-ledger", "package.json", ["gate:autonomous-hardening-gap-ledger", "autonomous-hardening-gap-ledger-gate.mjs"]));
     checks.push(markerCheck("docs:hardening-gap-ledger-readme", "README.md", ["AutonomousHardeningGapLedgerV1", "gate:autonomous-hardening-gap-ledger"]));

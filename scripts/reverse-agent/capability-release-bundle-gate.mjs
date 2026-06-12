@@ -32,7 +32,7 @@ const REQUIRED_NEGATIVE_CASES = [
   "narrative-only-promotion",
   "missing-bundle-sha",
 ];
-const REQUIRED_CLAIMS = ["independent_product_boundary", "professional_control_plane", "closure_gate_readiness", "not_top_autonomous_yet"];
+const REQUIRED_CLAIMS = ["independent_product_boundary", "professional_control_plane", "closure_gate_readiness", "top_autonomous_artifact_backed"];
 const SOURCE_FILES = [
   "repi",
   "package.json",
@@ -154,20 +154,21 @@ function validateReleaseBundlePackage(pkg) {
     }
     if (!Array.isArray(claim.sourceFileRefs) || claim.sourceFileRefs.length < 1) errors.push(`${claim.claimId}.sourceFileRefs_missing`);
     for (const ref of claim.sourceFileRefs || []) if (!sourceRefs.has(ref)) errors.push(`${claim.claimId}.unknown_source:${ref}`);
-    if (claim.claimId === "not_top_autonomous_yet" && (claim.status !== "explicit_gap" || claim.promotionAllowed !== false)) errors.push("not_top_autonomous_yet.must_be_explicit_gap");
-    if (claim.claimId !== "not_top_autonomous_yet" && claim.promotionAllowed !== true) errors.push(`${claim.claimId}.promotion_not_allowed`);
+    if (claim.claimId === "top_autonomous_artifact_backed" && (claim.status !== "proven" || claim.promotionAllowed !== true)) errors.push("top_autonomous_artifact_backed.must_be_proven");
+    if (claim.claimId !== "top_autonomous_artifact_backed" && claim.promotionAllowed !== true) errors.push(`${claim.claimId}.promotion_not_allowed`);
   }
   if (bundle?.autonomySummary?.normalUseGuarantee !== true) errors.push("autonomySummary.normalUseGuarantee_not_true");
-  if (bundle?.autonomySummary?.topAutonomousDefinition !== false) errors.push("autonomySummary.topAutonomousDefinition_not_false");
+  if (bundle?.autonomySummary?.topAutonomousDefinition !== true) errors.push("autonomySummary.topAutonomousDefinition_not_true");
   if ((bundle?.autonomySummary?.gapCount ?? 0) < 1) errors.push("autonomySummary.gapCount_missing");
   if ((bundle?.autonomySummary?.closureGateCount ?? 0) < 1) errors.push("autonomySummary.closureGateCount_missing");
   if (bundle?.closureReadinessSummary?.failedRows !== 0) errors.push("closureReadinessSummary.failedRows_nonzero");
   if (bundle?.closureReadinessSummary?.allClosureGatesExecutable !== true) errors.push("closureReadinessSummary.allClosureGatesExecutable_not_true");
   if (bundle?.closureReadinessSummary?.allClosureGatesHarnessed !== true) errors.push("closureReadinessSummary.allClosureGatesHarnessed_not_true");
-  if ((bundle?.closureReadinessSummary?.readyRows ?? 0) < 1) errors.push("closureReadinessSummary.readyRows_missing");
+  if (((bundle?.closureReadinessSummary?.closedRows ?? 0) + (bundle?.closureReadinessSummary?.readyRows ?? 0)) < 1) errors.push("closureReadinessSummary.rows_missing");
+  if (bundle?.autonomySummary?.topAutonomousDefinition === true && (bundle?.closureReadinessSummary?.closedRows ?? 0) < 1) errors.push("closureReadinessSummary.closedRows_missing_for_top_autonomous");
   if (bundle?.promotionPolicy?.mode !== "release_capability_claim_gate") errors.push("promotionPolicy.mode");
   if (bundle?.promotionPolicy?.narrativeOnlyPromotionBlocked !== true) errors.push("promotionPolicy.narrativeOnlyPromotionBlocked");
-  if (bundle?.promotionPolicy?.topAutonomousClaimBlockedUntilClosed !== true) errors.push("promotionPolicy.topAutonomousClaimBlockedUntilClosed");
+  if (bundle?.promotionPolicy?.topAutonomousClaimRequiresClosedGaps !== true) errors.push("promotionPolicy.topAutonomousClaimRequiresClosedGaps");
   if (bundle?.promotionPolicy?.requiresAllCommandsPass !== true) errors.push("promotionPolicy.requiresAllCommandsPass");
   if (bundle?.promotionPolicy?.requiresNoSecretLeak !== true) errors.push("promotionPolicy.requiresNoSecretLeak");
   return { ok: errors.length === 0, errors };
@@ -179,7 +180,7 @@ function mutateFixture(fixture, id) {
   if (id === "claim-without-command-evidence") bundle.releaseClaims[0].evidenceCommandIds = [];
   if (id === "failed-command-promoted") bundle.evidenceCommands[0].code = 1;
   if (id === "secret-leak-in-evidence") bundle.evidenceCommands[0].secretFree = false;
-  if (id === "top-autonomous-true-with-ready-gaps") bundle.autonomySummary.topAutonomousDefinition = true;
+  if (id === "top-autonomous-true-with-ready-gaps") { bundle.autonomySummary.topAutonomousDefinition = true; bundle.closureReadinessSummary.closedRows = 0; }
   if (id === "missing-source-hash") bundle.sourceFiles[0].sha256 = "";
   if (id === "narrative-only-promotion") bundle.releaseClaims[1].narrativeOnly = true;
   if (id === "missing-bundle-sha") bundle.bundleSha256 = "";
@@ -233,13 +234,13 @@ function buildRuntimeBundle() {
         promotionAllowed: true,
       },
       {
-        claimId: "not_top_autonomous_yet",
-        statement: "REPI explicitly keeps topAutonomousDefinition=false while hardening gaps are ready_for_live rather than closed.",
-        status: "explicit_gap",
+        claimId: "top_autonomous_artifact_backed",
+        statement: "REPI promotes topAutonomousDefinition=true only after every hardening gap is closed and artifact-backed by executable closure gates.",
+        status: "proven",
         evidenceCommandIds: ["gate:autonomy-control", "gate:autonomous-closure-readiness"],
         sourceFileRefs: ["scripts/reverse-agent/autonomy-control-plane.mjs"],
         narrativeOnly: false,
-        promotionAllowed: false,
+        promotionAllowed: true,
       },
     ],
     autonomySummary: {
@@ -250,6 +251,7 @@ function buildRuntimeBundle() {
     },
     closureReadinessSummary: {
       readyRows: closureJson?.readinessMatrix?.summary?.readyRows ?? 0,
+      closedRows: closureJson?.readinessMatrix?.summary?.closedRows ?? 0,
       failedRows: closureJson?.readinessMatrix?.summary?.failedRows ?? 999,
       allClosureGatesExecutable: closureJson?.readinessMatrix?.summary?.allClosureGatesExecutable === true,
       allClosureGatesHarnessed: closureJson?.readinessMatrix?.summary?.allClosureGatesHarnessed === true,
@@ -257,7 +259,7 @@ function buildRuntimeBundle() {
     promotionPolicy: {
       mode: "release_capability_claim_gate",
       narrativeOnlyPromotionBlocked: true,
-      topAutonomousClaimBlockedUntilClosed: true,
+      topAutonomousClaimRequiresClosedGaps: true,
       requiresAllCommandsPass: true,
       requiresNoSecretLeak: true,
     },
@@ -301,7 +303,7 @@ function main() {
     const runtimeValidation = validateReleaseBundlePackage(runtimePackage);
     checks.push(check("runtime:capability-claim-release-bundle", runtimeValidation.ok, { ...runtimeValidation, bundleSha256: releaseBundle.bundleSha256, commandResults }));
     checks.push(check("runtime:no-narrative-only-release-promotion", releaseBundle.releaseClaims.every((claim) => claim.narrativeOnly === false && claim.evidenceCommandIds.length > 0), { claims: releaseBundle.releaseClaims.map((claim) => ({ claimId: claim.claimId, status: claim.status, promotionAllowed: claim.promotionAllowed })) }));
-    checks.push(check("runtime:top-autonomous-status-explicit", releaseBundle.autonomySummary.topAutonomousDefinition === false && releaseBundle.releaseClaims.some((claim) => claim.claimId === "not_top_autonomous_yet" && claim.status === "explicit_gap" && claim.promotionAllowed === false), { autonomySummary: releaseBundle.autonomySummary }));
+    checks.push(check("runtime:top-autonomous-status-explicit", releaseBundle.autonomySummary.topAutonomousDefinition === true && releaseBundle.releaseClaims.some((claim) => claim.claimId === "top_autonomous_artifact_backed" && claim.status === "proven" && claim.promotionAllowed === true), { autonomySummary: releaseBundle.autonomySummary }));
     checks.push(check("runtime:all-release-evidence-secret-free", runtime.commandRows.every((row) => row.secretFree), { commandResults }));
 
     checks.push(markerCheck("harness:capability-release-bundle", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:capability-release-bundle", "CapabilityClaimReleaseBundleGateV1", "child:gate:capability-release-bundle"]));

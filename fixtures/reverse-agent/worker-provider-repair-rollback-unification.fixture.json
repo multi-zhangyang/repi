@@ -15,6 +15,8 @@
     "provider_worker_state_lineage_snapshot_matrix",
     "compound_provider_long_horizon_repair_completion_chain",
     "remote_provider_state_changing_repair_matrix",
+    "deep_compound_provider_ten_attempt_repair_chain",
+    "remote_provider_eight_state_changing_repair_matrix",
     "deep_compound_provider_repair_completion_chain"
   ],
   "scenarios": [
@@ -246,7 +248,9 @@
     "requiresProviderWorkerStateLineageSnapshotMatrix": true,
     "requiresCompoundProviderLongHorizonRepairCompletion": true,
     "requiresRemoteProviderStateChangingRepairMatrix": true,
-    "requiresDeepCompoundProviderRepairCompletion": true
+    "requiresDeepCompoundProviderRepairCompletion": true,
+    "requiresRemoteProviderEightStateChangingRepairMatrix": true,
+    "requiresDeepCompoundTenAttemptRepairChain": true
   },
   "invariants": [
     "worker_provider_repair_rollback_unification_gate",
@@ -261,6 +265,8 @@
     "provider_worker_state_lineage_snapshot_matrix",
     "compound_provider_long_horizon_repair_completion_chain",
     "remote_provider_state_changing_repair_matrix",
+    "deep_compound_provider_ten_attempt_repair_chain",
+    "remote_provider_eight_state_changing_repair_matrix",
     "deep_compound_provider_repair_completion_chain"
   ]
 }

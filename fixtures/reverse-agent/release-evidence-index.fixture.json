@@ -263,11 +263,12 @@
     ],
     "summary": {
       "normalUseGuarantee": true,
-      "topAutonomousDefinition": false,
-      "closureReadyRows": 4,
+      "topAutonomousDefinition": true,
+      "closureReadyRows": 0,
       "closureFailedRows": 0,
       "capabilityClaimCount": 4,
-      "ciWorkflowCount": 2
+      "ciWorkflowCount": 2,
+      "closureClosedRows": 4
     },
     "hashChainTip": "d29daa5050343307cc2842654350aae7cea763888348df52a21622d3ff940fd3",
     "promotionPolicy": {
@@ -275,7 +276,7 @@
       "allCommandsMustPass": true,
       "allSourcesMustHash": true,
       "secretFreeRequired": true,
-      "topAutonomousFalseUntilClosed": true
+      "topAutonomousRequiresClosedGaps": true
     }
   },
   "negativeCases": [

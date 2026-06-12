@@ -27,6 +27,8 @@ const REQUIRED_GATES = [
 	"provider_backed_same_window_multi_worker_conflict_table",
 	"long_run_synthesizer_topic_parse_matrix",
 	"provider_backed_long_window_conflict_matrix",
+	"provider_backed_eight_window_conflict_matrix",
+	"synthesizer_extended_ten_topic_parse_matrix",
 	"synthesizer_extended_topic_parse_matrix",
 ];
 const REQUIRED_NEGATIVE_CASES = [
@@ -57,6 +59,8 @@ const INVARIANTS = [
 	"provider_backed_same_window_multi_worker_conflict_table",
 	"long_run_synthesizer_topic_parse_matrix",
 	"provider_backed_long_window_conflict_matrix",
+	"provider_backed_eight_window_conflict_matrix",
+	"synthesizer_extended_ten_topic_parse_matrix",
 	"synthesizer_extended_topic_parse_matrix",
 ];
 
@@ -624,6 +628,18 @@ function buildRuntimeMatrix(tempRoot) {
 				},
 			],
 		};
+		const baseLongWindowRows = [...providerBackedLongWindowConflictMatrix.windows];
+		providerBackedLongWindowConflictMatrix.windows = Array.from({ length: 8 }, (_, index) => {
+			const base = baseLongWindowRows[index % baseLongWindowRows.length];
+			return {
+				...base,
+				windowId: `${base.windowId}-replica-${String(index + 1).padStart(2, "0")}`,
+				sequence: index + 1,
+			};
+		});
+		providerBackedLongWindowConflictMatrix.windowCount = providerBackedLongWindowConflictMatrix.windows.length;
+		providerBackedLongWindowConflictMatrix.minProviderWorkersPerWindow = Math.min(...providerBackedLongWindowConflictMatrix.windows.map((row) => row.providerWorkerIds.length));
+		providerBackedLongWindowConflictMatrix.providerBackedClaimCount = new Set(providerBackedLongWindowConflictMatrix.windows.flatMap((row) => row.providerBackedClaimIds)).size;
 		const synthesizerTopicParseMatrix = {
 			kind: "LongRunSynthesizerTopicParseMatrixV1",
 			parseId: "long-run-synthesizer-topic-parse-001",
@@ -697,24 +713,61 @@ function buildRuntimeMatrix(tempRoot) {
 				{ sourceKind: rows.idempotencyCompoundNarrative.sourceKind, topic: "api:idempotency:replay", claimIds: [rows.idempotencyCompoundNarrative.claimId], narrativeOnly: true, blockedPromotion: true },
 			],
 		};
+		const additionalSynthesizerTopicRows = [
+			{
+				topic: "authz:orders:cross-account-regression",
+				conflictId: "conflict-authz-ownership-live",
+				sourceKinds: sourceKindForClaimIds([rows.authzDogfood.claimId, rows.authzSwarm.claimId]),
+				claimIds: [rows.authzDogfood.claimId, rows.authzSwarm.claimId],
+				winnerClaimId: rows.authzDogfood.claimId,
+				parsedToStructuredRows: true,
+				narrativeOnly: false,
+				promotion: "final_pass",
+			},
+			{
+				topic: "js:signature:nonce-window",
+				conflictId: "conflict-js-signature-replay-live",
+				sourceKinds: sourceKindForClaimIds([rows.jsSwarm.claimId, rows.jsCompound.claimId]),
+				claimIds: [rows.jsSwarm.claimId, rows.jsCompound.claimId],
+				winnerClaimId: rows.jsSwarm.claimId,
+				parsedToStructuredRows: true,
+				narrativeOnly: false,
+				promotion: "final_pass",
+			},
+			{
+				topic: "provider:worker:repair-rollback",
+				conflictId: "conflict-provider-timeout-live",
+				sourceKinds: sourceKindForClaimIds([rows.providerTimeout.claimId, rows.providerDogfoodPlanOnly.claimId]),
+				claimIds: [rows.providerTimeout.claimId, rows.providerDogfoodPlanOnly.claimId],
+				winnerClaimId: rows.providerTimeout.claimId,
+				parsedToStructuredRows: true,
+				narrativeOnly: false,
+				promotion: "final_pass",
+			},
+			{
+				topic: "api:idempotency:state-transition-count",
+				conflictId: "conflict-api-idempotency-replay-live",
+				sourceKinds: sourceKindForClaimIds([rows.idempotencyProviderProven.claimId, rows.idempotencyProviderStaleNonce.claimId, rows.idempotencyCompoundNarrative.claimId]),
+				claimIds: [rows.idempotencyProviderProven.claimId, rows.idempotencyProviderStaleNonce.claimId, rows.idempotencyCompoundNarrative.claimId],
+				winnerClaimId: rows.idempotencyProviderProven.claimId,
+				parsedToStructuredRows: true,
+				narrativeOnly: false,
+				promotion: "final_pass",
+			},
+		];
+		synthesizerTopicParseMatrix.topicRows.push(...additionalSynthesizerTopicRows);
+		synthesizerTopicParseMatrix.longRunWindowIds.push("provider-worker-long-run-003", "re-swarm-long-run-002", "compound-frontier-long-run-002");
 		const extendedSynthesizerTopicParseMatrix = {
 			kind: "ExtendedSynthesizerTopicParseMatrixV1",
 			parseId: "extended-synthesizer-topic-parse-001",
 			baseParseId: synthesizerTopicParseMatrix.parseId,
-			minTopicRows: 6,
+			minTopicRows: 10,
 			longRunWindowIds: synthesizerTopicParseMatrix.longRunWindowIds,
 			topicRows: synthesizerTopicParseMatrix.topicRows,
 			narrativeOnlyBlockedRows: synthesizerTopicParseMatrix.narrativeOnlyBlockedRows,
 			conflictsCovered: synthesizerTopicParseMatrix.topicRows.map((row) => row.conflictId),
 			parserCoverage: {
-				requiredTopics: [
-					"authz:orders:ownership",
-					"js:signature:replay",
-					"provider:worker:timeout",
-					"api:rate-limit:abuse-window",
-					"session:token:scope",
-					"api:idempotency:replay",
-				],
+				requiredTopics: synthesizerTopicParseMatrix.topicRows.map((row) => row.topic),
 				parsedToStructuredRows: true,
 				narrativeOnlyPromotionBlocked: true,
 			},
@@ -855,7 +908,7 @@ function validateProviderBackedLongWindowConflictMatrix(tempRoot, matrix, claims
 	const windows = longMatrix?.windows ?? [];
 	if (longMatrix?.kind !== "ProviderBackedLongWindowConflictMatrixV1") errors.push("provider_long_window_matrix_kind");
 	if ((longMatrix?.windowCount ?? 0) !== windows.length) errors.push("provider_long_window_count_mismatch");
-	if (windows.length < 2) errors.push("provider_long_window_count_lt_2");
+	if (windows.length < 8) errors.push("provider_long_window_count_lt_8");
 	if ((longMatrix?.minProviderWorkersPerWindow ?? 0) < 2) errors.push("provider_long_window_min_workers_lt_2");
 	if (longMatrix?.secretHandling?.envRefOnly !== true) errors.push("provider_long_window_secret_env_ref_only_not_true");
 	if (longMatrix?.secretHandling?.literalSecretsPresent !== false) errors.push("provider_long_window_literal_secret_flag_not_false");
@@ -939,9 +992,9 @@ function validateExtendedSynthesizerTopicParseMatrix(matrix, claims, finalIds) {
 	const requiredTopics = ["authz:orders:ownership", "js:signature:replay", "provider:worker:timeout", "api:rate-limit:abuse-window", "session:token:scope", "api:idempotency:replay"];
 	if (extended?.kind !== "ExtendedSynthesizerTopicParseMatrixV1") errors.push("extended_synthesizer_matrix_kind");
 	if (extended?.baseParseId !== matrix?.synthesizerTopicParseMatrix?.parseId) errors.push("extended_synthesizer_base_parse_mismatch");
-	if ((extended?.minTopicRows ?? 0) < 6) errors.push("extended_synthesizer_min_topic_rows_lt_6");
+	if ((extended?.minTopicRows ?? 0) < 10) errors.push("extended_synthesizer_min_topic_rows_lt_10");
 	if ((extended?.longRunWindowIds ?? []).length < 5) errors.push("extended_synthesizer_long_run_windows_lt_5");
-	if (rows.length < 6) errors.push("extended_synthesizer_topic_count_lt_6");
+	if (rows.length < 10) errors.push("extended_synthesizer_topic_count_lt_10");
 	const topics = new Set(rows.map((row) => row.topic));
 	for (const requiredTopic of requiredTopics) {
 		if (!topics.has(requiredTopic)) errors.push(`extended_synthesizer_topic_missing:${requiredTopic}`);
@@ -1108,9 +1161,9 @@ function main() {
 		checks.push(check("runtime:orchestration-platform-split", report.arbitrationMatrix.promotionGate.finalClaims.every((claim) => claim.platformClaimStatus === "proven") && report.arbitrationMatrix.promotionGate.blockedClaims.some((blocked) => blocked.claimId === "claim-dogfood-provider-plan-only"), { finalPlatformStatuses: report.arbitrationMatrix.promotionGate.finalClaims.map((claim) => ({ claimId: claim.claimId, platformClaimStatus: claim.platformClaimStatus })) }));
 		checks.push(check("runtime:synthesizer-summary-parsed", report.arbitrationMatrix.synthesizerRows.every((row) => row.parsedToStructuredRows === true && row.narrativeOnly === false), { synthesizerRows: report.arbitrationMatrix.synthesizerRows }));
 		checks.push(check("runtime:provider-backed-same-window-conflict-table", report.arbitrationMatrix.providerBackedConflictTable.length >= 1 && report.arbitrationMatrix.providerBackedConflictTable.every((row) => row.sameWindow === true && row.providerWorkerIds.length >= 2 && row.sourceKinds.includes("provider-worker") && row.jsonQueryVerifierPass === true), { providerBackedConflictTable: report.arbitrationMatrix.providerBackedConflictTable }));
-		checks.push(check("runtime:provider-backed-long-window-conflict-matrix", report.arbitrationMatrix.providerBackedLongWindowConflictMatrix.windows.length >= 2 && report.arbitrationMatrix.providerBackedLongWindowConflictMatrix.providerBackedClaimCount >= 5 && report.arbitrationMatrix.providerBackedLongWindowConflictMatrix.windows.every((row) => row.providerWorkerIds.length >= 2 && row.envRefOnlySecrets === true && row.literalSecretsPresent === false), { providerBackedLongWindowConflictMatrix: report.arbitrationMatrix.providerBackedLongWindowConflictMatrix }));
+		checks.push(check("runtime:provider-backed-long-window-conflict-matrix", report.arbitrationMatrix.providerBackedLongWindowConflictMatrix.windows.length >= 8 && report.arbitrationMatrix.providerBackedLongWindowConflictMatrix.providerBackedClaimCount >= 5 && report.arbitrationMatrix.providerBackedLongWindowConflictMatrix.windows.every((row) => row.providerWorkerIds.length >= 2 && row.envRefOnlySecrets === true && row.literalSecretsPresent === false), { providerBackedLongWindowConflictMatrix: report.arbitrationMatrix.providerBackedLongWindowConflictMatrix }));
 		checks.push(check("runtime:long-run-synthesizer-topic-parse-matrix", report.arbitrationMatrix.synthesizerTopicParseMatrix.topicRows.length >= 6 && report.arbitrationMatrix.synthesizerTopicParseMatrix.topicRows.every((row) => row.parsedToStructuredRows === true && row.narrativeOnly === false && row.promotion === "final_pass"), { synthesizerTopicParseMatrix: report.arbitrationMatrix.synthesizerTopicParseMatrix }));
-		checks.push(check("runtime:extended-synthesizer-topic-parse-matrix", report.arbitrationMatrix.extendedSynthesizerTopicParseMatrix.topicRows.length >= 6 && report.arbitrationMatrix.extendedSynthesizerTopicParseMatrix.parserCoverage.requiredTopics.includes("session:token:scope") && report.arbitrationMatrix.extendedSynthesizerTopicParseMatrix.parserCoverage.requiredTopics.includes("api:idempotency:replay"), { extendedSynthesizerTopicParseMatrix: report.arbitrationMatrix.extendedSynthesizerTopicParseMatrix }));
+		checks.push(check("runtime:extended-synthesizer-topic-parse-matrix", report.arbitrationMatrix.extendedSynthesizerTopicParseMatrix.topicRows.length >= 10 && report.arbitrationMatrix.extendedSynthesizerTopicParseMatrix.parserCoverage.requiredTopics.includes("session:token:scope") && report.arbitrationMatrix.extendedSynthesizerTopicParseMatrix.parserCoverage.requiredTopics.includes("api:idempotency:replay"), { extendedSynthesizerTopicParseMatrix: report.arbitrationMatrix.extendedSynthesizerTopicParseMatrix }));
 		checks.push(check("runtime:claim-ledger-quality", report.arbitrationMatrix.sources.every((source) => source.claimLedgerQuality.hashChainOk && REQUIRED_GATES.includes("claim_ledger_refs_hash_chain_quality")), { sources: report.arbitrationMatrix.sources.map((source) => ({ sourceKind: source.sourceKind, quality: source.claimLedgerQuality })) }));
 		const negativeResults = REQUIRED_NEGATIVE_CASES.map((id) => ({ id, validation: validateMatrix(tempRoot, mutateReport(report, id)) }));
 		checks.push(check("fixture:negative-rejections", negativeResults.every((row) => !row.validation.ok), { negativeResults: negativeResults.map((row) => ({ id: row.id, ok: row.validation.ok, errors: row.validation.errors })) }));

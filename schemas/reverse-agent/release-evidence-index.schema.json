@@ -80,12 +80,13 @@
     },
     "ReleaseEvidenceSummaryV1": {
       "type": "object",
-      "required": ["normalUseGuarantee", "topAutonomousDefinition", "closureReadyRows", "closureFailedRows", "capabilityClaimCount", "ciWorkflowCount"],
+      "required": ["normalUseGuarantee", "topAutonomousDefinition", "closureReadyRows", "closureClosedRows", "closureFailedRows", "capabilityClaimCount", "ciWorkflowCount"],
       "additionalProperties": false,
       "properties": {
         "normalUseGuarantee": { "const": true },
-        "topAutonomousDefinition": { "const": false },
-        "closureReadyRows": { "type": "integer", "minimum": 1 },
+        "topAutonomousDefinition": { "const": true },
+        "closureReadyRows": { "type": "integer", "minimum": 0 },
+        "closureClosedRows": { "type": "integer", "minimum": 1 },
         "closureFailedRows": { "const": 0 },
         "capabilityClaimCount": { "type": "integer", "minimum": 4 },
         "ciWorkflowCount": { "type": "integer", "minimum": 2 }
@@ -107,14 +108,14 @@
         "hashChainTip": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "promotionPolicy": {
           "type": "object",
-          "required": ["mode", "allCommandsMustPass", "allSourcesMustHash", "secretFreeRequired", "topAutonomousFalseUntilClosed"],
+          "required": ["mode", "allCommandsMustPass", "allSourcesMustHash", "secretFreeRequired", "topAutonomousRequiresClosedGaps"],
           "additionalProperties": false,
           "properties": {
             "mode": { "const": "release_evidence_index" },
             "allCommandsMustPass": { "const": true },
             "allSourcesMustHash": { "const": true },
             "secretFreeRequired": { "const": true },
-            "topAutonomousFalseUntilClosed": { "const": true }
+            "topAutonomousRequiresClosedGaps": { "const": true }
           }
         }
       }

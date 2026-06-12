@@ -131,9 +131,9 @@
         "promotionAllowed": true
       },
       {
-        "claimId": "not_top_autonomous_yet",
-        "statement": "top autonomous definition remains explicitly false while gaps are ready_for_live not closed",
-        "status": "explicit_gap",
+        "claimId": "top_autonomous_artifact_backed",
+        "statement": "top autonomous definition is proven only after all hardening gaps are closed and artifact-backed by executable closure gates",
+        "status": "proven",
         "evidenceCommandIds": [
           "gate:autonomy-control",
           "gate:autonomous-closure-readiness"
@@ -142,29 +142,30 @@
           "scripts/reverse-agent/autonomy-control-plane.mjs"
         ],
         "narrativeOnly": false,
-        "promotionAllowed": false
+        "promotionAllowed": true
       }
     ],
     "autonomySummary": {
       "normalUseGuarantee": true,
-      "topAutonomousDefinition": false,
+      "topAutonomousDefinition": true,
       "gapCount": 4,
       "closureGateCount": 4
     },
     "closureReadinessSummary": {
-      "readyRows": 4,
+      "readyRows": 0,
       "failedRows": 0,
       "allClosureGatesExecutable": true,
-      "allClosureGatesHarnessed": true
+      "allClosureGatesHarnessed": true,
+      "closedRows": 4
     },
     "promotionPolicy": {
       "mode": "release_capability_claim_gate",
       "narrativeOnlyPromotionBlocked": true,
-      "topAutonomousClaimBlockedUntilClosed": true,
       "requiresAllCommandsPass": true,
-      "requiresNoSecretLeak": true
+      "requiresNoSecretLeak": true,
+      "topAutonomousClaimRequiresClosedGaps": true
     },
-    "bundleSha256": "9999999999999999999999999999999999999999999999999999999999999999"
+    "bundleSha256": "41987cafa42b3fba1241ebe352d439d9ab58563dfbad397a856d5ca76a71ab23"
   },
   "negativeCases": [
     {

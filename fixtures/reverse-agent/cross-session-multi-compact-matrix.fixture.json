@@ -15,7 +15,9 @@
     "compact_resume_ledger_cycle_terminal_alignment",
     "compact_resume_ledger_v2_hash_chain_quality",
     "five_cycle_cross_session_compaction_chain",
-    "remote_provider_continuation_sample_matrix"
+    "remote_provider_continuation_sample_matrix",
+    "remote_provider_continuation_eight_sample_matrix",
+    "eight_cycle_cross_session_compaction_chain"
   ],
   "positiveRequirements": [
     "at least two compact cycles in one matrix run",
@@ -29,7 +31,9 @@
     "provider continuation matrix covers OpenAI-compatible and Anthropic-compatible provider styles after exact resume",
     "at least five compact cycles in one matrix run with fifteen CompactResumeLedgerV2 transitions",
     "remote provider continuation sample matrix covers at least five exact-resume samples, three provider names, both OpenAI-compatible and Anthropic-compatible styles, env-ref-only secrets and request-log hashes",
-    "each compact cycle has CompactResumeLedgerV2 queued→running→terminal alignment, terminal state matches resumeClosure and operatorProofClosure, contextPath/contextSha256 match, and no orphan transitions"
+    "each compact cycle has CompactResumeLedgerV2 queued→running→terminal alignment, terminal state matches resumeClosure and operatorProofClosure, contextPath/contextSha256 match, and no orphan transitions",
+    "八轮 cross-session compact/resume chain with 24 CompactResumeLedgerV2 transitions",
+    "remote provider continuation matrix includes at least eight env-ref-only samples after exact resume"
   ],
   "negativeCases": [
     {
@@ -134,7 +138,9 @@
     "requiresLongerCompactionChain": true,
     "requiresRemoteProviderContinuationSampleMatrix": true,
     "requiresFiveCycleCompactionChain": true,
-    "requiresLedgerCycleTerminalAlignment": true
+    "requiresLedgerCycleTerminalAlignment": true,
+    "requiresEightCycleCompactionChain": true,
+    "requiresRemoteProviderEightSampleMatrix": true
   },
   "invariants": [
     "cross_session_multi_compact_matrix_gate",
@@ -149,6 +155,8 @@
     "compact_resume_ledger_cycle_terminal_alignment",
     "compact_resume_ledger_v2_hash_chain_quality",
     "five_cycle_cross_session_compaction_chain",
-    "remote_provider_continuation_sample_matrix"
+    "remote_provider_continuation_sample_matrix",
+    "remote_provider_continuation_eight_sample_matrix",
+    "eight_cycle_cross_session_compaction_chain"
   ]
 }

@@ -23,7 +23,9 @@ const REQUIRED_GATES = [
   "live_provider_backed_multi_provider_shared_ledger_matrix",
   "provider_worker_retry_window_manifest_binding_chain",
   "provider_backed_long_window_shared_merge_ledger",
+  "provider_backed_eight_window_shared_merge_ledger",
   "provider_worker_extended_retry_manifest_chain",
+  "provider_worker_ten_attempt_retry_manifest_chain",
   "provider_env_refs_only",
   "runtime_artifacts_have_hashes",
   "narrative_only_provider_worker_not_promoted",
@@ -113,7 +115,7 @@ function validateProviderBackedLongWindowSharedMergeLedger({ report, providerNam
   if (ledger?.envRefOnlySecrets !== true || ledger?.literalSecretsPresent !== false) errors.push("providerBackedLongWindowSharedMergeLedger.secret_policy_invalid");
   if (!hasHash(ledger?.ledgerTipSha256) || ledger?.hashChain !== true) errors.push("providerBackedLongWindowSharedMergeLedger.hash_chain_invalid");
   if ((ledger?.windowCount ?? 0) !== windows.length) errors.push("providerBackedLongWindowSharedMergeLedger.window_count_mismatch");
-  if (windows.length < 4) errors.push("providerBackedLongWindowSharedMergeLedger.minWindows");
+  if (windows.length < 8) errors.push("providerBackedLongWindowSharedMergeLedger.minWindows_lt_8");
   const coveredWorkers = new Set();
   const coveredClaims = new Set();
   const coveredFailureRepairs = new Set();
@@ -245,7 +247,7 @@ function validateProviderWorkerExtendedRetryManifestChain({ report, rowByWorkerI
   }
   if (providerNames.size < 2) errors.push("providerWorkerExtendedRetryManifestChain.provider_count_lt_2");
   if (signatures.size < 2) errors.push("providerWorkerExtendedRetryManifestChain.signature_count_lt_2");
-  if (totalAttempts < 7) errors.push("providerWorkerExtendedRetryManifestChain.total_attempts_lt_7");
+  if (totalAttempts < 10) errors.push("providerWorkerExtendedRetryManifestChain.total_attempts_lt_10");
   if ((chain?.totalAttemptRows ?? 0) !== totalAttempts) errors.push("providerWorkerExtendedRetryManifestChain.total_attempts_mismatch");
   const text = JSON.stringify(chain || {});
   if (/ghp_[A-Za-z0-9]|github_pat_[A-Za-z0-9]|sk-[A-Za-z0-9]{8,}/i.test(text)) errors.push("providerWorkerExtendedRetryManifestChain.literal_secret_leak");
@@ -447,8 +449,8 @@ function main() {
     checks.push(check("fixture:negative-parity", fixtureEval.negativeResults.every((row) => row.rejected), { negativeResults: fixtureEval.negativeResults }));
     checks.push(check("fixture:live-provider-backed-shared-ledger-matrix", (fixture.parityReport.liveProviderBackedSharedLedgerMatrix || []).length >= 2 && fixture.parityReport.liveProviderBackedSharedLedgerMatrix.every((row) => row.providerBacked === true && row.providerNames.length >= 2 && row.hashChain === true), { liveProviderBackedSharedLedgerMatrix: fixture.parityReport.liveProviderBackedSharedLedgerMatrix }));
     checks.push(check("fixture:retry-window-manifest-binding-chain", fixture.parityReport.retryWindowManifestBindingChain?.retryWindows?.length >= 2 && fixture.parityReport.retryWindowManifestBindingChain.retryWindows.every((row) => row.manifestBound === true && row.monotonicAttempts === true && row.attemptRows.length >= 2), { retryWindowManifestBindingChain: fixture.parityReport.retryWindowManifestBindingChain }));
-    checks.push(check("fixture:provider-backed-long-window-shared-merge-ledger", fixture.parityReport.providerBackedLongWindowSharedMergeLedger?.windows?.length >= 4 && fixture.parityReport.providerBackedLongWindowSharedMergeLedger.windows.every((row) => row.providerBacked === true && row.providerNames.length >= 2 && row.hashChain === true && row.envRefOnlySecrets === true), { providerBackedLongWindowSharedMergeLedger: fixture.parityReport.providerBackedLongWindowSharedMergeLedger }));
-    checks.push(check("fixture:provider-worker-extended-retry-manifest-chain", fixture.parityReport.providerWorkerExtendedRetryManifestChain?.retryWindows?.length >= 2 && fixture.parityReport.providerWorkerExtendedRetryManifestChain.totalAttemptRows >= 7 && fixture.parityReport.providerWorkerExtendedRetryManifestChain.retryWindows.every((row) => row.manifestBound === true && row.monotonicAttempts === true && row.sameSignatureAcrossAttempts === true && row.attemptRows.length >= 3), { providerWorkerExtendedRetryManifestChain: fixture.parityReport.providerWorkerExtendedRetryManifestChain }));
+    checks.push(check("fixture:provider-backed-long-window-shared-merge-ledger", fixture.parityReport.providerBackedLongWindowSharedMergeLedger?.windows?.length >= 8 && fixture.parityReport.providerBackedLongWindowSharedMergeLedger.windows.every((row) => row.providerBacked === true && row.providerNames.length >= 2 && row.hashChain === true && row.envRefOnlySecrets === true), { providerBackedLongWindowSharedMergeLedger: fixture.parityReport.providerBackedLongWindowSharedMergeLedger }));
+    checks.push(check("fixture:provider-worker-extended-retry-manifest-chain", fixture.parityReport.providerWorkerExtendedRetryManifestChain?.retryWindows?.length >= 2 && fixture.parityReport.providerWorkerExtendedRetryManifestChain.totalAttemptRows >= 10 && fixture.parityReport.providerWorkerExtendedRetryManifestChain.retryWindows.every((row) => row.manifestBound === true && row.monotonicAttempts === true && row.sameSignatureAcrossAttempts === true && row.attemptRows.length >= 3), { providerWorkerExtendedRetryManifestChain: fixture.parityReport.providerWorkerExtendedRetryManifestChain }));
     checks.push(check("fixture:all-child-sessions-match-parity-rows", validateAllChildSessionsMatchParityRows({
       pkg: fixture,
       rowByWorkerId: new Map(fixture.parityReport.parityRows.map((row) => [row.workerId, row])),

@@ -28,7 +28,7 @@
       "items": {
         "$ref": "#/$defs/SwarmProviderManifestParityRequiredGateV1"
       },
-      "minItems": 15,
+      "minItems": 17,
       "uniqueItems": true
     },
     "parityReport": {
@@ -39,14 +39,14 @@
       "items": {
         "$ref": "#/$defs/SwarmProviderManifestParityNegativeCaseV1"
       },
-      "minItems": 15
+      "minItems": 17
     },
     "invariants": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "minItems": 15,
+      "minItems": 17,
       "uniqueItems": true
     },
     "childSession": {
@@ -81,7 +81,7 @@
           "items": {
             "$ref": "#/$defs/SwarmProviderManifestParityRequiredGateV1"
           },
-          "minItems": 15,
+          "minItems": 17,
           "uniqueItems": true
         },
         "parityReport": {
@@ -92,14 +92,14 @@
           "items": {
             "$ref": "#/$defs/SwarmProviderManifestParityNegativeCaseV1"
           },
-          "minItems": 15
+          "minItems": 17
         },
         "invariants": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "minItems": 15,
+          "minItems": 17,
           "uniqueItems": true
         },
         "childSession": {
@@ -121,7 +121,9 @@
         "live_provider_backed_multi_provider_shared_ledger_matrix",
         "provider_worker_retry_window_manifest_binding_chain",
         "provider_backed_long_window_shared_merge_ledger",
-        "provider_worker_extended_retry_manifest_chain"
+        "provider_backed_eight_window_shared_merge_ledger",
+        "provider_worker_extended_retry_manifest_chain",
+        "provider_worker_ten_attempt_retry_manifest_chain"
       ]
     },
     "SwarmProviderManifestParityRequiredGateV1": {
@@ -140,7 +142,9 @@
         "live_provider_backed_multi_provider_shared_ledger_matrix",
         "provider_worker_retry_window_manifest_binding_chain",
         "provider_backed_long_window_shared_merge_ledger",
-        "provider_worker_extended_retry_manifest_chain"
+        "provider_backed_eight_window_shared_merge_ledger",
+        "provider_worker_extended_retry_manifest_chain",
+        "provider_worker_ten_attempt_retry_manifest_chain"
       ]
     },
     "HashTripletV1": {
@@ -967,7 +971,7 @@
         },
         "windowCount": {
           "type": "integer",
-          "minimum": 4
+          "minimum": 8
         },
         "providerNames": {
           "type": "array",
@@ -1188,7 +1192,7 @@
         },
         "totalAttemptRows": {
           "type": "integer",
-          "minimum": 7
+          "minimum": 10
         },
         "minAttemptsPerFailureWorker": {
           "type": "integer",
@@ -1397,6 +1401,8 @@
     "live_provider_backed_multi_provider_shared_ledger_matrix",
     "provider_worker_retry_window_manifest_binding_chain",
     "provider_backed_long_window_shared_merge_ledger",
-    "provider_worker_extended_retry_manifest_chain"
+    "provider_backed_eight_window_shared_merge_ledger",
+    "provider_worker_extended_retry_manifest_chain",
+    "provider_worker_ten_attempt_retry_manifest_chain"
   ]
 }
