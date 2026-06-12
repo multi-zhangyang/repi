@@ -57,7 +57,7 @@ const ADAPTER_SPECS = [
     bridgeId: "mobile-frida",
     domainId: "mobile",
     tool: "frida",
-    fallbackTool: "adb",
+    fallbackTool: "node",
     runnerKind: "frida-hook",
     commandMarker: "adapter-frida-mobile-hook-runner",
     parserMarkers: ["parser-frida-hook-output", "parser-mobile-method-anchor", "parser-cert-pinning-anchor"],

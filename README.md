@@ -348,7 +348,7 @@ npm run gate:runtime-adapter-execution
 | --- | --- |
 | `r2-native-xref-adapter` | r2 native xref / symbol / strings，fallback 到 file/strings/objdump。 |
 | `ghidra-headless-summary-adapter` | Ghidra headless summary，fallback 到 readelf/objdump。 |
-| `frida-mobile-hook-adapter` | Frida hook output，fallback 到 adb package inspection。 |
+| `frida-mobile-hook-adapter` | Frida hook output；无设备/无 Frida 时 fallback 到 portable mobile manifest runner，仍产出 hook/method/pinning 解析锚点。 |
 | `web-cdp-network-adapter` | CDP/XHR/WS/replay-diff signals，fallback 到 curl capture。 |
 | `pwntools-local-verifier-adapter` | pwn crash/primitive/multirun verifier scaffold，fallback 到 checksec/gdb。 |
 | `tshark-pcap-flow-adapter` | PCAP conversation / HTTP object / credential timeline，fallback 到 strings。 |
