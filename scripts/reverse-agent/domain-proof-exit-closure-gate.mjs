@@ -25,7 +25,7 @@ function markerCheck(id, path, markers) {
 }
 
 const PROOF_EXITS = {
-  pwn: ["offset", "leak source", "controllable bytes", "local verifier"],
+  pwn: ["offset", "leak source", "controllable bytes", "local verifier", "heap/tcache bin state", "format-string leak/write", "SROP syscall surface", "ret2dlresolve payload scaffold", "one_gadget constraint review", "seccomp/sandbox syscall filter"],
   "web-api": ["principal matrix", "object ownership", "state rollback", "signed replay divergence"],
   crypto: ["parameter derivation", "solver script", "known-answer test", "transform replay"],
 };
@@ -97,17 +97,17 @@ function mutate(report, id) {
 function main() {
   const checks = [];
   const pwnBlocked = fakeClosure("pwn", "minimal pwn evidence", []);
-  const pwnPartial = fakeClosure("pwn", "offset and local verifier evidence", ["offset", "local verifier"]);
+  const pwnPartial = fakeClosure("pwn", "offset local verifier heap/tcache format-string SROP ret2dlresolve one_gadget seccomp evidence", ["offset", "local verifier", "heap/tcache bin state", "format-string leak/write", "SROP syscall surface", "ret2dlresolve payload scaffold", "one_gadget constraint review", "seccomp/sandbox syscall filter"]);
   const cryptoPassed = fakeClosure("crypto", "parameter derivation solver script known-answer test transform replay", PROOF_EXITS.crypto);
-  checks.push(check("runtime:domain-proof-exit-blocks-empty-pwn", validateClosure(pwnBlocked).ok && pwnBlocked.status === "blocked" && pwnBlocked.missingProofExits.length === 4, { validation: validateClosure(pwnBlocked), missing: pwnBlocked.missingProofExits }));
-  checks.push(check("runtime:domain-proof-exit-partial-pwn", validateClosure(pwnPartial).ok && pwnPartial.status === "partial" && pwnPartial.matchedProofExits.length === 2, { validation: validateClosure(pwnPartial), matched: pwnPartial.matchedProofExits, missing: pwnPartial.missingProofExits }));
+  checks.push(check("runtime:domain-proof-exit-blocks-empty-pwn", validateClosure(pwnBlocked).ok && pwnBlocked.status === "blocked" && pwnBlocked.missingProofExits.length === PROOF_EXITS.pwn.length, { validation: validateClosure(pwnBlocked), missing: pwnBlocked.missingProofExits }));
+  checks.push(check("runtime:domain-proof-exit-partial-pwn", validateClosure(pwnPartial).ok && pwnPartial.status === "partial" && pwnPartial.matchedProofExits.length === 8 && pwnPartial.missingProofExits.includes("leak source") && pwnPartial.missingProofExits.includes("controllable bytes"), { validation: validateClosure(pwnPartial), matched: pwnPartial.matchedProofExits, missing: pwnPartial.missingProofExits }));
   checks.push(check("runtime:domain-proof-exit-passed-crypto", validateClosure(cryptoPassed).ok && cryptoPassed.status === "passed" && cryptoPassed.missingProofExits.length === 0, { validation: validateClosure(cryptoPassed) }));
   const negatives = ["wrong-kind", "missing-row-next", "passed-with-missing", "missing-hash", "blocked-no-blocker", "matched-no-evidence"].map((id) => {
     const result = validateClosure(mutate(pwnBlocked, id));
     return { id, rejected: !result.ok, errors: result.errors };
   });
   checks.push(check("negative:domain-proof-exit-closure", negatives.every((row) => row.rejected), { negatives }));
-  checks.push(markerCheck("code:domain-proof-exit-runtime", "packages/coding-agent/src/core/recon-profile.ts", ["DomainProofExitClosureV1", "buildDomainProofExitClosure", "formatDomainProofExitClosure", "domain_proof_exit_closure", "domain_proof_exit_missing", "re_domain_proof_exit", "re-domain-proof-exit", "ToolchainDomainCapabilityV1"]));
+  checks.push(markerCheck("code:domain-proof-exit-runtime", "packages/coding-agent/src/core/recon-profile.ts", ["DomainProofExitClosureV1", "buildDomainProofExitClosure", "formatDomainProofExitClosure", "domain_proof_exit_closure", "domain_proof_exit_missing", "re_domain_proof_exit", "re-domain-proof-exit", "ToolchainDomainCapabilityV1", "heap/tcache bin state", "format-string leak/write", "SROP syscall surface", "ret2dlresolve payload scaffold", "one_gadget constraint review", "seccomp/sandbox syscall filter"]));
   checks.push(markerCheck("profile:domain-proof-exit-runtime-mirror", "repi-profile/extensions/reverse-pentest-core.ts", ["DomainProofExitClosureV1", "domain_proof_exit_closure", "domain_proof_exit_missing", "ToolchainDomainCapabilityV1"]));
   checks.push(markerCheck("harness:domain-proof-exit", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:domain-proof-exit-closure", "child:gate:domain-proof-exit-closure", "DomainProofExitClosureV1"]));
   checks.push(markerCheck("autonomy:domain-proof-exit", "scripts/reverse-agent/autonomy-control-plane.mjs", ["domain_proof_exit_closure_gate", "DomainProofExitClosureV1", "domain_proof_exit_missing"]));

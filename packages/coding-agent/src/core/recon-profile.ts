@@ -104,6 +104,7 @@ const TOOL_INDEX_CANDIDATES = [
 	"python",
 	"ruby",
 	"one_gadget",
+	"seccomp-tools",
 	"ROPgadget",
 	"ropper",
 	"patchelf",
@@ -373,6 +374,11 @@ const TOOL_BOOTSTRAP_CATALOG = [
 		verify: "command -v one_gadget && one_gadget --version",
 	},
 	{
+		tool: "seccomp-tools",
+		install: "gem install --user-install seccomp-tools",
+		verify: "command -v seccomp-tools && seccomp-tools --version",
+	},
+	{
 		tool: "patchelf",
 		install: "sudo apt-get update && sudo apt-get install -y patchelf",
 		verify: "command -v patchelf && patchelf --version",
@@ -499,7 +505,7 @@ const TOOL_BOOTSTRAP_CATALOG = [
 const SECURITY_PATTERNS = [
 	/apk|android|ios|ipa|frida|objection|jadx|apktool|smali/i,
 	/ida|radare2|\br2\b|ghidra|binary|二进制|逆向|反编译|反汇编|elf|pe\b|dll|so\b|wasm|vmprotect|upx/i,
-	/\bctf\b|\bpwn\b|\brop\b|ret2libc|\bheap\b|tcache|fastbin|one_gadget|pwntools|漏洞利用|\bexploit\b/i,
+	/\bctf\b|\bpwn\b|\brop\b|ret2libc|\bheap\b|tcache|fastbin|format[-_ ]?string|fmtstr|srop|sigreturn|ret2dlresolve|dlresolve|one_gadget|seccomp|seccomp[-_ ]?bpf|syscall filter|pwntools|漏洞利用|\bexploit\b/i,
 	/js\s*逆向|签名|加密参数|风控|webpack|sourcemap|hook|xhr|fetch|websocket/i,
 	/web\s*渗透|api\s*安全|graphql|jwt|oauth|ssrf|idor|bola|xss|sqli|ssti|csrf|rce|waf|burp|漏洞扫描|目录扫描|nuclei|ffuf|gobuster|sqlmap|dalfox/i,
 	/firmware|固件|iot|binwalk|squashfs|uboot|uart|jtag|mips|arm/i,
@@ -5390,8 +5396,8 @@ marker: model_provider_configuration_runtime
 5. 不猜路径、不猜工具、不猜结论：路径来自工具索引或文件系统，结论绑定证据。
 6. 卡住就换证据面：静态↔动态、源码↔运行时、浏览器↔本地复现、IDA↔r2/Ghidra/objdump。
 7. 用 mission blackboard 维护任务状态，先用 re_kernel build 固化 execution_kernel/kernel_artifact/directive_stack/execution_invariants/operator_command_floor/specialist_capability_matrix/proof_exit_criteria/refusal_to_execution_rules/tool_call_policy/artifact_contract/stall_recovery 并闭合 execution_kernel_ready，再用 re_decision_core tick 生成 decision_core/decision_artifact/objective_stack/gate_pressure/operator_next_command/executed_steps 并闭合 decision_core_ready，再用 re_map 生成被动目标/工作区 map artifact；HTTP(S) 目标随后用 re_live_browser plan/run 捕获 browser/XHR/WS/storage runtime artifact 并闭合 live_browser_ready；具体目标可用 re_autopilot 受控串联 map→case_memory_lane_plan→bootstrap_plan→lane run→run-auto→audit→journal，并按 route/map/command-pack/tool-index 输出 recommended_tools、缺失项、execution_strategy、fallback_commands 和 next_bootstrap_command；再用 re_lane plan/run 把 lane 转成可执行命令包；re_lane plan 必须调用 specialist_runtime_planner，按 native deep reverse/pwn、browser/XHR/WS、JS signing rebuild、pwn primitive、exploit reliability/autopwn、PCAP/DFIR、Firmware/IoT rootfs、agent prompt/tool boundary、malware config/IOC、Cloud/K8s identity、Identity/AD graph、Frida/GDB trace 自动补专项命令包；re_lane run 同样先执行 execution_strategy，按 tool-index 生成 fallback_commands 或跳过无法替代命令，并把运行脚本/stdout/stderr/exit、tool repair anchors、tool-repair-matrix-scaffold、evidence_quality critic、低分 self_heal_commands 与自动解析出的地址/比较函数/路由/签名锚点沉淀为 evidence run artifact；run-auto 每步读取 adaptive_decision，重复低效或 stop 分支触发时输出 multi_lane_plan，自动新增/重排 tool-bootstrap、evidence-repair、map-refresh 修复 lane；tool-bootstrap 在 run-auto 内输出 tool_bootstrap_closure，刷新 tool-index，报告 missing_after_refresh/resumed_lane，工具闭合后恢复原 blocked lane；用 re_graph build 把 mission lanes/gates/map/run/evidence/tool-index 组织成 attack_graph、critical_path、gaps 与 operator_next_actions；HTTP(S) 目标先用 re_live_browser plan/run 输出 live_browser/browser_artifact/request_response_log/auth_matrix/idor_bola_probe_templates/websocket_probes，再用 re_campaign plan/show 把单 lane 升级为跨域 campaign_graph，写入 campaign_artifact，输出 phases、pivot_candidates、evidence_gaps、tool_gaps、operator_next_actions、next_bootstrap_command，并闭合 campaign_plan_ready；随后用 re_operation plan/next/run 把 campaign phases 转成 operation_queue 和 phase_runner，写入 operation_artifact，内部派发 re_map、re_lane plan/run/run-auto、re_graph、re_campaign、re_bootstrap plan、re_complete，并闭合 operation_queue_ready；再用 re_delegate plan/show/merge 把 operation_queue 拆成 specialist worker_packets，写入 delegation_artifact，输出 delegation_plan、merge_queue、specialist_coverage、evidence_contract、handoff、next_delegate_command，并闭合 delegation_packets_ready；再用 re_swarm plan/show/run/merge 把 worker_packets 转成 swarm_artifact、worker_runtime_packets，并在 run 模式产生 worker_executions、worker_results、blocked、merge_digest，再组织 parallel_groups、merge_protocol、collision_matrix、commander_next_actions，并闭合 swarm_plan_ready；最后用 re_supervisor review/show/repair 对 worker_packets 做 supervisor_review，写入 supervisor_artifact，输出 supervisor_verdict、worker_reviews、conflict_matrix、repair_queue、priority_queue、gates、next_supervisor_command，并闭合 supervisor_review_ready；再用 re_reflect plan/show/write 把 supervisor_review、repair_queue 和高价值 worker 经验沉淀为 reflection_cycle、reflection_artifact、field journal、evolution log 与 memory/playbooks，并闭合 reflection_memory_ready；随后用 re_context pack/show/resume 把 mission、artifact_index、evidence tail、memory tail、repair_queue、reflection reuse rules 与 next_operator_commands 固化为 context_pack / context_artifact，并闭合 context_pack_ready，保证压缩/重启后能恢复作战；再用 re_operator plan/dispatch/verify/escalate 把 next_operator_commands 转为 operator_queue / operator_artifact，按证据优先级 bounded dispatch、验证 gates/artifacts、生成 escalation_queue，并闭合 operator_queue_ready；随后用 re_verifier check/show/matrix 对 operator 执行结果生成 verifier_matrix / verifier_artifact，绑定 evidence、assertions、counter_evidence、contradictions、gaps 和 next_verifier_command，并闭合 verifier_matrix_ready；再用 re_compiler draft/show/final 把 proved/weak/contradicted/missing 编译成 compiler_report / compiler_artifact、key_evidence_block、repro_commands、contradictions、gaps、next_operator_queue 和 final_report_scaffold，并闭合 compiler_ready；随后用 re_replayer plan/run 把 repro_commands 转成 replay_matrix / replay_artifact，记录 exit、stdout_sha256、stderr_sha256、blocked/failed rows 并闭合 replay_ready；再用 re_autofix plan/show/apply 把 replay failed/blocked rows 与 compiler gaps 转成 autofix_plan / autofix_artifact、patch_queue、command_substitutions、bootstrap_queue、evidence_recapture_queue 和 next_operator_queue，并闭合 autofix_ready；随后用 re_proof_loop plan/show/run 串联 verifier→compiler→replayer→autofix→knowledge→completion，输出 proof_loop_artifact、specialist_queue、swarm_bridge、bridge_artifacts，并在 partial/needs_repair 时把 gap 下发到 re_delegate plan → re_swarm run → re_supervisor repair 专项桥接，再用 re_knowledge_graph build/show/query 汇总全链路 artifacts 为 knowledge_graph / knowledge_artifact、case_signatures、similarity_index、worker_routing_hints、command_strategy_hints，并闭合 knowledge_graph_ready；用 re_memory playbooks/prune-playbooks 维护 playbook index 和 archive，避免低质历史噪声污染计划；完成前所有 gates 必须有解释。
-8. 专项 runtime planner 覆盖：browser/XHR/WS 请求/cookie/storage/WebSocket/auth-diff、CDP artifact、replay evaluator、route graph、auth matrix、IDOR/BOLA probe、authz state machine、sequence replay、object ownership、state rollback；JS signing rebuild 的 fetch/XMLHttpRequest/WebSocket/crypto.subtle hook、observed normalizer、first-divergence、replay harness 与 Node 重建；pwn primitive 的 mitigation/libc/cyclic/GDB/offset analyzer/ROP-libc/local verifier/pwntools；exploit reliability/autopwn 的 PoC inventory、replay matrix、environment pin、flake triage、artifact bundle；PCAP/DFIR 的 capinfos/tshark/stream ranking/secret timeline/object extraction/carving/transform-chain；Firmware/IoT rootfs 的 image fingerprint、rootfs extract、config/secret、service surface、emulation；Agent/LLM security 的 prompt surface、tool boundary、memory poisoning、injection replay、delegation trace；malware config/IOC 的 static triage、YARA/capa/FLOSS、IOC/config、behavior trace；Cloud/K8s identity 的 env/profile/serviceaccount/runtime config/metadata/privilege edge；Identity/AD graph 的 LDAP/Kerberos/SMB principal、credential usability、BloodHound/Certipy edge；Frida/GDB trace 的 Android runtime/Java crypto/native compare/GDB breakpoint。
-9. 专项 evidence analyzer 覆盖：re_lane run 解析 Native deep symbol/import/string anchors、Native decompiler/control-flow anchors、Native compare trace anchors、Native patch hypothesis anchors、Native symbolic/CFG anchors、Native fuzz/crash anchors、browser/XHR/WS runtime anchors、websocket endpoint anchors、cookie/storage anchors、browser CDP artifact anchors、browser runtime artifact paths、browser replay evaluator anchors、browser route graph anchors、browser auth matrix anchors、browser IDOR/BOLA probe anchors、browser authz state machine anchors、browser authz sequence replay anchors、browser authz object ownership anchors、browser authz state rollback anchors、JS signing rebuild anchors、crypto.subtle operation anchors、JS signing normalized artifact anchors、JS first-divergence anchors、JS signing replay harness anchors、pwn primitive crash/control anchors、pwn crash register anchors、pwn cyclic offset anchors、pwn gadget anchors、pwn ROP/libc chain anchors、pwn local verifier anchors、Exploit PoC inventory anchors、PoC replay matrix anchors、Exploit environment pin anchors、Exploit flake triage anchors、Exploit artifact bundle anchors、PCAP/DFIR traffic flow anchors、PCAP stream ranking anchors、PCAP secret timeline anchors、PCAP extracted artifact anchors、PCAP transform chain anchors、Firmware image metadata anchors、Firmware extraction/rootfs anchors、Firmware config/secret anchors、Firmware service/web surface anchors、Firmware emulation/runtime anchors、Agent prompt surface anchors、Agent tool boundary anchors、Agent memory poisoning anchors、Agent injection replay anchors、Agent delegation trace anchors、Malware static triage anchors、Malware rule/capability anchors、Malware IOC/config anchors、Malware behavior trace anchors、Cloud identity anchors、Cloud/K8s runtime config anchors、Cloud metadata probe anchors、Cloud privilege edge anchors、Identity/AD principal anchors、Identity/AD credential usability anchors、Identity/AD graph edge anchors、Frida/GDB trace anchors、runtime hook return/value anchors captured，并生成 targeted follow-ups 与专项 self-heal commands。
+8. 专项 runtime planner 覆盖：browser/XHR/WS 请求/cookie/storage/WebSocket/auth-diff、CDP artifact、replay evaluator、route graph、auth matrix、IDOR/BOLA probe、authz state machine、sequence replay、object ownership、state rollback；JS signing rebuild 的 fetch/XMLHttpRequest/WebSocket/crypto.subtle hook、observed normalizer、first-divergence、replay harness 与 Node 重建；pwn primitive 的 mitigation/libc/cyclic/GDB/offset analyzer/ROP-libc/local verifier/pwntools/heap-tcache/format-string/SROP-ret2dlresolve/one_gadget/seccomp-sandbox；exploit reliability/autopwn 的 PoC inventory、replay matrix、environment pin、flake triage、artifact bundle；PCAP/DFIR 的 capinfos/tshark/stream ranking/secret timeline/object extraction/carving/transform-chain；Firmware/IoT rootfs 的 image fingerprint、rootfs extract、config/secret、service surface、emulation；Agent/LLM security 的 prompt surface、tool boundary、memory poisoning、injection replay、delegation trace；malware config/IOC 的 static triage、YARA/capa/FLOSS、IOC/config、behavior trace；Cloud/K8s identity 的 env/profile/serviceaccount/runtime config/metadata/privilege edge；Identity/AD graph 的 LDAP/Kerberos/SMB principal、credential usability、BloodHound/Certipy edge；Frida/GDB trace 的 Android runtime/Java crypto/native compare/GDB breakpoint。
+9. 专项 evidence analyzer 覆盖：re_lane run 解析 Native deep symbol/import/string anchors、Native decompiler/control-flow anchors、Native compare trace anchors、Native patch hypothesis anchors、Native symbolic/CFG anchors、Native fuzz/crash anchors、browser/XHR/WS runtime anchors、websocket endpoint anchors、cookie/storage anchors、browser CDP artifact anchors、browser runtime artifact paths、browser replay evaluator anchors、browser route graph anchors、browser auth matrix anchors、browser IDOR/BOLA probe anchors、browser authz state machine anchors、browser authz sequence replay anchors、browser authz object ownership anchors、browser authz state rollback anchors、JS signing rebuild anchors、crypto.subtle operation anchors、JS signing normalized artifact anchors、JS first-divergence anchors、JS signing replay harness anchors、pwn primitive crash/control anchors、pwn crash register anchors、pwn cyclic offset anchors、pwn gadget anchors、pwn ROP/libc chain anchors、pwn local verifier anchors、pwn heap/tcache anchors、pwn format-string anchors、pwn SROP/ret2dlresolve anchors、pwn one_gadget constraint anchors、pwn seccomp/sandbox anchors、Exploit PoC inventory anchors、PoC replay matrix anchors、Exploit environment pin anchors、Exploit flake triage anchors、Exploit artifact bundle anchors、PCAP/DFIR traffic flow anchors、PCAP stream ranking anchors、PCAP secret timeline anchors、PCAP extracted artifact anchors、PCAP transform chain anchors、Firmware image metadata anchors、Firmware extraction/rootfs anchors、Firmware config/secret anchors、Firmware service/web surface anchors、Firmware emulation/runtime anchors、Agent prompt surface anchors、Agent tool boundary anchors、Agent memory poisoning anchors、Agent injection replay anchors、Agent delegation trace anchors、Malware static triage anchors、Malware rule/capability anchors、Malware IOC/config anchors、Malware behavior trace anchors、Cloud identity anchors、Cloud/K8s runtime config anchors、Cloud metadata probe anchors、Cloud privilege edge anchors、Identity/AD principal anchors、Identity/AD credential usability anchors、Identity/AD graph edge anchors、Frida/GDB trace anchors、runtime hook return/value anchors captured，并生成 targeted follow-ups 与专项 self-heal commands。
 10. Exploit Lab 稳定化层：exploit/PoC/autopwn 任务在最终声称稳定前调用 re_exploit_lab plan/run/bundle，输出 exploit_lab_artifact、lab_matrix、poc_inventory、environment_pins、replay_matrix、flake_triage、bundle_manifest、stability_anchors、next_lab_command，并闭合 exploit_lab_ready。
 11. Decision Core 决策内核层：上下文恢复、路线不清或关键 artifact 更新后调用 re_decision_core plan/tick/run，输出 decision_core、decision_artifact、objective_stack、gate_pressure、evidence_priority、tool_posture、artifact_posture、decision_rules、operator_queue、operator_next_command、next_decision_command，并闭合 decision_core_ready。
 12. Exploit Chain 漏洞/利用链编排层：最终 exploitability/impact 声明或 broad expansion 前调用 re_exploit_chain plan/compose，输出 exploit_chain、chain_artifact、chain_nodes、proof_path、exploit_path、evidence_gaps、replay_commands、operator_queue、next_chain_command，并闭合 exploit_chain_ready。
@@ -5442,7 +5448,7 @@ REPI 的内置总控 skill。它把 reverse-skill 的路由矩阵、field journa
 2. 经验检索：re_memory show/search，必要时读取 reverse-skill field-journal。
 3. 工具索引：re_tool_index show/refresh，不猜工具路径。
 4. 任务黑板：re_mission show/gate，明确 lanes、gates、下一步；先 re_kernel build <target> 生成 execution_kernel/kernel_artifact 并闭合 execution_kernel_ready，再 re_decision_core tick <target> 生成 decision_artifact/operator_next_command 并闭合 decision_core_ready，再 re_map <target> 生成 passive map artifact；目标具体时可 re_autopilot run 直接完成 map→case_memory_lane_plan→bootstrap_plan→lane run→run-auto→audit→journal，缺工具先按 execution_strategy/fallback_commands 降级，必要时再按 next_bootstrap_command 走 re_bootstrap plan/install 或切换等价工具；手动执行前 re_lane plan <lane> <target> 生成最小命令包并合入 playbook 记忆，同时由 specialist_runtime_planner 注入 native deep reverse/pwn、browser/XHR/WS、JS signing rebuild、pwn primitive、exploit reliability/autopwn、PCAP/DFIR、Firmware/IoT rootfs、agent prompt/tool boundary、malware config/IOC、Cloud/K8s identity、Identity/AD graph、Frida/GDB trace 专项 runtime 命令；目标具体时 re_lane run，按 execution_strategy/fallback_commands 降级后写入 run artifact/evidence ledger，遇到命令/依赖/目标错误时解析 tool repair anchors 并挂载 tool-repair-matrix-scaffold，在证据质量低时挂载 self_heal_commands；follow-up 已挂载后可 re_lane run-auto，并用 adaptive_decision/evidence_quality/self_heal_commands 动态续跑或停止；重复低效或 stop 分支触发时读取 multi_lane_plan，优先执行/推进 tool-bootstrap、evidence-repair 或 map-refresh 修复 lane；tool-bootstrap 闭合时读取 tool_bootstrap_closure 的 missing_after_refresh/resumed_lane 并恢复 blocked lane；用 re_graph build 维护 attack_graph/critical_path/gaps/operator_next_actions；用 re_exploit_chain plan/compose 维护 exploit_chain、proof_path、exploit_path、evidence_gaps、replay_commands、operator_queue 和 exploit_chain_ready；用 re_campaign plan/show 维护 campaign_graph、campaign_artifact、phases、pivot_candidates、evidence_gaps、tool_gaps、next_bootstrap_command 和 campaign_plan_ready；用 re_operation plan/next/run 维护 operation_queue、operation_artifact、phase_runner、executed_steps、next_operation_command 和 operation_queue_ready；用 re_delegate plan/show/merge 维护 delegation_plan、delegation_artifact、worker_packets、merge_queue、specialist_coverage、evidence_contract、next_delegate_command 和 delegation_packets_ready；用 re_swarm plan/show/run/merge 维护 swarm_plan、swarm_artifact、worker_runtime_packets、parallel_groups、merge_protocol、collision_matrix、commander_next_actions 和 swarm_plan_ready；用 re_supervisor review/show/repair 维护 supervisor_review、supervisor_artifact、supervisor_verdict、worker_reviews、conflict_matrix、repair_queue、priority_queue、next_supervisor_command 和 supervisor_review_ready；用 re_reflect plan/show/write 维护 reflection_cycle、reflection_artifact、lessons、failure_patterns、reuse_rules、repair_playbook、next_reflect_command 和 reflection_memory_ready，把 supervisor 批判转成可复用 playbook、field journal 与 evolution log；用 re_context pack/show/resume 维护 context_pack、context_artifact、resume_brief、artifact_index、next_operator_commands、next_context_command 和 context_pack_ready，把当前作战态压成可恢复执行包；用 re_operator plan/dispatch/verify/escalate 维护 operator_queue、operator_artifact、dispatcher_policy、verification_matrix、escalation_queue、next_operator_command 和 operator_queue_ready，把恢复包里的命令变成可调度执行队列；用 re_verifier check/show/matrix 维护 verifier_matrix、verifier_artifact、assertions、counter_evidence、contradictions、gaps、next_verifier_command 和 verifier_matrix_ready，把执行结果转成可反证的证据断言；用 re_compiler draft/show/final 维护 compiler_report、compiler_artifact、key_evidence_block、repro_commands、next_operator_queue、next_compiler_command 和 compiler_ready，把反证矩阵编译成可提交报告；用 re_replayer plan/show/run 维护 replay_matrix、replay_artifact、stdout_sha256、stderr_sha256、next_replay_actions 和 replay_ready，把报告复现命令转成可执行矩阵；用 re_autofix plan/show/apply 维护 autofix_plan、autofix_artifact、patch_queue、command_substitutions、bootstrap_queue、evidence_recapture_queue、next_operator_queue 和 autofix_ready，把失败复现转成修复队列；用 re_proof_loop plan/show/run 维护 proof_loop、proof_loop_artifact、specialist_queue、swarm_bridge、bridge_artifacts、next_proof_actions 和 proof_loop_ready，把 verifier/compiler/replayer/autofix gap 接入 specialist delegate/swarm/supervisor 桥接；用 re_knowledge_graph build/show/query 维护 knowledge_graph、knowledge_artifact、case_signatures、similarity_index、worker_routing_hints、command_strategy_hints 和 knowledge_graph_ready，把全链路 evidence 转成可迁移知识；用 re_memory playbooks/prune-playbooks 维护 memory/playbooks/index.md 与 archive。
-5. 专项 runtime planner：Web/API 走 browser/XHR/WS 捕获、auth-diff、CDP artifact、replay evaluator、route graph、auth matrix、IDOR/BOLA probe、authz state machine、sequence replay、object ownership 和 state rollback；JS 签名走 hook/normalizer/first-divergence/replay harness/Node rebuild；Native deep reverse/pwn 走 symbol/import/string map、decompiler project、compare trace、patch hypothesis、symbolic/fuzz scaffold；Pwn 走 primitive crash/GDB/cyclic offset/ROP-libc/local verifier/pwntools；PCAP/DFIR 走 capinfos/tshark/stream ranking/secret timeline/extract/carve/transform-chain；Firmware/IoT rootfs 走 image fingerprint、rootfs extract、config/secret、service surface、emulation；Agent/LLM security 走 prompt surface、tool boundary、memory poisoning、injection replay、delegation trace；Malware config/IOC 走 static triage、YARA/capa/FLOSS、IOC/config、behavior trace；Cloud/K8s identity 走 identity/config/metadata/privilege edge；Identity/AD graph 走 principal/credential/graph edge；Mobile/Native runtime 走 native-deep 与 Frida/GDB trace。
+5. 专项 runtime planner：Web/API 走 browser/XHR/WS 捕获、auth-diff、CDP artifact、replay evaluator、route graph、auth matrix、IDOR/BOLA probe、authz state machine、sequence replay、object ownership 和 state rollback；JS 签名走 hook/normalizer/first-divergence/replay harness/Node rebuild；Native deep reverse/pwn 走 symbol/import/string map、decompiler project、compare trace、patch hypothesis、symbolic/fuzz scaffold；Pwn 走 primitive crash/GDB/cyclic offset/ROP-libc/local verifier/pwntools/heap-tcache/format-string/SROP-ret2dlresolve/one_gadget/seccomp-sandbox；PCAP/DFIR 走 capinfos/tshark/stream ranking/secret timeline/extract/carve/transform-chain；Firmware/IoT rootfs 走 image fingerprint、rootfs extract、config/secret、service surface、emulation；Agent/LLM security 走 prompt surface、tool boundary、memory poisoning、injection replay、delegation trace；Malware config/IOC 走 static triage、YARA/capa/FLOSS、IOC/config、behavior trace；Cloud/K8s identity 走 identity/config/metadata/privilege edge；Identity/AD graph 走 principal/credential/graph edge；Mobile/Native runtime 走 native-deep 与 Frida/GDB trace。
 6. 专项 evidence analyzer：re_lane run 解析 tool repair anchors、Native deep symbol/import/string anchors、Native decompiler/control-flow anchors、Native compare trace anchors、Native patch hypothesis anchors、Native symbolic/CFG anchors、Native fuzz/crash anchors、browser/XHR/WS runtime anchors、browser CDP artifact anchors、browser runtime artifact paths、browser replay evaluator anchors、browser route graph anchors、browser auth matrix anchors、browser IDOR/BOLA probe anchors、browser authz state machine anchors、browser authz sequence replay anchors、browser authz object ownership anchors、browser authz state rollback anchors、JS signing rebuild anchors、pwn primitive crash/control anchors、pwn crash register anchors、pwn cyclic offset anchors、pwn ROP/libc chain anchors、pwn local verifier anchors、Exploit PoC inventory anchors、PoC replay matrix anchors、Exploit environment pin anchors、Exploit flake triage anchors、Exploit artifact bundle anchors、PCAP/DFIR traffic flow anchors、Firmware image metadata anchors、Firmware extraction/rootfs anchors、Firmware config/secret anchors、Firmware service/web surface anchors、Firmware emulation/runtime anchors、Agent prompt surface anchors、Agent tool boundary anchors、Agent memory poisoning anchors、Agent injection replay anchors、Agent delegation trace anchors、Malware static triage anchors、Malware rule/capability anchors、Malware IOC/config anchors、Malware behavior trace anchors、Cloud identity anchors、Cloud/K8s runtime config anchors、Cloud metadata probe anchors、Cloud privilege edge anchors、Identity/AD principal anchors、Identity/AD credential usability anchors、Identity/AD graph edge anchors、Frida/GDB trace anchors 和 runtime hook return/value anchors captured，并挂载 targeted follow-ups/self-heal。
 7. 证据 ledger：re_evidence append，按 runtime/traffic/served_asset/process_config/artifact/source/note 分层。
 8. 工具自举：re_bootstrap plan/install 只补当前 lane 所需工具，然后刷新索引。
@@ -5465,7 +5471,7 @@ REPI 的内置总控 skill。它把 reverse-skill 的路由矩阵、field journa
 
 - browser/XHR/WS：请求/响应、cookie、localStorage/sessionStorage、WebSocket frame、CDP-backed browser runtime artifact、request/response/WS/storage 序列化、replay evaluator、route graph、auth matrix、IDOR/BOLA probe、authz state machine、sequence replay、object ownership、state rollback、OpenAPI/Swagger/GraphQL、双身份 auth-diff。
 - JS signing rebuild：fetch、XMLHttpRequest、WebSocket、crypto.subtle hook，捕获入参/返回值，生成 observed normalizer、Node 重建脚手架、first-divergence patch 点和 signed replay harness。
-- pwn primitive：file/checksec/ldd/patchelf 指纹、cyclic crash、GDB registers/backtrace/stack、pwn cyclic offset analyzer、pwn ROP/libc scaffold、pwn local verifier、ROPgadget/ropper fallback、pwntools skeleton。
+- pwn primitive：file/checksec/ldd/patchelf 指纹、cyclic crash、GDB registers/backtrace/stack、pwn cyclic offset analyzer、pwn ROP/libc scaffold、pwn local verifier、ROPgadget/ropper fallback、pwntools skeleton、heap/tcache bin probe、format-string probe/fmtstr_payload、SROP/ret2dlresolve scaffold、one_gadget constraint review、seccomp/sandbox triage。
 - decision core：re_decision_core plan/tick/run 汇总 mission gates、active lane、tool/artifact posture 和 evidence priority，输出 operator_next_command。
 - exploit chain composer：re_exploit_chain plan/compose 汇总 map/runtime/authz/primitive/lab/verifier artifacts，输出 proof_path、exploit_path、evidence_gaps、replay_commands 和 operator_queue。
 - exploit reliability/autopwn：exploit-poc-normalizer-scaffold、exploit-replay-matrix-scaffold、exploit-environment-pin-scaffold、exploit-flake-triage-scaffold、exploit-artifact-bundle-scaffold，组织 PoC inventory、replay matrix、environment pin、flake triage、artifact bundle/report；PoC 稳定性声明前调用 re_exploit_lab plan/run/bundle，输出 exploit_lab_artifact、success_rate、stdout/stderr hash 和 bundle manifest。
@@ -5484,7 +5490,7 @@ REPI 的内置总控 skill。它把 reverse-skill 的路由矩阵、field journa
 - tool repair：tool repair anchors、tool repair missing dependency anchors → tool-repair-matrix-scaffold、tool-repair-rerun、heal-tool-repair-matrix，用等价工具/依赖/bootstrap hints 修复失败命令。
 - browser/XHR/WS：Native deep symbol/import/string anchors、Native decompiler/control-flow anchors、Native compare trace anchors、Native patch hypothesis anchors、Native symbolic/CFG anchors、Native fuzz/crash anchors、browser/XHR/WS runtime anchors、websocket endpoint anchors、cookie/storage anchors、browser CDP artifact anchors、browser runtime artifact paths、browser replay evaluator anchors、browser route graph anchors、browser auth matrix anchors、browser IDOR/BOLA probe anchors、browser authz state machine anchors、browser authz sequence replay anchors、browser authz object ownership anchors、browser authz state rollback anchors → auth-diff/capture/CDP artifact/replay evaluator/route graph/auth matrix/IDOR-BOLA/authz-state/WebSocket replay rerun。
 - JS signing rebuild：JS signing rebuild anchors、crypto.subtle operation anchors、JS signing normalized artifact anchors、JS first-divergence anchors、JS signing replay harness anchors → observed rebuild、normalizer、first-divergence、signed replay 和 hook rerun。
-- pwn primitive：pwn primitive crash/control anchors、pwn crash register anchors、pwn cyclic offset anchors、pwn gadget anchors、pwn ROP/libc chain anchors、pwn local verifier anchors → cyclic offset helper/analyzer、focused GDB rerun、ROP/libc scaffold rerun、local verifier rerun、pwntools exploit template。
+- pwn primitive：pwn primitive crash/control anchors、pwn crash register anchors、pwn cyclic offset anchors、pwn gadget anchors、pwn ROP/libc chain anchors、pwn local verifier anchors、pwn heap/tcache anchors、pwn format-string anchors、pwn SROP/ret2dlresolve anchors、pwn one_gadget constraint anchors、pwn seccomp/sandbox anchors → cyclic offset helper/analyzer、focused GDB rerun、ROP/libc scaffold rerun、local verifier rerun、pwntools exploit template、heap/tcache rerun、format-string rerun、SROP/ret2dlresolve rerun、one_gadget constraint rerun、seccomp/sandbox rerun。
 - exploit reliability/autopwn：Exploit PoC inventory anchors、PoC replay matrix anchors、Exploit environment pin anchors、Exploit flake triage anchors、Exploit artifact bundle anchors → exploit-poc-normalizer-rerun、exploit-replay-matrix-rerun、exploit-env-pin-rerun、exploit-flake-triage-rerun、exploit-artifact-bundle-rerun、exploit-reliability-report-scaffold。
 - PCAP/DFIR：PCAP/DFIR traffic flow anchors、PCAP stream ranking anchors、PCAP secret timeline anchors、PCAP extracted artifact anchors、PCAP transform chain anchors → follow-streams、stream ranking rerun、secret timeline rerun、object/carve review、transform-chain rerun。
 - Firmware/IoT rootfs：Firmware image metadata anchors、Firmware extraction/rootfs anchors、Firmware config/secret anchors、Firmware service/web surface anchors、Firmware emulation/runtime anchors → firmware-extract-rerun、firmware-config-secret-rerun、firmware-service-surface-rerun、firmware-emulation-scaffold-rerun、firmware-report-scaffold。
@@ -5633,7 +5639,7 @@ const RECON_PROMPTS = [
 		description: "REPI Pwn exploit 工程工作流",
 		argumentHint: "<binary> [remote]",
 		content:
-			"REPI pwn task: $ARGUMENTS\n\nchecksec/file/ldd，分类 primitive，证明控制/leak，跑 cyclic offset analyzer，生成 ROP/libc scaffold 与 pwn local verifier，写 pwntools exploit template，远程稳定化。",
+			"REPI pwn task: $ARGUMENTS\n\nchecksec/file/ldd，分类 primitive，证明控制/leak，跑 cyclic offset analyzer，生成 ROP/libc scaffold 与 pwn local verifier，补 heap/tcache、format-string、SROP/ret2dlresolve、one_gadget constraint、seccomp/sandbox 专项证据，写 pwntools exploit template，远程稳定化。",
 	},
 	{
 		name: "exploit",
@@ -7328,7 +7334,7 @@ export function routeReconTask(text: string): RoutePlan {
 			["route map", "auth/session boundary", "minimal replay", "state mutation", "PoC verification"],
 		);
 	}
-	if (/\bpwn\b|\brop\b|ret2libc|\bheap\b|tcache|fastbin|one_gadget|pwntools|栈|堆/.test(lower)) {
+	if (/\bpwn\b|\brop\b|ret2libc|\bheap\b|tcache|fastbin|format[-_ ]?string|fmtstr|srop|sigreturn|ret2dlresolve|dlresolve|one_gadget|seccomp|seccomp[-_ ]?bpf|syscall filter|pwntools|栈|堆/.test(lower)) {
 		return plan(
 			"Pwn / exploit",
 			"turn primitive into reliable exploit",
@@ -8993,7 +8999,7 @@ function appendSpecialistRuntimeCommands(
 			context,
 		) && /observe|map|rebuild|verify|runtime|proof|state|poc|prove/.test(laneName);
 	const wantsPwnPrimitive =
-		/\bpwn\b|\bexploit\b|\brop\b|ret2libc|\bheap\b|tcache|fastbin|one_gadget|pwntools|\bprimitive\b|cyclic|栈|堆/.test(
+		/\bpwn\b|\bexploit\b|\brop\b|ret2libc|\bheap\b|tcache|fastbin|format[-_ ]?string|fmtstr|srop|sigreturn|ret2dlresolve|one_gadget|seccomp|seccomp[-_ ]?bpf|syscall filter|pwntools|\bprimitive\b|cyclic|栈|堆/.test(
 			context,
 		) && /mitigation|primitive|exploit|runtime|proof|verify|poc|triage|map/.test(laneName);
 	const wantsExploitReliability =
@@ -9389,6 +9395,108 @@ function appendSpecialistRuntimeCommands(
 			"pwn-primitive-pwntools-skeleton",
 			`cat > /tmp/pi-recon-exploit.py <<'PY'\nfrom pwn import *\nBIN = ${targetPython}\ncontext.binary = exe = ELF(BIN, checksec=False)\ncontext.log_level = 'debug'\nHOST, PORT = args.HOST or '127.0.0.1', int(args.PORT or 31337)\ndef start():\n    return remote(HOST, PORT) if args.REMOTE else process([BIN])\nio = start()\n# TODO: paste leak/offset from pwn-primitive-cyclic-crash and gadget sweep\npayload = b'A' *  cyclic_find(0x6161616c, n=4)\nio.sendline(payload)\nio.interactive()\nPY\nsed -n '1,220p' /tmp/pi-recon-exploit.py`,
 			"pwntools exploit scaffold bound to current binary",
+		);
+		add(
+			"pwn-advanced-heap-tcache-scaffold",
+			`cat > /tmp/pi-recon-pwn-heap-tcache.gdb <<'GDB'
+set pagination off
+set confirm off
+break malloc
+break free
+run
+info registers
+backtrace
+info proc mappings
+python
+print('[pwn-heap] gdb_python_ready=true')
+end
+heap bins
+tcachebins
+fastbins
+unsortedbin
+quit
+GDB
+if command -v gdb >/dev/null 2>&1; then (gdb -q ${targetArg} -x /tmp/pi-recon-pwn-heap-tcache.gdb || true) 2>&1 | tee /tmp/pi-recon-pwn-heap-tcache.log | sed -n '1,220p'; else echo '[pwn-heap] gdb=missing target='${targetArg}; fi
+printf '%s\\n' '[pwn-tcache] artifact=/tmp/pi-recon-pwn-heap-tcache.log anchors=malloc,free,tcachebins,fastbins,unsortedbin'`,
+			"heap/tcache bin state probe for allocator primitive classification",
+		);
+		add(
+			"pwn-advanced-format-string-scaffold",
+			`cat > /tmp/pi-recon-pwn-fmtstr.py <<'PY'
+#!/usr/bin/env python3
+import os, subprocess, sys
+BIN = sys.argv[1] if len(sys.argv) > 1 else ${targetPython}
+probes = [b'%p.' * 12, b'%lx.' * 12, b'AAAA%7$pBBBB', b'%s', b'%n']
+timeout = float(os.getenv('REPI_FMT_TIMEOUT', '2'))
+print('[pwn-fmtstr] target=' + BIN + ' probes=' + str(len(probes)))
+for idx, payload in enumerate(probes, 1):
+    try:
+        proc = subprocess.run([BIN], input=payload + b'\\n', stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+        out = (proc.stdout + b'\\n' + proc.stderr)[:240].decode('utf-8', 'replace').replace('\\n', '\\\\n')
+        print('[pwn-fmtstr-probe] idx=' + str(idx) + ' exit=' + str(proc.returncode) + ' payload=' + payload.decode('latin1', 'replace') + ' output=' + out)
+    except Exception as exc:
+        print('[pwn-fmtstr-probe] idx=' + str(idx) + ' error=' + type(exc).__name__ + ':' + str(exc))
+try:
+    from pwn import FmtStr, fmtstr_payload
+    print('[pwn-fmtstr] pwntools_fmtstr=true helper=FmtStr,fmtstr_payload')
+    print('[pwn-fmtstr] scaffold=fmtstr_payload(offset, {write_addr: value}, write_size=short)')
+except Exception as exc:
+    print('[pwn-fmtstr] pwntools_fmtstr=false reason=' + type(exc).__name__ + ':' + str(exc))
+PY
+chmod +x /tmp/pi-recon-pwn-fmtstr.py
+python3 /tmp/pi-recon-pwn-fmtstr.py ${targetArg}`,
+			"format-string leak/write probe and pwntools fmtstr_payload scaffold",
+		);
+		add(
+			"pwn-advanced-srop-ret2dlresolve-scaffold",
+			`cat > /tmp/pi-recon-pwn-srop-dlresolve.py <<'PY'
+#!/usr/bin/env python3
+import shutil, subprocess, sys
+BIN = sys.argv[1] if len(sys.argv) > 1 else ${targetPython}
+def run(argv):
+    try:
+        return subprocess.run(argv, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10).stdout
+    except Exception as exc:
+        return type(exc).__name__ + ': ' + str(exc)
+print('[pwn-srop] target=' + BIN)
+if shutil.which('ROPgadget'):
+    out = run(['ROPgadget', '--binary', BIN, '--only', 'syscall|int|pop|ret'])
+else:
+    out = run(['objdump', '-d', BIN])
+for line in out.splitlines():
+    low = line.lower()
+    if 'syscall' in low or 'int 0x80' in low or 'sigreturn' in low:
+        print('[pwn-srop-gadget] ' + line[:220])
+try:
+    from pwn import ELF, ROP, SigreturnFrame, Ret2dlresolvePayload, context
+    context.log_level = 'error'
+    elf = ELF(BIN, checksec=False)
+    print('[pwn-srop] pwntools=true arch=' + str(elf.arch) + ' bits=' + str(elf.bits))
+    print('[pwn-srop] scaffold=SigreturnFrame(kernel=arch); set rax/rdi/rsi/rdx/rip for mprotect/read/execve')
+    print('[pwn-ret2dlresolve] scaffold=Ret2dlresolvePayload(elf, symbol="system", args=["/bin/sh"])')
+except Exception as exc:
+    print('[pwn-srop] pwntools=false reason=' + type(exc).__name__ + ':' + str(exc))
+PY
+chmod +x /tmp/pi-recon-pwn-srop-dlresolve.py
+python3 /tmp/pi-recon-pwn-srop-dlresolve.py ${targetArg}`,
+			"SROP syscall surface and ret2dlresolve payload scaffold with pwntools/objdump fallback",
+		);
+		add(
+			"pwn-advanced-one-gadget-constraints",
+			`LIBC=$(ldd ${targetArg} 2>/dev/null | awk '/libc\.so/{print $(NF-1); exit}')
+printf '[pwn-one-gadget] libc=%s\\n' "$LIBC"
+if [ -n "$LIBC" ] && [ -e "$LIBC" ]; then sha256sum "$LIBC" | sed 's/^/[pwn-one-gadget] sha256 /'; fi
+if [ -n "$LIBC" ] && command -v one_gadget >/dev/null 2>&1; then one_gadget --raw -l 1 "$LIBC" 2>/dev/null | tr ' ' '\\n' | sed 's/^/[pwn-one-gadget] candidate=/' | head -80; one_gadget "$LIBC" 2>/dev/null | sed -n '1,120p' | sed 's/^/[pwn-one-gadget-constraint] /'; else echo '[pwn-one-gadget] tool=missing constraints=check registers,stack,null-byte,envp,argv manually'; fi`,
+			"one_gadget candidate and constraint review tied to resolved libc fingerprint",
+		);
+		add(
+			"pwn-advanced-seccomp-sandbox-scaffold",
+			`echo '[pwn-seccomp] target='${targetArg}
+checksec --file=${targetArg} 2>/dev/null | sed 's/^/[pwn-seccomp-checksec] /' || true
+strings -a ${targetArg} 2>/dev/null | grep -Ei 'seccomp|prctl|pledge|sandbox|filter|BPF|SECCOMP' | head -80 | sed 's/^/[pwn-seccomp-string] /' || true
+if command -v seccomp-tools >/dev/null 2>&1; then seccomp-tools dump ${targetArg} 2>/dev/null | sed -n '1,160p' | sed 's/^/[pwn-seccomp-dump] /' || true; else echo '[pwn-seccomp] seccomp-tools=missing fallback=strace'; fi
+if command -v strace >/dev/null 2>&1; then timeout 5 strace -f -e trace=prctl,seccomp,execve,openat,read,write ${targetArg} </dev/null 2>&1 | sed -n '1,160p' | sed 's/^/[pwn-sandbox-strace] /' || true; fi`,
+			"seccomp/sandbox syscall filter triage with seccomp-tools and strace fallback",
 		);
 	}
 
@@ -11036,6 +11144,56 @@ function analyzePwnPrimitiveEvidence(
 			`pwn local verifier anchors: ${verifierLines.map((line) => truncateMiddle(line, 180)).join(" | ")}`,
 		);
 	}
+	const heapTcacheLines = interestingLines(
+		combined,
+		/\[pwn-(?:heap|tcache)\]|tcachebins|fastbins|unsortedbin|smallbins|largebins|malloc_chunk|__malloc_hook|__free_hook|main_arena/i,
+		24,
+	);
+	if (heapTcacheLines.length > 0) {
+		findings.push(
+			`pwn heap/tcache anchors: ${heapTcacheLines.map((line) => truncateMiddle(line, 180)).join(" | ")}`,
+		);
+	}
+	const formatStringLines = interestingLines(
+		combined,
+		/\[pwn-fmtstr(?:-probe)?\]|FmtStr|fmtstr_payload|format[-_ ]string|%[0-9$.*]*[pxsn]|write_addr/i,
+		24,
+	);
+	if (formatStringLines.length > 0) {
+		findings.push(
+			`pwn format-string anchors: ${formatStringLines.map((line) => truncateMiddle(line, 180)).join(" | ")}`,
+		);
+	}
+	const sropDlresolveLines = interestingLines(
+		combined,
+		/\[pwn-(?:srop|ret2dlresolve|srop-gadget)\]|SigreturnFrame|Ret2dlresolvePayload|rt_sigreturn|int 0x80|syscall.*gadget/i,
+		24,
+	);
+	if (sropDlresolveLines.length > 0) {
+		findings.push(
+			`pwn SROP/ret2dlresolve anchors: ${sropDlresolveLines.map((line) => truncateMiddle(line, 180)).join(" | ")}`,
+		);
+	}
+	const oneGadgetLines = interestingLines(
+		combined,
+		/\[pwn-one-gadget(?:-constraint)?\]|one_gadget|constraint=.*(?:rsp|r12|rax|argv|envp)|candidate=0x[0-9a-f]+/i,
+		20,
+	);
+	if (oneGadgetLines.length > 0) {
+		findings.push(
+			`pwn one_gadget constraint anchors: ${oneGadgetLines.map((line) => truncateMiddle(line, 180)).join(" | ")}`,
+		);
+	}
+	const seccompSandboxLines = interestingLines(
+		combined,
+		/\[pwn-(?:seccomp|sandbox|seccomp-dump|sandbox-strace)\]|seccomp-tools|SECCOMP|prctl\(|seccomp\(|BPF|sandbox/i,
+		24,
+	);
+	if (seccompSandboxLines.length > 0) {
+		findings.push(
+			`pwn seccomp/sandbox anchors: ${seccompSandboxLines.map((line) => truncateMiddle(line, 180)).join(" | ")}`,
+		);
+	}
 	if (pack.target && crashLines.length > 0) {
 		followups.push({
 			label: "pwn-cyclic-offset-helper",
@@ -11086,15 +11244,58 @@ function analyzePwnPrimitiveEvidence(
 			evidence: "pwntools exploit template prefilled with parsed offset and ROP/libc patch points",
 		});
 	}
+	if (pack.target && heapTcacheLines.length > 0) {
+		followups.push({
+			label: "pwn-heap-tcache-rerun",
+			command: `[ -f /tmp/pi-recon-pwn-heap-tcache.gdb ] && gdb -q ${targetArg} -x /tmp/pi-recon-pwn-heap-tcache.gdb || printf '%s\\n' 'rerun pwn-advanced-heap-tcache-scaffold to regenerate heap/tcache probe'`,
+			evidence: "rerun heap/tcache allocator state probe for bins, hooks, and main_arena anchors",
+		});
+	}
+	if (pack.target && formatStringLines.length > 0) {
+		followups.push({
+			label: "pwn-format-string-rerun",
+			command: `[ -f /tmp/pi-recon-pwn-fmtstr.py ] && python3 /tmp/pi-recon-pwn-fmtstr.py ${targetArg} || printf '%s\\n' 'rerun pwn-advanced-format-string-scaffold to regenerate fmtstr probes'`,
+			evidence: "rerun format-string offset/leak/write probe and fmtstr_payload scaffold",
+		});
+	}
+	if (pack.target && sropDlresolveLines.length > 0) {
+		followups.push({
+			label: "pwn-srop-ret2dlresolve-rerun",
+			command: `[ -f /tmp/pi-recon-pwn-srop-dlresolve.py ] && python3 /tmp/pi-recon-pwn-srop-dlresolve.py ${targetArg} || (ROPgadget --binary ${targetArg} --only 'syscall|int|pop|ret' 2>/dev/null || objdump -d ${targetArg} | grep -Ei 'syscall|int 0x80|sigreturn' | head -160)`,
+			evidence: "rerun SROP syscall surface and ret2dlresolve scaffold",
+		});
+	}
+	if (pack.target && oneGadgetLines.length > 0) {
+		followups.push({
+			label: "pwn-one-gadget-constraints-rerun",
+			command: `LIBC=$(ldd ${targetArg} 2>/dev/null | awk '/libc\.so/{print $(NF-1); exit}'); [ -n "$LIBC" ] && one_gadget "$LIBC" 2>/dev/null | sed -n '1,160p' || printf '%s\\n' 'install one_gadget or inspect libc constraints from pwn-advanced-one-gadget-constraints output'`,
+			evidence: "rerun one_gadget candidate and register/stack/environment constraint review",
+		});
+	}
+	if (pack.target && seccompSandboxLines.length > 0) {
+		followups.push({
+			label: "pwn-seccomp-sandbox-rerun",
+			command: `seccomp-tools dump ${targetArg} 2>/dev/null | sed -n '1,160p' || timeout 5 strace -f -e trace=prctl,seccomp,execve,openat,read,write ${targetArg} </dev/null 2>&1 | sed -n '1,160p' || true`,
+			evidence: "rerun seccomp/sandbox syscall filter and strace triage",
+		});
+	}
+	const hasAdvancedPwnAnchors =
+		heapTcacheLines.length > 0 ||
+		formatStringLines.length > 0 ||
+		sropDlresolveLines.length > 0 ||
+		oneGadgetLines.length > 0 ||
+		seccompSandboxLines.length > 0;
 	return {
 		findings,
 		followups,
 		nextLane:
-			resolvedOffsets.length > 0 || ropLibcLines.length > 0 || verifierLines.length > 0
-				? "exploit/verify"
-				: crashLines.length > 0
-					? "exploit"
-					: undefined,
+			hasAdvancedPwnAnchors
+				? "advanced-exploit/verify"
+				: resolvedOffsets.length > 0 || ropLibcLines.length > 0 || verifierLines.length > 0
+					? "exploit/verify"
+					: crashLines.length > 0
+						? "exploit"
+						: undefined,
 	};
 }
 
@@ -12041,6 +12242,41 @@ function selfHealCommandsForEvidence(params: {
 				: 'printf "%s\n" "bind a concrete ELF target before local payload verifier heal"',
 			"specialist pwn local verifier fallback",
 		);
+		add(
+			"heal-pwn-heap-tcache",
+			target
+				? `[ -f /tmp/pi-recon-pwn-heap-tcache.gdb ] && gdb -q ${target} -x /tmp/pi-recon-pwn-heap-tcache.gdb || printf '%s\\n' 'rerun pwn-advanced-heap-tcache-scaffold to regenerate heap/tcache probe'`
+				: 'printf "%s\n" "bind a concrete ELF target before heap/tcache heal"',
+			"specialist pwn heap/tcache allocator fallback",
+		);
+		add(
+			"heal-pwn-format-string",
+			target
+				? `[ -f /tmp/pi-recon-pwn-fmtstr.py ] && python3 /tmp/pi-recon-pwn-fmtstr.py ${target} || printf '%s\\n' 'rerun pwn-advanced-format-string-scaffold to regenerate fmtstr probe'`
+				: 'printf "%s\n" "bind a concrete ELF target before format-string heal"',
+			"specialist pwn format-string probe fallback",
+		);
+		add(
+			"heal-pwn-srop-ret2dlresolve",
+			target
+				? `[ -f /tmp/pi-recon-pwn-srop-dlresolve.py ] && python3 /tmp/pi-recon-pwn-srop-dlresolve.py ${target} || (ROPgadget --binary ${target} --only 'syscall|int|pop|ret' 2>/dev/null || objdump -d ${target} | grep -Ei 'syscall|int 0x80|sigreturn' | head -160)`
+				: 'printf "%s\n" "bind a concrete ELF target before SROP/ret2dlresolve heal"',
+			"specialist pwn SROP/ret2dlresolve fallback",
+		);
+		add(
+			"heal-pwn-one-gadget-constraints",
+			target
+				? `LIBC=$(ldd ${target} 2>/dev/null | awk '/libc\.so/{print $(NF-1); exit}'); [ -n "$LIBC" ] && one_gadget "$LIBC" 2>/dev/null | sed -n '1,160p' || printf '%s\\n' 'install one_gadget or inspect constraints manually from libc fingerprint'`
+				: 'printf "%s\n" "bind a concrete ELF target before one_gadget heal"',
+			"specialist pwn one_gadget constraint fallback",
+		);
+		add(
+			"heal-pwn-seccomp-sandbox",
+			target
+				? `seccomp-tools dump ${target} 2>/dev/null | sed -n '1,160p' || timeout 5 strace -f -e trace=prctl,seccomp,execve,openat,read,write ${target} </dev/null 2>&1 | sed -n '1,160p' || true`
+				: 'printf "%s\n" "bind a concrete ELF target before seccomp/sandbox heal"',
+			"specialist pwn seccomp/sandbox fallback",
+		);
 	}
 
 	if (
@@ -12353,7 +12589,7 @@ function evaluateEvidenceQuality(params: {
 	const highSignal = params.findings.some(
 		(finding) =>
 			!/no high-signal|tool\/target\/runtime error|command-pack exited|killed/i.test(finding) &&
-				/(address anchors|comparison|interesting output|metadata|route\/auth|JS runtime|Android|iOS IPA|iOS Mach-O|iOS Frida|iOS network|next command pack|tool repair anchors|browser\/XHR\/WS|websocket endpoint|cookie\/storage|browser CDP artifact|browser runtime artifact|browser replay evaluator|browser route graph|browser auth matrix|browser IDOR\/BOLA|browser authz state machine|browser authz sequence replay|browser authz object ownership|browser authz state rollback|web API static authz|web API schema|web API state mutation|web scanner scope|web scanner crawl|web scanner content discovery|web scanner template|web scanner manual replay|JS signing rebuild|JS signing normalized|JS first-divergence|JS signing replay harness|crypto\.subtle|crypto parameter derivation|crypto transform replay|crypto solver script|crypto known-answer|stego extraction|pwn primitive|pwn crash register|pwn cyclic offset|pwn gadget|pwn ROP\/libc|pwn local verifier|Exploit PoC inventory|PoC replay matrix|Exploit environment pin|Exploit flake triage|Exploit artifact bundle|PCAP\/DFIR|PCAP stream ranking|PCAP secret timeline|PCAP transform chain|PCAP extracted|memory forensics image|memory forensics process|memory forensics credential|memory forensics timeline|Malware static|Malware IOC|Malware behavior|Malware rule|Cloud identity|Cloud\/K8s runtime|Cloud metadata|Cloud privilege|Identity\/AD principal|Identity\/AD credential|Identity\/AD graph|Native deep|Native decompiler|Native compare trace|Native patch hypothesis|Native symbolic|Native fuzz|Frida\/GDB|runtime hook return)/i.test(
+				/(address anchors|comparison|interesting output|metadata|route\/auth|JS runtime|Android|iOS IPA|iOS Mach-O|iOS Frida|iOS network|next command pack|tool repair anchors|browser\/XHR\/WS|websocket endpoint|cookie\/storage|browser CDP artifact|browser runtime artifact|browser replay evaluator|browser route graph|browser auth matrix|browser IDOR\/BOLA|browser authz state machine|browser authz sequence replay|browser authz object ownership|browser authz state rollback|web API static authz|web API schema|web API state mutation|web scanner scope|web scanner crawl|web scanner content discovery|web scanner template|web scanner manual replay|JS signing rebuild|JS signing normalized|JS first-divergence|JS signing replay harness|crypto\.subtle|crypto parameter derivation|crypto transform replay|crypto solver script|crypto known-answer|stego extraction|pwn primitive|pwn crash register|pwn cyclic offset|pwn gadget|pwn ROP\/libc|pwn local verifier|pwn heap\/tcache|pwn format-string|pwn SROP\/ret2dlresolve|pwn one_gadget|pwn seccomp\/sandbox|Exploit PoC inventory|PoC replay matrix|Exploit environment pin|Exploit flake triage|Exploit artifact bundle|PCAP\/DFIR|PCAP stream ranking|PCAP secret timeline|PCAP transform chain|PCAP extracted|memory forensics image|memory forensics process|memory forensics credential|memory forensics timeline|Malware static|Malware IOC|Malware behavior|Malware rule|Cloud identity|Cloud\/K8s runtime|Cloud metadata|Cloud privilege|Identity\/AD principal|Identity\/AD credential|Identity\/AD graph|Native deep|Native decompiler|Native compare trace|Native patch hypothesis|Native symbolic|Native fuzz|Frida\/GDB|runtime hook return)/i.test(
 					finding,
 				),
 	);
@@ -29729,13 +29965,13 @@ const TOOLCHAIN_DOMAIN_CAPABILITY_MATRIX: ToolchainDomainSpec[] = [
 	},
 	{
 		id: "pwn",
-		label: "Pwn primitive: mitigations, crash, leak, ROP/libc verifier",
+		label: "Pwn primitive: mitigations, crash, leak, ROP/libc, heap/tcache, fmtstr, SROP/ret2dlresolve, one_gadget, seccomp verifier",
 		requiredAny: ["file", "readelf", "gdb", "python3"],
-		preferred: ["checksec", "pwn", "ROPgadget", "ropper", "one_gadget", "patchelf"],
-		fallbacks: ["readelf", "objdump", "gdb", "python3"],
-		playbookMarkers: ["mitigations", "cyclic", "leak", "primitive", "ROP/libc"],
+		preferred: ["checksec", "pwn", "ROPgadget", "ropper", "one_gadget", "seccomp-tools", "patchelf"],
+		fallbacks: ["readelf", "objdump", "gdb", "python3", "strace"],
+		playbookMarkers: ["mitigations", "cyclic", "leak", "primitive", "ROP/libc", "heap/tcache", "format-string", "SROP/ret2dlresolve", "one_gadget constraint", "seccomp/sandbox"],
 		commandScaffolds: ["re_native_runtime", "re_exploit_lab", "re_replayer", "re_proof_loop"],
-		proofExit: ["offset", "leak source", "controllable bytes", "local verifier"],
+		proofExit: ["offset", "leak source", "controllable bytes", "local verifier", "heap/tcache bin state", "format-string leak/write", "SROP syscall surface", "ret2dlresolve payload scaffold", "one_gadget constraint review", "seccomp/sandbox syscall filter"],
 	},
 	{
 		id: "mobile",

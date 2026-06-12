@@ -2728,6 +2728,11 @@ describe("REPI kernel profile", () => {
 		expect(pwnPlan).toContain("pwn-primitive-offset-analyzer");
 		expect(pwnPlan).toContain("pwn-primitive-rop-libc-scaffold");
 		expect(pwnPlan).toContain("pwn-primitive-local-verifier");
+		expect(pwnPlan).toContain("pwn-advanced-heap-tcache-scaffold");
+		expect(pwnPlan).toContain("pwn-advanced-format-string-scaffold");
+		expect(pwnPlan).toContain("pwn-advanced-srop-ret2dlresolve-scaffold");
+		expect(pwnPlan).toContain("pwn-advanced-one-gadget-constraints");
+		expect(pwnPlan).toContain("pwn-advanced-seccomp-sandbox-scaffold");
 		expect(pwnPlan).toContain("ROPgadget");
 		expect(pwnPlan).toContain("pwntools");
 
@@ -2928,6 +2933,16 @@ describe("REPI kernel profile", () => {
 							"[pwn-libc-fingerprint] libc=/lib/x86_64-linux-gnu/libc.so.6",
 							"[pwn-rop-chain] pop_rdi=0x40123b puts@plt=0x401030 puts@got=0x404018",
 							"[pwn-local-verifier] target=./vuln offset=120 payload_len=128 exit=-11",
+							"[pwn-heap] gdb_python_ready=true",
+							"[pwn-tcache] artifact=/tmp/pi-recon-pwn-heap-tcache.log anchors=malloc,free,tcachebins,fastbins,unsortedbin",
+							"[pwn-fmtstr] target=./vuln probes=5",
+							"[pwn-fmtstr-probe] idx=1 exit=0 payload=%p.%p output=0x41414141",
+							"[pwn-srop-gadget] 0x401234 : syscall ; ret",
+							'[pwn-ret2dlresolve] scaffold=Ret2dlresolvePayload(elf, symbol="system", args=["/bin/sh"])',
+							"[pwn-one-gadget] candidate=0xe3b01",
+							"[pwn-one-gadget-constraint] constraints: [rsp+0x60] == NULL",
+							"[pwn-seccomp] seccomp-tools=missing fallback=strace",
+							"[pwn-sandbox-strace] prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, 0xdeadbeef) = 0",
 						].join("\n"),
 						stderr: "",
 						killed: false,
@@ -3163,12 +3178,22 @@ describe("REPI kernel profile", () => {
 		expect(pwnRun).toContain("pwn gadget anchors");
 		expect(pwnRun).toContain("pwn ROP/libc chain anchors");
 		expect(pwnRun).toContain("pwn local verifier anchors");
+		expect(pwnRun).toContain("pwn heap/tcache anchors");
+		expect(pwnRun).toContain("pwn format-string anchors");
+		expect(pwnRun).toContain("pwn SROP/ret2dlresolve anchors");
+		expect(pwnRun).toContain("pwn one_gadget constraint anchors");
+		expect(pwnRun).toContain("pwn seccomp/sandbox anchors");
 		expect(pwnRun).toContain("pwn-cyclic-offset-helper");
 		expect(pwnRun).toContain("pwn-focused-gdb-rerun");
 		expect(pwnRun).toContain("pwn-offset-analyzer-rerun");
 		expect(pwnRun).toContain("pwn-rop-libc-scaffold-rerun");
 		expect(pwnRun).toContain("pwn-local-verifier-rerun");
 		expect(pwnRun).toContain("pwn-pwntools-exploit-template");
+		expect(pwnRun).toContain("pwn-heap-tcache-rerun");
+		expect(pwnRun).toContain("pwn-format-string-rerun");
+		expect(pwnRun).toContain("pwn-srop-ret2dlresolve-rerun");
+		expect(pwnRun).toContain("pwn-one-gadget-constraints-rerun");
+		expect(pwnRun).toContain("pwn-seccomp-sandbox-rerun");
 
 		const exploitRun = await runFor("autopwn exploit reliability poc replay matrix", "replay", "./exploit.py");
 		expect(exploitRun).toContain("Exploit PoC inventory anchors");

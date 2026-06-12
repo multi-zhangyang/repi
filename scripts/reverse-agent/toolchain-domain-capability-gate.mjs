@@ -60,13 +60,13 @@ const DOMAIN_TOOLCHAINS = [
 	},
 	{
 		id: "pwn",
-		label: "Pwn primitive: mitigations, crash, leak, ROP/libc verifier",
+		label: "Pwn primitive: mitigations, crash, leak, ROP/libc, heap/tcache, fmtstr, SROP/ret2dlresolve, one_gadget, seccomp verifier",
 		requiredAny: ["file", "readelf", "gdb", "python3"],
-		preferred: ["checksec", "pwntools", "ROPgadget", "ropper", "one_gadget", "patchelf"],
-		fallbacks: ["readelf", "objdump", "gdb", "python3"],
-		playbookMarkers: ["mitigations", "cyclic", "leak", "primitive", "ROP/libc"],
+		preferred: ["checksec", "pwntools", "ROPgadget", "ropper", "one_gadget", "seccomp-tools", "patchelf"],
+		fallbacks: ["readelf", "objdump", "gdb", "python3", "strace"],
+		playbookMarkers: ["mitigations", "cyclic", "leak", "primitive", "ROP/libc", "heap/tcache", "format-string", "SROP/ret2dlresolve", "one_gadget constraint", "seccomp/sandbox"],
 		commandScaffolds: ["re_native_runtime", "re_exploit_lab", "re_replayer", "re_proof_loop"],
-		proofExit: ["offset", "leak source", "controllable bytes", "local verifier"],
+		proofExit: ["offset", "leak source", "controllable bytes", "local verifier", "heap/tcache bin state", "format-string leak/write", "SROP syscall surface", "ret2dlresolve payload scaffold", "one_gadget constraint review", "seccomp/sandbox syscall filter"],
 	},
 	{
 		id: "mobile",
@@ -327,7 +327,7 @@ function main() {
 		return { id, rejected: !result.ok, errors: result.errors };
 	});
 	checks.push(check("negative:toolchain-domain-report", negatives.every((row) => row.rejected), { negatives }));
-	checks.push(markerCheck("code:toolchain-domain-runtime", "packages/coding-agent/src/core/recon-profile.ts", ["ToolchainDomainCapabilityV1", "TOOLCHAIN_DOMAIN_CAPABILITY_MATRIX", "buildToolchainDomainCapability", "formatToolchainDomainCapability", "re_toolchain_domain", "runtime:toolchain-doctor", "domain:web-api", "domain:web-scan", "domain:frontend-js", "domain:rev-native", "domain:pwn", "domain:mobile", "domain:mobile-ios", "domain:pcap-dfir", "domain:memory-forensics", "domain:firmware-iot", "domain:crypto", "domain:cloud-identity", "domain:agent-security", "domain:malware-analysis", "domain:exploit-reliability", "fallback_available"]));
+	checks.push(markerCheck("code:toolchain-domain-runtime", "packages/coding-agent/src/core/recon-profile.ts", ["ToolchainDomainCapabilityV1", "TOOLCHAIN_DOMAIN_CAPABILITY_MATRIX", "buildToolchainDomainCapability", "formatToolchainDomainCapability", "re_toolchain_domain", "runtime:toolchain-doctor", "domain:web-api", "domain:web-scan", "domain:frontend-js", "domain:rev-native", "domain:pwn", "domain:mobile", "domain:mobile-ios", "domain:pcap-dfir", "domain:memory-forensics", "domain:firmware-iot", "domain:crypto", "domain:cloud-identity", "domain:agent-security", "domain:malware-analysis", "domain:exploit-reliability", "fallback_available", "pwn-advanced-heap-tcache-scaffold", "pwn-advanced-format-string-scaffold", "pwn-advanced-srop-ret2dlresolve-scaffold", "pwn-advanced-one-gadget-constraints", "pwn-advanced-seccomp-sandbox-scaffold", "pwn heap/tcache anchors", "pwn format-string anchors", "pwn SROP/ret2dlresolve anchors", "pwn one_gadget constraint anchors", "pwn seccomp/sandbox anchors"]));
 	checks.push(markerCheck("profile:toolchain-domain-runtime-mirror", "repi-profile/extensions/reverse-pentest-core.ts", ["ToolchainDomainCapabilityV1", "TOOLCHAIN_DOMAIN_CAPABILITY_MATRIX", "buildToolchainDomainCapability", "formatToolchainDomainCapability", "re_toolchain_domain", "runtime:toolchain-doctor"]));
 	checks.push(markerCheck("harness:toolchain-domain", "scripts/reverse-agent/repi-top-harness.mjs", ["gate:toolchain-domain-capability", "toolchain:domain-capability-hard-eval", "ToolchainDomainCapabilityV1", "child:gate:toolchain-domain-capability"]));
 	checks.push(markerCheck("autonomy:toolchain-domain", "scripts/reverse-agent/autonomy-control-plane.mjs", ["toolchain_domain_capability_gate", "ToolchainDomainCapabilityV1", "runtime:toolchain-doctor", "domain_toolchain_matrix"]));

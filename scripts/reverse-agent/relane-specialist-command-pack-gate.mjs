@@ -71,12 +71,12 @@ const DOMAIN_REQUIREMENTS = [
   },
   {
     domainId: "pwn",
-    routeMatchers: ["Pwn / exploit", "mitigations", "crash", "ROP/libc"],
-    laneSeeds: ["triage", "primitive", "leak", "verify"],
-    commandPackMarkers: ["pwn-mitigations", "crash-seed", "cyclic", "ROP/libc"],
-    analyzerAnchors: ["pwn primitive crash/control anchors", "pwn cyclic offset anchors", "pwn gadget anchors", "pwn ROP/libc chain anchors"],
-    selfHealCommands: ["re_native_runtime run <target>", "re_exploit_lab run <target> 3", "re_proof_loop run <target> 4 2"],
-    proofExitBridge: ["offset", "leak source", "controllable bytes", "local verifier"],
+    routeMatchers: ["Pwn / exploit", "mitigations", "crash", "ROP/libc", "format-string", "SROP/ret2dlresolve", "seccomp/sandbox"],
+    laneSeeds: ["triage", "primitive", "leak", "advanced-exploit", "verify"],
+    commandPackMarkers: ["pwn-mitigations", "crash-seed", "cyclic", "ROP/libc", "pwn-advanced-heap-tcache-scaffold", "pwn-advanced-format-string-scaffold", "pwn-advanced-srop-ret2dlresolve-scaffold", "pwn-advanced-one-gadget-constraints", "pwn-advanced-seccomp-sandbox-scaffold"],
+    analyzerAnchors: ["pwn primitive crash/control anchors", "pwn cyclic offset anchors", "pwn gadget anchors", "pwn ROP/libc chain anchors", "pwn heap/tcache anchors", "pwn format-string anchors", "pwn SROP/ret2dlresolve anchors", "pwn one_gadget constraint anchors", "pwn seccomp/sandbox anchors"],
+    selfHealCommands: ["re_native_runtime run <target>", "re_exploit_lab run <target> 3", "re_proof_loop run <target> 4 2", "heal-pwn-heap-tcache", "heal-pwn-format-string", "heal-pwn-srop-ret2dlresolve", "heal-pwn-one-gadget-constraints", "heal-pwn-seccomp-sandbox"],
+    proofExitBridge: ["offset", "leak source", "controllable bytes", "local verifier", "heap/tcache bin state", "format-string leak/write", "SROP syscall surface", "ret2dlresolve payload scaffold", "one_gadget constraint review", "seccomp/sandbox syscall filter"],
   },
   {
     domainId: "mobile",
