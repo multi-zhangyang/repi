@@ -15,6 +15,7 @@ const command = helpRequested ? "help" : rawArgs[0] && !rawArgs[0].startsWith("-
 const json = rawArgs.includes("--json");
 const agentDir = process.env.REPI_CODING_AGENT_DIR || process.env.REPI_AGENT_DIR || join(homedir(), ".repi", "agent");
 const modelsPath = join(agentDir, "models.json");
+const authPath = join(agentDir, "auth.json");
 const allowedApis = new Set(["openai-completions", "openai-responses", "anthropic-messages"]);
 
 function usage() {
@@ -68,6 +69,15 @@ function envRef(apiKey) {
 	return { kind: "literal", env: null, present: true };
 }
 
+function storedAuthStatus(authData, providerId) {
+	const credential = authData && typeof authData === "object" ? authData[providerId] : undefined;
+	if (!credential || typeof credential !== "object") return { configured: false, source: "none" };
+	if (credential.type === "api_key" && typeof credential.key === "string" && credential.key.length > 0)
+		return { configured: true, source: "auth.json:api_key" };
+	if (credential.type === "oauth") return { configured: true, source: "auth.json:oauth" };
+	return { configured: false, source: "invalid-auth-entry" };
+}
+
 function costOf(model, provider) {
 	return {
 		input: Number(model.cost?.input ?? provider.cost?.input ?? 0),
@@ -109,6 +119,7 @@ function listModelsProbe() {
 
 function buildDoctorReport() {
 	const loaded = loadProviders();
+	const authData = readJson(authPath);
 	const providerRows = [];
 	const diagnostics = [];
 	let modelCount = 0;
@@ -117,14 +128,16 @@ function buildDoctorReport() {
 	for (const [providerId, provider] of Object.entries(loaded.providers)) {
 		const api = provider.api;
 		const key = envRef(provider.apiKey);
+		const storedAuth = storedAuthStatus(authData, providerId);
+		const authConfigured = storedAuth.configured || key.present;
 		const models = Array.isArray(provider.models) ? provider.models : [];
 		modelCount += models.length;
 		const issues = [];
 		if (!allowedApis.has(api)) issues.push(`unsupported api=${api}`);
 		if (typeof provider.baseUrl !== "string" || !provider.baseUrl) issues.push("missing baseUrl");
-		if (key.kind === "literal") issues.push("apiKey is literal; use $ENV_NAME");
-		if (key.kind === "missing") issues.push("missing apiKey env reference");
-		if (key.kind === "env" && !key.present) issues.push(`env ${key.env} is not set`);
+		if (key.kind === "literal") issues.push("apiKey is literal in models.json; prefer auth.json or $ENV_NAME");
+		if (key.kind === "missing" && !storedAuth.configured) issues.push("missing apiKey env reference or auth.json credential");
+		if (key.kind === "env" && !key.present && !storedAuth.configured) issues.push(`env ${key.env} is not set and no auth.json credential exists`);
 		if (!models.length) issues.push("provider has no models[]");
 		const modelRows = models.map((model) => {
 			const cost = costOf(model, provider);
@@ -146,7 +159,12 @@ function buildDoctorReport() {
 			id: providerId,
 			api,
 			baseUrl: redact(provider.baseUrl),
-			apiKey: key.kind === "env" ? `$${key.env} (${key.present ? "set" : "missing"})` : key.kind,
+			apiKey: storedAuth.configured
+				? `${storedAuth.source} (${key.kind === "env" ? `models ref $${key.env}; env ${key.present ? "set" : "missing"}` : `models ${key.kind}`})`
+				: key.kind === "env"
+					? `$${key.env} (${key.present ? "set" : "missing"})`
+					: key.kind,
+			authConfigured,
 			models: modelRows,
 			issues,
 		});
@@ -165,6 +183,7 @@ function buildDoctorReport() {
 		root,
 		agentDir,
 		modelsPath,
+		authPath,
 		providerCount: providerRows.length,
 		modelCount,
 		providers: providerRows,
@@ -226,6 +245,7 @@ function buildCostReport() {
 function printDoctor(report) {
 	console.log("REPI Model Doctor");
 	console.log(`modelsPath: ${report.modelsPath}`);
+	console.log(`authPath: ${report.authPath}`);
 	console.log(`providers=${report.providerCount} models=${report.modelCount} listModelsExit=${report.listModels.exit}`);
 	for (const provider of report.providers) {
 		console.log(`- ${provider.id}: api=${provider.api} baseUrl=${provider.baseUrl} apiKey=${provider.apiKey}`);
