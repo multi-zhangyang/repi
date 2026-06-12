@@ -254,13 +254,15 @@ ${updateCommandLine}
   ${APP_NAME} smoke [--full|--json]
                                  Run fast REPI harness checks
   ${APP_NAME} selfcheck [--deep|--json] [--provider <name>] [--model <id>]
-                                 Dogfood REPI model/tool/memory/parallel/orchestration usability
-  ${APP_NAME} memory status|diff|why|forget|quarantine|consolidate
-                                 Inspect, explain, govern, and consolidate scoped memory
-  ${APP_NAME} model add|login|test|default|doctor|cost
-                                 Configure providers, store local credentials, test models, and estimate cost
-  ${APP_NAME} swarm llm-run <target> --workers N
-                                 Run isolated parallel LLM worker processes and write a merge report
+                                 End-to-end selfcheck for model/tool/memory/parallel/orchestration usability
+  ${APP_NAME} bugreport [--output <path>|--stdout|--json]
+                                 Create a strictly redacted local diagnostic bundle
+  ${APP_NAME} memory status|list|show|diff|why|forget|quarantine|doctor|export|purge|consolidate
+                                 Inspect, explain, govern, export, purge, and consolidate scoped memory
+  ${APP_NAME} model list|add|edit|remove|login|test|default|doctor|cost|export|import
+                                 Configure providers, store local credentials, test models, export/import templates, and estimate cost
+  ${APP_NAME} swarm plan|run|status|merge|llm-run <target> --workers N
+                                 Plan/run isolated parallel LLM worker processes and write a merge report
   ${APP_NAME} list [--approve|--no-approve]
                                  List installed extensions from settings
   ${APP_NAME} config [--no-approve]

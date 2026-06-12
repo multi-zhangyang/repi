@@ -375,15 +375,19 @@ export LOCAL_LLM_API_KEY="local"
 repi model add --provider openai-compatible --api openai-completions --base-url https://gateway.example/v1 --model provider/model-id
 repi model login --provider openai-compatible --api-key-stdin
 repi model default --provider openai-compatible --model provider/model-id
+repi model list
 repi model test --provider openai-compatible --model provider/model-id
 repi model doctor
 repi model cost --provider openai-compatible --model provider/model-id --input-tokens 100000 --output-tokens 10000
+repi model export --output /tmp/repi-models.template.json
 repi provider-doctor --base-url https://gateway.example/v1 --model provider/model-id --api auto
 npm run gate:provider-endpoint-doctor
 npm run gate:provider-runtime-matrix
 ```
 
 `repi model doctor` 是离线检查：解析 `~/.repi/agent/models.json`、检查 provider/model 元数据、环境变量引用、context window、max tokens 和 cost/cache 字段，不会输出真实 key。
+
+`repi model list/edit/remove/export/import` 用于本机 provider 配置维护；`export` 不导出 `auth.json`，会把 literal key 归一化成 `$REPI_<PROVIDER>_API_KEY` 引用。
 
 `repi model cost` 按 `cost.input/output/cacheRead/cacheWrite` 估算费用，单位是美元 / 百万 tokens。
 
@@ -665,9 +669,14 @@ case-memory.jsonl    案例索引/摘要，召回时只转成 bounded cards
 
 ```bash
 repi memory status                  # 查看当前记忆姿态、污染保护、事件数量、文件状态
+repi memory list --limit 20         # 列出脱敏 memory events，默认隐藏 forget/quarantine 行
+repi memory show <event-id>         # 查看单条脱敏 memory event
 repi memory why <query-or-event-id> # 解释某条记忆为什么会被召回/可见
 repi memory forget <event-id>       # 追加 tombstone，不重写历史
 repi memory quarantine <event-id>   # 追加 quarantine，阻断后续召回/注入
+repi memory doctor                  # 检查污染保护、raw/global 注入开关、JSONL 健康
+repi memory export --output /tmp/repi-memory.json  # 导出脱敏诊断包，不导出 auth/raw secret
+repi memory purge --dry-run --governed             # 预览物理清理；加 --apply 才写入
 repi memory diff                    # 查看尚未 consolidation 的高价值事件
 repi memory consolidate --dry-run   # 只看蒸馏计划
 repi memory consolidate             # 写入 project/procedural memory
@@ -780,11 +789,17 @@ repi doctor                         # 安装、runtime、模型解析、memory s
 repi doctor --fix                   # 自动重建 runtime profile、补 memory 文件、重装 repi 入口
 repi smoke                          # 快速 smoke：doctor + memory/model status + memory gate + shrinkwrap + imports
 repi smoke --full                   # smoke 后追加 npm run check
-repi selfcheck --deep               # 模型、工具、记忆、并发 worker、编排能力 dogfood 自检
+repi selfcheck --deep               # 模型、工具、记忆、并发 worker、编排能力端到端自检
+repi bugreport --output /tmp/repi-bugreport.json  # 生成严格脱敏诊断包
 repi memory status                  # scoped memory 状态与污染保护
+repi memory list --limit 20          # 脱敏列出 memory events
+repi memory show <event-id>          # 脱敏查看单条 memory event
 repi memory why <query-or-event-id>  # 召回解释
 repi memory forget <event-id>        # 记忆 tombstone
 repi memory quarantine <event-id>    # 记忆隔离
+repi memory doctor                  # 记忆污染保护与存储健康检查
+repi memory export --output /tmp/repi-memory.json  # 脱敏导出
+repi memory purge --dry-run --governed             # 预览清理；--apply 才写
 repi memory diff                    # 未蒸馏高价值事件差异
 repi memory consolidate --dry-run   # 查看 memory 蒸馏计划
 repi memory consolidate             # 把高价值 events 蒸馏到 project/procedural memory
@@ -793,11 +808,16 @@ repi swarm run <target> --workers 5 --provider <provider> --model <model>
 repi swarm status latest
 repi swarm merge latest
 repi swarm llm-run <target> --workers 3 --provider <provider> --model <model>
+repi model list                     # 列出本机 provider/model
 repi model doctor                   # 离线检查 provider/model 配置
 repi model add --provider <id> --api openai-completions --base-url <url> --model <id>
+repi model edit --provider <id> --model <id> --context-window 262144 --max-tokens 16384
+repi model remove --provider <id> --model <id>
 repi model login --provider <id> --api-key-stdin
 repi model default --provider <id> --model <id>
 repi model test --provider <id> --model <id>
+repi model export --output /tmp/repi-models.template.json
+repi model import --input /tmp/repi-models.template.json --merge
 repi model cost --provider openai-compatible --model provider/model-id --input-tokens 100000 --output-tokens 10000
 ```
 
@@ -877,6 +897,7 @@ REPI: independent product; built-in reverse/pentest kernel is enabled.
 ### 模型不可用
 
 ```bash
+repi model list
 repi model doctor
 repi model cost --provider openai-compatible --model provider/model-id --input-tokens 100000 --output-tokens 10000
 repi --offline --list-models
@@ -889,6 +910,14 @@ repi provider-doctor --base-url https://gateway.example/v1 --model provider/mode
 - provider name 是否匹配
 - apiKey 是否使用 `$ENV_NAME` 形式并指向真实环境变量
 - baseUrl 是否包含正确 `/v1` 路径
+
+### 诊断包
+
+```bash
+repi bugreport --output /tmp/repi-bugreport.json
+```
+
+`bugreport` 会汇总 `doctor`、`model doctor`、`memory doctor`、最新 swarm 状态、git/node/npm 基本信息，并严格脱敏 API key、GitHub token、Authorization header、baseUrl 和 URL；不会导出 `auth.json` 或原始 memory events。
 
 ### Gate 失败
 

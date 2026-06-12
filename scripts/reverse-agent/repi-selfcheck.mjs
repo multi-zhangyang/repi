@@ -38,12 +38,15 @@ function cleanEnv(extra = {}) {
 	};
 }
 
-function redact(text) {
+function redactFull(text) {
 	return String(text ?? "")
 		.replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "<redacted:api-key>")
 		.replace(/\bghp_[A-Za-z0-9_]{16,}\b/g, "<redacted:github-token>")
-		.replace(/\bgithub_pat_[A-Za-z0-9_]{16,}\b/g, "<redacted:github-token>")
-		.slice(-4000);
+		.replace(/\bgithub_pat_[A-Za-z0-9_]{16,}\b/g, "<redacted:github-token>");
+}
+
+function redact(text) {
+	return redactFull(text).slice(-4000);
 }
 
 function runStep(id, cmd, stepArgs, options = {}) {
@@ -55,8 +58,8 @@ function runStep(id, cmd, stepArgs, options = {}) {
 		timeout: options.timeoutMs ?? timeoutMs,
 		maxBuffer: 8 * 1024 * 1024,
 	});
-	const stdout = redact(result.stdout);
-	const stderr = redact(result.stderr);
+	const stdout = redactFull(result.stdout);
+	const stderr = redactFull(result.stderr);
 	const exit = result.status ?? (result.signal ? 128 : 1);
 	return {
 		id,
@@ -64,8 +67,8 @@ function runStep(id, cmd, stepArgs, options = {}) {
 		exit,
 		ok: exit === 0 && !(options.expectStdout && !options.expectStdout.test(stdout)),
 		ms: Date.now() - startedAt,
-		stdoutTail: stdout,
-		stderrTail: stderr,
+		stdoutTail: stdout.slice(-4000),
+		stderrTail: stderr.slice(-4000),
 		error: result.error ? String(result.error.message || result.error) : undefined,
 	};
 }
@@ -141,6 +144,9 @@ const rows = [];
 
 rows.push(runRepi("doctor", ["doctor"], { timeoutMs: 60_000 }));
 rows.push(runRepi("model-doctor", ["model", "doctor"], { timeoutMs: 60_000 }));
+rows.push(runRepi("model-list", ["model", "list", "--json"], { timeoutMs: 60_000, expectStdout: /repi-model-list-report/ }));
+rows.push(runRepi("memory-doctor", ["memory", "doctor", "--json"], { timeoutMs: 60_000, expectStdout: /repi-memory-doctor-report/ }));
+rows.push(runRepi("bugreport", ["bugreport", "--stdout"], { timeoutMs: 90_000, expectStdout: /repi-bugreport/ }));
 rows.push(
 	runRepi("swarm-plan", ["swarm", "plan", "local-selfcheck", "--workers", "2", "--json"], {
 		expectStdout: /SwarmPlannerV1/,

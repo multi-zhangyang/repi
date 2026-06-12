@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 const rawArgs = process.argv.slice(2);
-const knownCommands = new Set(["status", "diff", "why", "forget", "quarantine", "help"]);
+const knownCommands = new Set(["status", "list", "show", "diff", "why", "forget", "quarantine", "doctor", "export", "purge", "help"]);
 let root = process.cwd();
 if (rawArgs[0] && !rawArgs[0].startsWith("--") && !knownCommands.has(rawArgs[0])) {
 	root = resolve(rawArgs.shift());
@@ -35,16 +35,26 @@ const memoryFiles = [
 function usage() {
 	return `Usage:
   repi memory status [--json]
+  repi memory list [--json] [--limit N] [--all] [--query <text>]
+  repi memory show <query-or-event-id> [--json]
   repi memory diff [--json] [--limit N] [--all]
   repi memory why <query-or-event-id> [--json] [--limit N]
   repi memory forget <query-or-event-id> [--reason <text>] [--json]
   repi memory quarantine <query-or-event-id> [--reason <text>] [--json]
+  repi memory doctor [--json]
+  repi memory export [--output <path>] [--full] [--limit N] [--json]
+  repi memory purge [--dry-run|--apply] [--governed|--older-than-days N|--query <text>|--id <event-id>|--all] [--json]
 
 status  Show scoped memory posture, file sizes, pending consolidation count.
+list    List sanitized memory events. By default hides forget/quarantine rows.
+show    Show one sanitized memory event and its governance state.
 diff    Show high-value memory events not yet consolidated.
 why     Explain which memory rows match a query and why they would be visible.
 forget  Append a tombstone governance decision. It does not rewrite history.
 quarantine Append a quarantine governance decision. It blocks future recall/injection.
+doctor  Check memory pollution posture and store health.
+export  Write a sanitized memory diagnostic bundle. API keys/tokens are redacted.
+purge   Physically remove selected event rows after creating a .bak backup; default is dry-run.
 `;
 }
 
@@ -64,6 +74,17 @@ function flagValue(args, names, fallback = undefined) {
 		}
 	}
 	return fallback;
+}
+
+function hasFlag(args, names) {
+	const list = Array.isArray(names) ? names : [names];
+	return args.some((arg) => list.some((name) => arg === name || arg.startsWith(`${name}=`)));
+}
+
+function numberFlag(args, names, fallback = 0) {
+	const raw = flagValue(args, names, "");
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function positional(args, offset = 0) {
@@ -113,6 +134,26 @@ function redact(value) {
 function clip(value, max = 260) {
 	const text = redact(value);
 	return text.length > max ? `${text.slice(0, max - 14)}...<truncated>` : text;
+}
+
+function redactJson(value, depth = 0) {
+	if (depth > 8) return "<truncated-depth>";
+	if (value === null || value === undefined) return value;
+	if (typeof value === "string") return clip(value, 1200);
+	if (typeof value === "number" || typeof value === "boolean") return value;
+	if (Array.isArray(value)) return value.slice(0, 200).map((item) => redactJson(item, depth + 1));
+	if (typeof value === "object") {
+		const out = {};
+		for (const [key, inner] of Object.entries(value)) {
+			if (/api[-_]?key|auth|authorization|password|secret|token/i.test(key)) {
+				out[key] = "<redacted>";
+			} else {
+				out[key] = redactJson(inner, depth + 1);
+			}
+		}
+		return out;
+	}
+	return clip(String(value), 1200);
 }
 
 function scoreEvent(event) {
@@ -280,6 +321,68 @@ function findEvent(identifier) {
 	);
 }
 
+function loadMemoryEvents() {
+	const jsonl = readJsonl(eventsPath);
+	return {
+		jsonl,
+		events: jsonl.rows.filter((event) => event && event.kind === "repi-memory-event"),
+	};
+}
+
+function buildListReport() {
+	const query = flagValue(rawArgs, "--query");
+	const { jsonl, events } = loadMemoryEvents();
+	const governed = governedSourceIds();
+	let rows = query
+		? explainMatches(events, query, limit).map((row) => ({ event: row.event, score: row.score, reasons: row.reasons, governance: row.governance }))
+		: events
+				.map((event) => ({ event, score: scoreEvent(event), reasons: [], governance: governed.get(event.id)?.action ?? "none" }))
+				.sort((left, right) => String(right.event.ts).localeCompare(String(left.event.ts)));
+	if (!all) rows = rows.filter((row) => row.governance === "none");
+	rows = rows.slice(0, limit);
+	return {
+		kind: "repi-memory-list-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		root,
+		agentDir,
+		memoryDir,
+		eventsPath,
+		query: query ?? null,
+		totalEvents: events.length,
+		returned: rows.length,
+		invalidLines: jsonl.invalid,
+		ok: true,
+		rows: rows.map((row) => ({
+			...eventSummary(row.event, row.score),
+			reasons: row.reasons,
+			governance: row.governance,
+			visibleByDefault: row.governance === "none",
+		})),
+	};
+}
+
+function buildShowReport() {
+	const identifier = flagValue(rawArgs, "--id") ?? flagValue(rawArgs, "--query") ?? positional(rawArgs, 0) ?? "";
+	const event = findEvent(identifier);
+	const governance = event ? governedSourceIds().get(event.id)?.action ?? "none" : "none";
+	return {
+		kind: "repi-memory-show-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		root,
+		agentDir,
+		memoryDir,
+		eventsPath,
+		ok: Boolean(event),
+		query: identifier,
+		governance,
+		summary: event ? eventSummary(event, scoreEvent(event)) : null,
+		event: event ? redactJson(event) : null,
+		error: event ? undefined : `memory event not found: ${identifier || "<latest>"}`,
+	};
+}
+
 function applyGovernance(action) {
 	mkdirSync(memoryDir, { recursive: true, mode: 0o700 });
 	const identifier = flagValue(rawArgs, "--id") ?? flagValue(rawArgs, "--query") ?? positional(rawArgs, 0) ?? "";
@@ -384,6 +487,192 @@ function buildReport() {
 	};
 }
 
+function buildDoctorReport() {
+	const status = buildReport();
+	const { events } = loadMemoryEvents();
+	const governed = governedSourceIds();
+	const referenced = new Set(events.map((event) => event.id));
+	const orphanGovernance = governanceRows().filter((row) => {
+		const source = String(row.sourceEventId ?? row.eventId ?? "").trim();
+		return source && !referenced.has(source);
+	});
+	const diagnostics = [];
+	if (!status.pollutionGuardOk) diagnostics.push({ level: "fail", id: "pollution-guard", message: "scoped memory defaults are not pollution-safe" });
+	if (status.eventStore.invalidLines > 0) diagnostics.push({ level: "fail", id: "invalid-jsonl", message: `${status.eventStore.invalidLines} invalid events.jsonl lines` });
+	if (status.posture.rawAutoInject === true || status.posture.autoInject === true) diagnostics.push({ level: "fail", id: "raw-auto-inject", message: "raw/full memory injection is enabled" });
+	if (status.posture.contextMemoryMode === "global" || status.posture.includeGlobalMemoryInContextPack === true) diagnostics.push({ level: "fail", id: "global-context-memory", message: "global memory context injection is enabled" });
+	if (orphanGovernance.length) diagnostics.push({ level: "warn", id: "orphan-governance", message: `${orphanGovernance.length} governance rows reference missing events` });
+	for (const file of status.files) {
+		if (file.exists && file.bytes > 256 * 1024 && /(?:core|project|procedural)-memory\.md/.test(file.name)) {
+			diagnostics.push({ level: "warn", id: `large-${file.name}`, message: `${file.name} is ${file.bytes} bytes; consider repi memory consolidate/purge` });
+		}
+	}
+	return {
+		kind: "repi-memory-doctor-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		root,
+		agentDir,
+		memoryDir,
+		status,
+		governedSourceIds: governed.size,
+		orphanGovernance: orphanGovernance.slice(0, 24).map((row) => redactJson(row)),
+		diagnostics,
+		ok: !diagnostics.some((item) => item.level === "fail"),
+	};
+}
+
+function buildExportReport() {
+	const output = flagValue(rawArgs, ["--output", "-o"]);
+	const full = rawArgs.includes("--full");
+	const status = buildReport();
+	const { events } = loadMemoryEvents();
+	const governed = governedSourceIds();
+	const rows = events
+		.map((event) => ({ event, score: scoreEvent(event), governance: governed.get(event.id)?.action ?? "none" }))
+		.sort((left, right) => String(right.event.ts).localeCompare(String(left.event.ts)))
+		.slice(0, full ? Math.max(limit, 200) : limit);
+	const bundle = {
+		kind: "repi-memory-export-bundle",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		root,
+		agentDir,
+		memoryDir,
+		status,
+		rows: rows.map((row) => ({
+			summary: eventSummary(row.event, row.score),
+			governance: row.governance,
+			...(full ? { event: redactJson(row.event) } : {}),
+		})),
+		governance: governanceRows().slice(-Math.max(limit, 50)).map((row) => redactJson(row)),
+		redaction: "API keys, tokens, passwords, authorization fields, and long strings are redacted/truncated",
+	};
+	if (output) {
+		const outputPath = resolve(output);
+		mkdirSync(dirname(outputPath), { recursive: true, mode: 0o700 });
+		writeFileSync(outputPath, `${JSON.stringify(bundle, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+	}
+	return {
+		kind: "repi-memory-export-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		ok: true,
+		outputPath: output ? resolve(output) : null,
+		bundle,
+	};
+}
+
+function selectPurgeCandidates(events) {
+	const governed = governedSourceIds();
+	const id = flagValue(rawArgs, "--id");
+	const query = flagValue(rawArgs, "--query");
+	const olderThanDays = numberFlag(rawArgs, "--older-than-days", 0);
+	const purgeAll = rawArgs.includes("--all");
+	const purgeGoverned = rawArgs.includes("--governed");
+	const selected = new Map();
+	if (id) {
+		for (const event of events) {
+			if (event.id === id || event.caseSignature === id || event.entryHash === id) selected.set(event.id, "id");
+		}
+	}
+	if (query) {
+		for (const row of explainMatches(events, query, 200)) selected.set(row.event.id, "query");
+	}
+	if (purgeGoverned) {
+		for (const event of events) {
+			if (governed.has(event.id)) selected.set(event.id, `governed:${governed.get(event.id).action}`);
+		}
+	}
+	if (olderThanDays > 0) {
+		const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+		for (const event of events) {
+			const ts = new Date(event.ts ?? 0).getTime();
+			if (Number.isFinite(ts) && ts < cutoff) selected.set(event.id, `older-than:${olderThanDays}d`);
+		}
+	}
+	if (purgeAll) {
+		for (const event of events) selected.set(event.id, "all");
+	}
+	return { selected, filters: { id, query, olderThanDays, purgeGoverned, purgeAll } };
+}
+
+function buildPurgeReport() {
+	const { jsonl, events } = loadMemoryEvents();
+	const { selected, filters } = selectPurgeCandidates(events);
+	const apply = rawArgs.includes("--apply") && !rawArgs.includes("--dry-run");
+	const hasFilter = Boolean(filters.id || filters.query || filters.olderThanDays > 0 || filters.purgeGoverned || filters.purgeAll);
+	if (!hasFilter) {
+		return {
+			kind: "repi-memory-purge-report",
+			schemaVersion: 1,
+			generatedAt: new Date().toISOString(),
+			ok: false,
+			error: "memory purge requires at least one selector: --governed, --older-than-days N, --query <text>, --id <event-id>, or --all",
+		};
+	}
+	const candidateRows = events
+		.filter((event) => selected.has(event.id))
+		.map((event) => ({ ...eventSummary(event, scoreEvent(event)), purgeReason: selected.get(event.id) }))
+		.slice(0, limit);
+	const ts = new Date().toISOString().replace(/[:.]/g, "-");
+	const backupPath = `${eventsPath}.bak-${ts}`;
+	let removed = 0;
+	if (apply && selected.size > 0) {
+		mkdirSync(memoryDir, { recursive: true, mode: 0o700 });
+		if (existsSync(eventsPath)) copyFileSync(eventsPath, backupPath);
+		const nextLines = [];
+		for (const line of readFileSync(eventsPath, "utf8").split(/\r?\n/)) {
+			if (!line.trim()) continue;
+			let row;
+			try {
+				row = JSON.parse(line);
+			} catch {
+				nextLines.push(line);
+				continue;
+			}
+			if (row?.kind === "repi-memory-event" && selected.has(row.id)) {
+				removed++;
+				continue;
+			}
+			nextLines.push(line);
+		}
+		writeFileSync(eventsPath, `${nextLines.join("\n")}${nextLines.length ? "\n" : ""}`, { encoding: "utf8", mode: 0o600 });
+		appendFileSync(
+			governancePath,
+			`${JSON.stringify({
+				kind: "repi-memory-ux-governance-decision",
+				schemaVersion: 1,
+				id: `memory-cli:purge:${sha256(`${ts}:${[...selected.keys()].join(",")}`).slice(0, 16)}`,
+				ts: new Date().toISOString(),
+				MemoryUxDashboardV16: true,
+				action: "purge",
+				applied: true,
+				removedEventIds: [...selected.keys()].slice(0, 500),
+				reason: clip(flagValue(rawArgs, "--reason", "manual purge through repi memory purge"), 360),
+				backupPath,
+			})}\n`,
+			"utf8",
+		);
+	}
+	return {
+		kind: "repi-memory-purge-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		ok: true,
+		apply,
+		eventsPath,
+		backupPath: apply && selected.size > 0 ? backupPath : null,
+		totalEvents: events.length,
+		invalidLines: jsonl.invalid,
+		candidateCount: selected.size,
+		removedCount: removed,
+		filters,
+		candidates: candidateRows,
+		next: apply ? ["repi memory doctor", "repi memory list"] : ["repi memory purge --apply <same selectors>", "repi memory show <event-id>"],
+	};
+}
+
 function printStatus(report) {
 	console.log("REPI Memory Status");
 	console.log(`agentDir: ${report.agentDir}`);
@@ -410,6 +699,31 @@ function printStatus(report) {
 		console.log(`  ${basename(file.path)}: ${status}`);
 	}
 	console.log("next: repi memory diff && repi memory consolidate --dry-run");
+}
+
+function printList(report) {
+	console.log("REPI Memory List");
+	console.log(`events=${report.totalEvents} returned=${report.returned} invalid=${report.invalidLines} query=${report.query ?? "<none>"}`);
+	if (!report.rows.length) {
+		console.log("No memory events matched.");
+		return;
+	}
+	for (const item of report.rows) {
+		console.log(`- id=${item.id} score=${item.score} ts=${item.ts ?? "unknown"} governance=${item.governance}`);
+		console.log(`  route=${item.route} target=${item.target} outcome=${item.outcome}`);
+		for (const lesson of item.lessons) console.log(`  lesson: ${lesson}`);
+	}
+}
+
+function printShow(report) {
+	if (!report.ok) {
+		console.error(report.error);
+		return;
+	}
+	console.log("REPI Memory Show");
+	console.log(`id=${report.summary.id} score=${report.summary.score} governance=${report.governance}`);
+	console.log(`ts=${report.summary.ts ?? "unknown"} route=${report.summary.route} target=${report.summary.target}`);
+	console.log(JSON.stringify(report.event, null, 2));
 }
 
 function printWhy(report) {
@@ -441,6 +755,44 @@ function printGovernance(report) {
 	console.log(`verdict: ${report.ok ? "pass" : "blocked"}`);
 }
 
+function printDoctor(report) {
+	console.log("REPI Memory Doctor");
+	console.log(`agentDir=${report.agentDir}`);
+	console.log(`pollutionGuard=${report.status.pollutionGuardOk ? "pass" : "fail"} events=${report.status.eventStore.total} invalid=${report.status.eventStore.invalidLines}`);
+	for (const diagnostic of report.diagnostics) console.log(`${diagnostic.level.toUpperCase()} ${diagnostic.id}: ${diagnostic.message}`);
+	console.log(`verdict: ${report.ok ? "pass" : "fail"}`);
+}
+
+function printExport(report) {
+	if (!report.ok) {
+		console.error(report.error);
+		return;
+	}
+	if (report.outputPath) {
+		console.log("REPI Memory Export");
+		console.log(`output=${report.outputPath}`);
+		console.log(`events=${report.bundle.status.eventStore.total} rows=${report.bundle.rows.length}`);
+		console.log(report.bundle.redaction);
+		return;
+	}
+	console.log(JSON.stringify(report.bundle, null, 2));
+}
+
+function printPurge(report) {
+	if (!report.ok) {
+		console.error(report.error);
+		return;
+	}
+	console.log("REPI Memory Purge");
+	console.log(`apply=${report.apply} candidates=${report.candidateCount} removed=${report.removedCount}`);
+	if (report.backupPath) console.log(`backup=${report.backupPath}`);
+	for (const item of report.candidates) {
+		console.log(`- id=${item.id} reason=${item.purgeReason} ts=${item.ts ?? "unknown"} route=${item.route} target=${item.target}`);
+	}
+	for (const next of report.next ?? []) console.log(`next: ${next}`);
+	console.log(`verdict: ${report.ok ? "pass" : "fail"}`);
+}
+
 function printDiff(report) {
 	console.log("REPI Memory Diff");
 	console.log(`since: ${all ? "all high-value events" : report.consolidation.generatedAt || "never consolidated"}`);
@@ -462,21 +814,36 @@ if (command === "help" || command === "--help" || command === "-h") {
 	console.log(usage());
 	process.exit(0);
 }
-if (!["status", "diff", "why", "forget", "quarantine"].includes(command)) {
+if (!["status", "list", "show", "diff", "why", "forget", "quarantine", "doctor", "export", "purge"].includes(command)) {
 	console.error(`Unknown memory command: ${command}`);
 	console.error(usage());
 	process.exit(2);
 }
 
 const report =
-	command === "why"
+	command === "list"
+		? buildListReport()
+		: command === "show"
+			? buildShowReport()
+			: command === "why"
 		? buildWhyReport()
 		: command === "forget" || command === "quarantine"
 			? applyGovernance(command)
-			: buildReport();
+			: command === "doctor"
+				? buildDoctorReport()
+				: command === "export"
+					? buildExportReport()
+					: command === "purge"
+						? buildPurgeReport()
+						: buildReport();
 if (json) console.log(JSON.stringify(report, null, 2));
 else if (command === "status") printStatus(report);
+else if (command === "list") printList(report);
+else if (command === "show") printShow(report);
 else if (command === "why") printWhy(report);
 else if (command === "forget" || command === "quarantine") printGovernance(report);
+else if (command === "doctor") printDoctor(report);
+else if (command === "export") printExport(report);
+else if (command === "purge") printPurge(report);
 else printDiff(report);
 process.exit(report.ok === false ? 1 : 0);

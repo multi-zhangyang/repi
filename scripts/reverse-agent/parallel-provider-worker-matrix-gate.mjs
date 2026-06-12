@@ -86,7 +86,7 @@ const WORKER_CASES = [
 		marker: "PARALLEL_DELTA_TIMEOUT",
 		mode: "timeout",
 		delayMs: 120000,
-		timeoutMs: 10000,
+		timeoutMs: 45000,
 		mergeKey: "claim:provider-timeout-cancelled",
 		claimId: "claim-parallel-delta-timeout-cancelled",
 		attempt: 2,

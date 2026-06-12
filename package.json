@@ -128,7 +128,12 @@
 		"memory:diff": "node scripts/reverse-agent/memory-inspect.mjs . diff",
 		"model:doctor": "node scripts/reverse-agent/model-inspect.mjs . doctor",
 		"model:cost": "node scripts/reverse-agent/model-inspect.mjs . cost",
-		"doctor:repi:fix": "node scripts/reverse-agent/repi-doctor.mjs . --fix"
+		"doctor:repi:fix": "node scripts/reverse-agent/repi-doctor.mjs . --fix",
+		"bugreport:repi": "node scripts/reverse-agent/repi-bugreport.mjs .",
+		"memory:list": "node scripts/reverse-agent/memory-inspect.mjs . list",
+		"memory:doctor": "node scripts/reverse-agent/memory-inspect.mjs . doctor",
+		"model:list": "node scripts/reverse-agent/model-inspect.mjs . list",
+		"model:export": "node scripts/reverse-agent/model-inspect.mjs . export"
 	},
 	"devDependencies": {
 		"@anthropic-ai/sandbox-runtime": "0.0.26",
