@@ -657,6 +657,12 @@ describe("REPI kernel profile", () => {
 		};
 		const bootstrapPlan = await bootstrapTool.execute("tool-call-id", { action: "plan", tools: ["gdb"] });
 		expect(bootstrapPlan.content[0]?.text).toContain("sudo apt-get install -y gdb");
+		const bootstrapGoPlan = await bootstrapTool.execute("tool-call-id", {
+			action: "plan",
+			tools: ["nuclei", "msfconsole"],
+		});
+		expect(bootstrapGoPlan.content[0]?.text).toContain("apt-get install -y golang-go");
+		expect(bootstrapGoPlan.content[0]?.text).toContain("metasploit-framework");
 
 		const missionTool = tools.get("re_mission") as {
 			execute: (
@@ -775,6 +781,13 @@ describe("REPI kernel profile", () => {
 		) as { gates: Array<{ name: string; status: string }> };
 		expect(missionAfterBrowser.gates.find((gate) => gate.name === "live_browser_ready")?.status).toBe("done");
 
+		const invalidBrowserPlan = await liveBrowserTool.execute("tool-call-id", {
+			action: "plan",
+			target: "/root/ctf",
+		});
+		expect(invalidBrowserPlan.content[0]?.text).toContain("invalid_url");
+		expect(invalidBrowserPlan.content[0]?.text).not.toContain("douyinpic.com");
+
 		const webAuthzTool = tools.get("re_web_authz_state") as {
 			execute: (
 				toolCallId: string,
@@ -865,6 +878,13 @@ describe("REPI kernel profile", () => {
 		) as { gates: Array<{ name: string; status: string }> };
 		expect(missionAfterMobile.gates.find((gate) => gate.name === "mobile_runtime_ready")?.status).toBe("done");
 
+		const dynamicOnlyMobilePlan = await mobileRuntimeTool.execute("tool-call-id", {
+			action: "plan",
+			packageName: "com.demo.app",
+		});
+		expect(dynamicOnlyMobilePlan.content[0]?.text).toContain("analysis_mode=dynamic-only");
+		expect(dynamicOnlyMobilePlan.content[0]?.text).toContain("static APK analysis skipped");
+
 		const nativeRuntimeTool = tools.get("re_native_runtime") as {
 			execute: (
 				toolCallId: string,
@@ -926,6 +946,18 @@ describe("REPI kernel profile", () => {
 			gates: Array<{ name: string; status: string }>;
 		};
 		expect(missionAfterPlan.gates.find((gate) => gate.name === "repro_commands_ready")?.status).toBe("done");
+
+		const ctfDir = join(tempDir, "ctf");
+		mkdirSync(ctfDir, { recursive: true });
+		writeFileSync(join(ctfDir, "vuln"), "#!/bin/sh\nexit 0\n", "utf-8");
+		const directoryLanePlan = await laneTool.execute("tool-call-id", {
+			action: "plan",
+			lane: "triage",
+			target: ctfDir,
+		});
+		expect(directoryLanePlan.content[0]?.text).toContain("directory-triage-file-map");
+		expect(directoryLanePlan.content[0]?.text).not.toContain(`readelf -hW '${ctfDir}'`);
+		expect(directoryLanePlan.content[0]?.text).not.toContain(`checksec --file='${ctfDir}'`);
 
 		execCalls.length = 0;
 		const laneRun = await laneTool.execute("tool-call-id", {
