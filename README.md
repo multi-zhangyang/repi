@@ -107,7 +107,8 @@ scripts/reverse-agent/install-repi.sh "$PWD"
 ```bash
 repi --offline --help
 repi --offline --list-models
-npm run gate:repi-harness
+repi doctor
+repi smoke
 ```
 
 ---
@@ -121,8 +122,9 @@ cd pi-recon-agent
 git pull
 npm install
 npm run install:repi
+repi doctor
+repi smoke
 npm run check
-npm run gate:repi-harness
 ```
 
 如果曾经安装过旧的文件型全局 profile，可以先 dry-run 再清理：
@@ -655,12 +657,24 @@ Compact / resume gates：
 常用验证：
 
 ```bash
+npm run doctor:repi
+npm run smoke:repi
 npm run check
 npx vitest --run packages/coding-agent/test/recon-profile.test.ts
 npm run gate:repi-harness
 npm run gate:memory-isolation-default
 node scripts/reverse-agent/repi-top-harness.mjs . --strict --json
 node scripts/reverse-agent/autonomy-control-plane.mjs . --strict --json
+```
+
+CLI 快速控制面：
+
+```bash
+repi doctor                         # 安装、runtime、模型解析、memory scoped defaults
+repi smoke                          # 快速 smoke：doctor + memory gate + shrinkwrap + imports
+repi smoke --full                   # smoke 后追加 npm run check
+repi memory consolidate --dry-run   # 查看 memory 蒸馏计划
+repi memory consolidate             # 把高价值 events 蒸馏到 project/procedural memory
 ```
 
 专业能力 gates：

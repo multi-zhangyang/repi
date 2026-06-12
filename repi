@@ -32,4 +32,21 @@ export PI_TELEMETRY="${PI_TELEMETRY:-$REPI_TELEMETRY}"
 export PI_OFFLINE="${PI_OFFLINE:-$REPI_OFFLINE}"
 export REPI_REPO_ROOT="$ROOT"
 
+case "${1:-}" in
+  doctor)
+    shift
+    exec node "$ROOT/scripts/reverse-agent/repi-doctor.mjs" "$ROOT" "$@"
+    ;;
+  smoke)
+    shift
+    exec node "$ROOT/scripts/reverse-agent/repi-smoke.mjs" "$ROOT" "$@"
+    ;;
+  memory)
+    if [ "${2:-}" = "consolidate" ]; then
+      shift 2
+      exec node "$ROOT/scripts/reverse-agent/memory-consolidate.mjs" "$ROOT" "$@"
+    fi
+    ;;
+esac
+
 exec "$ROOT/node_modules/.bin/tsx" --tsconfig "$ROOT/tsconfig.json" "$ROOT/packages/coding-agent/src/cli.ts" "$@"
