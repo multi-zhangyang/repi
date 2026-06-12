@@ -26,6 +26,11 @@ const bashSchema = Type.Object({
 	timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
 });
 
+function envPositiveTimeoutSeconds(name: string): number | undefined {
+	const value = Number(process.env[name]);
+	return Number.isFinite(value) && value > 0 ? Math.floor(value) : undefined;
+}
+
 export type BashToolInput = Static<typeof bashSchema>;
 
 export interface BashToolDetails {
@@ -286,6 +291,10 @@ export function createBashToolDefinition(
 			onUpdate?,
 			_ctx?,
 		) {
+			const effectiveTimeout =
+				timeout ??
+				envPositiveTimeoutSeconds("REPI_BASH_DEFAULT_TIMEOUT_SECONDS") ??
+				envPositiveTimeoutSeconds("PI_BASH_DEFAULT_TIMEOUT_SECONDS");
 			const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
 			const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
 			const output = new OutputAccumulator({ tempFilePrefix: "pi-bash" });
@@ -375,7 +384,7 @@ export function createBashToolDefinition(
 					const result = await ops.exec(spawnContext.command, spawnContext.cwd, {
 						onData: handleData,
 						signal,
-						timeout,
+						timeout: effectiveTimeout,
 						env: spawnContext.env,
 					});
 					exitCode = result.exitCode;

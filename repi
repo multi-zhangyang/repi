@@ -25,6 +25,9 @@ export REPI_SKIP_VERSION_CHECK="${REPI_SKIP_VERSION_CHECK:-1}"
 export REPI_SKIP_PACKAGE_UPDATE_CHECK="${REPI_SKIP_PACKAGE_UPDATE_CHECK:-1}"
 export REPI_TELEMETRY="${REPI_TELEMETRY:-0}"
 export REPI_OFFLINE="${REPI_OFFLINE:-${PI_OFFLINE:-0}}"
+export REPI_PRINT_PROGRESS="${REPI_PRINT_PROGRESS:-1}"
+export REPI_PRINT_TIMEOUT_MS="${REPI_PRINT_TIMEOUT_MS:-210000}"
+export REPI_BASH_DEFAULT_TIMEOUT_SECONDS="${REPI_BASH_DEFAULT_TIMEOUT_SECONDS:-120}"
 # Compatibility for inherited upstream internals; user-facing REPI docs prefer REPI_* names.
 export PI_SKIP_VERSION_CHECK="${PI_SKIP_VERSION_CHECK:-$REPI_SKIP_VERSION_CHECK}"
 export PI_SKIP_PACKAGE_UPDATE_CHECK="${PI_SKIP_PACKAGE_UPDATE_CHECK:-$REPI_SKIP_PACKAGE_UPDATE_CHECK}"
@@ -40,6 +43,10 @@ case "${1:-}" in
   smoke)
     shift
     exec node "$ROOT/scripts/reverse-agent/repi-smoke.mjs" "$ROOT" "$@"
+    ;;
+  selfcheck|dogfood)
+    shift
+    exec node "$ROOT/scripts/reverse-agent/repi-selfcheck.mjs" "$ROOT" "$@"
     ;;
   memory)
     sub="${2:-status}"

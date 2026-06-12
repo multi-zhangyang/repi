@@ -253,6 +253,8 @@ ${updateCommandLine}
                                  Check and optionally repair the REPI install/runtime profile
   ${APP_NAME} smoke [--full|--json]
                                  Run fast REPI harness checks
+  ${APP_NAME} selfcheck [--deep|--json] [--provider <name>] [--model <id>]
+                                 Dogfood REPI model/tool/memory/parallel/orchestration usability
   ${APP_NAME} memory status|diff|consolidate
                                  Inspect scoped memory and consolidate high-value events
   ${APP_NAME} model doctor|cost

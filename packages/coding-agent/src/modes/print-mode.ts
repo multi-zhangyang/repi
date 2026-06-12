@@ -7,6 +7,7 @@
  */
 
 import type { AssistantMessage, ImageContent } from "@pi-recon/repi-ai";
+import type { AgentSessionEvent } from "../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { flushRawStdout, writeRawStdout } from "../core/output-guard.ts";
 import { killTrackedDetachedChildren } from "../utils/shell.ts";
@@ -25,6 +26,64 @@ export interface PrintModeOptions {
 	initialImages?: ImageContent[];
 }
 
+function envFlag(name: string, fallback: boolean): boolean {
+	const value = process.env[name];
+	if (value === undefined || value.trim() === "") return fallback;
+	return /^(?:1|true|yes|on)$/i.test(value.trim());
+}
+
+function envPositiveInteger(name: string): number | undefined {
+	const value = Number(process.env[name]);
+	return Number.isFinite(value) && value > 0 ? Math.floor(value) : undefined;
+}
+
+function isRepiProductMode(): boolean {
+	return process.env.REPI_PRODUCT === "1" || process.env.REPI_PRIMARY === "1";
+}
+
+function printProgressEnabled(mode: PrintModeOptions["mode"]): boolean {
+	if (mode !== "text") return false;
+	return envFlag("REPI_PRINT_PROGRESS", isRepiProductMode());
+}
+
+function printTimeoutMs(mode: PrintModeOptions["mode"]): number | undefined {
+	if (mode !== "text") return undefined;
+	const configured = envPositiveInteger("REPI_PRINT_TIMEOUT_MS");
+	if (configured !== undefined) return configured;
+	return isRepiProductMode() ? 210_000 : undefined;
+}
+
+function eventProgressLine(event: AgentSessionEvent): string | undefined {
+	switch (event.type) {
+		case "agent_start":
+			return "agent_start";
+		case "agent_end":
+			return event.willRetry ? "agent_end retry_pending=true" : "agent_end";
+		case "turn_start":
+			return "turn_start";
+		case "turn_end":
+			return "turn_end";
+		case "message_start":
+			return `message_start role=${event.message.role}`;
+		case "message_end":
+			return `message_end role=${event.message.role}`;
+		case "tool_execution_start":
+			return `tool_start name=${event.toolName}`;
+		case "tool_execution_end":
+			return `tool_end name=${event.toolName} error=${event.isError ? "true" : "false"}`;
+		case "compaction_start":
+			return `compaction_start reason=${event.reason}`;
+		case "compaction_end":
+			return `compaction_end reason=${event.reason} aborted=${event.aborted ? "true" : "false"}`;
+		case "auto_retry_start":
+			return `auto_retry_start attempt=${event.attempt}/${event.maxAttempts}`;
+		case "auto_retry_end":
+			return `auto_retry_end success=${event.success ? "true" : "false"}`;
+		default:
+			return undefined;
+	}
+}
+
 /**
  * Run in print (single-shot) mode.
  * Sends prompts to the agent and outputs the result.
@@ -36,6 +95,51 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 	let unsubscribe: (() => void) | undefined;
 	let disposed = false;
 	const signalCleanupHandlers: Array<() => void> = [];
+	const progressEnabled = printProgressEnabled(mode);
+	const timeoutMs = printTimeoutMs(mode);
+	const startedAt = Date.now();
+	let lastProgress = "startup";
+	let heartbeat: NodeJS.Timeout | undefined;
+
+	const emitProgress = (line: string): void => {
+		if (!progressEnabled) return;
+		lastProgress = line;
+		const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+		console.error(`[repi:print] +${elapsed}s ${line}`);
+	};
+
+	const runPromptWithTimeout = async (
+		message: string,
+		promptOptions?: Parameters<typeof session.prompt>[1],
+	): Promise<void> => {
+		emitProgress(`prompt_start chars=${message.length} timeoutMs=${timeoutMs ?? "none"}`);
+		if (!timeoutMs) {
+			await session.prompt(message, promptOptions);
+			emitProgress("prompt_done");
+			return;
+		}
+
+		let timer: NodeJS.Timeout | undefined;
+		try {
+			await Promise.race([
+				session.prompt(message, promptOptions),
+				new Promise<never>((_resolve, reject) => {
+					timer = setTimeout(() => {
+						emitProgress(`timeout timeoutMs=${timeoutMs} action=abort`);
+						void session.abort().catch((error) => {
+							console.error(
+								`[repi:print] abort_error ${error instanceof Error ? error.message : String(error)}`,
+							);
+						});
+						reject(new Error(`REPI print prompt timed out after ${timeoutMs}ms`));
+					}, timeoutMs);
+				}),
+			]);
+			emitProgress("prompt_done");
+		} finally {
+			if (timer) clearTimeout(timer);
+		}
+	};
 
 	const disposeRuntime = async (): Promise<void> => {
 		if (disposed) return;
@@ -104,11 +208,25 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		unsubscribe = session.subscribe((event) => {
 			if (mode === "json") {
 				writeRawStdout(`${JSON.stringify(event)}\n`);
+				return;
+			}
+			const line = eventProgressLine(event);
+			if (line) {
+				emitProgress(line);
 			}
 		});
 	};
 
 	try {
+		if (progressEnabled) {
+			emitProgress(`start mode=${mode}`);
+			heartbeat = setInterval(() => {
+				const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+				console.error(`[repi:print] +${elapsed}s still_running last=${lastProgress}`);
+			}, 15_000);
+			heartbeat.unref?.();
+		}
+
 		if (mode === "json") {
 			const header = session.sessionManager.getHeader();
 			if (header) {
@@ -119,11 +237,11 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		await rebindSession();
 
 		if (initialMessage) {
-			await session.prompt(initialMessage, { images: initialImages });
+			await runPromptWithTimeout(initialMessage, { images: initialImages });
 		}
 
 		for (const message of messages) {
-			await session.prompt(message);
+			await runPromptWithTimeout(message);
 		}
 
 		if (mode === "text") {
@@ -150,6 +268,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		console.error(error instanceof Error ? error.message : String(error));
 		return 1;
 	} finally {
+		if (heartbeat) clearInterval(heartbeat);
 		for (const cleanup of signalCleanupHandlers) {
 			cleanup();
 		}

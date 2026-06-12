@@ -537,13 +537,13 @@ REPI 自动 compact 阈值默认围绕上下文窗口百分比工作：warningPe
 
 ### 默认记忆模式：scoped auto memory
 
-REPI 默认启用“作用域自动记忆”：自动沉淀高价值经验，启动新任务时只召回同 workspace / target / route 的小卡片，不把旧日志、旧对话、全量 events 原文塞进上下文。
+REPI 默认启用“作用域自动记忆”：自动沉淀高价值经验；只有当前任务出现明确 URL、文件路径、目录或包名这类 concrete target 时，才召回同 workspace / target / route 的小卡片。没有明确 target 的新任务只显示记忆状态，不自动注入旧任务卡片，也不会把旧日志、旧对话、全量 events 原文塞进上下文。
 
 默认策略：
 
 - `memory.mode=scoped`：长期记忆可用，但必须经过 scope 过滤。
-- `memory.autoRecall=true`：新任务启动时自动召回少量相关 memory cards。
-- `memory.autoDeposit=high-value`：只自动沉淀成功复现、关键失败修复、漏洞/逆向锚点、可复用命令等高价值事件；普通 stdout 不入库。
+- `memory.autoRecall=true`：有 concrete target 时自动召回少量相关 memory cards；无 concrete target 时延迟召回，需要手动 `re_memory search/active`。
+- `memory.autoDeposit=high-value`：只自动沉淀成功复现、关键失败修复、漏洞/逆向锚点、可复用命令等高价值事件；普通 stdout 不入库；`--no-session` 一次性任务默认不写入长期记忆。
 - `memory.startupDigest=scoped`：启动包只放摘要卡片，不放原始 history。
 - `memory.contextMemoryMode=scoped`：context pack 只带 scoped memory cards，不带全局 memory tail / active injection pack。
 - `memory.rawTranscriptRetention=external-only`：原始 events/case-memory 保存在磁盘，默认不进 prompt。
@@ -551,7 +551,7 @@ REPI 默认启用“作用域自动记忆”：自动沉淀高价值经验，启
 记忆分层：
 
 ```text
-core-memory.md       固定偏好、长期稳定事实，短小，默认随 scoped packet 加载
+core-memory.md       固定偏好、长期稳定事实，短小，在 scoped packet 中受预算加载
 project-memory.md    当前 workspace 的构建/运行/测试/入口/常用命令
 procedural-memory.md 可复用 workflow、checklist、verified command template
 events.jsonl         事件级长期记忆，自动 high-value 沉淀
@@ -683,6 +683,15 @@ node scripts/reverse-agent/repi-top-harness.mjs . --strict --json
 node scripts/reverse-agent/autonomy-control-plane.mjs . --strict --json
 ```
 
+让 REPI 自己做真实使用自检：
+
+```bash
+repi selfcheck --provider <provider> --model <model>
+repi selfcheck --deep --provider <provider> --model <model>
+```
+
+`selfcheck` 会实际跑模型最小调用、bash 工具调用、记忆可见性探针、3 个并发 worker、编排源码检查；`--deep` 额外在隔离 profile 里触发一次 `/re-swarm run`，避免污染当前长期记忆。
+
 CLI 快速控制面：
 
 ```bash
@@ -690,6 +699,7 @@ repi doctor                         # 安装、runtime、模型解析、memory s
 repi doctor --fix                   # 自动重建 runtime profile、补 memory 文件、重装 repi 入口
 repi smoke                          # 快速 smoke：doctor + memory/model status + memory gate + shrinkwrap + imports
 repi smoke --full                   # smoke 后追加 npm run check
+repi selfcheck --deep               # 模型、工具、记忆、并发 worker、编排能力 dogfood 自检
 repi memory status                  # scoped memory 状态与污染保护
 repi memory diff                    # 未蒸馏高价值事件差异
 repi memory consolidate --dry-run   # 查看 memory 蒸馏计划

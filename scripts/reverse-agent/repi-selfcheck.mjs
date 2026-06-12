@@ -1,0 +1,227 @@
+#!/usr/bin/env node
+import { spawn, spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+
+const root = resolve(process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : process.cwd());
+const args = process.argv.slice(process.argv[2] && !process.argv[2].startsWith("--") ? 3 : 2);
+const json = args.includes("--json");
+const deep = args.includes("--deep") || args.includes("--full");
+
+function valueAfter(flag) {
+	const index = args.indexOf(flag);
+	return index >= 0 ? args[index + 1] : undefined;
+}
+
+const provider = valueAfter("--provider") ?? process.env.REPI_SELFCHECK_PROVIDER;
+const model = valueAfter("--model") ?? process.env.REPI_SELFCHECK_MODEL;
+const timeoutMs = Number(valueAfter("--timeout-ms") ?? process.env.REPI_SELFCHECK_TIMEOUT_MS ?? 120_000);
+const repi = join(root, "repi");
+const modelArgs = [
+	...(provider ? ["--provider", provider] : []),
+	...(model ? ["--model", model] : []),
+	"--thinking",
+	"off",
+];
+
+function cleanEnv(extra = {}) {
+	return {
+		...process.env,
+		REPI_SKIP_VERSION_CHECK: "1",
+		REPI_SKIP_PACKAGE_UPDATE_CHECK: "1",
+		REPI_TELEMETRY: "0",
+		REPI_PRINT_PROGRESS: extra.REPI_PRINT_PROGRESS ?? "0",
+		REPI_MEMORY_WRITEBACK_NO_SESSION: "0",
+		REPI_RUNTIME_WRITEBACK_NO_SESSION: "0",
+		...extra,
+	};
+}
+
+function redact(text) {
+	return String(text ?? "")
+		.replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "<redacted:api-key>")
+		.replace(/\bghp_[A-Za-z0-9_]{16,}\b/g, "<redacted:github-token>")
+		.replace(/\bgithub_pat_[A-Za-z0-9_]{16,}\b/g, "<redacted:github-token>")
+		.slice(-4000);
+}
+
+function runStep(id, cmd, stepArgs, options = {}) {
+	const startedAt = Date.now();
+	const result = spawnSync(cmd, stepArgs, {
+		cwd: root,
+		env: cleanEnv(options.env),
+		encoding: "utf8",
+		timeout: options.timeoutMs ?? timeoutMs,
+		maxBuffer: 8 * 1024 * 1024,
+	});
+	const stdout = redact(result.stdout);
+	const stderr = redact(result.stderr);
+	const exit = result.status ?? (result.signal ? 128 : 1);
+	return {
+		id,
+		cmd: [cmd, ...stepArgs].join(" "),
+		exit,
+		ok: exit === 0 && !(options.expectStdout && !options.expectStdout.test(stdout)),
+		ms: Date.now() - startedAt,
+		stdoutTail: stdout,
+		stderrTail: stderr,
+		error: result.error ? String(result.error.message || result.error) : undefined,
+	};
+}
+
+function runRepi(id, stepArgs, options = {}) {
+	return runStep(id, repi, stepArgs, options);
+}
+
+function runWorker(index) {
+	return new Promise((resolveWorker) => {
+		const startedAt = Date.now();
+		const child = spawn(
+			repi,
+			[
+				...modelArgs,
+				"--no-session",
+				"--no-tools",
+				"-p",
+				`Reply exactly: REPI_PARALLEL_WORKER_${index}_OK`,
+			],
+			{ cwd: root, env: cleanEnv(), stdio: ["ignore", "pipe", "pipe"] },
+		);
+		let stdout = "";
+		let stderr = "";
+		const timer = setTimeout(() => {
+			child.kill("SIGTERM");
+		}, timeoutMs);
+		child.stdout.on("data", (chunk) => {
+			stdout += chunk;
+		});
+		child.stderr.on("data", (chunk) => {
+			stderr += chunk;
+		});
+		child.on("close", (code, signal) => {
+			clearTimeout(timer);
+			const expected = new RegExp(`REPI_PARALLEL_WORKER_${index}_OK`);
+			resolveWorker({
+				id: `parallel-worker-${index}`,
+				exit: code ?? (signal ? 128 : 1),
+				ok: code === 0 && expected.test(stdout),
+				ms: Date.now() - startedAt,
+				stdoutTail: redact(stdout),
+				stderrTail: redact(stderr),
+				signal,
+			});
+		});
+	});
+}
+
+function orchestrationSourceCheck() {
+	const path = join(root, "packages/coding-agent/src/core/recon-profile.ts");
+	const source = existsSync(path) ? readFileSync(path, "utf8") : "";
+	const markers = [
+		'name: "re_delegate"',
+		'name: "re_swarm"',
+		'name: "re_operator"',
+		"function buildDelegate",
+		"function runSwarm",
+		"function dispatchOperatorQueue",
+	];
+	const missing = markers.filter((marker) => !source.includes(marker));
+	return {
+		id: "orchestration-source",
+		exit: missing.length ? 1 : 0,
+		ok: missing.length === 0,
+		ms: 0,
+		stdoutTail: missing.length ? `missing=${missing.join(",")}` : "re_delegate/re_swarm/re_operator implementation markers present",
+		stderrTail: "",
+	};
+}
+
+const rows = [];
+
+rows.push(runRepi("doctor", ["doctor"], { timeoutMs: 60_000 }));
+rows.push(runRepi("model-doctor", ["model", "doctor"], { timeoutMs: 60_000 }));
+rows.push(
+	runRepi("model-min", [...modelArgs, "--no-session", "--no-tools", "-p", "Reply exactly: REPI_MODEL_OK"], {
+		expectStdout: /REPI_MODEL_OK/,
+		timeoutMs,
+	}),
+);
+rows.push(
+	runRepi(
+		"tool-min",
+		[
+			...modelArgs,
+			"--no-session",
+			"--tools",
+			"bash",
+			"-p",
+			"Use bash to run exactly: echo REPI_TOOL_OK. Then output only the command result.",
+		],
+		{ expectStdout: /REPI_TOOL_OK/, timeoutMs },
+	),
+);
+rows.push(
+	runRepi(
+		"memory-visibility-probe",
+		[
+			...modelArgs,
+			"--no-session",
+			"--no-tools",
+			"-p",
+			"Do you see prior task memory in the current prompt? Reply exactly YES or NO.",
+		],
+		{ expectStdout: /\bNO\b/i, timeoutMs },
+	),
+);
+
+rows.push(...(await Promise.all([runWorker(1), runWorker(2), runWorker(3)])));
+rows.push(orchestrationSourceCheck());
+
+if (deep) {
+	const isolatedAgentDir = join(mkdtempSync(join(tmpdir(), "repi-selfcheck-")), "agent");
+	mkdirSync(isolatedAgentDir, { recursive: true });
+	const sourceAgentDir = process.env.REPI_CODING_AGENT_DIR || join(homedir(), ".repi", "agent");
+	for (const name of ["models.json"]) {
+		const source = join(sourceAgentDir, name);
+		if (existsSync(source)) copyFileSync(source, join(isolatedAgentDir, name));
+	}
+	rows.push(
+		runRepi("re-swarm-slash", [...modelArgs, "--no-session", "--mode", "json", "/re-swarm run local-selfcheck 1 1"], {
+			timeoutMs,
+			expectStdout: /re_swarm|swarm|worker/i,
+			env: { REPI_CODING_AGENT_DIR: isolatedAgentDir, PI_CODING_AGENT_DIR: isolatedAgentDir },
+		}),
+	);
+}
+
+const report = {
+	kind: "repi-selfcheck-report",
+	schemaVersion: 1,
+	generatedAt: new Date().toISOString(),
+	root,
+	provider: provider ?? "default",
+	model: model ?? "default",
+	deep,
+	ok: rows.every((row) => row.ok),
+	rows,
+};
+
+if (json) {
+	console.log(JSON.stringify(report, null, 2));
+} else {
+	console.log("REPI Selfcheck");
+	console.log(`root: ${root}`);
+	console.log(`provider=${report.provider} model=${report.model} deep=${deep}`);
+	for (const row of rows) {
+		console.log(`${row.ok ? "PASS" : "FAIL"} ${row.id} exit=${row.exit} ms=${row.ms}`);
+		if (!row.ok) {
+			if (row.stderrTail) console.log(`  stderr: ${row.stderrTail.replace(/\n/g, "\\n").slice(-1000)}`);
+			if (row.stdoutTail) console.log(`  stdout: ${row.stdoutTail.replace(/\n/g, "\\n").slice(-1000)}`);
+			if (row.error) console.log(`  error: ${row.error}`);
+		}
+	}
+	console.log(`verdict: ${report.ok ? "pass" : "fail"}`);
+}
+
+process.exit(report.ok ? 0 : 1);

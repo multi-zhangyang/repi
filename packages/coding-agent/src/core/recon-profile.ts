@@ -544,7 +544,17 @@ type ReconStats = {
 	selfReviewDue: boolean;
 	lastRoute?: RoutePlan;
 	currentMissionId?: string;
+	sessionFile?: string;
+	noSession?: boolean;
 };
+
+function allowNoSessionReconWriteback(): boolean {
+	return (
+		envBoolean("REPI_RUNTIME_WRITEBACK_NO_SESSION") ??
+		envBoolean("REPI_MEMORY_WRITEBACK_NO_SESSION") ??
+		false
+	);
+}
 
 type MissionGateStatus = "pending" | "done" | "blocked";
 type MissionLaneStatus = "pending" | "in_progress" | "done" | "blocked";
@@ -6394,6 +6404,24 @@ function buildScopedMemoryDigest(options: { route?: string; target?: string; que
 	return formatScopedMemoryRecallPacket(options);
 }
 
+function concreteMemoryRecallTarget(target?: string): string | undefined {
+	return sanitizeTargetForCommand(target);
+}
+
+function formatDeferredScopedMemoryRecall(
+	settings: RepiMemoryRuntimeSettings,
+	options: { route?: string; target?: string; reason: string },
+): string {
+	return [
+		formatMemoryIsolationStatus(settings, { route: options.route, target: concreteMemoryRecallTarget(options.target) }),
+		"memory_recall_packet:",
+		"recall_type=deferred_scoped_summary_cards",
+		`deferred_reason=${options.reason}`,
+		"cards=0",
+		"policy=old task cards are not injected until the current task has a concrete URL/path/package target or the operator explicitly runs re_memory search/active",
+	].join("\n");
+}
+
 function buildStartupMemoryDigest(options: { route?: string; target?: string } = {}): string {
 	const settings = repiMemorySettings();
 	if (settings.mode === "off" || settings.startupDigest === "off") return "memory_startup: disabled";
@@ -6401,9 +6429,17 @@ function buildStartupMemoryDigest(options: { route?: string; target?: string } =
 		return truncateMiddle(buildMemoryDigest(), settings.maxInjectedTokens * 4);
 	}
 	if (settings.autoRecall && settings.startupDigest === "scoped") {
+		const target = concreteMemoryRecallTarget(options.target);
+		if (!target) {
+			return formatDeferredScopedMemoryRecall(settings, {
+				route: options.route,
+				target: options.target,
+				reason: "no_concrete_target",
+			});
+		}
 		return formatScopedMemoryRecallPacket({
 			route: options.route,
-			target: options.target,
+			target,
 			budgetTokens: settings.startupBudgetTokens,
 			maxItems: settings.maxStartupItems,
 		});
@@ -6417,9 +6453,17 @@ function buildContextMemoryTail(options: { route?: string; target?: string } = {
 		return truncateMiddle(buildMemoryDigest(), settings.contextPackBudgetTokens * 4);
 	}
 	if (settings.contextMemoryMode === "scoped" && settings.autoRecall) {
+		const target = concreteMemoryRecallTarget(options.target);
+		if (!target) {
+			return formatDeferredScopedMemoryRecall(settings, {
+				route: options.route,
+				target: options.target,
+				reason: "context_pack_no_concrete_target",
+			});
+		}
 		return formatScopedMemoryRecallPacket({
 			route: options.route,
-			target: options.target,
+			target,
 			budgetTokens: settings.contextPackBudgetTokens,
 			maxItems: Math.max(settings.maxStartupItems, 6),
 		});
@@ -43719,6 +43763,8 @@ export function createReconExtensionFactory() {
 			stats.active = true;
 			stats.lastRoute = route;
 			stats.currentMissionId = mission.id;
+			stats.sessionFile = ctx.sessionManager?.getSessionFile?.();
+			stats.noSession = Boolean(ctx.sessionManager) && !stats.sessionFile;
 			pi.appendEntry("pi-recon-route", { timestamp: Date.now(), route, prompt: truncateMiddle(event.prompt, 2000) });
 			pi.appendEntry("pi-recon-mission", { timestamp: Date.now(), mission });
 			if (!pi.getSessionName()) pi.setSessionName(`REPI: ${route.domain}`);
@@ -43768,7 +43814,9 @@ export function createReconExtensionFactory() {
 
 		pi.on("tool_call", async (event) => {
 			try {
-				appendToolCallTraceFromCall(event, stats.currentMissionId);
+				if (!stats.noSession || allowNoSessionReconWriteback()) {
+					appendToolCallTraceFromCall(event, stats.currentMissionId);
+				}
 			} catch (error) {
 				pi.appendEntry("repi-tool-call-trace-error", { timestamp: Date.now(), error: String(error).slice(0, 500) });
 			}
@@ -43792,14 +43840,21 @@ export function createReconExtensionFactory() {
 
 		pi.on("tool_result", async (event, ctx) => {
 			try {
-				appendToolCallTraceFromResult(event, stats.currentMissionId);
+				if (!stats.noSession || allowNoSessionReconWriteback()) {
+					appendToolCallTraceFromResult(event, stats.currentMissionId);
+				}
 			} catch (error) {
 				pi.appendEntry("repi-tool-result-trace-error", { timestamp: Date.now(), error: String(error).slice(0, 500) });
 			}
 			stats.calls += 1;
 			if (event.isError) stats.failures += 1;
 			const memorySettings = repiMemorySettings();
-			if (stats.active && event.toolName !== "re_memory" && memorySettings.autoDepositMode !== "off") {
+			if (
+				stats.active &&
+				(!stats.noSession || allowNoSessionReconWriteback()) &&
+				event.toolName !== "re_memory" &&
+				memorySettings.autoDepositMode !== "off"
+			) {
 				try {
 					const text = textBlocksToString(event.content);
 					const command = getToolResultCommand(event);
