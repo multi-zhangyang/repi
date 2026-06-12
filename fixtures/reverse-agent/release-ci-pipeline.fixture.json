@@ -9,6 +9,7 @@
     "product_boundary_before_capability_claim",
     "closure_readiness_before_capability_release",
     "capability_release_before_top_harness",
+    "runtime_adapter_execution_before_top_harness",
     "top_harness_before_repository_check",
     "no_generated_diff_after_checks",
     "ci_no_live_provider_or_secret_dependency",
@@ -83,23 +84,30 @@
             "evidenceTier": "release_evidence_index"
           },
           {
+            "name": "REPI runtime adapter execution gate",
+            "command": "npm run gate:runtime-adapter-execution",
+            "order": 9,
+            "required": true,
+            "evidenceTier": "runtime_adapter_execution"
+          },
+          {
             "name": "Top-level REPI independence harness",
             "command": "npm run gate:repi-harness",
-            "order": 9,
+            "order": 10,
             "required": true,
             "evidenceTier": "top_harness"
           },
           {
             "name": "Full repository check",
             "command": "npm run check",
-            "order": 10,
+            "order": 11,
             "required": true,
             "evidenceTier": "repository_check"
           },
           {
             "name": "No generated diff",
             "command": "git diff --check && git diff --exit-code",
-            "order": 11,
+            "order": 12,
             "required": true,
             "evidenceTier": "diff_guard"
           }
@@ -170,23 +178,30 @@
             "evidenceTier": "release_evidence_index"
           },
           {
+            "name": "REPI runtime adapter execution gate",
+            "command": "npm run gate:runtime-adapter-execution",
+            "order": 9,
+            "required": true,
+            "evidenceTier": "runtime_adapter_execution"
+          },
+          {
             "name": "Top-level REPI independence harness",
             "command": "npm run gate:repi-harness",
-            "order": 9,
+            "order": 10,
             "required": true,
             "evidenceTier": "top_harness"
           },
           {
             "name": "Full repository check",
             "command": "npm run check",
-            "order": 10,
+            "order": 11,
             "required": true,
             "evidenceTier": "repository_check"
           },
           {
             "name": "No generated diff",
             "command": "git diff --check && git diff --exit-code",
-            "order": 11,
+            "order": 12,
             "required": true,
             "evidenceTier": "diff_guard"
           }
@@ -201,7 +216,8 @@
       "topHarnessBeforeCheck": true,
       "diffGuardLast": true,
       "releaseCiPipelineBeforeEvidenceIndex": true,
-      "releaseEvidenceIndexBeforeTopHarness": true
+      "releaseEvidenceIndexBeforeTopHarness": true,
+      "runtimeAdapterBeforeTopHarness": true
     },
     "promotionPolicy": {
       "mode": "release_ci_pipeline_readiness",
@@ -235,6 +251,13 @@
       ],
       "expect": "fail",
       "mustReject": true
+    },
+    {
+      "id": "missing-runtime-adapter-execution",
+      "mutates": [
+        "remove gate:runtime-adapter-execution"
+      ],
+      "expect": "fail"
     },
     {
       "id": "missing-no-diff-guard",
