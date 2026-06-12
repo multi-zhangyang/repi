@@ -1172,3 +1172,23 @@ npm run gate:repi-harness -- --no-write
 ### MemoryStrategyCapsuleV13：可执行战术胶囊
 
 `re_memory strategy` 把“有用的记忆”继续编译成“下一步怎么打”的策略资产：触发条件、目标、推荐命令、验证命令、fallback、禁用命令和适用边界都进入结构化 capsule。它消费 replay 的 causalScore/savedStepEstimate 与 qualityScore，避免经验只停留在分数层。
+
+## Professional Runtime Bridges（新增顶级执行桥）
+
+REPI 现在内置 `ProfessionalRuntimeBridgesGateV1`，用于把逆向/渗透任务从“会规划”推进到“能组织真实工具链执行与验证”。它不包含真实 CTF/靶场 benchmark；重点是运行时桥接合同：
+
+- `re_runtime_bridge show`：查看完整 `runtime_execution_bridge_matrix`。
+- `re_runtime_bridge show tool-bridge-runtime`：Ghidra/r2/angr/GDB、pwntools/checksec/ROP、tshark/volatility、binwalk/qemu、Frida/ADB/JADX 等真实工具链桥接与 fallback。
+- `re_runtime_bridge show exploit-verifier-runtime`：crash → offset → primitive → exploit → verifier，Web replay diff、JS signing replay、mobile hook output 的验证链。
+- `re_runtime_bridge show web-cdp-replay`：Web/CDP replay，覆盖网络捕获、XHR/WS 路由、cookie/session 隔离、签名请求 replay、authz 矩阵与请求顺序证明。
+- `re_runtime_bridge show mobile-frida`：Frida/Mobile 动态桥接，覆盖 APK/IPA 静态 triage、Java/ObjC/Swift hook、keystore/keychain/cert pinning anchor、runtime attach env gate 与 hook output artifact contract。
+
+验收命令：
+
+```bash
+npm run gate:professional-runtime-bridges
+node scripts/reverse-agent/professional-runtime-bridges-gate.mjs . --strict --no-write --json
+npm run gate:repi-harness
+```
+
+该 gate 要求每条桥都有可执行命令模板、fallback 工具、`.repi/evidence/...` artifact plan、env-ref-only 配置、proof-exit mapping 和负例拒绝（例如 `narrative-only-bridge`、`literal-secret-in-env-ref`）。

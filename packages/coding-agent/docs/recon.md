@@ -503,3 +503,20 @@ Built-in REPI handles `session_before_compact` as a first-class compaction provi
 ### MemoryUxDashboardV16 user-visible memory UX
 
 `re_memory status` / `re_memory dashboard` writes `memory/status-report.json` and `memory/status-board.md` so the operator can see store health, recall hits, quality/replay/active-kernel/maturation state, supervisor queues, and next commands without reading raw JSONL. `re_memory why <query>` exposes `recall_explainability`: each why row includes event id, case signature, score, reasons, commands, lessons, and governance commands. `re_memory promote <event-id>`, `re_memory demote <event-id>`, and `re_memory forget <event-id>` use `append_only_memory_governance`: they append feedback/tombstone events and `memory/governance-ledger.jsonl` rows rather than rewriting historical memory. The contract is `MemoryUxDashboardV16` with `user_visible_memory_status`, `recall_explainability`, `append_only_memory_governance`, and `lifecycle_governance_commands`; run `npm run gate:memory-ux` to validate the runtime status/why/promote/forget flow plus schema/fixture coverage.
+
+### ProfessionalRuntimeBridgesGateV1 / re_runtime_bridge
+
+`re_runtime_bridge` exposes REPI's professional_runtime_bridge_gate. It binds real toolchain bridges, exploit-verifier runtime, Web/CDP replay, and Frida/Mobile dynamic analysis to executable command templates, fallback tools, env-ref-only configuration, artifact plans, and proof exits.
+
+Useful commands:
+
+```bash
+re_runtime_bridge show
+re_runtime_bridge show tool-bridge-runtime
+re_runtime_bridge show exploit-verifier-runtime
+re_runtime_bridge show web-cdp-replay
+re_runtime_bridge show mobile-frida
+npm run gate:professional-runtime-bridges
+```
+
+The gate rejects narrative-only bridges and secret literals through `runtime_execution_bridge_matrix`, `artifact_backed_tool_execution_plan`, and `env_ref_secret_boundary`.

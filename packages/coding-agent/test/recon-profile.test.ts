@@ -111,6 +111,7 @@ describe("REPI kernel profile", () => {
 			["re_memory", {}],
 			["re_tool_index", {}],
 			["re_toolchain_domain", {}],
+			["re_runtime_bridge", {}],
 			["re_lane_specialist_pack", {}],
 			["re_domain_proof_exit", {}],
 			["re_mission", {}],
@@ -149,6 +150,7 @@ describe("REPI kernel profile", () => {
 			["re-native-runtime", {}],
 			["re-tools", {}],
 			["re-toolchain", {}],
+			["re-runtime-bridge", {}],
 			["re-lane-specialist-pack", {}],
 			["re-domain-proof-exit", {}],
 			["re-memory", {}],
@@ -431,6 +433,19 @@ describe("REPI kernel profile", () => {
 
 		createReconExtensionFactory()(fakePi);
 		process.env[ENV_BRANCH_ID] = "branch-a";
+		const runtimeBridgeTool = tools.get("re_runtime_bridge") as {
+			execute: (
+				toolCallId: string,
+				params: Record<string, unknown>,
+			) => Promise<{ content: Array<{ text: string }> }>;
+		};
+		const runtimeBridge = await runtimeBridgeTool.execute("tool-call-id", {
+			action: "show",
+			bridge: "web-cdp-replay",
+		});
+		expect(runtimeBridge.content[0]?.text).toContain("ProfessionalRuntimeBridgesGateV1");
+		expect(runtimeBridge.content[0]?.text).toContain("cdp-network-capture");
+
 		const missionTool = tools.get("re_mission") as {
 			execute: (
 				toolCallId: string,
@@ -552,6 +567,8 @@ describe("REPI kernel profile", () => {
 		expect(commands.has("re-mobile-runtime")).toBe(true);
 		expect(commands.has("re-native-runtime")).toBe(true);
 		expect(commands.has("re-tools")).toBe(true);
+		expect(commands.has("re-toolchain")).toBe(true);
+		expect(commands.has("re-runtime-bridge")).toBe(true);
 		expect(commands.has("re-memory")).toBe(true);
 		expect(commands.has("re-mission")).toBe(true);
 		expect(commands.has("re-evidence")).toBe(true);
@@ -588,6 +605,8 @@ describe("REPI kernel profile", () => {
 		expect(tools.has("re_native_runtime")).toBe(true);
 		expect(tools.has("re_memory")).toBe(true);
 		expect(tools.has("re_tool_index")).toBe(true);
+		expect(tools.has("re_toolchain_domain")).toBe(true);
+		expect(tools.has("re_runtime_bridge")).toBe(true);
 		expect(tools.has("re_mission")).toBe(true);
 		expect(tools.has("re_evidence")).toBe(true);
 		expect(tools.has("re_graph")).toBe(true);

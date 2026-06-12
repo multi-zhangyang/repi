@@ -844,3 +844,23 @@ Failure/repair 合同现在同时保留机器字段和人类可读别名：
 ### MemoryUxDashboardV16 / 可观测记忆状态
 
 `re_memory status` 生成 `status-report.json` 与 `status-board.md`，把 MemoryStore、召回、quality、replay、active kernel、maturation 和 supervisor 队列合成一张用户可读状态板；`re_memory why <query>` 展示 why rows，解释每条记忆的 score、reasons、commands 和 lessons；`re_memory promote|demote|forget <event-id>` 通过 append-only `governance-ledger.jsonl` 写治理反馈，不重写历史。`npm run gate:memory-ux` 覆盖 `MemoryUxDashboardV16`、`user_visible_memory_status`、`recall_explainability`、`append_only_memory_governance`、`lifecycle_governance_commands`、status-board 写入和 runtime governance flow。
+
+## ProfessionalRuntimeBridgesGateV1
+
+`ProfessionalRuntimeBridgesGateV1` 是 REPI 的专业执行桥 gate，接入 `runtime_execution_bridge_matrix`，覆盖四条非 benchmark 能力链：
+
+1. `tool-bridge-runtime`：真实工具链桥接与 fallback 命令生成。
+2. `exploit-verifier-runtime`：自动利用验证、multi-run verifier、stdout/stderr hash 与回归 bundle。
+3. `web-cdp-replay`：CDP network capture、XHR/WS route extraction、signed request replay、authz replay matrix、request order proof。
+4. `mobile-frida`：Frida/Mobile 动态分析桥，包含 Java/ObjC/Swift hook、keystore/keychain/cert pinning anchors、runtime attach env gate。
+
+运行：
+
+```bash
+re_runtime_bridge show
+re_runtime_bridge show web-cdp-replay
+re_runtime_bridge show mobile-frida
+npm run gate:professional-runtime-bridges
+```
+
+合同关键字：`professional_runtime_bridge_gate`、`real_toolchain_bridge_contract`、`exploit_verifier_runtime_contract`、`web_cdp_replay_contract`、`mobile_frida_dynamic_bridge_contract`、`artifact_backed_tool_execution_plan`、`env_ref_secret_boundary`。
