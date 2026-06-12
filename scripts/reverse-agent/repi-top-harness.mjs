@@ -227,7 +227,7 @@ function staticContractChecks() {
 		markerCheck(
 			"installer:repi-no-pi-takeover",
 			"scripts/reverse-agent/install-repi.sh",
-			["ln -sfn \"$ROOT/repi\" \"$BIN_DIR/repi\"", "pi    -> upstream Pi only", "not modified by install-repi.sh"],
+			["ln -sfn \"$ROOT/repi\" \"$BIN_DIR/repi\"", "cleanup_stale_recon_pi", "Do not install or overwrite `pi`", "Installed REPI:"],
 			[/ln\s+-sfn\s+"\$ROOT\/pi"\s+"\$BIN_DIR\/pi"/, /rm\s+-rf\s+"\$HOME\/\.pi"/, /@earendil-works\/(?:pi|repi)-coding-agent/],
 		),
 	);

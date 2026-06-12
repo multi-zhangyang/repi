@@ -34,23 +34,13 @@ fi
 ln -sfn "$ROOT/repi" "$BIN_DIR/repi"
 REPI_INIT_VERBOSE=1 "$ROOT/repi" --offline --help >/dev/null 2>&1
 cat <<MSG
-Installed REPI launcher:
-  $BIN_DIR/repi -> $ROOT/repi
+Installed REPI:
+  launcher: $BIN_DIR/repi -> $ROOT/repi
+  runtime : ${REPI_CODING_AGENT_DIR:-${REPI_AGENT_DIR:-$HOME/.repi/agent}}
+  profile : built-in reverse/pentest kernel initialized
 
-Command ownership:
-  repi  -> REPI reverse/pentest agent
-  pi    -> upstream Pi only; this installer does not install, delete, or overwrite it
-
-Isolated profile:
-  ${REPI_CODING_AGENT_DIR:-${REPI_AGENT_DIR:-$HOME/.repi/agent}}
-
-Normal pi profile:
-  $HOME/.pi/agent (not modified by install-repi.sh)
-
-Optional one-way credential/model bootstrap:
-  repi --import-pi-auth --offline --list-models
-
-Smoke test:
+Next commands:
   repi --offline --help
   repi --offline --list-models
+  repi --import-pi-auth --offline --list-models
 MSG
