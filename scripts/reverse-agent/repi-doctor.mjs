@@ -2,7 +2,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 const rootArg = args[0] && !args[0].startsWith("--") ? args.shift() : undefined;
@@ -14,6 +15,7 @@ const repiBin = process.env.REPI_BIN_PATH || join(root, "repi");
 const runtimeMemory = join(agentDir, "recon", "memory");
 const packageBinMode = process.env.REPI_PACKAGE_BIN === "1";
 const installedRepi = process.env.REPI_INSTALLED_BIN_PATH || "/usr/local/bin/repi";
+const localScriptsDir = dirname(fileURLToPath(import.meta.url));
 
 function readJson(path) {
 	try {
@@ -57,6 +59,14 @@ function run(cmd, args, options = {}) {
 	};
 }
 
+function resolveScript(script) {
+	const sourcePath = join(root, "scripts", "reverse-agent", script);
+	if (existsSync(sourcePath)) return sourcePath;
+	const bundledPath = join(localScriptsDir, basename(script));
+	if (existsSync(bundledPath)) return bundledPath;
+	return sourcePath;
+}
+
 function pathEntry(path) {
 	try {
 		const stat = lstatSync(path);
@@ -86,6 +96,22 @@ if (fix) {
 		stdoutTail: installer.stdout.slice(-1200),
 		stderrTail: installer.stderr.slice(-1200),
 		error: installer.error,
+	});
+	const memoryRepair = run(process.execPath, [resolveScript("memory-inspect.mjs"), root, "repair", "--apply", "--yes", "--json"], { timeout: 60_000 });
+	fixActions.push({
+		id: "memory-repair",
+		exit: memoryRepair.code,
+		stdoutTail: memoryRepair.stdout.slice(-1200),
+		stderrTail: memoryRepair.stderr.slice(-1200),
+		error: memoryRepair.error,
+	});
+	const memorySanitize = run(process.execPath, [resolveScript("memory-inspect.mjs"), root, "sanitize", "--apply", "--yes", "--json"], { timeout: 90_000 });
+	fixActions.push({
+		id: "memory-sanitize",
+		exit: memorySanitize.code,
+		stdoutTail: memorySanitize.stdout.slice(-1200),
+		stderrTail: memorySanitize.stderr.slice(-1200),
+		error: memorySanitize.error,
 	});
 }
 

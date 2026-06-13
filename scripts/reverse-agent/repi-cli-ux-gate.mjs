@@ -141,6 +141,7 @@ const reconProfileSource = readFileSync(join(root, "packages", "coding-agent", "
 const printModeSource = readFileSync(join(root, "packages", "coding-agent", "src", "modes", "print-mode.ts"), "utf8");
 const selfcheckSource = readFileSync(join(root, "scripts", "reverse-agent", "repi-selfcheck.mjs"), "utf8");
 const swarmSource = readFileSync(join(root, "scripts", "reverse-agent", "repi-swarm-llm-run.mjs"), "utf8");
+const healthSource = readFileSync(join(root, "scripts", "reverse-agent", "repi-health.mjs"), "utf8");
 checks.push(
 	check(
 		"memory:runtime-redaction-wired",
@@ -182,6 +183,24 @@ checks.push(
 		"selfcheck:redaction-and-spawn-error",
 		/child\.on\("error"/.test(selfcheckSource) && /PRIVATE KEY/.test(selfcheckSource) && /https\?:\\\/\\\/api/.test(selfcheckSource),
 		{ markers: ["child error handler", "broad redaction"] },
+	),
+);
+const healthRun = runRepi(["health", "--json"], { REPI_ALPHA_KEY: "sk-test-redacted" });
+let healthReport = {};
+try {
+	healthReport = JSON.parse(healthRun.stdout);
+} catch {
+	healthReport = {};
+}
+checks.push(
+	check(
+		"health:operator-dashboard",
+		healthRun.exit === 0 &&
+			healthReport.kind === "repi-health-report" &&
+			Number.isFinite(Number(healthReport.score)) &&
+			Array.isArray(healthReport.prioritizedActions) &&
+			/doctor.*model.*memory.*swarm.*storage/s.test(healthSource),
+		{ exit: healthRun.exit, stdoutTail: healthRun.stdout.slice(-800), stderrTail: healthRun.stderr.slice(-400) },
 	),
 );
 const listFiltered = run(["scripts/reverse-agent/model-inspect.mjs", root, "list", "--provider", "alpha"]);

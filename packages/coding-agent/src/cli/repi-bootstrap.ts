@@ -1,6 +1,8 @@
 import { initializeRepiProfile } from "../core/repi-profile-init.ts";
 
 const PACKAGE_COMMANDS = new Set([
+	"health",
+	"status",
 	"doctor",
 	"smoke",
 	"selfcheck",

@@ -89,6 +89,7 @@ Install / update:
   repi update [--fast|--full|--no-pull]              Pull latest code, reinstall, run doctor/smoke
 
 Health:
+  repi health [--fix] [--selfcheck|--deep]          Operator health dashboard and safe repair plan
   repi doctor [--fix]                                Runtime, profile, model and memory diagnostics
   repi smoke [--full]                                Fast local smoke test
   repi selfcheck [--deep] --provider <id> --model <id>
@@ -122,6 +123,10 @@ MSG
   trust)
     shift
     exec node "$ROOT/scripts/reverse-agent/trust-inspect.mjs" "$ROOT" "$@"
+    ;;
+  health|status)
+    shift
+    exec node "$ROOT/scripts/reverse-agent/repi-health.mjs" "$ROOT" "$@"
     ;;
   doctor)
     shift

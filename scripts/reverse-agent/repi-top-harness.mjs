@@ -232,7 +232,7 @@ function staticContractChecks() {
 			"PI_BASH_DEFAULT_TIMEOUT_SECONDS",
 		], []),
 	);
-	checks.push(markerCheck("code:repi-product-command-dispatch", "packages/coding-agent/src/cli/repi-product-commands.ts", ["dispatchRepiProductCommand", "PRODUCT_COMMANDS", "repi-doctor.mjs", "model-inspect.mjs", "memory-inspect.mjs", "repi-swarm-llm-run.mjs", "REPI_BIN_PATH", "dist/reverse-agent"], []));
+	checks.push(markerCheck("code:repi-product-command-dispatch", "packages/coding-agent/src/cli/repi-product-commands.ts", ["dispatchRepiProductCommand", "PRODUCT_COMMANDS", "repi-health.mjs", "repi-doctor.mjs", "model-inspect.mjs", "memory-inspect.mjs", "repi-swarm-llm-run.mjs", "REPI_BIN_PATH", "dist/reverse-agent"], []));
 	checks.push(markerCheck("code:repi-cli-dispatch-wired", "packages/coding-agent/src/cli.ts", ["dispatchRepiProductCommand(cliArgs)", "bootstrapRepiCli"], []));
 	checks.push(
 		markerCheck("code:repi-profile-init-core", "packages/coding-agent/src/core/repi-profile-init.ts", [
@@ -282,7 +282,7 @@ function staticContractChecks() {
 	checks.push(markerCheck("release:open-source-readiness-gate", "scripts/reverse-agent/open-source-readiness-gate.mjs", ["repi-open-source-readiness-report", "CODE_OF_CONDUCT.md", "SUPPORT.md", "PULL_REQUEST_TEMPLATE.md", "privacy:tracked-secret-scan", "docs:security-no-upstream-stale-text"], []));
 	checks.push(markerCheck("release:open-source-governance-docs", "README.md", ["开源治理", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "SUPPORT.md", "gate:open-source-readiness"], []));
 	checks.push(markerCheck("ci:open-source-readiness-workflow", ".github/workflows/repi-harness.yml", ["REPI open source readiness gate", "npm run gate:open-source-readiness"], []));
-	checks.push(markerCheck("npm:coding-agent-bundles-product-commands", "packages/coding-agent/package.json", ["dist/reverse-agent", "repi-doctor.mjs", "model-inspect.mjs", "memory-inspect.mjs", "repi-swarm-llm-run.mjs"], []));
+	checks.push(markerCheck("npm:coding-agent-bundles-product-commands", "packages/coding-agent/package.json", ["dist/reverse-agent", "repi-health.mjs", "repi-doctor.mjs", "model-inspect.mjs", "memory-inspect.mjs", "repi-swarm-llm-run.mjs"], []));
 	checks.push(markerCheck("memory:v2-runtime-contract", "packages/coding-agent/src/core/recon-profile.ts", ["type MemoryEventV1", "function appendMemoryEvent", "function appendReplayerMemoryEvent", "appendReplayerMemoryEvent(replay, path)", "function appendAutofixMemoryEvent", "appendAutofixMemoryEvent(autofix, path)", "function appendProofLoopMemoryEvent", "appendProofLoopMemoryEvent(proof, path)", "function appendCompletionMemoryEvent", "appendCompletionMemoryEvent(audit", "function searchMemoryEvents", "memory_event_reuse", "events.jsonl", "case-memory.jsonl"], []));
 	checks.push(markerCheck("memory:v2-schema-fixture", "schemas/reverse-agent/memory-event.schema.json", ["MemoryEventV1", "CaseMemoryV1", "MemoryRetrievalReportV1", "confidence"], []));
 	checks.push(markerCheck("memory:utility-hard-eval", "scripts/reverse-agent/memory-utility-gate.mjs", ["repi-memory-utility-gate", "scenario:", "mustSuggestCommands", "mustNotSuggestCommands", "routeMatches"], []));
@@ -640,6 +640,10 @@ function runtimeInstallProbe() {
 	const packageCliHelp = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "--offline", "--help"], {
 		env: packageEnv,
 	});
+	const packageCliHealth = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "health", "--json"], {
+		env: packageEnv,
+		timeout: 30000,
+	});
 	const packageCliDoctor = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "doctor", "--json"], {
 		env: packageEnv,
 		maxBuffer: 8 * 1024 * 1024,
@@ -720,7 +724,7 @@ function runtimeInstallProbe() {
 		),
 	);
 	checks.push(resultCheck("runtime:package-bin-import-explicit-only", packageImport.code === 0 && packageModelsAfterImport && packageAuthAfterImport ? "pass" : "fail", { importCode: packageImport.code, packageModelsAfterImport, packageAuthAfterImport }));
-	checks.push(resultCheck("runtime:package-bin-product-commands", packageCliDoctor.code === 0 && packageCliDoctor.combined.includes("repi-doctor-report") && packageCliModelDoctor.code === 0 && packageCliModelDoctor.combined.includes("repi-model-doctor-report") && packageCliMemoryDoctor.code === 0 && packageCliMemoryDoctor.combined.includes("repi-memory-doctor-report") && packageCliSwarmPlan.code === 0 && packageCliSwarmPlan.combined.includes("SwarmPlannerV1") ? "pass" : "fail", {
+	checks.push(resultCheck("runtime:package-bin-product-commands", packageCliHealth.code === 0 && packageCliHealth.combined.includes("repi-health-report") && packageCliDoctor.code === 0 && packageCliDoctor.combined.includes("repi-doctor-report") && packageCliModelDoctor.code === 0 && packageCliModelDoctor.combined.includes("repi-model-doctor-report") && packageCliMemoryDoctor.code === 0 && packageCliMemoryDoctor.combined.includes("repi-memory-doctor-report") && packageCliSwarmPlan.code === 0 && packageCliSwarmPlan.combined.includes("SwarmPlannerV1") ? "pass" : "fail", {
 		doctor: { code: packageCliDoctor.code, tail: packageCliDoctor.combined.slice(-1000) },
 		modelDoctor: { code: packageCliModelDoctor.code, tail: packageCliModelDoctor.combined.slice(-1000) },
 		memoryDoctor: { code: packageCliMemoryDoctor.code, tail: packageCliMemoryDoctor.combined.slice(-1000) },

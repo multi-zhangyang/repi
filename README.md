@@ -828,6 +828,7 @@ Compact / resume gates：
 
 ```bash
 npm run doctor:repi
+npm run health:repi
 npm run smoke:repi
 npm run check
 npx vitest --run packages/coding-agent/test/recon-profile.test.ts
@@ -846,6 +847,13 @@ repi selfcheck --deep --provider <provider> --model <model>
 
 `selfcheck` 会实际跑模型最小调用、bash 工具调用、记忆可见性探针、3 个并发 worker、编排源码检查；`--deep` 额外在隔离 profile 里触发一次 `/re-swarm run`，避免污染当前长期记忆。
 
+`health` 是面向用户的总控面板，不要求先理解内部 gate：它把 `doctor`、`model doctor`、`memory doctor`、memory secret hygiene、latest swarm、磁盘占用和可选 `selfcheck` 合成一个分数、状态和优先修复命令。日常更新后建议先跑：
+
+```bash
+repi health
+repi health --fix
+```
+
 CLI 快速控制面：
 
 ```bash
@@ -854,8 +862,11 @@ repi update                         # 拉取、安装、修复并 smoke
 repi update --fast                  # 快速更新
 repi update --full                  # 更新后追加 npm run check
 repi install                        # 只刷新启动器/profile
+repi health                         # operator dashboard：doctor/model/memory/swarm/storage 汇总评分
+repi health --fix                   # 执行安全修复：profile/init、memory repair、memory sanitize
+repi health --deep                  # 追加 live selfcheck 和更深的本机 sanitize scope
 repi doctor                         # 安装、runtime、模型解析、memory scoped defaults
-repi doctor --fix                   # 自动重建 runtime profile、补 memory 文件、重装 repi 入口
+repi doctor --fix                   # 自动重建 runtime profile、memory repair/sanitize、重装 repi 入口
 repi smoke                          # 快速 smoke：doctor + memory/model status + memory gate + shrinkwrap + imports
 repi smoke --full                   # smoke 后追加 npm run check
 repi selfcheck --deep               # 模型、工具、记忆、并发 worker、编排能力端到端自检

@@ -9,6 +9,8 @@ type ProductCommandSpec = {
 };
 
 const PRODUCT_COMMANDS = new Set([
+	"health",
+	"status",
 	"doctor",
 	"smoke",
 	"selfcheck",
@@ -57,6 +59,9 @@ function findBundledScriptsRoot(): { scriptsDir: string; commandRoot: string } |
 
 function commandSpec(command: string, args: string[]): ProductCommandSpec | undefined {
 	switch (command) {
+		case "health":
+		case "status":
+			return { script: "repi-health.mjs", normalizeArgs: (rest) => rest };
 		case "doctor":
 			return { script: "repi-doctor.mjs", normalizeArgs: (rest) => rest };
 		case "smoke":
