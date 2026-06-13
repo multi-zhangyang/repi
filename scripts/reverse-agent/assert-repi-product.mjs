@@ -76,7 +76,7 @@ try {
 		fail("repi update --help failed", { code: updateHelp.status, stderr: updateHelp.stderr.slice(-4000), stdout: updateHelp.stdout.slice(-4000) });
 	}
 	const combinedUpdateHelp = `${updateHelp.stdout}\n${updateHelp.stderr}`;
-	if (!combinedUpdateHelp.includes("repi update [source]")) {
+	if (!combinedUpdateHelp.includes("repi update [source]") && !combinedUpdateHelp.includes("repi update [--fast|--full|--no-pull]")) {
 		fail("repi update help did not stay in repi command mode", { head: combinedUpdateHelp.slice(0, 1600) });
 	}
 	for (const pattern of forbiddenHelp) {

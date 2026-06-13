@@ -1,8 +1,71 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="${1:-$(pwd)}"
+
+usage() {
+  cat <<'MSG'
+Usage:
+  install-repi.sh [ROOT] [BIN_DIR]
+  install-repi.sh --root <repo> [--bin-dir <dir>|--user|--system]
+
+Options:
+  --root <repo>     REPI source checkout. Default: current directory.
+  --bin-dir <dir>   Directory where the repi launcher symlink is written.
+  --user            Install launcher into ~/.local/bin.
+  --system          Install launcher into /usr/local/bin.
+  -h, --help        Show this help.
+
+If no bin directory is provided, the installer uses /usr/local/bin when it is
+writable; otherwise it falls back to ~/.local/bin and prints a PATH hint.
+MSG
+}
+
+ROOT=""
+BIN_DIR=""
+POSITIONAL=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --root)
+      ROOT="${2:-}"
+      if [ -z "$ROOT" ]; then echo "--root requires a value" >&2; exit 2; fi
+      shift 2
+      ;;
+    --bin-dir)
+      BIN_DIR="${2:-}"
+      if [ -z "$BIN_DIR" ]; then echo "--bin-dir requires a value" >&2; exit 2; fi
+      shift 2
+      ;;
+    --user)
+      BIN_DIR="$HOME/.local/bin"
+      shift
+      ;;
+    --system)
+      BIN_DIR="/usr/local/bin"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      POSITIONAL+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$ROOT" ] && [ "${#POSITIONAL[@]}" -ge 1 ]; then ROOT="${POSITIONAL[0]}"; fi
+if [ -z "$BIN_DIR" ] && [ "${#POSITIONAL[@]}" -ge 2 ]; then BIN_DIR="${POSITIONAL[1]}"; fi
+ROOT="${ROOT:-$(pwd)}"
 ROOT="$(cd "$ROOT" && pwd)"
-BIN_DIR="${2:-/usr/local/bin}"
+
+if [ -z "$BIN_DIR" ]; then
+  if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
+    BIN_DIR="/usr/local/bin"
+  else
+    BIN_DIR="$HOME/.local/bin"
+  fi
+fi
+
 if [ ! -x "$ROOT/repi" ]; then
   echo "missing executable $ROOT/repi" >&2
   exit 1
@@ -34,14 +97,21 @@ fi
 ln -sfn "$ROOT/repi" "$BIN_DIR/repi"
 node "$ROOT/scripts/reverse-agent/init-repi-profile.mjs" "$ROOT"
 REPI_INIT_VERBOSE=1 "$ROOT/repi" --offline --help >/dev/null 2>&1
+PATH_HINT=""
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *) PATH_HINT="  PATH hint: export PATH=\"$BIN_DIR:\$PATH\"" ;;
+esac
 cat <<MSG
 Installed REPI:
   launcher: $BIN_DIR/repi -> $ROOT/repi
   runtime : ${REPI_CODING_AGENT_DIR:-${REPI_AGENT_DIR:-$HOME/.repi/agent}}
   profile : built-in reverse/pentest kernel initialized
+${PATH_HINT}
 
 Next commands:
+  repi commands
   repi --offline --help
-  repi --offline --list-models
-  repi --import-pi-auth --offline --list-models
+  repi doctor
+  repi model doctor
 MSG

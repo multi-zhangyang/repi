@@ -1,13 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOURCE="${BASH_SOURCE[0]}"
+INVOKED_SOURCE="${BASH_SOURCE[0]}"
+SOURCE="$INVOKED_SOURCE"
 while [ -L "$SOURCE" ]; do
   DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
   TARGET="$(readlink "$SOURCE")"
   if [[ "$TARGET" != /* ]]; then SOURCE="$DIR/$TARGET"; else SOURCE="$TARGET"; fi
 done
 ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+if [ -z "${REPI_INSTALLED_BIN_PATH:-}" ]; then
+  if [[ "$INVOKED_SOURCE" == */* ]]; then
+    case "$INVOKED_SOURCE" in
+      /*) export REPI_INSTALLED_BIN_PATH="$INVOKED_SOURCE" ;;
+      *) export REPI_INSTALLED_BIN_PATH="$(cd -P "$(dirname "$INVOKED_SOURCE")" 2>/dev/null && pwd)/$(basename "$INVOKED_SOURCE")" ;;
+    esac
+  else
+    FOUND_REPI="$(command -v "$INVOKED_SOURCE" 2>/dev/null || true)"
+    export REPI_INSTALLED_BIN_PATH="${FOUND_REPI:-$SOURCE}"
+  fi
+fi
 
 # REPI is the independent product entrypoint. It never owns the
 # upstream `pi` command and keeps all runtime state in ~/.repi/agent.
@@ -39,6 +51,71 @@ export PI_OFFLINE="${PI_OFFLINE:-$REPI_OFFLINE}"
 export REPI_REPO_ROOT="$ROOT"
 
 case "${1:-}" in
+  install|setup)
+    if [ "${1:-}" = "install" ] && [ "$#" -ge 2 ]; then
+      case "${2:-}" in
+        --root|--bin-dir|--user|--system|-h|--help) ;;
+        *)
+          exec "$ROOT/node_modules/.bin/tsx" --tsconfig "$ROOT/tsconfig.json" "$ROOT/packages/coding-agent/src/cli.ts" "$@"
+          ;;
+      esac
+    fi
+    shift
+    exec bash "$ROOT/scripts/reverse-agent/install-repi.sh" --root "$ROOT" "$@"
+    ;;
+  update|upgrade)
+    if [ "${1:-}" = "update" ] && [ "$#" -ge 2 ]; then
+      if [ "${2:-}" = "pi" ]; then
+        echo "REPI does not manage upstream pi." >&2
+        echo "repi update only updates REPI packages/source checkout; use your normal pi installer for upstream pi." >&2
+        exit 2
+      fi
+      case "${2:-}" in
+        --root|--fast|--full|--no-pull|--skip-npm|--bin-dir|--user|--system|-h|--help) ;;
+        *)
+          exec "$ROOT/node_modules/.bin/tsx" --tsconfig "$ROOT/tsconfig.json" "$ROOT/packages/coding-agent/src/cli.ts" "$@"
+          ;;
+      esac
+    fi
+    shift
+    exec bash "$ROOT/scripts/reverse-agent/update-repi.sh" --root "$ROOT" "$@"
+    ;;
+  commands)
+    cat <<'MSG'
+REPI command quick reference
+
+Install / update:
+  repi install [--user|--system|--bin-dir <dir>]     Refresh launcher/profile from this checkout
+  repi update [--fast|--full|--no-pull]              Pull latest code, reinstall, run doctor/smoke
+
+Health:
+  repi doctor [--fix]                                Runtime, profile, model and memory diagnostics
+  repi smoke [--full]                                Fast local smoke test
+  repi selfcheck [--deep] --provider <id> --model <id>
+  repi bugreport --output /tmp/repi-bugreport.json   Redacted diagnostic bundle
+
+Models:
+  repi model add --provider <id> --api openai-completions --base-url <url> --model <model>
+  repi model login --provider <id> --api-key-stdin
+  repi model default --provider <id> --model <model>
+  repi model list|doctor|test|cost|export|import
+
+Memory:
+  repi memory status|list|show|why|forget|quarantine|doctor|export|purge|diff|consolidate
+
+Swarm:
+  repi swarm plan <target> --workers 5
+  repi swarm run <target> --workers 5 --provider <id> --model <model>
+  repi swarm status latest
+  repi swarm merge latest
+
+Run:
+  repi                                             Interactive
+  repi -p "task"                                  One-shot task
+  repi --provider <id> --model <model> -p "task"  One-shot with a specific model
+MSG
+    exit 0
+    ;;
   doctor)
     shift
     exec node "$ROOT/scripts/reverse-agent/repi-doctor.mjs" "$ROOT" "$@"

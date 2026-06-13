@@ -83,50 +83,72 @@ npm run gate:professional-runtime-bridges
 
 ## 快速安装
 
-### 1. 获取源码
+面向普通用户只保留一条主路径：clone 后执行 `bash install.sh`。脚本会自动安装 npm 依赖、写入 `repi` 启动器、初始化 `~/.repi/agent`，并做离线启动检查。
 
 ```bash
 git clone https://github.com/multi-zhangyang/pi-recon-agent.git
 cd pi-recon-agent
-npm install
+bash install.sh
 ```
 
-### 2. 安装 CLI
+如果当前用户没有 `/usr/local/bin` 写权限，安装器会自动落到 `~/.local/bin`。也可以显式指定：
 
 ```bash
-npm run install:repi
+bash install.sh --user
+bash install.sh --bin-dir "$HOME/bin"
 ```
 
-或直接运行脚本：
+如果 shell 找不到 `repi`，把安装目录加入 PATH 后重开终端：
 
 ```bash
-scripts/reverse-agent/install-repi.sh "$PWD"
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### 3. 验证启动
+安装后先跑这三个命令：
 
 ```bash
-repi --offline --help
-repi --offline --list-models
+repi commands
 repi doctor
-repi smoke
+repi model doctor
 ```
 
 ---
 
 ## 升级已有安装
 
-在已安装过 REPI 的机器上：
+日常更新直接用：
+
+```bash
+repi update
+```
+
+它会在当前安装源目录执行：
+
+```text
+git pull --ff-only --tags → npm install → 刷新 repi 启动器/profile → repi doctor --fix → repi smoke
+```
+
+常用变体：
+
+```bash
+repi update --fast       # 只更新和重装，跳过 smoke
+repi update --full       # update + smoke + npm run check
+repi update --no-pull    # 不拉远端，只修复当前 checkout 的安装
+```
+
+如果 `repi` 命令本身不可用，进入源码目录执行兜底更新：
 
 ```bash
 cd pi-recon-agent
-git pull
-npm install
+bash scripts/reverse-agent/update-repi.sh .
+```
+
+如果只是刷新启动器，不拉代码、不装依赖：
+
+```bash
+repi install
+# 或
 npm run install:repi
-repi doctor --fix
-repi doctor
-repi smoke
-npm run check
 ```
 
 如果曾经安装过旧的文件型全局 profile，可以先 dry-run 再清理：
@@ -425,6 +447,32 @@ repi --tools read,grep,find,ls -p "只读分析 src/ 的路由、鉴权和入口
 ---
 
 ## 核心命令
+
+先看命令速查：
+
+```bash
+repi commands
+```
+
+常用 CLI：
+
+| 命令 | 作用 |
+| --- | --- |
+| `repi` | 进入交互式任务。 |
+| `repi -p "task"` | 执行一次性任务。 |
+| `repi commands` | 查看安装、模型、记忆、swarm、诊断命令速查。 |
+| `repi update` | 拉取最新代码、安装依赖、刷新启动器并跑 doctor/smoke。 |
+| `repi update --fast` | 快速更新，跳过 smoke。 |
+| `repi update --full` | 更新后追加 `npm run check`。 |
+| `repi install` | 只刷新当前 checkout 的启动器和 runtime profile。 |
+| `repi doctor --fix` | 修复 runtime profile、入口、memory 文件和常见配置问题。 |
+| `repi smoke` | 本地快速可用性检查。 |
+| `repi bugreport --output /tmp/repi-bugreport.json` | 导出严格脱敏诊断包。 |
+| `repi model ...` | 维护 provider/model/auth/cost 配置。 |
+| `repi memory ...` | 查看、解释、隔离、导出长期记忆。 |
+| `repi swarm ...` | 多 worker 分工、运行、合并。 |
+
+会话内 reverse/pentest workflow 命令：
 
 | 命令 | 作用 |
 | --- | --- |
@@ -786,6 +834,11 @@ repi selfcheck --deep --provider <provider> --model <model>
 CLI 快速控制面：
 
 ```bash
+repi commands                       # 用户命令速查
+repi update                         # 拉取、安装、修复并 smoke
+repi update --fast                  # 快速更新
+repi update --full                  # 更新后追加 npm run check
+repi install                        # 只刷新启动器/profile
 repi doctor                         # 安装、runtime、模型解析、memory scoped defaults
 repi doctor --fix                   # 自动重建 runtime profile、补 memory 文件、重装 repi 入口
 repi smoke                          # 快速 smoke：doctor + memory/model status + memory gate + shrinkwrap + imports
@@ -884,7 +937,7 @@ npm run gate:tool-call-trace-ledger
 which repi
 repi --offline --help
 repi doctor --fix
-npm run install:repi
+repi install
 ```
 
 确认帮助信息包含：
@@ -893,7 +946,7 @@ npm run install:repi
 REPI: independent product; built-in reverse/pentest kernel is enabled.
 ```
 
-如 PATH 指向旧入口，重新执行 `npm run install:repi` 后打开一个新的 shell。
+如 PATH 指向旧入口，重新执行 `repi install`；如果 shell 找不到 `repi`，进入源码目录执行 `bash install.sh --user` 后打开一个新的 shell。
 
 ### 模型不可用
 

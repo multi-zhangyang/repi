@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const args = process.argv.slice(2);
 const rootArg = args[0] && !args[0].startsWith("--") ? args.shift() : undefined;
@@ -77,7 +77,9 @@ function pathEntry(path) {
 
 const fixActions = [];
 if (fix) {
-	const installer = run("bash", [join(root, "scripts/reverse-agent/install-repi.sh"), root], { timeout: 45_000 });
+	const installerArgs = [join(root, "scripts/reverse-agent/install-repi.sh"), root];
+	if (process.env.REPI_INSTALLED_BIN_PATH && !packageBinMode) installerArgs.push(dirname(process.env.REPI_INSTALLED_BIN_PATH));
+	const installer = run("bash", installerArgs, { timeout: 45_000 });
 	fixActions.push({
 		id: "install-repi",
 		exit: installer.code,

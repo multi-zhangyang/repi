@@ -84,7 +84,7 @@ checks.push(
 );
 checks.push(check("package:open-source-script", Boolean(rootPackage.scripts?.["gate:open-source-readiness"]), { script: rootPackage.scripts?.["gate:open-source-readiness"] ?? null }));
 
-checks.push(fileCheck("README.md", ["REPI Agent", "快速安装", "模型与 provider 配置", "Harness 与测试", "开源治理", "SECURITY.md", "CONTRIBUTING.md"]));
+checks.push(fileCheck("README.md", ["REPI Agent", "bash install.sh", "repi update", "repi commands", "模型与 provider 配置", "Harness 与测试", "开源治理", "SECURITY.md", "CONTRIBUTING.md"]));
 checks.push(fileCheck("LICENSE", ["MIT License", "REPI Contributors"]));
 checks.push(fileCheck("CONTRIBUTING.md", ["贡献指南", "npm run check", "npm run gate:repi-harness", "npm run gate:open-source-readiness"]));
 checks.push(fileCheck("SECURITY.md", ["安全政策", "GitHub Security Advisory", "~/.repi/agent", "repi bugreport --stdout"]));
@@ -95,6 +95,9 @@ checks.push(fileCheck(".github/dependabot.yml", ["package-ecosystem: npm", "open
 checks.push(fileCheck(".github/workflows/repi-harness.yml", ["REPI Independent Harness", "npm run gate:open-source-readiness", "npm run gate:repi-harness", "npm run check"]));
 checks.push(fileCheck(".github/ISSUE_TEMPLATE/bug.yml", ["Bug Report", "不要提交 API key 或 token"]));
 checks.push(fileCheck(".github/ISSUE_TEMPLATE/contribution.yml", ["Contribution Proposal", "CONTRIBUTING.md"]));
+checks.push(fileCheck("install.sh", ["bash install.sh", "install-repi.sh", "repi commands"]));
+checks.push(fileCheck("scripts/reverse-agent/update-repi.sh", ["repi update", "pull --ff-only --tags", "repi smoke"]));
+checks.push(fileCheck("repi", ["update|upgrade", "install|setup", "REPI command quick reference"]));
 
 const stalePublicDocs = [/Contributing to pi/i, /pi-mono/i, /security@earendil\.com/i, /pi\.dev/i, /Discord/i, /taksies/i, /Earendil/i];
 checks.push(forbiddenCheck("docs:contributing-no-upstream-stale-text", "CONTRIBUTING.md", stalePublicDocs));

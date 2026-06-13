@@ -158,7 +158,9 @@
 		"memory:doctor": "node scripts/reverse-agent/memory-inspect.mjs . doctor",
 		"model:list": "node scripts/reverse-agent/model-inspect.mjs . list",
 		"model:export": "node scripts/reverse-agent/model-inspect.mjs . export",
-		"gate:open-source-readiness": "node scripts/reverse-agent/open-source-readiness-gate.mjs . --strict"
+		"gate:open-source-readiness": "node scripts/reverse-agent/open-source-readiness-gate.mjs . --strict",
+		"setup:repi": "bash install.sh",
+		"update:repi": "bash scripts/reverse-agent/update-repi.sh ."
 	},
 	"devDependencies": {
 		"@anthropic-ai/sandbox-runtime": "0.0.26",
