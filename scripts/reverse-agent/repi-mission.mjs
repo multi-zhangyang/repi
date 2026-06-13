@@ -120,7 +120,7 @@ function usage() {
   repi mission reset [--yes] [--json]
 
 Mission Control is the task-level control plane. It creates a scoped mission,
-selects the security/reverse lane, writes an evidence contract, generates the
+selects the reverse/pentest lane, writes an evidence contract, generates the
 next operator commands, and emits a compact resume pack without auto-injecting
 old memory into unrelated tasks.
 `;
@@ -220,8 +220,8 @@ function selectRoute(task, explicitDomain) {
 		if (byDomain) return byDomain;
 	}
 	return ROUTES.find((route) => route.match.test(text)) ?? {
-		id: "security-general",
-		domain: "Security general",
+		id: "reverse-pentest-general",
+		domain: "Reverse/Pentest general",
 		prompt: "reverse",
 		workflow: ["passive map", "choose one minimal proof path", "execute bounded verification", "compile evidence", "record reusable lesson only if high-value"],
 		tools: ["rg", "file/strings", "curl", "python", "re_verifier", "re_compiler"],

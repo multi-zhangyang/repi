@@ -38,7 +38,7 @@ REPI 在 `packages/coding-agent/src/core/recon-profile.ts`、`repi-profile/SYSTE
 | `repi-profile/APPEND_SYSTEM.md` | 附加启动序列、记忆协议、完成门槛 |
 | `repi-profile/settings.json` | 高思考等级、压缩/重试/技能命令/资源加载配置 |
 | `repi-profile/extensions/reverse-pentest-core.ts` | 运行时核心：路由、记忆、工具索引、自审计、loop guard、compaction checkpoint、自定义工具 |
-| `repi-profile/skills/reverse-pentest-orchestrator/SKILL.md` | 安全任务总控 skill，按 reverse-skill 思维方式编排工作流 |
+| `repi-profile/skills/reverse-pentest-orchestrator/SKILL.md` | 逆向渗透任务总控 skill，按 reverse-skill 思维方式编排工作流 |
 | `repi-profile/prompts/*.md` | `/reverse`、`/websec`、`/jsre`、`/pwn`、`/pcap`、`/cloud`、`/identity`、`/memory`、`/audit-agent` 任务模板 |
 | `repi-profile/memory/*` | 长期经验、索引、自我进化记录；运行时使用 `~/.repi/agent/recon/memory/events.jsonl` / `case-memory.jsonl` / `deposition-events.jsonl` / `deposition-report.json` / `quality-ledger.jsonl` / `quality-report.json` / `quality-board.md` / `retrieval-report.json` / `scope-isolation-report.json` / `artifact-scope-filter-report.json` / `orchestrator-report.json` / `store-report.json` 作为结构化事实源；MemoryDepositionEngineV7 会把 tool/shell runtime result 自动沉淀并绑定 MemoryEventV1，所有 append 通过 `.store.lock` 与 `transactions/*.json` manifest 提交，`re_replayer` / `re_autofix` / `re_proof_loop` / `re_complete` / 高价值 `re_lane run` / `re_swarm run` 会自动写回 replay/repair/proof/completion/runtime/worker 事件，`re_swarm` 写回 marker 为 `memory-swarm-writeback`；Markdown journal/playbook 是人类可读镜像；`repi-profile/memory/playbooks/index.md` 记录 playbook 质量/年龄/状态，`repi-profile/memory/playbooks/archive/` 存放被淘汰的低质或过旧链路 |
 | `.repi-harness/evidence/kernel/*.md` | `re_kernel build|audit` 生成的 execution_kernel、kernel_artifact、directive_stack、refusal_to_execution_rules、tool_call_policy、artifact_contract 与 stall_recovery |
@@ -247,7 +247,7 @@ REPI 的 `re_kernel` 内置 `authorized_task_bias`、`public_target_no_auto_refu
   - `/re-complete audit|scaffold`：审计 completion gates，必要时生成报告脚手架。
   - `/re-self-review`：触发自审计 checkpoint。
 - LLM tools:
-  - `re_route`：模型可调用的安全任务路由工具。
+  - `re_route`：模型可调用的逆向/渗透任务路由工具。
   - `re_kernel`：模型可调用的底层执行内核工具，把缺口/拒绝式卡顿重写成可执行命令、artifact contract、工具策略和 stall recovery 队列。
   - `re_live_browser`：模型可调用的浏览器/XHR/WS runtime capture 工具，支持 Playwright 优先、Node fetch 降级、auth matrix 与 IDOR/BOLA/WebSocket probe 模板。
   - `re_web_authz_state`：模型可调用的 Web/API 授权状态机工具，绑定 principal matrix、object ownership、sequence replay、rollback checks 和 `web_authz_artifact`。
@@ -282,7 +282,7 @@ REPI 的 `re_kernel` 内置 `authorized_task_bias`、`public_target_no_auto_refu
   - `re_complete`：模型可审计完成门槛或生成报告脚手架。
 - Hooks:
   - `resources_discover`：动态注入 orchestrator skill 和 prompts。
-  - `before_agent_start`：安全任务自动注入路由、mission、evidence、记忆、工具索引和 completion audit 摘要。
+  - `before_agent_start`：逆向/渗透任务自动注入路由、mission、evidence、记忆、工具索引和 completion audit 摘要。
   - `tool_call`：bash 重复命令 loop guard。
   - `tool_result`：每 5 次工具调用标记自审计，工具缺失/失败触发换路线提示。
   - `session_before_compact`：压缩前生成 `pi-recon-compaction` summary/details、`pi-recon-compaction-checkpoint` 和 `re_context resume` 恢复契约。

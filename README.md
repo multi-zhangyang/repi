@@ -1,8 +1,8 @@
 # REPI Agent
 
-REPI Agent 是面向逆向工程、漏洞研究和渗透测试任务组织的 autonomous coding agent。项目基于 Pi Coding Agent 底层深度改造，重构了运行时 profile、工具调度、证据账本、长期记忆、上下文恢复、runtime adapter 和 release harness。
+REPI Agent 是面向逆向工程、渗透测试、漏洞利用链验证和红队任务组织的 autonomous coding agent。项目基于 Pi Coding Agent 底层深度改造，重构了运行时 profile、工具调度、证据账本、长期记忆、上下文恢复、runtime adapter 和 release harness。
 
-REPI 的设计目标是把复杂安全研究任务推进为可执行、可验证、可恢复的工程流程，而不是只输出建议。它会把 `r2 / Ghidra / Frida / CDP / pwntools / tshark / binwalk` 等工具、多 agent 分工、provider 调度和 release gates 组织成一套可运行的 harness。
+REPI 的设计目标是把复杂逆向/渗透任务推进为可执行、可验证、可恢复的工程流程，而不是只输出建议。它会把 `r2 / Ghidra / Frida / CDP / pwntools / tshark / binwalk` 等工具、多 agent 分工、provider 调度和 release gates 组织成一套可运行的 harness。
 
 默认命令是 `repi`，默认运行时目录是：
 

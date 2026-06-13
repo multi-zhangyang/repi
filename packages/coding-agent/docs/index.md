@@ -1,6 +1,6 @@
 # REPI Documentation
 
-REPI is an autonomous reverse-engineering and security-research agent harness. It combines a terminal coding agent with REPI's reverse/pentest kernel, isolated runtime profile, evidence ledger, memory/compact/resume flow, runtime adapters, and release gates.
+REPI is an autonomous reverse-engineering and penetration-testing agent harness. It combines a terminal coding agent with REPI's reverse/pentest kernel, isolated runtime profile, evidence ledger, memory/compact/resume flow, runtime adapters, and release gates.
 
 ## Quick start
 

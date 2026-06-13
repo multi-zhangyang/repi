@@ -57,6 +57,7 @@ const PRODUCT_FORBIDDEN = [
 	{ id: "legacy-compact-reserve-default", pattern: /reserveTokens:\s*32768/ },
 	{ id: "legacy-script-npm-entry", pattern: /"(?:install:recon-pi|gate:pi-recon-primary)"/ },
 	{ id: "old-pi-mod-language", pattern: /对 Pi 的|魔改/ },
+	{ id: "generic-security-research-positioning", pattern: /安全研究|security-research|security research/i },
 	{ id: "generic-coding-help-example", pattern: /List all \.ts files|Help me refactor|coding assistant prompt|Summarize this codebase|Review the code/ },
 	{ id: "upstream-startup-onboarding", pattern: /Pi can explain its own features|Ask it how to use or extend Pi/ },
 	{ id: "product-help-pi-env-leak", pattern: /PI_PACKAGE_DIR is accepted|(^|[^A-Z_])PI_OFFLINE=1|(^|[^A-Z_])PI_TELEMETRY=0|(^|[^A-Z_])PI_SKIP_VERSION_CHECK=1/ },
