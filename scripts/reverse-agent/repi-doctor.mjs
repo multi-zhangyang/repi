@@ -10,9 +10,10 @@ const root = resolve(rootArg ?? process.cwd());
 const json = args.includes("--json");
 const fix = args.includes("--fix");
 const agentDir = process.env.REPI_CODING_AGENT_DIR || process.env.REPI_AGENT_DIR || join(homedir(), ".repi", "agent");
-const repiBin = join(root, "repi");
+const repiBin = process.env.REPI_BIN_PATH || join(root, "repi");
 const runtimeMemory = join(agentDir, "recon", "memory");
-const installedRepi = "/usr/local/bin/repi";
+const packageBinMode = process.env.REPI_PACKAGE_BIN === "1";
+const installedRepi = process.env.REPI_INSTALLED_BIN_PATH || "/usr/local/bin/repi";
 
 function readJson(path) {
 	try {
@@ -94,7 +95,20 @@ const listModels = existsSync(repiBin) ? run(repiBin, ["--offline", "--list-mode
 const helpText = `${help.stdout}\n${help.stderr}`;
 const globalRepi = pathEntry(installedRepi);
 const localRepi = pathEntry(repiBin);
-const globalRepiOk = globalRepi.exists && globalRepi.resolved === localRepi.resolved;
+const globalRepiOk = packageBinMode || (globalRepi.exists && globalRepi.resolved === localRepi.resolved);
+const bootstrapSource = existsSync(join(root, "packages/coding-agent/src/cli/repi-bootstrap.ts"))
+	? readFileSync(join(root, "packages/coding-agent/src/cli/repi-bootstrap.ts"), "utf8")
+	: "";
+const guardrailMarkers = [
+	"REPI_PRINT_PROGRESS",
+	"REPI_PRINT_TIMEOUT_MS",
+	"REPI_PRINT_MAX_TURNS",
+	"REPI_PRINT_MAX_TOOL_CALLS",
+	"REPI_STDIN_READ_TIMEOUT_MS",
+	"REPI_BASH_DEFAULT_TIMEOUT_SECONDS",
+];
+const missingHelpGuardrails = guardrailMarkers.filter((marker) => !helpText.includes(marker));
+const missingBootstrapGuardrails = guardrailMarkers.filter((marker) => !bootstrapSource.includes(marker));
 
 const checks = [
 	check("repo:root", existsSync(join(root, "package.json")) && existsSync(repiBin), `root=${root}`),
@@ -102,7 +116,9 @@ const checks = [
 	check(
 		"launcher:global",
 		globalRepiOk,
-		`path=${installedRepi} exists=${globalRepi.exists} symlink=${globalRepi.isSymlink} target=${globalRepi.linkTarget ?? "<none>"} resolved=${globalRepi.resolved ?? "<none>"}`,
+		packageBinMode
+			? `package-bin-direct path=${repiBin}`
+			: `path=${installedRepi} exists=${globalRepi.exists} symlink=${globalRepi.isSymlink} target=${globalRepi.linkTarget ?? "<none>"} resolved=${globalRepi.resolved ?? "<none>"}`,
 		"run repi doctor --fix or npm run install:repi",
 	),
 	check("runtime:agent-dir", existsSync(agentDir), `agentDir=${agentDir}`, "run npm run install:repi"),
@@ -120,6 +136,18 @@ const checks = [
 	check("models:parse", listModels.code === 0, `exit=${listModels.code} stdout=${listModels.stdout.slice(0, 120).replace(/\s+/g, " ")} stderr=${listModels.stderr.slice(0, 120).replace(/\s+/g, " ")}`, "fix ~/.repi/agent/models.json"),
 	check("models:config-present", Boolean(models) || listModels.code === 0, `modelsJson=${Boolean(models)} listModelsExit=${listModels.code}`, "configure ~/.repi/agent/models.json if no provider exists"),
 	check("cli:help", help.code === 0 && /REPI reverse\/pentest/.test(helpText), `exit=${help.code}`, "run npm install && npm run install:repi"),
+	check(
+		"runtime:long-run-guardrails-help",
+		missingHelpGuardrails.length === 0,
+		`missing=${missingHelpGuardrails.join(",") || "<none>"}`,
+		"run git pull && npm run install:repi",
+	),
+	check(
+		"runtime:package-bootstrap-guardrails",
+		missingBootstrapGuardrails.length === 0,
+		`missing=${missingBootstrapGuardrails.join(",") || "<none>"}`,
+		"run git pull && npm install",
+	),
 	check("network:update-suppressed", /--offline/.test(helpText) && /REPI_SKIP_VERSION_CHECK/.test(helpText), "offline/version-check controls available"),
 ];
 

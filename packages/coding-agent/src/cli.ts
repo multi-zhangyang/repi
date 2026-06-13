@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { bootstrapRepiCli } from "./cli/repi-bootstrap.ts";
+import { dispatchRepiProductCommand } from "./cli/repi-product-commands.ts";
 /**
  * CLI entry point for the refactored coding agent.
  * Uses main.ts with AgentSession and new mode modules.
@@ -20,4 +21,5 @@ process.emitWarning = (() => {}) as typeof process.emitWarning;
 configureHttpDispatcher();
 
 const cliArgs = IS_REPI_PRODUCT ? bootstrapRepiCli(process.argv.slice(2)) : process.argv.slice(2);
+if (IS_REPI_PRODUCT) dispatchRepiProductCommand(cliArgs);
 main(cliArgs);

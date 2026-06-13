@@ -109,6 +109,39 @@ export function initializeRepiProfile(options: { repoRoot?: string; verbose?: bo
 		reserveTokens: migratedLegacyReserveTokens ?? 16384,
 		keepRecentTokens: existingCompaction.keepRecentTokens ?? 36000,
 	};
+	const existingMemory =
+		settings.memory && typeof settings.memory === "object" && !Array.isArray(settings.memory)
+			? (settings.memory as Record<string, unknown>)
+			: {};
+	const migrateMemoryV1 = Number(existingMemory.schemaVersion ?? 0) < 2;
+	const legacyAutoDeposit =
+		migrateMemoryV1 && existingMemory.autoDeposit === false ? "high-value" : existingMemory.autoDeposit;
+	const legacyStartupDigest =
+		migrateMemoryV1 && existingMemory.startupDigest === "status" ? "scoped" : existingMemory.startupDigest;
+	const legacyScopePolicy =
+		migrateMemoryV1 && existingMemory.scopePolicy === "session"
+			? "mission+workspace+target"
+			: existingMemory.scopePolicy;
+	settings.memory = {
+		...existingMemory,
+		schemaVersion: 2,
+		mode: existingMemory.mode ?? "scoped",
+		autoRecall: existingMemory.autoRecall ?? true,
+		autoInject: existingMemory.autoInject ?? false,
+		rawAutoInject: existingMemory.rawAutoInject ?? false,
+		autoDeposit: legacyAutoDeposit ?? "high-value",
+		startupDigest: legacyStartupDigest ?? "scoped",
+		scopePolicy: legacyScopePolicy ?? "mission+workspace+target",
+		contextMemoryMode: existingMemory.contextMemoryMode ?? "scoped",
+		includeGlobalMemoryInContextPack: existingMemory.includeGlobalMemoryInContextPack ?? false,
+		activeRecall: existingMemory.activeRecall ?? false,
+		maxInjectedTokens: existingMemory.maxInjectedTokens ?? 1200,
+		startupBudgetTokens: existingMemory.startupBudgetTokens ?? 800,
+		contextPackBudgetTokens: existingMemory.contextPackBudgetTokens ?? 1200,
+		maxStartupItems: existingMemory.maxStartupItems ?? 5,
+		minRecallScore: existingMemory.minRecallScore ?? 0.35,
+		rawTranscriptRetention: existingMemory.rawTranscriptRetention ?? "external-only",
+	};
 	settings.branchSummary = {
 		reserveTokens: 24576,
 		skipPrompt: true,
@@ -146,6 +179,19 @@ export function initializeRepiProfile(options: { repoRoot?: string; verbose?: bo
 		["recon/memory/field-journal.md", "# REPI Field Journal\n\n"],
 		["recon/memory/case-index.md", "# REPI Case Index\n\n"],
 		["recon/memory/evolution-log.md", "# REPI Evolution Log\n\n"],
+		[
+			"recon/memory/core-memory.md",
+			"# REPI Core Memory\n\n固定偏好、项目不变量、长期稳定事实写在这里；保持短小。\n\n",
+		],
+		[
+			"recon/memory/project-memory.md",
+			"# REPI Project Memory\n\n当前 workspace 的构建、运行、测试、入口、常用命令写在这里。\n\n",
+		],
+		[
+			"recon/memory/procedural-memory.md",
+			"# REPI Procedural Memory\n\n可复用 workflow / checklist / verified command template 写在这里。\n\n",
+		],
+		["recon/memory/events.jsonl", ""],
 		["recon/evidence/ledger.md", "# REPI Evidence Ledger\n\n"],
 		["recon/tools/tool-index.md", "# REPI Tool Index\n\n"],
 	] as const) {

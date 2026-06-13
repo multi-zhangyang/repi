@@ -14,7 +14,7 @@ const agentDir = process.env.REPI_CODING_AGENT_DIR || process.env.REPI_AGENT_DIR
 const outputFlag = flagValue(rawArgs, ["--output", "-o"]);
 const defaultOutput = join(agentDir, "recon", "bugreports", `repi-bugreport-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
 const outputPath = outputFlag ? (outputFlag === "-" ? null : resolve(outputFlag)) : stdoutOnly ? null : defaultOutput;
-const repi = join(root, "repi");
+const repi = process.env.REPI_BIN_PATH || join(root, "repi");
 
 function usage() {
 	return `Usage:

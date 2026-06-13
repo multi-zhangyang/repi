@@ -223,8 +223,17 @@ function staticContractChecks() {
 			'"--project-context"',
 			'"--with-project-resources"',
 			"PACKAGE_COMMANDS",
+			"REPI_PRINT_PROGRESS",
+			"REPI_PRINT_TIMEOUT_MS",
+			"REPI_PRINT_MAX_TURNS",
+			"REPI_PRINT_MAX_TOOL_CALLS",
+			"REPI_STDIN_READ_TIMEOUT_MS",
+			"REPI_BASH_DEFAULT_TIMEOUT_SECONDS",
+			"PI_BASH_DEFAULT_TIMEOUT_SECONDS",
 		], []),
 	);
+	checks.push(markerCheck("code:repi-product-command-dispatch", "packages/coding-agent/src/cli/repi-product-commands.ts", ["dispatchRepiProductCommand", "PRODUCT_COMMANDS", "repi-doctor.mjs", "model-inspect.mjs", "memory-inspect.mjs", "repi-swarm-llm-run.mjs", "REPI_BIN_PATH", "dist/reverse-agent"], []));
+	checks.push(markerCheck("code:repi-cli-dispatch-wired", "packages/coding-agent/src/cli.ts", ["dispatchRepiProductCommand(cliArgs)", "bootstrapRepiCli"], []));
 	checks.push(
 		markerCheck("code:repi-profile-init-core", "packages/coding-agent/src/core/repi-profile-init.ts", [
 			"initializeRepiProfile",
@@ -235,6 +244,12 @@ function staticContractChecks() {
 			"existingCompaction",
 			"triggerPercent: existingCompaction.triggerPercent ?? 85",
 			"warningPercent: existingCompaction.warningPercent ?? 80",
+			"settings.memory",
+			"schemaVersion: 2",
+			"rawAutoInject: existingMemory.rawAutoInject ?? false",
+			"includeGlobalMemoryInContextPack: existingMemory.includeGlobalMemoryInContextPack ?? false",
+			"core-memory.md",
+			"events.jsonl",
 		], []),
 	);
 	checks.push(markerCheck("code:repi-update-pi-boundary", "packages/coding-agent/src/package-manager-cli.ts", ["does not manage upstream pi", "repi update only updates REPI packages", 'options.source === "pi"'], []));
@@ -264,6 +279,7 @@ function staticContractChecks() {
 	checks.push(markerCheck("prompt:repi-config", "repi-profile/prompts/repi-config.md", ["~/.repi/agent/models.json", "OpenAI-compatible", "anthropic-messages", "triggerPercent=85"], []));
 	checks.push(markerCheck("docs:runtime-configuration", "docs/reverse-agent/repi-runtime-configuration.md", ["model_provider_configuration_runtime", "~/.repi/agent/models.json", "repi --offline", "openai-completions", "triggerPercent"], []));
 	checks.push(markerCheck("npm:top-harness-script", "package.json", ["gate:repi-harness", "gate:repi-product", "gate:repi-isolation", "gate:repi-product-surface", "gate:context-compact", "gate:compact-resume-chain", "gate:compact-resume-ledger-v2", "gate:multi-compact-pressure", "gate:cross-session-resume-live", "gate:cross-session-multi-compact-matrix", "gate:context-runtime-schema", "gate:memory-contract", "gate:memory-utility", "gate:memory-feedback", "gate:memory-feedback-closure", "gate:memory-scope-isolation", "gate:knowledge-scope-isolation", "gate:artifact-scope-filter", "gate:latest-artifact-consumer-scope", "gate:failure-signature-priority", "gate:memory-orchestrator", "gate:memory-deposition", "gate:memory-experience", "gate:memory-quality-ledger", "gate:memory-replay-evaluator", "gate:memory-strategy-capsule", "gate:memory-active-kernel", "gate:memory-maturation-runtime", "gate:memory-ux", "gate:memory-hybrid", "gate:memory-vector", "gate:memory-usefulness", "gate:memory-distiller", "gate:memory-sedimentation", "gate:memory-store", "gate:memory-swarm-writeback", "gate:memory-supervisor", "gate:worker-runtime-pool", "gate:worker-lease-scheduler", "gate:worker-child-session", "gate:provider-runtime-matrix", "gate:provider-endpoint-doctor", "gate:toolchain-domain-capability", "gate:domain-proof-exit-closure", "gate:relane-specialist-command-pack", "gate:pwn-advanced-capability", "gate:professional-runtime-bridges", "gate:runtime-adapter-execution", "gate:provider-failure-injection", "gate:repair-rollback-policy", "gate:worker-provider-repair-rollback-unification", "gate:tool-call-trace-ledger", "gate:parallel-provider-worker-matrix", "gate:remote-provider-longrun", "gate:structured-claim-merge", "gate:live-conflict-arbitration-matrix", "gate:autonomous-hardening-gap-ledger", "gate:autonomous-closure-readiness", "gate:capability-release-bundle", "gate:release-ci-pipeline", "gate:release-evidence-index", "install:repi", "clean:repi-legacy-profile", "clean:repi-legacy-profile:apply", "clean:repi-legacy-profile:force-tools"], ["install:recon-pi", "gate:pi-recon-primary"]));
+	checks.push(markerCheck("npm:coding-agent-bundles-product-commands", "packages/coding-agent/package.json", ["dist/reverse-agent", "repi-doctor.mjs", "model-inspect.mjs", "memory-inspect.mjs", "repi-swarm-llm-run.mjs"], []));
 	checks.push(markerCheck("memory:v2-runtime-contract", "packages/coding-agent/src/core/recon-profile.ts", ["type MemoryEventV1", "function appendMemoryEvent", "function appendReplayerMemoryEvent", "appendReplayerMemoryEvent(replay, path)", "function appendAutofixMemoryEvent", "appendAutofixMemoryEvent(autofix, path)", "function appendProofLoopMemoryEvent", "appendProofLoopMemoryEvent(proof, path)", "function appendCompletionMemoryEvent", "appendCompletionMemoryEvent(audit", "function searchMemoryEvents", "memory_event_reuse", "events.jsonl", "case-memory.jsonl"], []));
 	checks.push(markerCheck("memory:v2-schema-fixture", "schemas/reverse-agent/memory-event.schema.json", ["MemoryEventV1", "CaseMemoryV1", "MemoryRetrievalReportV1", "confidence"], []));
 	checks.push(markerCheck("memory:utility-hard-eval", "scripts/reverse-agent/memory-utility-gate.mjs", ["repi-memory-utility-gate", "scenario:", "mustSuggestCommands", "mustNotSuggestCommands", "routeMatches"], []));
@@ -602,6 +618,31 @@ function runtimeInstallProbe() {
 	const packageCliHelp = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "--offline", "--help"], {
 		env: packageEnv,
 	});
+	const packageCliDoctor = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "doctor", "--json"], {
+		env: packageEnv,
+		maxBuffer: 8 * 1024 * 1024,
+	});
+	const packageCliModelDoctor = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "model", "doctor", "--json"], {
+		env: packageEnv,
+		maxBuffer: 8 * 1024 * 1024,
+	});
+	const packageCliMemoryDoctor = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "memory", "doctor", "--json"], {
+		env: packageEnv,
+		maxBuffer: 8 * 1024 * 1024,
+	});
+	const packageCliSwarmPlan = run(join(root, "node_modules", ".bin", "tsx"), ["--tsconfig", join(root, "tsconfig.json"), join(root, "packages", "coding-agent", "src", "cli.ts"), "swarm", "plan", "package-bin-selfcheck", "--workers", "2", "--json"], {
+		env: packageEnv,
+		maxBuffer: 8 * 1024 * 1024,
+	});
+	const packageGuardrailMarkers = [
+		"REPI_PRINT_PROGRESS",
+		"REPI_PRINT_TIMEOUT_MS",
+		"REPI_PRINT_MAX_TURNS",
+		"REPI_PRINT_MAX_TOOL_CALLS",
+		"REPI_STDIN_READ_TIMEOUT_MS",
+		"REPI_BASH_DEFAULT_TIMEOUT_SECONDS",
+	];
+	const packageMissingGuardrails = packageGuardrailMarkers.filter((marker) => !packageCliHelp.combined.includes(marker));
 	const packageProfilePath = join(packageHome, ".repi", "agent", "recon", "profile.json");
 	const packageProfile = existsSync(packageProfilePath) ? JSON.parse(readFileSync(packageProfilePath, "utf8")) : null;
 	const packageModelsDefaultCopied = existsSync(join(packageHome, ".repi", "agent", "models.json"));
@@ -640,6 +681,7 @@ function runtimeInstallProbe() {
 			packageCliHelp.code === 0 &&
 				packageCliHelp.combined.includes("repi - REPI reverse/pentest autonomous agent") &&
 				packageCliHelp.combined.includes("built-in reverse/pentest kernel is enabled") &&
+				packageMissingGuardrails.length === 0 &&
 				packageProfile?.agentDir === join(packageHome, ".repi", "agent") &&
 				!packageModelsDefaultCopied
 				? "pass"
@@ -647,6 +689,7 @@ function runtimeInstallProbe() {
 			{
 				code: packageCliHelp.code,
 				head: packageCliHelp.combined.slice(0, 1200),
+				missingGuardrails: packageMissingGuardrails,
 				packageProfilePath,
 				packageAgentDir: packageProfile?.agentDir ?? null,
 				packageModelsDefaultCopied,
@@ -654,6 +697,12 @@ function runtimeInstallProbe() {
 		),
 	);
 	checks.push(resultCheck("runtime:package-bin-import-explicit-only", packageImport.code === 0 && packageModelsAfterImport && packageAuthAfterImport ? "pass" : "fail", { importCode: packageImport.code, packageModelsAfterImport, packageAuthAfterImport }));
+	checks.push(resultCheck("runtime:package-bin-product-commands", packageCliDoctor.code === 0 && packageCliDoctor.combined.includes("repi-doctor-report") && packageCliModelDoctor.code === 0 && packageCliModelDoctor.combined.includes("repi-model-doctor-report") && packageCliMemoryDoctor.code === 0 && packageCliMemoryDoctor.combined.includes("repi-memory-doctor-report") && packageCliSwarmPlan.code === 0 && packageCliSwarmPlan.combined.includes("SwarmPlannerV1") ? "pass" : "fail", {
+		doctor: { code: packageCliDoctor.code, tail: packageCliDoctor.combined.slice(-1000) },
+		modelDoctor: { code: packageCliModelDoctor.code, tail: packageCliModelDoctor.combined.slice(-1000) },
+		memoryDoctor: { code: packageCliMemoryDoctor.code, tail: packageCliMemoryDoctor.combined.slice(-1000) },
+		swarmPlan: { code: packageCliSwarmPlan.code, tail: packageCliSwarmPlan.combined.slice(-1000) },
+	}));
 	return { checks, tempRoot, installBin, home };
 }
 
