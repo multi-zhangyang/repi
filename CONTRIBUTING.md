@@ -43,6 +43,20 @@ npm run build
 - 面向用户的命令必须在 `README.md`、`--help`、doctor/smoke/harness 中保持一致。
 - 对 provider、memory、bugreport、session、auth 的改动必须默认脱敏并保持本地私有。
 
+## 依赖升级策略
+
+npm 依赖由维护者手动升级，不接受只改 `package-lock.json` 的自动版本 PR。原因是本仓库还有生成的 coding-agent shrinkwrap、模型目录和 release harness，升级依赖后必须一起运行并提交对应结果：
+
+```bash
+npm install
+npm run shrinkwrap:coding-agent
+npm run check
+npm run smoke:repi
+npm run gate:repi-harness
+```
+
+GitHub Actions 依赖可以由 Dependabot 自动提交；npm 安全告警会在维护者确认兼容性后合并修复。
+
 ## 文档规范
 
 文档应该回答三个问题：
