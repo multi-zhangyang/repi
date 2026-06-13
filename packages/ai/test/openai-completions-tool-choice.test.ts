@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getModel } from "../src/models.ts";
+import { getModel, getModels } from "../src/models.ts";
 import { convertMessages } from "../src/providers/openai-completions.ts";
 import { stream, streamSimple } from "../src/stream.ts";
 import type { AssistantMessage, Model, Tool, ToolResultMessage } from "../src/types.ts";
@@ -890,10 +890,17 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("stores OpenRouter Kimi K2.6 reasoning replay compat in built-in metadata", () => {
-		for (const modelId of ["moonshotai/kimi-k2.6", "moonshotai/kimi-k2.6:free"] as const) {
-			const model = getModel("openrouter", modelId)!;
-			expect(model.compat?.supportsDeveloperRole).toBe(false);
-			expect(model.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
+		const canonical = getModel("openrouter", "moonshotai/kimi-k2.6")!;
+		expect(canonical.compat?.supportsDeveloperRole).toBe(false);
+		expect(canonical.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
+
+		// OpenRouter's live catalog can add/remove the free alias. When it is present,
+		// it must keep the same replay compat metadata; when absent, the canonical
+		// paid model assertion above remains the stable contract.
+		const freeAlias = getModels("openrouter").find((model) => model.id === "moonshotai/kimi-k2.6:free");
+		if (freeAlias) {
+			expect(freeAlias.compat?.supportsDeveloperRole).toBe(false);
+			expect(freeAlias.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
 		}
 	});
 
