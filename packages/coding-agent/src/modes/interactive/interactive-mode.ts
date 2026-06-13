@@ -3265,7 +3265,7 @@ export class InteractiveMode {
 			new Text(
 				theme.fg(
 					"warning",
-					`This project is not trusted. Project instructions (AGENTS.md/CLAUDE.md), ${CONFIG_DIR_NAME} resources, and project packages are ignored. Use /trust to save a decision and reload project resources.`,
+					`This project is not trusted. Project instructions (AGENTS.md/CLAUDE.md), ${CONFIG_DIR_NAME} resources, and project packages are ignored. Use /trust or 'repi trust yes' to save a decision and reload project resources.`,
 				),
 				1,
 				0,

@@ -598,6 +598,25 @@ function runtimeInstallProbe() {
 	const updateHelp = run(repiPath, ["update", "--help"], { env });
 	const updatePi = run(repiPath, ["update", "pi"], { env });
 	const listModels = run(repiPath, ["--offline", "--list-models"], { env });
+	const trustProject = join(tempRoot, "trust-project");
+	const trustSubdir = join(trustProject, "subdir");
+	mkdir(trustSubdir);
+	writeFileSync(join(trustProject, "AGENTS.md"), "REPI trust persistence probe\n", "utf8");
+	const trustStatusBefore = run(repiPath, ["trust", "status", "--json"], { cwd: trustSubdir, env, maxBuffer: 4 * 1024 * 1024 });
+	const trustSave = run(repiPath, ["trust", "yes", "--json"], { cwd: trustSubdir, env, maxBuffer: 4 * 1024 * 1024 });
+	const trustStatusSubdirAfter = run(repiPath, ["trust", "status", "--json"], { cwd: trustSubdir, env, maxBuffer: 4 * 1024 * 1024 });
+	const trustStatusRootAfter = run(repiPath, ["trust", "status", "--json"], { cwd: trustProject, env, maxBuffer: 4 * 1024 * 1024 });
+	const parseTrust = (runResult) => {
+		try {
+			return JSON.parse(runResult.stdout);
+		} catch {
+			return null;
+		}
+	};
+	const trustBeforeReport = parseTrust(trustStatusBefore);
+	const trustSaveReport = parseTrust(trustSave);
+	const trustSubdirAfterReport = parseTrust(trustStatusSubdirAfter);
+	const trustRootAfterReport = parseTrust(trustStatusRootAfter);
 	const modelsBeforeImport = existsSync(join(home, ".repi", "agent", "models.json"));
 	const authBeforeImport = existsSync(join(home, ".repi", "agent", "auth.json"));
 	const importRun = run(repiPath, ["--import-pi-auth", "--offline", "--list-models"], { env });
@@ -674,6 +693,7 @@ function runtimeInstallProbe() {
 	checks.push(resultCheck("runtime:repi-help-product", help.code === 0 && help.combined.includes("repi - REPI reverse/pentest autonomous agent") && help.combined.includes("built-in reverse/pentest kernel is enabled") ? "pass" : "fail", { code: help.code, head: help.combined.slice(0, 1200) }));
 	checks.push(resultCheck("runtime:repi-update-help-independent", updateHelp.code === 0 && (updateHelp.combined.includes("repi update [source]") || updateHelp.combined.includes("repi update [--fast|--full|--no-pull]")) && !/--self|--force|Update pi|source\|self\|pi/i.test(updateHelp.combined) ? "pass" : "fail", { code: updateHelp.code, text: updateHelp.combined.slice(0, 1200) }));
 	checks.push(resultCheck("runtime:repi-update-pi-boundary", updatePi.code !== 0 && updatePi.combined.includes("does not manage upstream pi") && updatePi.combined.includes("repi update only updates REPI packages") && !/No matching package found for pi/i.test(updatePi.combined) ? "pass" : "fail", { code: updatePi.code, text: updatePi.combined.slice(0, 1200) }));
+	checks.push(resultCheck("runtime:repi-trust-persistence", trustStatusBefore.code === 0 && trustSave.code === 0 && trustStatusSubdirAfter.code === 0 && trustStatusRootAfter.code === 0 && trustBeforeReport?.effectiveTrusted === false && trustSaveReport?.effectiveTrusted === true && trustSubdirAfterReport?.effectiveTrusted === true && trustRootAfterReport?.effectiveTrusted === true && existsSync(join(home, ".repi", "agent", "trust.json")) ? "pass" : "fail", { before: trustBeforeReport, save: trustSaveReport, subdirAfter: trustSubdirAfterReport, rootAfter: trustRootAfterReport, codes: { before: trustStatusBefore.code, save: trustSave.code, subdirAfter: trustStatusSubdirAfter.code, rootAfter: trustStatusRootAfter.code } }));
 	checks.push(resultCheck("runtime:repi-list-models", listModels.code === 0 ? "pass" : "fail", { code: listModels.code, stdout: listModels.stdout.trim().slice(0, 1200), stderrTail: listModels.stderr.slice(-1000) }));
 	checks.push(resultCheck("runtime:no-upstream-warning-leak", forbidden.length === 0 ? "pass" : "fail", { forbidden: forbidden.map(String) }));
 	checks.push(resultCheck("runtime:profile-in-repi-home", profile?.agentDir === join(home, ".repi", "agent") ? "pass" : "fail", { profilePath, agentDir: profile?.agentDir ?? null }));

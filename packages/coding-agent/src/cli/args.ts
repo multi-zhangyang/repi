@@ -257,6 +257,8 @@ ${updateCommandLine}
                                  End-to-end selfcheck for model/tool/memory/parallel/orchestration usability
   ${APP_NAME} bugreport [--output <path>|--stdout|--json]
                                  Create a strictly redacted local diagnostic bundle
+  ${APP_NAME} trust status|yes|no|clear [path]
+                                 Show, save, or clear project trust decision
   ${APP_NAME} memory status|list|show|diff|why|forget|quarantine|doctor|export|purge|consolidate
                                  Inspect, explain, govern, export, purge, and consolidate scoped memory
   ${APP_NAME} model list|add|edit|remove|login|test|default|doctor|cost|export|import

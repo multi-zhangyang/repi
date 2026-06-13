@@ -84,7 +84,7 @@ checks.push(
 );
 checks.push(check("package:open-source-script", Boolean(rootPackage.scripts?.["gate:open-source-readiness"]), { script: rootPackage.scripts?.["gate:open-source-readiness"] ?? null }));
 
-checks.push(fileCheck("README.md", ["REPI Agent", "bash install.sh", "repi update", "repi commands", "模型与 provider 配置", "Harness 与测试", "开源治理", "SECURITY.md", "CONTRIBUTING.md"]));
+checks.push(fileCheck("README.md", ["REPI Agent", "v0.78.1-repi.1", "bash install.sh", "repi update", "repi commands", "repi trust yes", "模型与 provider 配置", "Harness 与测试", "开源治理", "SECURITY.md", "CONTRIBUTING.md"]));
 checks.push(fileCheck("LICENSE", ["MIT License", "REPI Contributors"]));
 checks.push(fileCheck("CONTRIBUTING.md", ["贡献指南", "npm run check", "npm run gate:repi-harness", "npm run gate:open-source-readiness"]));
 checks.push(fileCheck("SECURITY.md", ["安全政策", "GitHub Security Advisory", "~/.repi/agent", "repi bugreport --stdout"]));

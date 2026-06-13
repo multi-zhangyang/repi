@@ -1,0 +1,151 @@
+#!/usr/bin/env node
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+
+const argv = process.argv.slice(2);
+const rootArg = argv[0] && !argv[0].startsWith("-") ? argv.shift() : process.cwd();
+const root = resolve(rootArg ?? process.cwd());
+const command = (argv.shift() ?? "status").toLowerCase();
+const targetArg = argv.find((arg) => !arg.startsWith("-"));
+const json = argv.includes("--json");
+const agentDir = process.env.REPI_CODING_AGENT_DIR || process.env.REPI_AGENT_DIR || join(homedir(), ".repi", "agent");
+const trustPath = join(agentDir, "trust.json");
+const CONTEXT_FILE_NAMES = ["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
+
+function canonical(path) {
+	const resolved = resolve(path);
+	try {
+		return realpathSync(resolved);
+	} catch {
+		return resolved;
+	}
+}
+
+function readTrust() {
+	try {
+		const parsed = JSON.parse(readFileSync(trustPath, "utf8"));
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+		return parsed;
+	} catch {
+		return {};
+	}
+}
+
+function writeTrust(data) {
+	const sorted = {};
+	for (const key of Object.keys(data).sort()) {
+		const value = data[key];
+		if (value === true || value === false || value === null) sorted[key] = value;
+	}
+	mkdirSync(dirname(trustPath), { recursive: true });
+	writeFileSync(trustPath, `${JSON.stringify(sorted, null, 2)}\n`, "utf8");
+}
+
+function nearestMarkerDir(start, markerCheck) {
+	let current = canonical(start);
+	while (true) {
+		if (markerCheck(current)) return current;
+		const parent = dirname(current);
+		if (parent === current) return undefined;
+		current = parent;
+	}
+}
+
+function nearestGitRoot(start) {
+	return nearestMarkerDir(start, (dir) => existsSync(join(dir, ".git")));
+}
+
+function nearestContextRoot(start) {
+	return nearestMarkerDir(start, (dir) => {
+		if (existsSync(join(dir, ".repi"))) return true;
+		if (existsSync(join(dir, ".agents", "skills"))) return true;
+		return CONTEXT_FILE_NAMES.some((name) => existsSync(join(dir, name)));
+	});
+}
+
+function aliasesFor(path) {
+	const aliases = new Set();
+	aliases.add(canonical(path));
+	if (process.env.PWD) aliases.add(canonical(process.env.PWD));
+	const gitRoot = nearestGitRoot(path);
+	if (gitRoot) aliases.add(gitRoot);
+	const contextRoot = nearestContextRoot(path);
+	if (contextRoot) aliases.add(contextRoot);
+	return Array.from(aliases);
+}
+
+function lookup(data, path) {
+	let current = canonical(path);
+	while (true) {
+		const value = data[current];
+		if (value === true || value === false) return { decision: value, matched: current };
+		const parent = dirname(current);
+		if (parent === current) return { decision: null, matched: null };
+		current = parent;
+	}
+}
+
+function hasProjectTrustInputs(path) {
+	return Boolean(nearestContextRoot(path));
+}
+
+const target = canonical(targetArg ?? process.env.PWD ?? process.cwd());
+const data = readTrust();
+const current = lookup(data, target);
+
+function finish(report, exitCode = 0) {
+	if (json) console.log(JSON.stringify(report, null, 2));
+	else {
+		console.log(`REPI Trust ${report.action}`);
+		console.log(`path: ${report.path}`);
+		console.log(`trustStore: ${report.trustPath}`);
+		console.log(`decision: ${report.decision === null ? "unset" : report.decision ? "trusted" : "untrusted"}`);
+		if (report.matched) console.log(`matched: ${report.matched}`);
+		if (report.effectiveTrusted !== undefined) console.log(`effectiveTrusted: ${report.effectiveTrusted ? "yes" : "no"}`);
+		if (report.aliases?.length) console.log(`aliases: ${report.aliases.join(", ")}`);
+		if (report.message) console.log(report.message);
+	}
+	process.exit(exitCode);
+}
+
+if (["status", "show", "doctor"].includes(command)) {
+	finish({
+		kind: "repi-trust-report",
+		action: "status",
+		root,
+		path: target,
+		trustPath,
+		decision: current.decision,
+		matched: current.matched,
+		effectiveTrusted: current.decision === true || (!hasProjectTrustInputs(target) && current.decision !== false),
+		projectTrustInputs: hasProjectTrustInputs(target),
+		aliases: aliasesFor(target),
+	});
+}
+
+if (["yes", "trust", "trusted", "allow", "on"].includes(command)) {
+	const aliases = aliasesFor(target);
+	for (const key of aliases) data[key] = true;
+	writeTrust(data);
+	finish({ kind: "repi-trust-report", action: "saved", root, path: target, trustPath, decision: true, matched: target, effectiveTrusted: true, aliases, message: "Saved trusted decision. Restart or /reload if a session is already open." });
+}
+
+if (["no", "untrust", "deny", "off"].includes(command)) {
+	const aliases = aliasesFor(target);
+	for (const key of aliases) data[key] = false;
+	writeTrust(data);
+	finish({ kind: "repi-trust-report", action: "saved", root, path: target, trustPath, decision: false, matched: target, effectiveTrusted: false, aliases, message: "Saved untrusted decision." });
+}
+
+if (["clear", "unset", "reset"].includes(command)) {
+	const aliases = aliasesFor(target);
+	for (const key of aliases) delete data[key];
+	writeTrust(data);
+	const next = lookup(data, target);
+	finish({ kind: "repi-trust-report", action: "cleared", root, path: target, trustPath, decision: next.decision, matched: next.matched, effectiveTrusted: next.decision === true || (!hasProjectTrustInputs(target) && next.decision !== false), aliases });
+}
+
+console.error(`Unknown repi trust command: ${command}`);
+console.error("Usage: repi trust [status|yes|no|clear] [path] [--json]");
+process.exit(2);

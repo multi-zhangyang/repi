@@ -1,6 +1,6 @@
 {
 	"name": "repi-monorepo",
-	"version": "0.0.3",
+	"version": "0.78.1-repi.1",
 	"private": true,
 	"description": "REPI Agent monorepo: reverse-engineering and penetration-testing autonomous agent harness",
 	"license": "MIT",

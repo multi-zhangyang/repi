@@ -6,6 +6,7 @@ const PACKAGE_COMMANDS = new Set([
 	"selfcheck",
 	"dogfood",
 	"bugreport",
+	"trust",
 	"memory",
 	"model",
 	"models",

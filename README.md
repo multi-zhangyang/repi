@@ -10,6 +10,12 @@ REPI 的设计目标是把复杂安全研究任务推进为可执行、可验证
 ~/.repi/agent
 ```
 
+当前开源版本：
+
+```text
+v0.78.1-repi.1
+```
+
 ---
 
 ## 目录
@@ -468,6 +474,9 @@ repi commands
 | `repi doctor --fix` | 修复 runtime profile、入口、memory 文件和常见配置问题。 |
 | `repi smoke` | 本地快速可用性检查。 |
 | `repi bugreport --output /tmp/repi-bugreport.json` | 导出严格脱敏诊断包。 |
+| `repi trust status` | 查看当前目录是否已保存 trust。 |
+| `repi trust yes` | 保存当前目录 trust，避免每次启动重复提示。 |
+| `repi trust clear` | 清除当前目录 trust 决策。 |
 | `repi model ...` | 维护 provider/model/auth/cost 配置。 |
 | `repi memory ...` | 查看、解释、隔离、导出长期记忆。 |
 | `repi swarm ...` | 多 worker 分工、运行、合并。 |
@@ -845,6 +854,10 @@ repi smoke                          # 快速 smoke：doctor + memory/model statu
 repi smoke --full                   # smoke 后追加 npm run check
 repi selfcheck --deep               # 模型、工具、记忆、并发 worker、编排能力端到端自检
 repi bugreport --output /tmp/repi-bugreport.json  # 生成严格脱敏诊断包
+repi trust status                   # 查看当前目录 trust 状态
+repi trust yes                      # 保存当前目录及其 git/context root 的 trust 决策
+repi trust no                       # 保存不信任决策
+repi trust clear                    # 清除当前目录及其 git/context root 的 trust 决策
 repi memory status                  # scoped memory 状态与污染保护
 repi memory list --limit 20          # 脱敏列出 memory events
 repi memory show <event-id>          # 脱敏查看单条 memory event
@@ -947,6 +960,29 @@ REPI: independent product; built-in reverse/pentest kernel is enabled.
 ```
 
 如 PATH 指向旧入口，重新执行 `repi install`；如果 shell 找不到 `repi`，进入源码目录执行 `bash install.sh --user` 后打开一个新的 shell。
+
+### 已 trust 的目录仍反复提示
+
+先在目标目录确认 trust 状态：
+
+```bash
+cd /path/to/project
+repi trust status
+```
+
+如果显示 `decision: unset` 或 `effectiveTrusted: no`，直接保存：
+
+```bash
+repi trust yes
+```
+
+`repi trust yes` 会同时写入当前目录、真实路径、`$PWD`、最近的 git root 和最近的 context root，解决 symlink、子目录、git 根目录切换导致的重复 trust 提示。已经打开的会话里可以执行 `/trust` 或重启 `repi`。
+
+trust 数据只保存在本机：
+
+```text
+~/.repi/agent/trust.json
+```
 
 ### 模型不可用
 

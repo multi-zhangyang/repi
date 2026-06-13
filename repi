@@ -93,6 +93,8 @@ Health:
   repi smoke [--full]                                Fast local smoke test
   repi selfcheck [--deep] --provider <id> --model <id>
   repi bugreport --output /tmp/repi-bugreport.json   Redacted diagnostic bundle
+  repi trust status                                  Show project trust decision for current folder
+  repi trust yes|no|clear [path]                     Save or clear project trust
 
 Models:
   repi model add --provider <id> --api openai-completions --base-url <url> --model <model>
@@ -115,6 +117,10 @@ Run:
   repi --provider <id> --model <model> -p "task"  One-shot with a specific model
 MSG
     exit 0
+    ;;
+  trust)
+    shift
+    exec node "$ROOT/scripts/reverse-agent/trust-inspect.mjs" "$ROOT" "$@"
     ;;
   doctor)
     shift

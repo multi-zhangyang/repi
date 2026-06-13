@@ -14,6 +14,7 @@ const PRODUCT_COMMANDS = new Set([
 	"selfcheck",
 	"dogfood",
 	"bugreport",
+	"trust",
 	"memory",
 	"model",
 	"models",
@@ -65,6 +66,8 @@ function commandSpec(command: string, args: string[]): ProductCommandSpec | unde
 			return { script: "repi-selfcheck.mjs", normalizeArgs: (rest) => rest };
 		case "bugreport":
 			return { script: "repi-bugreport.mjs", normalizeArgs: (rest) => rest };
+		case "trust":
+			return { script: "trust-inspect.mjs", normalizeArgs: (rest) => rest };
 		case "memory": {
 			const sub = args[0] ?? "status";
 			if (sub === "consolidate") return { script: "memory-consolidate.mjs", normalizeArgs: (rest) => rest.slice(1) };

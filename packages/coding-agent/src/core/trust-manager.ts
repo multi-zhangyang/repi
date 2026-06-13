@@ -14,6 +14,53 @@ function normalizeCwd(cwd: string): string {
 	return canonicalizePath(resolvePath(cwd));
 }
 
+function nearestMarkerDir(cwd: string, markerCheck: (dir: string) => boolean): string | undefined {
+	let currentDir = normalizeCwd(cwd);
+	while (true) {
+		if (markerCheck(currentDir)) {
+			return currentDir;
+		}
+		const parentDir = dirname(currentDir);
+		if (parentDir === currentDir) {
+			return undefined;
+		}
+		currentDir = parentDir;
+	}
+}
+
+function nearestGitRoot(cwd: string): string | undefined {
+	return nearestMarkerDir(cwd, (dir) => existsSync(join(dir, ".git")));
+}
+
+function nearestProjectContextRoot(cwd: string): string | undefined {
+	return nearestMarkerDir(cwd, (dir) => {
+		if (existsSync(join(dir, CONFIG_DIR_NAME))) {
+			return true;
+		}
+		if (existsSync(join(dir, ".agents", "skills"))) {
+			return true;
+		}
+		return CONTEXT_FILE_NAMES.some((filename) => existsSync(join(dir, filename)));
+	});
+}
+
+function trustAliasesForCwd(cwd: string): string[] {
+	const aliases = new Set<string>();
+	aliases.add(normalizeCwd(cwd));
+	if (process.env.PWD) {
+		aliases.add(normalizeCwd(process.env.PWD));
+	}
+	const gitRoot = nearestGitRoot(cwd);
+	if (gitRoot) {
+		aliases.add(gitRoot);
+	}
+	const contextRoot = nearestProjectContextRoot(cwd);
+	if (contextRoot) {
+		aliases.add(contextRoot);
+	}
+	return Array.from(aliases);
+}
+
 function readTrustFile(path: string): TrustFile {
 	if (!existsSync(path)) {
 		return {};
@@ -148,11 +195,12 @@ export class ProjectTrustStore {
 	set(cwd: string, decision: ProjectTrustDecision): void {
 		withTrustFileLock(this.trustPath, () => {
 			const data = readTrustFile(this.trustPath);
-			const key = normalizeCwd(cwd);
-			if (decision === null) {
-				delete data[key];
-			} else {
-				data[key] = decision;
+			for (const key of trustAliasesForCwd(cwd)) {
+				if (decision === null) {
+					delete data[key];
+				} else {
+					data[key] = decision;
+				}
 			}
 			writeTrustFile(this.trustPath, data);
 		});
