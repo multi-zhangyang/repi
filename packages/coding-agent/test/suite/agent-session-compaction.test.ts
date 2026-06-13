@@ -200,6 +200,50 @@ describe("AgentSession compaction characterization", () => {
 		}
 	});
 
+	it("does not auto-compact generic 400 no-body provider errors", async () => {
+		const harness = await createHarness({
+			extensionFactories: [createReconExtensionFactory()],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage("", {
+				stopReason: "error",
+				errorMessage: "400 status code (no body)",
+			}),
+		]);
+
+		await harness.session.prompt("1");
+
+		expect(harness.sessionManager.getEntries().some((entry) => entry.type === "compaction")).toBe(false);
+		expect(
+			harness.sessionManager
+				.getEntries()
+				.some((entry) => entry.type === "custom" && entry.customType === "pi-recon-compaction-auto-resume"),
+		).toBe(false);
+	});
+
+	it("does not auto-compact tiny no-history overflow-like errors", async () => {
+		const harness = await createHarness({
+			extensionFactories: [createReconExtensionFactory()],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage("", {
+				stopReason: "error",
+				errorMessage: "413 status code (no body)",
+			}),
+		]);
+
+		await harness.session.prompt("1");
+
+		expect(harness.sessionManager.getEntries().some((entry) => entry.type === "compaction")).toBe(false);
+		expect(harness.eventsOfType("compaction_end").at(-1)).toMatchObject({
+			reason: "overflow",
+			result: undefined,
+			aborted: false,
+		});
+	});
+
 	it("throws when compacting without a model", async () => {
 		const harness = await createHarness();
 		harnesses.push(harness);

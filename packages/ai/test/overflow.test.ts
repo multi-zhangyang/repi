@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { AssistantMessage } from "../src/types.ts";
 import { isContextOverflow } from "../src/utils/overflow.ts";
 
-function createErrorMessage(errorMessage: string): AssistantMessage {
+function createErrorMessage(errorMessage: string, provider = "ollama"): AssistantMessage {
 	return {
 		role: "assistant",
 		content: [],
 		api: "openai-completions",
-		provider: "ollama",
+		provider,
 		model: "qwen3.5:35b",
 		usage: {
 			input: 0,
@@ -59,6 +59,21 @@ describe("isContextOverflow", () => {
 	it("does not treat generic non-overflow Ollama errors as overflow", () => {
 		const message = createErrorMessage("500 `model runner crashed unexpectedly`");
 		expect(isContextOverflow(message, 32768)).toBe(false);
+	});
+
+	it("does not treat generic 400 no-body gateway errors as overflow", () => {
+		const message = createErrorMessage("400 status code (no body)", "cloudflare-workers-ai");
+		expect(isContextOverflow(message, 262144)).toBe(false);
+	});
+
+	it("keeps provider-specific Cerebras 400 no-body overflow detection", () => {
+		const message = createErrorMessage("400 status code (no body)", "cerebras");
+		expect(isContextOverflow(message, 131072)).toBe(true);
+	});
+
+	it("treats generic 413 no-body errors as overflow", () => {
+		const message = createErrorMessage("413 status code (no body)", "cloudflare-workers-ai");
+		expect(isContextOverflow(message, 262144)).toBe(true);
 	});
 
 	it("does not treat Bedrock throttling 'Too many tokens' as overflow", () => {

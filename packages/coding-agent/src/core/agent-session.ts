@@ -1933,6 +1933,19 @@ export class AgentSession {
 				return false;
 			}
 
+			const hasSummarizableHistory =
+				preparation.messagesToSummarize.length > 0 || preparation.turnPrefixMessages.length > 0;
+			if (reason === "overflow" && !hasSummarizableHistory) {
+				this._emit({
+					type: "compaction_end",
+					reason,
+					result: undefined,
+					aborted: false,
+					willRetry: false,
+				});
+				return false;
+			}
+
 			let extensionCompaction: CompactionResult | undefined;
 			let fromExtension = false;
 

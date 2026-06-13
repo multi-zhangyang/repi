@@ -23,7 +23,7 @@ import type { AssistantMessage } from "../types.ts";
  * - GitHub Copilot: "prompt token count of X exceeds the limit of Y"
  * - MiniMax: "invalid params, context window exceeds limit"
  * - Kimi For Coding: "Your request exceeded model token limit: X (requested: Y)"
- * - Cerebras: "400/413 status code (no body)"
+ * - Cerebras: "400/413 status code (no body)"; generic 400/no-body from other providers is not reliable
  * - Mistral: "Prompt contains X tokens ... too large for model with Y maximum context length"
  * - z.ai: Does NOT error, accepts overflow silently - handled via usage.input > contextWindow
  * - Xiaomi MiMo: Truncates input to fill contextWindow exactly, then returns finish_reason "length"
@@ -54,7 +54,7 @@ const OVERFLOW_PATTERNS = [
 	/context[_ ]length[_ ]exceeded/i, // Generic fallback
 	/too many tokens/i, // Generic fallback
 	/token limit exceeded/i, // Generic fallback
-	/^4(?:00|13)\s*(?:status code)?\s*\(no body\)/i, // Cerebras: 400/413 with no body
+	/^413\s*(?:status code)?\s*\(no body\)/i, // Generic HTTP 413/no-body request-size overflow
 ];
 
 /**
@@ -89,7 +89,7 @@ const NON_OVERFLOW_PATTERNS = [
  * - Google Gemini: "input token count exceeds the maximum"
  * - xAI (Grok): "maximum prompt length is X but request contains Y"
  * - Groq: "reduce the length of the messages"
- * - Cerebras: 400/413 status code (no body)
+ * - Cerebras: 400/413 status code (no body); generic non-Cerebras 400/no-body is treated as provider/request failure
  * - Mistral: "Prompt contains X tokens ... too large for model with Y maximum context length"
  * - OpenRouter (most backends): "maximum context length is X tokens"
  * - OpenRouter/Poolside: "Input length X exceeds the maximum allowed input length of Y tokens."
@@ -127,7 +127,12 @@ export function isContextOverflow(message: AssistantMessage, contextWindow?: num
 	if (message.stopReason === "error" && message.errorMessage) {
 		// Skip messages matching known non-overflow patterns (e.g. throttling / rate-limit)
 		const isNonOverflow = NON_OVERFLOW_PATTERNS.some((p) => p.test(message.errorMessage!));
-		if (!isNonOverflow && OVERFLOW_PATTERNS.some((p) => p.test(message.errorMessage!))) {
+		const noBody400 = /^400\s*(?:status code)?\s*\(no body\)/i.test(message.errorMessage);
+		const provider = String(message.provider || "").toLowerCase();
+		if (!isNonOverflow && noBody400 && provider === "cerebras") {
+			return true;
+		}
+		if (!isNonOverflow && !noBody400 && OVERFLOW_PATTERNS.some((p) => p.test(message.errorMessage!))) {
 			return true;
 		}
 	}

@@ -107,6 +107,14 @@ writeFileSync(
 					apiKey: "$REPI_BETA_KEY",
 					models: [{ id: "beta/model", contextWindow: 131072, maxTokens: 4096, cost: { input: 3, output: 4, cacheRead: 0, cacheWrite: 0 } }],
 				},
+				cfdup: {
+					api: "openai-completions",
+					baseUrl: "https://api.cloudflare.com/client/v4/accounts/example/ai/v1",
+					apiKey: "$REPI_CFDUP_KEY",
+					models: [
+						{ id: "@cf/moonshotai/kimi-@cf/moonshotai/kimi-k2.7-code", contextWindow: 262144, maxTokens: 8192, cost: { input: 0.95, output: 4, cacheRead: 0.19, cacheWrite: 0 } },
+					],
+				},
 			},
 		},
 		null,
@@ -156,8 +164,12 @@ checks.push(
 			/pi-recon-auto-resume[\s\S]{0,700}deliverAs:\s*"steer"[\s\S]{0,120}triggerTurn:\s*true/.test(reconProfileSource) &&
 			/_continueQueuedMessages[\s\S]{0,260}agent\.continue/.test(
 				readFileSync(join(root, "packages", "coding-agent", "src", "core", "agent-session.ts"), "utf8"),
+			) &&
+			/hasSummarizableHistory/.test(readFileSync(join(root, "packages", "coding-agent", "src", "core", "agent-session.ts"), "utf8")) &&
+			/noBody400[\s\S]{0,260}provider === "cerebras"/.test(
+				readFileSync(join(root, "packages", "ai", "src", "utils", "overflow.ts"), "utf8"),
 			),
-		{ markers: ["no tiny compact", "reserve below context", "queued auto-resume trigger"] },
+		{ markers: ["no tiny compact", "reserve below context", "queued auto-resume trigger", "generic 400 no-body not overflow"] },
 	),
 );
 checks.push(
@@ -380,6 +392,13 @@ checks.push(
 		exit: doctorRedacted.exit,
 		stdoutTail: doctorRedacted.stdout.slice(-800),
 	}),
+);
+checks.push(
+	check(
+		"model:doctor-flags-cloudflare-duplicate-prefix",
+		doctorRedacted.exit === 0 && /repeated "@cf\/" prefix/.test(doctorRedacted.stdout) && /kimi-k2\.7-code/.test(doctorRedacted.stdout),
+		{ stdoutTail: doctorRedacted.stdout.slice(-1200) },
+	),
 );
 const insecureLogin = run(["scripts/reverse-agent/model-inspect.mjs", root, "login", "--provider", "alpha", "--api-key", "sk-test-redacted"]);
 checks.push(

@@ -156,6 +156,25 @@ function envRef(apiKey) {
 	return { kind: "literal", env: null, present: true };
 }
 
+function isCloudflareProviderConfig(providerId, provider) {
+	const text = `${providerId} ${provider?.baseUrl ?? ""}`.toLowerCase();
+	return text.includes("cloudflare") || text.includes("api.cloudflare.com") || text.includes("gateway.ai.cloudflare.com");
+}
+
+function cloudflareModelIdIssues(providerId, provider, modelId) {
+	const id = String(modelId ?? "");
+	if (!isCloudflareProviderConfig(providerId, provider)) return [];
+	const issues = [];
+	const cfOccurrences = (id.match(/@cf\//g) || []).length;
+	if (cfOccurrences > 1) {
+		issues.push('cloudflare model id contains repeated "@cf/" prefix; expected e.g. @cf/moonshotai/kimi-k2.7-code');
+	}
+	if (/moonshotai\/kimi-@cf\//.test(id)) {
+		issues.push('cloudflare model id looks concatenated; expected @cf/moonshotai/kimi-k2.7-code');
+	}
+	return issues;
+}
+
 function storedAuthStatus(authData, providerId) {
 	const credential = authData && typeof authData === "object" ? authData[providerId] : undefined;
 	if (!credential || typeof credential !== "object") return { configured: false, source: "none" };
@@ -230,6 +249,7 @@ function buildDoctorReport() {
 			const cost = costOf(model, provider);
 			const modelIssues = [];
 			if (!model.id) modelIssues.push("missing id");
+			modelIssues.push(...cloudflareModelIdIssues(providerId, provider, model.id));
 			if (!Number.isFinite(Number(model.contextWindow)) || Number(model.contextWindow) <= 0) modelIssues.push("missing/invalid contextWindow");
 			if (!Number.isFinite(Number(model.maxTokens)) || Number(model.maxTokens) <= 0) modelIssues.push("missing/invalid maxTokens");
 			if (!model.cost) modelIssues.push("missing model.cost; cost display falls back to provider/zero");
