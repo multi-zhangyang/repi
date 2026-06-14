@@ -51,6 +51,12 @@ export interface McpResourceSummary {
 	mimeType?: string;
 }
 
+export interface McpPromptSummary {
+	name: string;
+	description?: string;
+	arguments?: unknown;
+}
+
 export interface McpProbeResult {
 	serverId: string;
 	ok: boolean;
@@ -95,6 +101,14 @@ export interface McpResourceListResult {
 	error?: string;
 }
 
+export interface McpPromptListResult {
+	serverId: string;
+	ok: boolean;
+	prompts: McpPromptSummary[];
+	stderrTail?: string;
+	error?: string;
+}
+
 export interface McpManagerOptions {
 	cwd: string;
 	agentDir?: string;
@@ -116,6 +130,13 @@ const mcpResourceListSchema = Type.Object({});
 
 const mcpResourceReadSchema = Type.Object({
 	uri: Type.String({ description: "MCP resource URI to read" }),
+});
+
+const mcpPromptListSchema = Type.Object({});
+
+const mcpPromptGetSchema = Type.Object({
+	name: Type.String({ description: "MCP prompt name to get" }),
+	arguments: Type.Optional(Type.Record(Type.String(), Type.Any(), { description: "Prompt arguments" })),
 });
 
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
@@ -205,6 +226,14 @@ function createMcpResourceListToolName(serverId: string): string {
 
 function createMcpResourceReadToolName(serverId: string): string {
 	return `mcp__${sanitizeToolNamePart(serverId, "server")}__read_resource`;
+}
+
+function createMcpPromptListToolName(serverId: string): string {
+	return `mcp__${sanitizeToolNamePart(serverId, "server")}__list_prompts`;
+}
+
+function createMcpPromptGetToolName(serverId: string): string {
+	return `mcp__${sanitizeToolNamePart(serverId, "server")}__get_prompt`;
 }
 
 function normalizeInputSchema(inputSchema: unknown): ToolDefinition["parameters"] {
@@ -537,6 +566,73 @@ export class McpManager {
 		);
 	}
 
+	async listPrompts(serverId: string, signal?: AbortSignal): Promise<McpPromptListResult> {
+		const entry = this.getServer(serverId);
+		if (!entry) return { serverId, ok: false, prompts: [], error: "server_not_found" };
+		if (entry.config.disabled) return { serverId: entry.id, ok: false, prompts: [], error: "server_disabled" };
+		const transport = normalizeTransport(entry.config);
+		if (transport === "http")
+			return {
+				serverId: entry.id,
+				ok: false,
+				prompts: [],
+				error: "http_transport_configured_but_not_started_yet",
+			};
+		return this.withInitializedStdioClient(
+			entry,
+			async (client) => {
+				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+				const listed = await client.request("prompts/list", {}, timeoutMs, signal);
+				const prompts = this.filterPrompts(listed?.prompts);
+				return { serverId: entry.id, ok: true, prompts, stderrTail: client.stderrTail || undefined };
+			},
+			signal,
+		).catch((error) => ({
+			serverId: entry.id,
+			ok: false,
+			prompts: [],
+			error: redact(error instanceof Error ? error.message : String(error)),
+		}));
+	}
+
+	async getPrompt(serverId: string, name: string, args?: unknown, signal?: AbortSignal): Promise<McpToolCallResult> {
+		const entry = this.getServer(serverId);
+		if (!entry) throw new Error(`MCP server not found: ${serverId}`);
+		if (entry.config.disabled) throw new Error(`MCP server is disabled: ${entry.id}`);
+		const transport = normalizeTransport(entry.config);
+		if (transport === "http") throw new Error("MCP HTTP transport is configured but not started yet");
+		return this.withInitializedStdioClient(
+			entry,
+			async (client) => {
+				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+				const result = await client.request(
+					"prompts/get",
+					{ name, arguments: normalizeToolArgs(args) },
+					timeoutMs,
+					signal,
+				);
+				const normalized = this.normalizeMcpContent(
+					entry.id,
+					"get_prompt",
+					this.promptGetResultToToolContent(name, result),
+				);
+				return {
+					content: normalized.content,
+					isError: false,
+					details: {
+						serverId: entry.id,
+						toolName: "prompts/get",
+						isError: false,
+						contentItems: normalized.content.length,
+						artifacts: normalized.artifacts.length > 0 ? normalized.artifacts : undefined,
+						stderrTail: client.stderrTail || undefined,
+					},
+				};
+			},
+			signal,
+		);
+	}
+
 	createProxyToolDefinitions(): ToolDefinition[] {
 		return this.loadServers()
 			.filter((entry) => this.shouldExposeTools(entry))
@@ -545,6 +641,8 @@ export class McpManager {
 				const callToolName = createMcpProxyToolName(serverId);
 				const listResourcesToolName = createMcpResourceListToolName(serverId);
 				const readResourceToolName = createMcpResourceReadToolName(serverId);
+				const listPromptsToolName = createMcpPromptListToolName(serverId);
+				const getPromptToolName = createMcpPromptGetToolName(serverId);
 				return [
 					{
 						name: callToolName,
@@ -601,6 +699,45 @@ export class McpManager {
 							return toAgentToolResult(result);
 						},
 					} satisfies ToolDefinition<typeof mcpResourceReadSchema, McpToolCallDetails>,
+					{
+						name: listPromptsToolName,
+						label: `MCP ${serverId} prompts`,
+						description: `List MCP prompts exposed by server '${serverId}'.`,
+						promptSnippet: `List MCP prompts from ${serverId}`,
+						parameters: mcpPromptListSchema,
+						execute: async () => {
+							const result = await this.listPrompts(serverId);
+							if (!result.ok) throw new Error(result.error ?? "MCP prompts/list failed");
+							const text = result.prompts.length
+								? result.prompts
+										.map((prompt) =>
+											[
+												`name=${prompt.name}`,
+												prompt.description ? `description=${prompt.description}` : undefined,
+												prompt.arguments ? `arguments=${JSON.stringify(prompt.arguments)}` : undefined,
+											]
+												.filter(Boolean)
+												.join("\n"),
+										)
+										.join("\n\n")
+								: "No MCP prompts found.";
+							return {
+								content: [{ type: "text", text: inlineMcpText(text) }],
+								details: { serverId, toolName: "prompts/list", isError: false, contentItems: 1 },
+							};
+						},
+					} satisfies ToolDefinition<typeof mcpPromptListSchema, McpToolCallDetails>,
+					{
+						name: getPromptToolName,
+						label: `MCP ${serverId} get prompt`,
+						description: `Get an MCP prompt by name from server '${serverId}'. Large prompt text is stored as artifact.`,
+						promptSnippet: `Get MCP prompt from ${serverId}`,
+						parameters: mcpPromptGetSchema,
+						execute: async (_toolCallId, params, signal) => {
+							const result = await this.getPrompt(serverId, params.name, params.arguments ?? {}, signal);
+							return toAgentToolResult(result);
+						},
+					} satisfies ToolDefinition<typeof mcpPromptGetSchema, McpToolCallDetails>,
 				];
 			});
 	}
@@ -681,6 +818,47 @@ export class McpManager {
 				return toAgentToolResult(result);
 			},
 		};
+	}
+
+	private filterPrompts(rawPrompts: unknown): McpPromptSummary[] {
+		const prompts = Array.isArray(rawPrompts) ? rawPrompts : [];
+		return prompts
+			.filter((prompt: any) => typeof prompt?.name === "string")
+			.map((prompt: any) => ({
+				name: prompt.name,
+				description: typeof prompt.description === "string" ? prompt.description : undefined,
+				arguments: Array.isArray(prompt.arguments) ? prompt.arguments : undefined,
+			}));
+	}
+
+	private promptGetResultToToolContent(name: string, result: unknown): { content: Array<Record<string, unknown>> } {
+		const description = isRecord(result) && typeof result.description === "string" ? result.description : undefined;
+		const messages = isRecord(result) && Array.isArray(result.messages) ? result.messages : [];
+		const textParts: string[] = [`prompt=${name}`];
+		if (description) textParts.push(`description=${description}`);
+		const content: Array<Record<string, unknown>> = [];
+		for (const [index, message] of messages.entries()) {
+			if (!isRecord(message)) continue;
+			const role = typeof message.role === "string" ? message.role : "unknown";
+			const messageContent = message.content;
+			if (isRecord(messageContent) && messageContent.type === "text" && typeof messageContent.text === "string") {
+				textParts.push(`\n[${index}] role=${role}\n${messageContent.text}`);
+				continue;
+			}
+			if (
+				isRecord(messageContent) &&
+				messageContent.type === "image" &&
+				typeof messageContent.data === "string" &&
+				typeof messageContent.mimeType === "string"
+			) {
+				content.push({ type: "image", data: messageContent.data, mimeType: messageContent.mimeType });
+				textParts.push(`\n[${index}] role=${role}\n[image:${messageContent.mimeType}]`);
+				continue;
+			}
+			textParts.push(`\n[${index}] role=${role}\n${JSON.stringify(messageContent ?? message)}`);
+		}
+		content.unshift({ type: "text", text: textParts.join("\n") });
+		return { content };
 	}
 
 	private filterResources(rawResources: unknown): McpResourceSummary[] {

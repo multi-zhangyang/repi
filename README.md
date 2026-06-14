@@ -709,6 +709,8 @@ repi mcp status
 repi mcp list
 repi mcp probe demo
 repi mcp call demo search '{"q":"target"}'
+repi mcp prompts demo
+repi mcp get-prompt demo triage '{"target":"example.test"}'
 ```
 
 会话内：
@@ -725,6 +727,8 @@ repi mcp call demo search '{"q":"target"}'
 - `mcp__demo__search` / `mcp__demo__fetch`：执行 `/mcp list` 或 `/mcp demo` 探测成功后，按 MCP `inputSchema` 生成的直连工具。
 - `mcp__demo__list_resources`：列出 MCP server 暴露的 resources。
 - `mcp__demo__read_resource`：读取指定 MCP resource URI，大资源同样落 artifact。
+- `mcp__demo__list_prompts`：列出 MCP server 暴露的 prompts。
+- `mcp__demo__get_prompt`：按名称和参数获取 MCP prompt，长 prompt 同样落 artifact。
 
 `allowedTools` / `blockedTools` 会同时作用于探测、直连工具和 proxy 调用。stdout/stderr 与返回文本会做默认脱敏；超过阈值的大文本不会整段塞回上下文，而是写入：
 

@@ -72,6 +72,8 @@ rl.on("line", (line) => {
  }
  if (msg.method === "resources/list") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { resources: [{ uri: "file:///demo.txt", name: "demo", mimeType: "text/plain", description: "Demo resource" }] } }));
  if (msg.method === "resources/read") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { contents: [{ uri: msg.params.uri, mimeType: "text/plain", text: "resource-body token=sk-secret-1234567890" }] } }));
+ if (msg.method === "prompts/list") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { prompts: [{ name: "triage", description: "Triage target", arguments: [{ name: "target", required: true }] }] } }));
+ if (msg.method === "prompts/get") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { description: "Triage target", messages: [{ role: "user", content: { type: "text", text: "triage " + msg.params.arguments.target + " token=sk-secret-1234567890" } }] } }));
 });
 `,
 		);
@@ -101,6 +103,8 @@ rl.on("line", (line) => {
 			"mcp__fake__call",
 			"mcp__fake__list_resources",
 			"mcp__fake__read_resource",
+			"mcp__fake__list_prompts",
+			"mcp__fake__get_prompt",
 		]);
 		const proxyResult = await proxies[0].execute(
 			"tool-call-1",
@@ -138,6 +142,24 @@ rl.on("line", (line) => {
 		);
 		expect(String(readResourceResult.content[0].type === "text" ? readResourceResult.content[0].text : "")).toContain(
 			"resource-body token=<redacted>",
+		);
+
+		const prompts = await manager.listPrompts("fake");
+		expect(prompts.ok).toBe(true);
+		expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(["triage"]);
+		const listPromptResult = await proxies[3].execute("tool-call-p1", {}, undefined, undefined, {} as any);
+		expect(String(listPromptResult.content[0].type === "text" ? listPromptResult.content[0].text : "")).toContain(
+			"name=triage",
+		);
+		const getPromptResult = await proxies[4].execute(
+			"tool-call-p2",
+			{ name: "triage", arguments: { target: "example.test" } },
+			undefined,
+			undefined,
+			{} as any,
+		);
+		expect(String(getPromptResult.content[0].type === "text" ? getPromptResult.content[0].text : "")).toContain(
+			"triage example.test token=<redacted>",
 		);
 
 		const largeResult = await manager.callTool("fake", "echo", { text: "large" });
