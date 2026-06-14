@@ -161,7 +161,10 @@ const MCP_TOOL_INLINE_PREVIEW_CHARS = 12000;
 const MCP_TOOL_FALLBACK_TRUNCATE_CHARS = 64000;
 
 const mcpProxyToolSchema = Type.Object({
-	tool: Type.String({ description: "Original MCP tool name to call on this server" }),
+	tool: Type.String({
+		description:
+			"Exact MCP tool name exposed by this server. If a router/search server recommends call_tool({ name: 'X', args: {...} }), set tool='call_tool' and pass {name:'X', args:{...}} in arguments; do not set tool='X' unless tools/list exposes X.",
+	}),
 	arguments: Type.Optional(
 		Type.Record(Type.String(), Type.Any(), { description: "Arguments passed to the MCP tool" }),
 	),
@@ -415,6 +418,17 @@ function createAbortController(timeoutMs: number, signal?: AbortSignal): { signa
 	};
 }
 
+function killProcessGroup(pid: number | undefined, signal: NodeJS.Signals): void {
+	if (!pid) return;
+	try {
+		process.kill(-pid, signal);
+	} catch {
+		try {
+			process.kill(pid, signal);
+		} catch {}
+	}
+}
+
 function parseBearerAuthParam(header: string | null, key: string): string | undefined {
 	if (!header) return undefined;
 	const pattern = new RegExp(`${key}=(?:"([^"]+)"|([^,\\s]+))`, "i");
@@ -560,6 +574,7 @@ class StdioJsonRpcClient implements McpJsonRpcClient {
 		this.child = spawn(config.command, config.args ?? [], {
 			cwd: config.cwd ? resolve(config.cwd) : process.cwd(),
 			env: expandEnv(config.env),
+			detached: true,
 			stdio: ["pipe", "pipe", "pipe"],
 		});
 		this.child.unref();
@@ -637,9 +652,9 @@ class StdioJsonRpcClient implements McpJsonRpcClient {
 		try {
 			this.child.stdin?.end();
 		} catch {}
-		if (this.child.exitCode === null) this.child.kill("SIGTERM");
+		if (this.child.exitCode === null) killProcessGroup(this.child.pid, "SIGTERM");
 		setTimeout(() => {
-			if (this.child.exitCode === null) this.child.kill("SIGKILL");
+			if (this.child.exitCode === null) killProcessGroup(this.child.pid, "SIGKILL");
 		}, 1000).unref();
 	}
 
@@ -1051,7 +1066,9 @@ export class McpManager {
 						description: `Call an allowed MCP tool on server '${serverId}'. Use /mcp ${serverId} or repi mcp probe ${serverId} to inspect available tool names.`,
 						promptSnippet: `Call MCP server ${serverId} tools`,
 						promptGuidelines: [
-							`This is a proxy for MCP server '${serverId}'. Pass the original MCP tool name in 'tool'.`,
+							`This is a proxy for MCP server '${serverId}'. Pass a tool name that the MCP server currently exposes in tools/list.`,
+							'If a search/router result shows call_tool({ name: "target", args: {...} }), call this proxy with tool="call_tool" and arguments={"name":"target","args":{...}}.',
+							"Do not call a discovered virtual/dynamic tool name directly unless it has first appeared in tools/list for this server.",
 							"Respect allowedTools/blockedTools from ~/.repi/agent/mcp.json or project .repi/mcp.json.",
 						],
 						parameters: mcpProxyToolSchema,
@@ -1067,6 +1084,7 @@ export class McpManager {
 						promptSnippet: `Search MCP tools from ${serverId}`,
 						promptGuidelines: [
 							`Use this before calling '${callToolName}' when the exact MCP tool name is unknown.`,
+							'If the search result recommends a wrapper command like call_tool({ name: "X", args: {...} }), route it through the MCP proxy as tool="call_tool".',
 							"Keep includeSchema false unless the input schema is needed for the next call.",
 						],
 						parameters: mcpToolSearchSchema,
