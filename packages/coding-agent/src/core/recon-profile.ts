@@ -2358,7 +2358,7 @@ function verifyStructuredClaimMergePromotion(merge: StructuredClaimMergeV1): { o
 			if (challenge.status !== "resolved") errors.push(`unresolved_adversary_challenge_blocks_final:${claim.claimId}`);
 		}
 	}
-	for (const finalClaim of merge.promotionCheck.finalClaims) {
+	for (const finalClaim of merge.promotionCheck?.finalClaims ?? []) {
 		const claim = claims.get(finalClaim.claimId);
 		if (!claim) {
 			errors.push(`final_claim_missing:${finalClaim.claimId}`);
@@ -20628,10 +20628,10 @@ function structuredClaimMergeCheckFromSwarm(swarm?: SwarmArtifact): StructuredCl
 		status: verification.ok ? "pass" : "blocked",
 		mergePath: swarm.structuredClaimMergePath,
 		mergeId: merge.mergeId,
-		finalClaimCount: merge.promotionCheck.finalClaims.length,
-		blockedClaimCount: merge.promotionCheck.blockedClaims.length,
+		finalClaimCount: merge.promotionCheck?.finalClaims?.length ?? 0,
+		blockedClaimCount: merge.promotionCheck?.blockedClaims?.length ?? 0,
 		errors: verification.errors,
-		policies: merge.promotionCheck.policies,
+		policies: merge.promotionCheck?.policies ?? claimPromotionEvidenceContract(),
 	};
 }
 
@@ -22060,8 +22060,8 @@ function formatSwarm(swarm: SwarmArtifact, path?: string): string {
 		"structured_claim_merge:",
 		`- path=${swarm.structuredClaimMergePath ?? "pending"}`,
 		`- status=${swarm.structuredClaimMergeStatus ?? "missing"}`,
-		`- final_claims=${swarm.structuredClaimMerge?.promotionCheck.finalClaims.length ?? 0}`,
-		`- blocked_claims=${swarm.structuredClaimMerge?.promotionCheck.blockedClaims.length ?? 0}`,
+		`- final_claims=${swarm.structuredClaimMerge?.promotionCheck?.finalClaims?.length ?? 0}`,
+		`- blocked_claims=${swarm.structuredClaimMerge?.promotionCheck?.blockedClaims?.length ?? 0}`,
 		...(swarm.structuredClaimMergeErrors?.length
 			? swarm.structuredClaimMergeErrors.slice(0, 10).map((item) => `- error=${item}`)
 			: ["- errors=none"]),
