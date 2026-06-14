@@ -34,6 +34,10 @@ export interface McpServerConfig {
 	blockedTools?: string[];
 	/** Keep direct MCP tool schemas out of the runtime registry; use search + proxy call instead. */
 	deferToolSchemas?: boolean;
+	/** Reuse initialized MCP sessions between nearby calls. Defaults on. */
+	pool?: boolean;
+	/** Idle milliseconds before a pooled MCP session is closed. */
+	poolIdleMs?: number;
 	/** Opt-in: expose this server as runtime LLM-callable MCP tools. */
 	autoRegisterTools?: boolean;
 	/** Compatibility alias for older local configs. */
@@ -151,6 +155,7 @@ export interface McpManagerOptions {
 }
 
 const DEFAULT_MCP_TIMEOUT_MS = 10000;
+const DEFAULT_MCP_POOL_IDLE_MS = 30000;
 const MCP_TOOL_ARTIFACT_THRESHOLD_CHARS = 20000;
 const MCP_TOOL_INLINE_PREVIEW_CHARS = 12000;
 const MCP_TOOL_FALLBACK_TRUNCATE_CHARS = 64000;
@@ -216,6 +221,13 @@ function normalizeTransport(config: McpServerConfig): McpTransport {
 function envValue(value: string): string {
 	if (value.startsWith("$") && value.length > 1) return process.env[value.slice(1)] ?? "";
 	return value;
+}
+
+function envCsv(name: string): string[] {
+	return (process.env[name] ?? "")
+		.split(",")
+		.map((item) => item.trim())
+		.filter(Boolean);
 }
 
 function expandHeaderValue(value: string): string {
@@ -352,6 +364,7 @@ function toAgentToolResult(result: McpToolCallResult): AgentToolResult<McpToolCa
 
 interface McpJsonRpcClient {
 	stderrTail: string;
+	readonly isClosed: boolean;
 	request(method: string, params?: Record<string, unknown>, timeoutMs?: number, signal?: AbortSignal): Promise<any>;
 	notify(
 		method: string,
@@ -360,6 +373,14 @@ interface McpJsonRpcClient {
 		signal?: AbortSignal,
 	): Promise<void> | void;
 	close(timeoutMs?: number): Promise<void> | void;
+}
+
+interface PooledMcpClient {
+	key: string;
+	fingerprint: string;
+	client: McpJsonRpcClient;
+	init: any;
+	idleTimer?: NodeJS.Timeout;
 }
 
 function parseSseJsonMessages(text: string): any[] {
@@ -406,6 +427,7 @@ class StreamableHttpJsonRpcClient implements McpJsonRpcClient {
 	private protocolVersion = "2025-11-25";
 	private sessionId: string | undefined;
 	private entry: McpServerEntry;
+	private closed = false;
 
 	constructor(entry: McpServerEntry) {
 		this.entry = entry;
@@ -414,6 +436,10 @@ class StreamableHttpJsonRpcClient implements McpJsonRpcClient {
 
 	get stderrTail(): string {
 		return "";
+	}
+
+	get isClosed(): boolean {
+		return this.closed;
 	}
 
 	async request(
@@ -445,6 +471,7 @@ class StreamableHttpJsonRpcClient implements McpJsonRpcClient {
 	}
 
 	async close(timeoutMs = 1000): Promise<void> {
+		this.closed = true;
 		if (!this.sessionId) return;
 		const abort = createAbortController(timeoutMs, undefined);
 		try {
@@ -525,6 +552,7 @@ class StdioJsonRpcClient implements McpJsonRpcClient {
 	private buffer = "";
 	private stderr = "";
 	private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
+	private closed = false;
 
 	constructor(entry: McpServerEntry) {
 		const config = entry.config;
@@ -534,19 +562,28 @@ class StdioJsonRpcClient implements McpJsonRpcClient {
 			env: expandEnv(config.env),
 			stdio: ["pipe", "pipe", "pipe"],
 		});
+		this.child.unref();
+		(this.child.stdin as any)?.unref?.();
+		(this.child.stdout as any)?.unref?.();
+		(this.child.stderr as any)?.unref?.();
 		this.child.stdout?.on("data", (chunk) => this.onStdout(String(chunk)));
 		this.child.stderr?.on("data", (chunk) => {
 			this.stderr += redact(String(chunk));
 			if (this.stderr.length > 12000) this.stderr = this.stderr.slice(-12000);
 		});
 		this.child.on("error", (error) => this.rejectAll(error));
-		this.child.on("close", (code, signal) =>
-			this.rejectAll(new Error(`MCP server exited code=${code ?? "null"} signal=${signal ?? "null"}`)),
-		);
+		this.child.on("close", (code, signal) => {
+			this.closed = true;
+			this.rejectAll(new Error(`MCP server exited code=${code ?? "null"} signal=${signal ?? "null"}`));
+		});
 	}
 
 	get stderrTail(): string {
 		return this.stderr.slice(-4000);
+	}
+
+	get isClosed(): boolean {
+		return this.closed || this.child.exitCode !== null;
 	}
 
 	request(
@@ -596,6 +633,7 @@ class StdioJsonRpcClient implements McpJsonRpcClient {
 	}
 
 	close(): void {
+		this.closed = true;
 		try {
 			this.child.stdin?.end();
 		} catch {}
@@ -670,6 +708,7 @@ class StdioJsonRpcClient implements McpJsonRpcClient {
 export class McpManager {
 	private cwd: string;
 	private agentDir: string;
+	private clientPool = new Map<string, PooledMcpClient>();
 
 	constructor(options: McpManagerOptions) {
 		this.cwd = resolve(options.cwd);
@@ -690,7 +729,10 @@ export class McpManager {
 				servers.set(id, { id, config: { transport: normalizeTransport(config), ...config }, sourcePath });
 			}
 		}
-		return Array.from(servers.values()).sort((a, b) => a.id.localeCompare(b.id));
+		const allowedServers = new Set(envCsv("REPI_MCP_ALLOWED_SERVERS"));
+		return Array.from(servers.values())
+			.filter((server) => allowedServers.size === 0 || allowedServers.has(server.id))
+			.sort((a, b) => a.id.localeCompare(b.id));
 	}
 
 	getServer(id: string): McpServerEntry | undefined {
@@ -1410,7 +1452,17 @@ preview_chars=${artifact.previewChars}`,
 	private isToolAllowed(entry: McpServerEntry, toolName: string): boolean {
 		const allowed = new Set(entry.config.allowedTools ?? []);
 		const blocked = new Set(entry.config.blockedTools ?? []);
-		return (allowed.size === 0 || allowed.has(toolName)) && !blocked.has(toolName);
+		const envAllowedTools = envCsv("REPI_MCP_ALLOWED_TOOLS");
+		const envAllowed = new Set(
+			envAllowedTools
+				.filter((item) => !item.includes("/") || item.startsWith(`${entry.id}/`))
+				.map((item) => (item.includes("/") ? item.slice(item.indexOf("/") + 1) : item)),
+		);
+		return (
+			(allowed.size === 0 || allowed.has(toolName)) &&
+			(envAllowed.size === 0 || envAllowed.has(toolName)) &&
+			!blocked.has(toolName)
+		);
 	}
 
 	private filterTools(entry: McpServerEntry, rawTools: unknown): McpToolSummary[] {
@@ -1430,6 +1482,33 @@ preview_chars=${artifact.previewChars}`,
 		callback: (client: McpJsonRpcClient, init: any) => Promise<T>,
 		signal?: AbortSignal,
 	): Promise<T> {
+		const pooled = await this.getPooledClient(entry, signal);
+		try {
+			const result = await callback(pooled.client, pooled.init);
+			this.schedulePooledClientClose(entry, pooled);
+			return result;
+		} catch (error) {
+			if (this.clientPool.has(pooled.key)) await this.closePooledClient(pooled.key);
+			else await pooled.client.close();
+			if (!signal?.aborted && this.isRetryableMcpError(error)) {
+				const retry = await this.getPooledClient(entry, signal, true);
+				try {
+					const result = await callback(retry.client, retry.init);
+					this.schedulePooledClientClose(entry, retry);
+					return result;
+				} catch (retryError) {
+					if (this.clientPool.has(retry.key)) await this.closePooledClient(retry.key);
+					else await retry.client.close();
+					throw retryError;
+				}
+			}
+			throw error;
+		}
+	}
+
+	private async createInitializedClient(entry: McpServerEntry, signal?: AbortSignal): Promise<PooledMcpClient> {
+		const key = this.poolKey(entry);
+		const fingerprint = this.serverFingerprint(entry);
 		const client: McpJsonRpcClient =
 			normalizeTransport(entry.config) === "http"
 				? new StreamableHttpJsonRpcClient(entry)
@@ -1447,10 +1526,88 @@ preview_chars=${artifact.previewChars}`,
 				signal,
 			);
 			await client.notify("notifications/initialized", undefined, timeoutMs, signal);
-			return await callback(client, init);
-		} finally {
+			return { key, fingerprint, client, init };
+		} catch (error) {
 			await client.close();
+			throw error;
 		}
+	}
+
+	private async getPooledClient(
+		entry: McpServerEntry,
+		signal?: AbortSignal,
+		forceNew = false,
+	): Promise<PooledMcpClient> {
+		const key = this.poolKey(entry);
+		const fingerprint = this.serverFingerprint(entry);
+		const poolingEnabled = entry.config.pool !== false;
+		const existing = this.clientPool.get(key);
+		if (
+			!forceNew &&
+			poolingEnabled &&
+			existing &&
+			existing.fingerprint === fingerprint &&
+			!existing.client.isClosed
+		) {
+			if (existing.idleTimer) clearTimeout(existing.idleTimer);
+			existing.idleTimer = undefined;
+			return existing;
+		}
+		if (existing) await this.closePooledClient(key);
+		const created = await this.createInitializedClient(entry, signal);
+		if (!poolingEnabled) return created;
+		this.clientPool.set(key, created);
+		return created;
+	}
+
+	private schedulePooledClientClose(entry: McpServerEntry, pooled: PooledMcpClient): void {
+		if (entry.config.pool === false) {
+			void pooled.client.close();
+			return;
+		}
+		const idleMs = Math.max(0, entry.config.poolIdleMs ?? DEFAULT_MCP_POOL_IDLE_MS);
+		if (pooled.idleTimer) clearTimeout(pooled.idleTimer);
+		pooled.idleTimer = setTimeout(() => {
+			void this.closePooledClient(pooled.key);
+		}, idleMs);
+		pooled.idleTimer.unref?.();
+	}
+
+	async closeAll(): Promise<void> {
+		await Promise.all([...this.clientPool.keys()].map((key) => this.closePooledClient(key)));
+	}
+
+	private async closePooledClient(key: string): Promise<void> {
+		const pooled = this.clientPool.get(key);
+		if (!pooled) return;
+		this.clientPool.delete(key);
+		if (pooled.idleTimer) clearTimeout(pooled.idleTimer);
+		await pooled.client.close();
+	}
+
+	private poolKey(entry: McpServerEntry): string {
+		return `${this.cwd}:${entry.sourcePath}:${entry.id}`;
+	}
+
+	private serverFingerprint(entry: McpServerEntry): string {
+		return createHash("sha256")
+			.update(
+				JSON.stringify({
+					id: entry.id,
+					sourcePath: entry.sourcePath,
+					config: entry.config,
+					allowedServers: process.env.REPI_MCP_ALLOWED_SERVERS ?? "",
+					allowedTools: process.env.REPI_MCP_ALLOWED_TOOLS ?? "",
+				}),
+			)
+			.digest("hex");
+	}
+
+	private isRetryableMcpError(error: unknown): boolean {
+		const message = error instanceof Error ? error.message : String(error);
+		return /MCP server exited|MCP request timeout|MCP HTTP (?:404|408|409|429|500|502|503|504)|fetch failed|ECONN|socket|connection|reset|terminated|timeout/i.test(
+			message,
+		);
 	}
 
 	private async probeEntry(entry: McpServerEntry, signal?: AbortSignal): Promise<McpProbeResult> {

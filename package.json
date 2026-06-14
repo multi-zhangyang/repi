@@ -108,6 +108,7 @@
 		"clean:repi-legacy-profile:apply": "bash scripts/reverse-agent/clean-global-repi-profile.sh --apply",
 		"clean:repi-legacy-profile:force-tools": "bash scripts/reverse-agent/clean-global-repi-profile.sh --apply --force-tools",
 		"gate:repi-product-surface": "node scripts/reverse-agent/repi-product-surface-audit.mjs . --strict",
+		"gate:repi-mcp": "node scripts/reverse-agent/repi-mcp-gate.mjs . --strict",
 		"gate:artifact-scope-filter": "node scripts/reverse-agent/artifact-scope-filter-gate.mjs . --strict",
 		"gate:latest-artifact-consumer-scope": "node scripts/reverse-agent/latest-artifact-consumer-scope-gate.mjs . --strict",
 		"gate:memory-orchestrator": "node scripts/reverse-agent/memory-orchestrator-gate.mjs . --strict",

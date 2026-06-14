@@ -1085,6 +1085,7 @@ export class AgentSession {
 			if (expandPromptTemplates) {
 				expandedText = this._expandSkillCommand(expandedText);
 				expandedText = expandPromptTemplate(expandedText, [...this.promptTemplates]);
+				expandedText = await this._expandMcpResourceMentions(expandedText);
 			}
 
 			// If streaming, queue via steer() or followUp() based on option
@@ -1468,6 +1469,49 @@ export class AgentSession {
 
 	get resourceLoader(): ResourceLoader {
 		return this._resourceLoader;
+	}
+
+	private async _expandMcpResourceMentions(text: string): Promise<string> {
+		// Supported mention forms: @mcp/<server>/<uri> and mcp://<server>/<uri>.
+		const mentionPattern = /(?:@mcp\/|mcp:\/\/)([A-Za-z0-9_.-]+)\/([^\s`"'<>]+)/g;
+		const matches = [...text.matchAll(mentionPattern)];
+		if (matches.length === 0) return text;
+		const seen = new Set<string>();
+		const blocks: string[] = [];
+		for (const match of matches.slice(0, 10)) {
+			const serverId = match[1];
+			const rawUri = match[2];
+			let uri = rawUri;
+			try {
+				uri = decodeURIComponent(rawUri);
+			} catch {}
+			const key = `${serverId}\n${uri}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			try {
+				const result = await this.mcpManager.readResource(serverId, uri);
+				const body = result.content
+					.map((item) => (item.type === "text" ? item.text : `[image:${item.mimeType}]`))
+					.join("\n");
+				blocks.push(
+					[
+						`<mcp-resource server="${serverId}" uri="${uri}" status="ok">`,
+						body || "(empty)",
+						"</mcp-resource>",
+					].join("\n"),
+				);
+			} catch (error) {
+				blocks.push(
+					[
+						`<mcp-resource server="${serverId}" uri="${uri}" status="error">`,
+						error instanceof Error ? error.message : String(error),
+						"</mcp-resource>",
+					].join("\n"),
+				);
+			}
+		}
+		if (blocks.length === 0) return text;
+		return `${text}\n\n[MCP resource mention context]\n${blocks.join("\n\n")}`;
 	}
 
 	/**

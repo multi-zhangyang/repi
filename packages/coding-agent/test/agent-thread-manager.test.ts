@@ -43,7 +43,11 @@ describe("AgentThreadManager", () => {
 		const workspace = join(tempRoot, "workspace");
 		mkdirSync(workspace);
 		const fakeRepi = join(tempRoot, "fake-repi.sh");
-		writeFileSync(fakeRepi, "#!/usr/bin/env bash\nprintf 'fake worker ok token=sk-1234567890\\n'\n", "utf8");
+		writeFileSync(
+			fakeRepi,
+			"#!/usr/bin/env bash\nprintf 'fake worker ok token=synthetic-redaction-value\\n'\n",
+			"utf8",
+		);
 		chmodSync(fakeRepi, 0o700);
 
 		const manager = createAgentThreadManager({
@@ -63,7 +67,43 @@ describe("AgentThreadManager", () => {
 		expect(merged?.text).toContain("AgentThreadMergeV1: true");
 		expect(merged?.text).toContain("fake worker ok");
 		expect(merged?.text).not.toContain("plain-secret-value");
+		expect(merged?.text).not.toContain("synthetic-redaction-value");
 		expect(merged?.text).toContain("<redacted>");
 		expect(manager.formatRuns()).toContain(manifest.runId);
+	});
+
+	it("blocks project MCP config when inheritance is disabled", async () => {
+		tempRoot = mkdtempSync(join(tmpdir(), "repi-agent-thread-"));
+		const workspace = join(tempRoot, "workspace");
+		mkdirSync(join(workspace, ".repi"), { recursive: true });
+		writeFileSync(
+			join(workspace, ".repi", "mcp.json"),
+			JSON.stringify({ mcpServers: { demo: { transport: "stdio", command: "node", args: ["demo.js"] } } }),
+			"utf8",
+		);
+		const fakeRepi = join(tempRoot, "fake-repi.sh");
+		writeFileSync(
+			fakeRepi,
+			["#!/usr/bin/env bash", "printf 'allowed_servers=%s\\n' \"$" + '{REPI_MCP_ALLOWED_SERVERS:-unset}"', ""].join(
+				"\n",
+			),
+			"utf8",
+		);
+		chmodSync(fakeRepi, 0o700);
+
+		const manager = createAgentThreadManager({
+			cwd: workspace,
+			agentDir: join(tempRoot, "agent"),
+			repiBinPath: fakeRepi,
+		});
+		const manifest = await manager.spawnThread({
+			specName: "verifier",
+			task: "verify mcp isolation",
+			timeoutMs: 5000,
+			inheritMcp: false,
+		});
+		await waitFor(() => manager.getRun(manifest.runId)?.status === "complete");
+		const merged = manager.mergeRun(manifest.runId);
+		expect(merged?.text).toContain("allowed_servers=__repi_no_mcp_servers__");
 	});
 });

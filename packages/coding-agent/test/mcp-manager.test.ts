@@ -68,13 +68,13 @@ rl.on("line", (line) => {
  if (msg.method === "initialize") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: "2025-11-25", serverInfo: { name: "fake" }, capabilities: { tools: {} } } }));
  if (msg.method === "tools/list") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { tools: [{ name: "echo", description: "Echo text", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } }, { name: "blocked", description: "Blocked", inputSchema: { type: "object" } }] } }));
  if (msg.method === "tools/call") {
-  const text = msg.params.arguments.text === "large" ? "x".repeat(21050) + " token=sk-secret-1234567890" : "echo:" + msg.params.arguments.text;
+  const text = msg.params.arguments.text === "large" ? "x".repeat(21050) + " token=synthetic-redaction-value" : "echo:" + msg.params.arguments.text;
   console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }], isError: false } }));
  }
  if (msg.method === "resources/list") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { resources: [{ uri: "file:///demo.txt", name: "demo", mimeType: "text/plain", description: "Demo resource" }] } }));
- if (msg.method === "resources/read") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { contents: [{ uri: msg.params.uri, mimeType: "text/plain", text: "resource-body token=sk-secret-1234567890" }] } }));
+ if (msg.method === "resources/read") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { contents: [{ uri: msg.params.uri, mimeType: "text/plain", text: "resource-body token=synthetic-redaction-value" }] } }));
  if (msg.method === "prompts/list") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { prompts: [{ name: "triage", description: "Triage target", arguments: [{ name: "target", required: true }] }] } }));
- if (msg.method === "prompts/get") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { description: "Triage target", messages: [{ role: "user", content: { type: "text", text: "triage " + msg.params.arguments.target + " token=sk-secret-1234567890" } }] } }));
+ if (msg.method === "prompts/get") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { description: "Triage target", messages: [{ role: "user", content: { type: "text", text: "triage " + msg.params.arguments.target + " token=synthetic-redaction-value" } }] } }));
 });
 `,
 		);
@@ -187,7 +187,7 @@ rl.on("line", (line) => {
 		);
 		const artifactText = readFileSync(String(artifact?.path), "utf8");
 		expect(artifactText).toContain("<redacted>");
-		expect(artifactText).not.toContain("sk-secret-1234567890");
+		expect(artifactText).not.toContain("synthetic-redaction-value");
 		await expect(manager.callTool("fake", "blocked", {})).rejects.toThrow("not allowed");
 	});
 
@@ -346,6 +346,112 @@ rl.on("line", (line) => {
 			expect(manager.formatConfig()).not.toContain("http-test-token");
 		} finally {
 			delete process.env.MCP_TEST_TOKEN;
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	});
+
+	it("reuses pooled HTTP MCP sessions and reconnects once on stale session errors", async () => {
+		tempRoot = mkdtempSync(join(tmpdir(), "repi-mcp-pool-"));
+		const agentDir = join(tempRoot, "agent");
+		mkdirSync(agentDir, { recursive: true });
+		let initCount = 0;
+		let currentSession = "";
+		let staleFailureInjected = false;
+		const server = createServer((req, res) => {
+			let body = "";
+			req.setEncoding("utf8");
+			req.on("data", (chunk) => {
+				body += chunk;
+			});
+			req.on("end", () => {
+				const parsed = body ? JSON.parse(body) : {};
+				if (req.method === "DELETE") {
+					res.writeHead(202).end();
+					return;
+				}
+				if (parsed.method === "initialize") {
+					currentSession = `session-${++initCount}`;
+					res.writeHead(200, { "content-type": "application/json", "mcp-session-id": currentSession }).end(
+						JSON.stringify({
+							jsonrpc: "2.0",
+							id: parsed.id,
+							result: { protocolVersion: "2025-11-25", capabilities: { tools: {} } },
+						}),
+					);
+					return;
+				}
+				if (req.headers["mcp-session-id"] !== currentSession) {
+					res.writeHead(404).end("stale session");
+					return;
+				}
+				if (parsed.method === "notifications/initialized") {
+					res.writeHead(202).end();
+					return;
+				}
+				if (parsed.method === "tools/list") {
+					res.writeHead(200, { "content-type": "application/json" }).end(
+						JSON.stringify({
+							jsonrpc: "2.0",
+							id: parsed.id,
+							result: { tools: [{ name: "echo", description: "Echo", inputSchema: { type: "object" } }] },
+						}),
+					);
+					return;
+				}
+				if (
+					parsed.method === "tools/call" &&
+					parsed.params.arguments.text === "reconnect" &&
+					!staleFailureInjected
+				) {
+					staleFailureInjected = true;
+					res.writeHead(503).end("temporary stale session");
+					return;
+				}
+				if (parsed.method === "tools/call") {
+					res.writeHead(200, { "content-type": "application/json" }).end(
+						JSON.stringify({
+							jsonrpc: "2.0",
+							id: parsed.id,
+							result: {
+								content: [{ type: "text", text: `pool:${parsed.params.arguments.text}` }],
+								isError: false,
+							},
+						}),
+					);
+					return;
+				}
+				res.writeHead(404).end("unknown method");
+			});
+		});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		try {
+			const address = server.address();
+			if (!address || typeof address === "string") throw new Error("missing test server address");
+			writeFileSync(
+				join(agentDir, "mcp.json"),
+				JSON.stringify({
+					mcpServers: {
+						pooled: {
+							transport: "http",
+							url: `http://127.0.0.1:${address.port}/mcp`,
+							autoRegisterTools: true,
+							poolIdleMs: 5000,
+						},
+					},
+				}),
+			);
+			const manager = createMcpManager({ cwd: tempRoot, agentDir });
+			const probe = await manager.probeServer("pooled");
+			expect(probe.ok).toBe(true);
+			expect(initCount).toBe(1);
+			const pooledCall = await manager.callTool("pooled", "echo", { text: "reuse" });
+			expect(pooledCall.content).toEqual([{ type: "text", text: "pool:reuse" }]);
+			expect(initCount).toBe(1);
+			const reconnectCall = await manager.callTool("pooled", "echo", { text: "reconnect" });
+			expect(reconnectCall.content).toEqual([{ type: "text", text: "pool:reconnect" }]);
+			expect(initCount).toBe(2);
+			await manager.closeAll();
+		} finally {
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}
 	});

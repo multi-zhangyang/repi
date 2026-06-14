@@ -162,15 +162,26 @@ async function httpMcpRequest(entry, method, params, mapResult) {
 	const cfg = entry.config;
 	if (cfg.disabled) return { serverId: entry.id, ok: false, transport: "http", url: cfg.url, error: "server_disabled" };
 	if (!cfg.url) return { serverId: entry.id, ok: false, transport: "http", error: "missing_url" };
-	const state = { sessionId: undefined, protocolVersion: "2025-11-25" };
-	try {
+	async function attempt() {
+		const state = { sessionId: undefined, protocolVersion: "2025-11-25" };
 		const init = await httpJsonRpcPost(entry, state, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "repi", version: "cli" } } }, 1);
 		if (typeof init?.protocolVersion === "string") state.protocolVersion = init.protocolVersion;
 		await httpJsonRpcPost(entry, state, { jsonrpc: "2.0", method: "notifications/initialized" });
 		const raw = await httpJsonRpcPost(entry, state, { jsonrpc: "2.0", id: 2, method, params: params || {} }, 2);
 		return mapResult(raw || {}, entry, init || {});
+	}
+	try {
+		return await attempt();
 	} catch (error) {
-		return { serverId: entry.id, ok: false, transport: "http", url: cfg.url, error: redact(error.message || String(error)) };
+		const message = error?.message || String(error);
+		if (/MCP HTTP (?:404|408|409|429|500|502|503|504)|MCP HTTP request timeout|fetch failed|ECONN|socket|connection|reset|terminated|timeout/i.test(message)) {
+			try {
+				return await attempt();
+			} catch (retryError) {
+				return { serverId: entry.id, ok: false, transport: "http", url: cfg.url, error: redact(retryError?.message || String(retryError)) };
+			}
+		}
+		return { serverId: entry.id, ok: false, transport: "http", url: cfg.url, error: redact(message) };
 	}
 }
 function writeLine(child, msg) { child.stdin.write(`${JSON.stringify(msg)}\n`, "utf8"); }

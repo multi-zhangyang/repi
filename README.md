@@ -729,6 +729,7 @@ repi mcp read-resource demo 'file:///demo.txt'
 repi mcp prompts demo
 repi mcp get-prompt demo triage '{"target":"example.test"}'
 repi mcp auth-info remote-demo
+npm run gate:repi-mcp
 ```
 
 会话内：
@@ -745,6 +746,13 @@ repi mcp auth-info remote-demo
 /mcp auth-info remote-demo
 ```
 
+普通任务消息里可以直接引用 MCP resource，REPI 会在发送给模型前读取并注入一个受限的 `<mcp-resource>` 上下文块：
+
+```text
+分析 @mcp/<server>/<uri>
+分析 @mcp/demo/file%3A%2F%2F%2Fdemo.txt
+```
+
 `autoRegisterTools: true` 后，REPI 会暴露运行时工具：
 
 - `mcp__demo__call`：轻量 proxy，参数是 `{ "tool": "search", "arguments": { ... } }`。
@@ -755,7 +763,7 @@ repi mcp auth-info remote-demo
 - `mcp__demo__list_prompts`：列出 MCP server 暴露的 prompts。
 - `mcp__demo__get_prompt`：按名称和参数获取 MCP prompt，长 prompt 同样落 artifact。
 
-`headers` 支持 `$ENV_NAME` 或 `Bearer $ENV_NAME` 形式的本地环境变量展开；也可以用 `"bearerToken": "$MCP_API_KEY"` 或 `"oauth": {"accessToken": "$TOKEN"}` 自动生成 `Authorization: Bearer ...`。`repi mcp auth-info <server>` 会读取远程 server 的 `WWW-Authenticate` / protected-resource metadata，方便接入 OAuth MCP server。`deferToolSchemas: true` 时不会把直连工具 schema 注册进 runtime，只保留 search/proxy/resources/prompts 这些轻量入口。`allowedTools` / `blockedTools` 会同时作用于探测、直连工具和 proxy 调用。stdout/stderr 与返回文本会做默认脱敏；超过阈值的大文本不会整段塞回上下文，而是写入：
+`headers` 支持 `$ENV_NAME` 或 `Bearer $ENV_NAME` 形式的本地环境变量展开；也可以用 `"bearerToken": "$MCP_API_KEY"` 或 `"oauth": {"accessToken": "$TOKEN"}` 自动生成 `Authorization: Bearer ...`。`repi mcp auth-info <server>` 会读取远程 server 的 `WWW-Authenticate` / protected-resource metadata，方便接入 OAuth MCP server。`deferToolSchemas: true` 时不会把直连工具 schema 注册进 runtime，只保留 search/proxy/resources/prompts 这些轻量入口。MCP session 默认会连接池复用并在失败时做一次重连，`poolIdleMs` 可调整空闲关闭时间。子代理默认继承 MCP 配置，并通过 `REPI_MCP_ALLOWED_SERVERS` / `REPI_MCP_ALLOWED_TOOLS` 做 worker 级 allowlist。`allowedTools` / `blockedTools` 会同时作用于探测、直连工具和 proxy 调用。stdout/stderr 与返回文本会做默认脱敏；超过阈值的大文本不会整段塞回上下文，而是写入：
 
 ```text
 ~/.repi/agent/recon/mcp-artifacts/<server>/<timestamp>-<tool>-<sha>.txt

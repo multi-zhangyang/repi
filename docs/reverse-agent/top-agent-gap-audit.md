@@ -123,6 +123,10 @@ REPI 已经有逆向/渗透 profile、模型配置、隔离 profile、trust、co
 - 已支持 streamable HTTP MCP server：POST JSON-RPC、SSE/JSON 响应解析、`Mcp-Session-Id` 会话头、`MCP-Protocol-Version`、env-backed headers、`bearerToken` 与 `oauth.accessToken`。
 - 已接入 CLI：`repi mcp status/list/probe/search/call/resources/read-resource/prompts/get-prompt/auth-info`，并接入交互式 `/mcp` 对应 UX。
 - 已把 `autoRegisterTools: true` 的 MCP server 接入 agent tool registry：启动即有 `mcp__server__call` proxy 和 `mcp__server__search_tools`；显式 `/mcp list`/`/mcp <server>` 探测成功后生成 `mcp__server__tool` 直连工具；`deferToolSchemas: true` 可保持 search/proxy 模式不注册全量 schema。
+- 已补 MCP 连接池/重连：`clientPool` 复用 initialized session，`poolIdleMs` 空闲关闭，HTTP stale/5xx/连接类错误自动重建 session 后重试一次。
+- 已补 resource mention UX：普通任务消息支持 `@mcp/<server>/<uri>` / `mcp://<server>/<uri>`，发送模型前读取 resource 并注入 `<mcp-resource>` 上下文块。
+- 已补 subagent MCP allowlist/继承：child agent 默认继承 MCP 配置，把 proxy/search/resources/prompts runtime tools 加入 worker allowlist，并通过 `REPI_MCP_ALLOWED_SERVERS` / `REPI_MCP_ALLOWED_TOOLS` 约束 worker。
+- 已新增独立 `gate:repi-mcp`，覆盖 stdio/http、search、call、resources/read、prompts/get、auth-info、连接池重连、脱敏和静态接线。
 - 已补 MCP tool-call 大输出 artifact 落盘：长文本写到 `~/.repi/agent/recon/mcp-artifacts/`，上下文只收 preview、path、sha256、bytes。
 - 已补 MCP resources/list 与 resources/read runtime tools：`mcp__server__list_resources`、`mcp__server__read_resource`，resource 大文本同样复用 artifact 落盘。
 - 已补 MCP prompts/list 与 prompts/get runtime tools 和 CLI：`mcp__server__list_prompts`、`mcp__server__get_prompt`、`repi mcp prompts/get-prompt`。

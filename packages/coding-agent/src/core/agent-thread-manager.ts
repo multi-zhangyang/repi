@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { APP_NAME, getAgentDir } from "../config.ts";
+import { createMcpManager } from "./mcp-manager.ts";
 
 export type AgentThreadStatus = "planned" | "running" | "complete" | "failed" | "timeout" | "stopped";
 
@@ -15,6 +16,11 @@ export interface AgentThreadSpec {
 	memory: "off" | "scoped";
 	isolation: "agent-home" | "agent-home-and-cwd";
 	color: string;
+	mcp?: {
+		inherit: boolean;
+		allowedServers?: string[];
+		allowedTools?: string[];
+	};
 }
 
 export interface AgentThreadRunManifest {
@@ -40,6 +46,9 @@ export interface AgentThreadRunManifest {
 	provider?: string;
 	model?: string;
 	tools: string[];
+	mcpServers?: string[];
+	mcpTools?: string[];
+	mcpInherited?: boolean;
 	promptSha256?: string;
 	stdoutSha256?: string;
 	stderrSha256?: string;
@@ -54,12 +63,24 @@ export interface SpawnAgentThreadOptions {
 	cwd?: string;
 	timeoutMs?: number;
 	additionalPrompt?: string;
+	mcpServers?: string[];
+	mcpTools?: string[];
+	inheritMcp?: boolean;
 }
 
 export interface AgentThreadManagerOptions {
 	cwd: string;
 	agentDir?: string;
 	repiBinPath?: string;
+}
+
+interface WorkerMcpInheritance {
+	inherited: boolean;
+	serverIds: string[];
+	allowedTools: string[];
+	runtimeToolNames: string[];
+	serverAllowlistEnv?: string;
+	toolAllowlistEnv?: string;
 }
 
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
@@ -114,6 +135,23 @@ function writeJson(path: string, value: unknown): void {
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
+function readJson(path: string): any | undefined {
+	if (!existsSync(path)) return undefined;
+	try {
+		return JSON.parse(readFileSync(path, "utf8"));
+	} catch {
+		return undefined;
+	}
+}
+
+function sanitizeMcpToolNamePart(value: string, fallback: string): string {
+	const sanitized = value
+		.replace(/[^A-Za-z0-9_]/g, "_")
+		.replace(/_+/g, "_")
+		.replace(/^_+|_+$/g, "");
+	return (sanitized || fallback).slice(0, 64);
+}
+
 function formatCommandForDisplay(command: string, args: string[]): string {
 	return [command, ...args].map((arg) => (/[\s"'`$]/.test(arg) ? JSON.stringify(arg) : arg)).join(" ");
 }
@@ -138,6 +176,7 @@ export const BUILTIN_AGENT_THREAD_SPECS: AgentThreadSpec[] = [
 		memory: "off",
 		isolation: "agent-home",
 		color: "cyan",
+		mcp: { inherit: true },
 	},
 	{
 		name: "planner",
@@ -151,6 +190,7 @@ export const BUILTIN_AGENT_THREAD_SPECS: AgentThreadSpec[] = [
 		memory: "off",
 		isolation: "agent-home",
 		color: "blue",
+		mcp: { inherit: true },
 	},
 	{
 		name: "operator",
@@ -163,6 +203,7 @@ export const BUILTIN_AGENT_THREAD_SPECS: AgentThreadSpec[] = [
 		memory: "scoped",
 		isolation: "agent-home",
 		color: "yellow",
+		mcp: { inherit: true },
 	},
 	{
 		name: "verifier",
@@ -176,6 +217,7 @@ export const BUILTIN_AGENT_THREAD_SPECS: AgentThreadSpec[] = [
 		memory: "off",
 		isolation: "agent-home",
 		color: "green",
+		mcp: { inherit: true },
 	},
 	{
 		name: "reverser",
@@ -189,6 +231,7 @@ export const BUILTIN_AGENT_THREAD_SPECS: AgentThreadSpec[] = [
 		memory: "scoped",
 		isolation: "agent-home",
 		color: "magenta",
+		mcp: { inherit: true },
 	},
 ];
 
@@ -258,8 +301,10 @@ export class AgentThreadManager {
 		const stdoutPath = join(runRoot, "stdout.txt");
 		const stderrPath = join(runRoot, "stderr.txt");
 		const manifestPath = join(runRoot, "manifest.json");
-		const prompt = this.buildWorkerPrompt(spec, options.task, options.additionalPrompt);
+		const mcpInheritance = this.prepareWorkerMcp(spec, options, workerAgentDir, cwd);
+		const prompt = this.buildWorkerPrompt(spec, options.task, options.additionalPrompt, mcpInheritance);
 		const promptSha256 = await sha256(prompt);
+		const toolNames = [...new Set([...spec.tools, ...mcpInheritance.runtimeToolNames])];
 		const args = [
 			"--approve",
 			...(options.provider ? ["--provider", options.provider] : []),
@@ -267,7 +312,7 @@ export class AgentThreadManager {
 			"--thinking",
 			spec.thinkingLevel,
 			"--no-session",
-			...(spec.tools.length > 0 ? ["--tools", spec.tools.join(",")] : ["--no-tools"]),
+			...(toolNames.length > 0 ? ["--tools", toolNames.join(",")] : ["--no-tools"]),
 			"-p",
 			prompt,
 		];
@@ -289,7 +334,10 @@ export class AgentThreadManager {
 			manifestPath,
 			provider: options.provider,
 			model: options.model,
-			tools: spec.tools,
+			tools: toolNames,
+			mcpServers: mcpInheritance.serverIds,
+			mcpTools: mcpInheritance.allowedTools,
+			mcpInherited: mcpInheritance.inherited,
 			promptSha256,
 		};
 		writeFileSync(stdoutPath, "", { encoding: "utf8", mode: 0o600 });
@@ -308,6 +356,12 @@ export class AgentThreadManager {
 				PI_SKIP_PACKAGE_UPDATE_CHECK: "1",
 				REPI_TELEMETRY: "0",
 				PI_TELEMETRY: "0",
+				...(mcpInheritance.serverAllowlistEnv !== undefined
+					? { REPI_MCP_ALLOWED_SERVERS: mcpInheritance.serverAllowlistEnv }
+					: {}),
+				...(mcpInheritance.toolAllowlistEnv !== undefined
+					? { REPI_MCP_ALLOWED_TOOLS: mcpInheritance.toolAllowlistEnv }
+					: {}),
 			},
 			stdio: ["ignore", "pipe", "pipe"],
 		});
@@ -411,7 +465,7 @@ export class AgentThreadManager {
 			"Agent thread specs:",
 			...this.listSpecs().map(
 				(spec) =>
-					`- ${spec.name} [tools=${spec.tools.join(",") || "none"}, memory=${spec.memory}, maxTurns=${spec.maxTurns}]: ${spec.description}`,
+					`- ${spec.name} [tools=${spec.tools.join(",") || "none"}, mcp=${spec.mcp?.inherit ? "inherit" : "off"}, memory=${spec.memory}, maxTurns=${spec.maxTurns}]: ${spec.description}`,
 			),
 			"",
 			"Usage:",
@@ -447,11 +501,72 @@ export class AgentThreadManager {
 			`stderr: ${run.stderrPath}`,
 			`merge: ${run.mergePath ?? `run /merge ${run.runId}`}`,
 			`tools: ${run.tools.join(",") || "none"}`,
+			`mcp: ${run.mcpInherited ? `servers=${run.mcpServers?.join(",") || "none"} tools=${run.mcpTools?.join(",") || "all"}` : "off"}`,
 			`provider/model: ${run.provider ?? "default"}/${run.model ?? "default"}`,
 		].join("\n");
 	}
 
-	private buildWorkerPrompt(spec: AgentThreadSpec, task: string, additionalPrompt?: string): string {
+	private prepareWorkerMcp(
+		spec: AgentThreadSpec,
+		options: SpawnAgentThreadOptions,
+		workerAgentDir: string,
+		cwd: string,
+	): WorkerMcpInheritance {
+		const noMcpSentinel = "__repi_no_mcp_servers__";
+		const noToolSentinel = "__repi_no_mcp_tools__";
+		const inherit = options.inheritMcp ?? spec.mcp?.inherit ?? false;
+		if (!inherit) {
+			return {
+				inherited: false,
+				serverIds: [],
+				allowedTools: [],
+				runtimeToolNames: [],
+				serverAllowlistEnv: noMcpSentinel,
+			};
+		}
+		const manager = createMcpManager({ cwd, agentDir: this.agentDir });
+		const allServers = manager.loadServers();
+		const requestedServers = options.mcpServers ?? spec.mcp?.allowedServers;
+		const serverFilterActive = requestedServers !== undefined;
+		const allowedServerSet = requestedServers?.length ? new Set(requestedServers) : undefined;
+		const serverIds = allServers
+			.map((server) => server.id)
+			.filter((id) => !allowedServerSet || allowedServerSet.has(id));
+		const toolFilterActive = options.mcpTools !== undefined || spec.mcp?.allowedTools !== undefined;
+		const allowedTools = options.mcpTools ?? spec.mcp?.allowedTools ?? [];
+		const runtimeToolNames = manager
+			.createProxyToolDefinitions()
+			.filter((tool) =>
+				serverIds.some((serverId) => tool.name.startsWith(`mcp__${sanitizeMcpToolNamePart(serverId, "server")}__`)),
+			)
+			.map((tool) => tool.name);
+
+		const parentMcpConfigPath = join(this.agentDir, "mcp.json");
+		const parentConfig = readJson(parentMcpConfigPath);
+		if (parentConfig && serverIds.length > 0) {
+			const table = parentConfig.mcpServers ?? parentConfig.servers ?? {};
+			const filtered = Object.fromEntries(Object.entries(table).filter(([id]) => serverIds.includes(id)));
+			if (Object.keys(filtered).length > 0) writeJson(join(workerAgentDir, "mcp.json"), { mcpServers: filtered });
+		}
+
+		return {
+			inherited: true,
+			serverIds,
+			allowedTools,
+			runtimeToolNames,
+			serverAllowlistEnv:
+				serverIds.length > 0 ? serverIds.join(",") : serverFilterActive ? noMcpSentinel : undefined,
+			toolAllowlistEnv:
+				allowedTools.length > 0 ? allowedTools.join(",") : toolFilterActive ? noToolSentinel : undefined,
+		};
+	}
+
+	private buildWorkerPrompt(
+		spec: AgentThreadSpec,
+		task: string,
+		additionalPrompt?: string,
+		mcp?: WorkerMcpInheritance,
+	): string {
 		return [
 			spec.systemPrompt,
 			"",
@@ -461,6 +576,9 @@ export class AgentThreadManager {
 			"",
 			`Worker spec: ${spec.name}`,
 			`Tools allowed: ${spec.tools.join(",") || "none"}`,
+			mcp?.inherited
+				? `MCP inherited: servers=${mcp.serverIds.join(",") || "none"} allowedTools=${mcp.allowedTools.join(",") || "all"} runtimeTools=${mcp.runtimeToolNames.join(",") || "none"}`
+				: "MCP inherited: off",
 			`Task: ${task}`,
 			additionalPrompt ? `Additional guidance: ${additionalPrompt}` : "",
 		]
