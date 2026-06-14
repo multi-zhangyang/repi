@@ -5441,6 +5441,30 @@ export class InteractiveMode {
 				info = manager.formatProbeResults(await manager.probeAll());
 				const count = await this.session.refreshMcpToolDefinitions();
 				info += `\nregistered_runtime_tools=${count}`;
+			} else if (args.startsWith("search ")) {
+				const [, serverId, ...queryParts] = args.split(/\s+/);
+				const result = await manager.searchTools(serverId ?? "", queryParts.join(" "));
+				info = manager.formatToolSearchResult(result);
+			} else if (args.startsWith("resources ")) {
+				const [, serverId] = args.split(/\s+/);
+				info = manager.formatResources(await manager.listResources(serverId ?? ""));
+			} else if (args.startsWith("read ") || args.startsWith("resource ") || args.startsWith("read-resource ")) {
+				const [subcommand, serverId, ...uriParts] = args.split(/\s+/);
+				const uri = uriParts.join(" ");
+				const result = await manager.readResource(serverId ?? "", uri);
+				info = manager.formatToolResult(result, `MCP ${subcommand}`);
+			} else if (args.startsWith("prompts ")) {
+				const [, serverId] = args.split(/\s+/);
+				info = manager.formatPrompts(await manager.listPrompts(serverId ?? ""));
+			} else if (args.startsWith("prompt ") || args.startsWith("get-prompt ")) {
+				const [subcommand, serverId, promptName, ...jsonParts] = args.split(/\s+/);
+				const jsonText = jsonParts.join(" ").trim();
+				const promptArgs = jsonText ? JSON.parse(jsonText) : {};
+				const result = await manager.getPrompt(serverId ?? "", promptName ?? "", promptArgs);
+				info = manager.formatToolResult(result, `MCP ${subcommand}`);
+			} else if (args.startsWith("auth-info ") || args.startsWith("auth ")) {
+				const [, serverId] = args.split(/\s+/);
+				info = manager.formatAuthInfo(await manager.inspectAuth(serverId ?? ""));
 			} else {
 				info = manager.formatProbeResults([await manager.probeServer(args)]);
 				const count = await this.session.refreshMcpToolDefinitions();

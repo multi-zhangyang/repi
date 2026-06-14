@@ -102,6 +102,7 @@ rl.on("line", (line) => {
 		const proxies = manager.createProxyToolDefinitions();
 		expect(proxies.map((tool) => tool.name)).toEqual([
 			"mcp__fake__call",
+			"mcp__fake__search_tools",
 			"mcp__fake__list_resources",
 			"mcp__fake__read_resource",
 			"mcp__fake__list_prompts",
@@ -127,14 +128,28 @@ rl.on("line", (line) => {
 		);
 		expect(directResult.content).toEqual([{ type: "text", text: "echo:direct" }]);
 
+		const searchResult = await proxies[1].execute(
+			"tool-call-s1",
+			{ query: "echo", limit: 5, includeSchema: true },
+			undefined,
+			undefined,
+			{} as any,
+		);
+		expect(String(searchResult.content[0].type === "text" ? searchResult.content[0].text : "")).toContain(
+			"MCP tool search: fake",
+		);
+		expect(String(searchResult.content[0].type === "text" ? searchResult.content[0].text : "")).toContain(
+			"inputSchema=",
+		);
+
 		const resources = await manager.listResources("fake");
 		expect(resources.ok).toBe(true);
 		expect(resources.resources.map((resource) => resource.uri)).toEqual(["file:///demo.txt"]);
-		const listResourceResult = await proxies[1].execute("tool-call-r1", {}, undefined, undefined, {} as any);
+		const listResourceResult = await proxies[2].execute("tool-call-r1", {}, undefined, undefined, {} as any);
 		expect(String(listResourceResult.content[0].type === "text" ? listResourceResult.content[0].text : "")).toContain(
 			"file:///demo.txt",
 		);
-		const readResourceResult = await proxies[2].execute(
+		const readResourceResult = await proxies[3].execute(
 			"tool-call-r2",
 			{ uri: "file:///demo.txt" },
 			undefined,
@@ -148,11 +163,11 @@ rl.on("line", (line) => {
 		const prompts = await manager.listPrompts("fake");
 		expect(prompts.ok).toBe(true);
 		expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(["triage"]);
-		const listPromptResult = await proxies[3].execute("tool-call-p1", {}, undefined, undefined, {} as any);
+		const listPromptResult = await proxies[4].execute("tool-call-p1", {}, undefined, undefined, {} as any);
 		expect(String(listPromptResult.content[0].type === "text" ? listPromptResult.content[0].text : "")).toContain(
 			"name=triage",
 		);
-		const getPromptResult = await proxies[4].execute(
+		const getPromptResult = await proxies[5].execute(
 			"tool-call-p2",
 			{ name: "triage", arguments: { target: "example.test" } },
 			undefined,
@@ -183,6 +198,15 @@ rl.on("line", (line) => {
 		const requests: Array<{ method?: string; headers: Record<string, string | string[] | undefined>; body: any }> =
 			[];
 		const server = createServer((req, res) => {
+			if (req.method === "GET" && req.url === "/.well-known/oauth-protected-resource") {
+				res.writeHead(200, { "content-type": "application/json" }).end(
+					JSON.stringify({
+						resource: `http://${req.headers.host}/mcp`,
+						authorization_servers: [`http://${req.headers.host}/.well-known/oauth-authorization-server`],
+					}),
+				);
+				return;
+			}
 			let body = "";
 			req.setEncoding("utf8");
 			req.on("data", (chunk) => {
@@ -196,7 +220,9 @@ rl.on("line", (line) => {
 					return;
 				}
 				if (req.headers.authorization !== "Bearer http-test-token") {
-					res.writeHead(401).end("bad auth");
+					res.writeHead(401, {
+						"www-authenticate": `Bearer resource_metadata="http://${req.headers.host}/.well-known/oauth-protected-resource"`,
+					}).end("bad auth");
 					return;
 				}
 				if (parsed.method !== "initialize" && req.headers["mcp-session-id"] !== "session-1") {
@@ -290,6 +316,10 @@ rl.on("line", (line) => {
 				}),
 			);
 			const manager = createMcpManager({ cwd: tempRoot, agentDir });
+			const authInfo = await manager.inspectAuth("httpfake");
+			expect(authInfo.ok).toBe(true);
+			expect(authInfo.wwwAuthenticate).toContain("resource_metadata=");
+			expect(JSON.stringify(authInfo.resourceMetadata)).toContain("authorization_servers");
 			const probe = await manager.probeServer("httpfake");
 			expect(probe.ok).toBe(true);
 			expect(probe.transport).toBe("http");
@@ -309,9 +339,9 @@ rl.on("line", (line) => {
 					.every((request) => request.headers["mcp-session-id"] === "session-1"),
 			).toBe(true);
 			expect(
-				requests.every(
-					(request) => request.method === "DELETE" || request.headers.authorization === "Bearer http-test-token",
-				),
+				requests
+					.filter((request) => request.body.method && request.body.method !== "initialize")
+					.every((request) => request.headers.authorization === "Bearer http-test-token"),
 			).toBe(true);
 			expect(manager.formatConfig()).not.toContain("http-test-token");
 		} finally {

@@ -19,10 +19,21 @@ export interface McpServerConfig {
 	headers?: Record<string, string>;
 	/** Optional bearer token value or env reference, e.g. "$MCP_TOKEN". */
 	bearerToken?: string;
+	/** OAuth login-state foundation. accessToken may be an env reference; full browser flow is handled by future auth helpers. */
+	oauth?: {
+		accessToken?: string;
+		tokenType?: "Bearer";
+		clientId?: string;
+		scopes?: string[];
+		authorizationServerMetadataUrl?: string;
+		resourceMetadataUrl?: string;
+	};
 	disabled?: boolean;
 	timeoutMs?: number;
 	allowedTools?: string[];
 	blockedTools?: string[];
+	/** Keep direct MCP tool schemas out of the runtime registry; use search + proxy call instead. */
+	deferToolSchemas?: boolean;
 	/** Opt-in: expose this server as runtime LLM-callable MCP tools. */
 	autoRegisterTools?: boolean;
 	/** Compatibility alias for older local configs. */
@@ -111,6 +122,29 @@ export interface McpPromptListResult {
 	error?: string;
 }
 
+export interface McpToolSearchResult {
+	serverId: string;
+	ok: boolean;
+	query?: string;
+	total: number;
+	limit: number;
+	tools: McpToolSummary[];
+	stderrTail?: string;
+	error?: string;
+}
+
+export interface McpAuthInfoResult {
+	serverId: string;
+	ok: boolean;
+	transport: McpTransport;
+	url?: string;
+	status?: number;
+	wwwAuthenticate?: string;
+	resourceMetadataUrl?: string;
+	resourceMetadata?: unknown;
+	error?: string;
+}
+
 export interface McpManagerOptions {
 	cwd: string;
 	agentDir?: string;
@@ -126,6 +160,12 @@ const mcpProxyToolSchema = Type.Object({
 	arguments: Type.Optional(
 		Type.Record(Type.String(), Type.Any(), { description: "Arguments passed to the MCP tool" }),
 	),
+});
+
+const mcpToolSearchSchema = Type.Object({
+	query: Type.Optional(Type.String({ description: "Substring to match against MCP tool name/description" })),
+	limit: Type.Optional(Type.Number({ description: "Maximum tools to return", minimum: 1, maximum: 100 })),
+	includeSchema: Type.Optional(Type.Boolean({ description: "Include MCP inputSchema snippets in the result" })),
 });
 
 const mcpResourceListSchema = Type.Object({});
@@ -194,6 +234,10 @@ function expandHeaders(config: McpServerConfig): Record<string, string> {
 	if (config.bearerToken && !Object.keys(headers).some((key) => key.toLowerCase() === "authorization")) {
 		headers.Authorization = `Bearer ${envValue(config.bearerToken)}`;
 	}
+	if (config.oauth?.accessToken && !Object.keys(headers).some((key) => key.toLowerCase() === "authorization")) {
+		const tokenType = config.oauth.tokenType ?? "Bearer";
+		headers.Authorization = `${tokenType} ${envValue(config.oauth.accessToken)}`;
+	}
 	return headers;
 }
 
@@ -213,7 +257,17 @@ function redactedConfig(config: McpServerConfig): McpServerConfig {
 			? config.bearerToken
 			: "<redacted>"
 		: undefined;
-	return { ...config, env, headers, bearerToken };
+	const oauth = config.oauth
+		? {
+				...config.oauth,
+				accessToken: config.oauth.accessToken
+					? config.oauth.accessToken.startsWith("$")
+						? config.oauth.accessToken
+						: "<redacted>"
+					: undefined,
+			}
+		: undefined;
+	return { ...config, env, headers, bearerToken, oauth };
 }
 
 function sanitizeToolNamePart(value: string, fallback: string): string {
@@ -238,6 +292,10 @@ function createMcpToolName(serverId: string, toolName: string): string {
 
 function createMcpProxyToolName(serverId: string): string {
 	return `mcp__${sanitizeToolNamePart(serverId, "server")}__call`;
+}
+
+function createMcpToolSearchToolName(serverId: string): string {
+	return `mcp__${sanitizeToolNamePart(serverId, "server")}__search_tools`;
 }
 
 function createMcpResourceListToolName(serverId: string): string {
@@ -334,6 +392,13 @@ function createAbortController(timeoutMs: number, signal?: AbortSignal): { signa
 			signal?.removeEventListener("abort", onAbort);
 		},
 	};
+}
+
+function parseBearerAuthParam(header: string | null, key: string): string | undefined {
+	if (!header) return undefined;
+	const pattern = new RegExp(`${key}=(?:"([^"]+)"|([^,\\s]+))`, "i");
+	const match = header.match(pattern);
+	return match?.[1] ?? match?.[2];
 }
 
 class StreamableHttpJsonRpcClient implements McpJsonRpcClient {
@@ -632,16 +697,16 @@ export class McpManager {
 		return this.loadServers().find((server) => server.id === id || server.id.startsWith(id));
 	}
 
-	async probeServer(id: string): Promise<McpProbeResult> {
+	async probeServer(id: string, signal?: AbortSignal): Promise<McpProbeResult> {
 		const entry = this.getServer(id);
 		if (!entry) return { serverId: id, ok: false, transport: "stdio", tools: [], error: "server_not_found" };
-		return this.probeEntry(entry);
+		return this.probeEntry(entry, signal);
 	}
 
-	async probeAll(): Promise<McpProbeResult[]> {
+	async probeAll(signal?: AbortSignal): Promise<McpProbeResult[]> {
 		const entries = this.loadServers().filter((entry) => !entry.config.disabled);
 		const results: McpProbeResult[] = [];
-		for (const entry of entries) results.push(await this.probeEntry(entry));
+		for (const entry of entries) results.push(await this.probeEntry(entry, signal));
 		return results;
 	}
 
@@ -682,6 +747,139 @@ export class McpManager {
 			},
 			signal,
 		);
+	}
+
+	async searchTools(
+		serverId: string,
+		query = "",
+		options?: { limit?: number; includeSchema?: boolean },
+		signal?: AbortSignal,
+	): Promise<McpToolSearchResult> {
+		const entry = this.getServer(serverId);
+		const limit = Math.max(1, Math.min(100, Math.trunc(options?.limit ?? 20)));
+		const normalizedQuery = query.trim().toLowerCase();
+		if (!entry) return { serverId, ok: false, query, total: 0, limit, tools: [], error: "server_not_found" };
+		if (entry.config.disabled)
+			return { serverId: entry.id, ok: false, query, total: 0, limit, tools: [], error: "server_disabled" };
+		const probe = await this.probeEntry(entry, signal);
+		if (!probe.ok)
+			return {
+				serverId: entry.id,
+				ok: false,
+				query,
+				total: 0,
+				limit,
+				tools: [],
+				stderrTail: probe.stderrTail,
+				error: probe.error ?? "MCP tools/list failed",
+			};
+		const matched = probe.tools.filter((tool) => {
+			if (!normalizedQuery) return true;
+			return `${tool.name}\n${tool.description ?? ""}`.toLowerCase().includes(normalizedQuery);
+		});
+		const tools = matched.slice(0, limit).map((tool) => ({
+			name: tool.name,
+			description: tool.description,
+			inputSchema: options?.includeSchema ? tool.inputSchema : undefined,
+		}));
+		return {
+			serverId: entry.id,
+			ok: true,
+			query,
+			total: matched.length,
+			limit,
+			tools,
+			stderrTail: probe.stderrTail,
+		};
+	}
+
+	async inspectAuth(serverId: string, signal?: AbortSignal): Promise<McpAuthInfoResult> {
+		const entry = this.getServer(serverId);
+		if (!entry) return { serverId, ok: false, transport: "stdio", error: "server_not_found" };
+		const transport = normalizeTransport(entry.config);
+		if (transport !== "http") {
+			return { serverId: entry.id, ok: false, transport, error: "auth_info_only_applies_to_http_mcp" };
+		}
+		if (!entry.config.url) return { serverId: entry.id, ok: false, transport, error: "missing_url" };
+		const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+		let status: number | undefined;
+		let wwwAuthenticate: string | undefined;
+		let resourceMetadataUrl = entry.config.oauth?.resourceMetadataUrl;
+		try {
+			if (!resourceMetadataUrl) {
+				const abort = createAbortController(timeoutMs, signal);
+				try {
+					const response = await fetch(entry.config.url, {
+						method: "POST",
+						headers: {
+							Accept: "application/json, text/event-stream",
+							"Content-Type": "application/json",
+							"MCP-Protocol-Version": "2025-11-25",
+						},
+						body: JSON.stringify({
+							jsonrpc: "2.0",
+							id: 1,
+							method: "initialize",
+							params: {
+								protocolVersion: "2025-11-25",
+								capabilities: {},
+								clientInfo: { name: APP_NAME, version: VERSION },
+							},
+						}),
+						signal: abort.signal,
+					});
+					status = response.status;
+					wwwAuthenticate = redact(response.headers.get("www-authenticate") ?? "");
+					const rawMetadataUrl =
+						parseBearerAuthParam(response.headers.get("www-authenticate"), "resource_metadata") ??
+						parseBearerAuthParam(response.headers.get("www-authenticate"), "resource_metadata_uri");
+					if (rawMetadataUrl) resourceMetadataUrl = new URL(rawMetadataUrl, entry.config.url).toString();
+				} finally {
+					abort.cleanup();
+				}
+			}
+			let resourceMetadata: unknown;
+			if (resourceMetadataUrl) {
+				const abort = createAbortController(timeoutMs, signal);
+				try {
+					const response = await fetch(resourceMetadataUrl, {
+						method: "GET",
+						headers: { Accept: "application/json" },
+						signal: abort.signal,
+					});
+					status = status ?? response.status;
+					const text = await response.text();
+					try {
+						resourceMetadata = JSON.parse(text);
+					} catch {
+						resourceMetadata = redact(text.slice(0, 2000));
+					}
+				} finally {
+					abort.cleanup();
+				}
+			}
+			return {
+				serverId: entry.id,
+				ok: true,
+				transport,
+				url: entry.config.url,
+				status,
+				wwwAuthenticate,
+				resourceMetadataUrl,
+				resourceMetadata,
+			};
+		} catch (error) {
+			return {
+				serverId: entry.id,
+				ok: false,
+				transport,
+				url: entry.config.url,
+				status,
+				wwwAuthenticate,
+				resourceMetadataUrl,
+				error: redact(error instanceof Error ? error.message : String(error)),
+			};
+		}
 	}
 
 	async listResources(serverId: string, signal?: AbortSignal): Promise<McpResourceListResult> {
@@ -799,6 +997,7 @@ export class McpManager {
 			.flatMap((entry) => {
 				const serverId = entry.id;
 				const callToolName = createMcpProxyToolName(serverId);
+				const searchToolName = createMcpToolSearchToolName(serverId);
 				const listResourcesToolName = createMcpResourceListToolName(serverId);
 				const readResourceToolName = createMcpResourceReadToolName(serverId);
 				const listPromptsToolName = createMcpPromptListToolName(serverId);
@@ -819,6 +1018,30 @@ export class McpManager {
 							return toAgentToolResult(result);
 						},
 					} satisfies ToolDefinition<typeof mcpProxyToolSchema, McpToolCallDetails>,
+					{
+						name: searchToolName,
+						label: `MCP ${serverId} tool search`,
+						description: `Search MCP tools exposed by server '${serverId}' without registering every tool schema into context.`,
+						promptSnippet: `Search MCP tools from ${serverId}`,
+						promptGuidelines: [
+							`Use this before calling '${callToolName}' when the exact MCP tool name is unknown.`,
+							"Keep includeSchema false unless the input schema is needed for the next call.",
+						],
+						parameters: mcpToolSearchSchema,
+						execute: async (_toolCallId, params, signal) => {
+							const result = await this.searchTools(
+								serverId,
+								params.query ?? "",
+								{ limit: params.limit, includeSchema: params.includeSchema },
+								signal,
+							);
+							if (!result.ok) throw new Error(result.error ?? "MCP tools/search failed");
+							return {
+								content: [{ type: "text", text: inlineMcpText(this.formatToolSearchResult(result)) }],
+								details: { serverId, toolName: "tools/search", isError: false, contentItems: 1 },
+							};
+						},
+					} satisfies ToolDefinition<typeof mcpToolSearchSchema, McpToolCallDetails>,
 					{
 						name: listResourcesToolName,
 						label: `MCP ${serverId} resources`,
@@ -905,7 +1128,9 @@ export class McpManager {
 	async createToolDefinitions(): Promise<ToolDefinition[]> {
 		const definitions: ToolDefinition[] = [];
 		const usedNames = new Set(this.createProxyToolDefinitions().map((definition) => definition.name));
-		for (const entry of this.loadServers().filter((candidate) => this.shouldExposeTools(candidate))) {
+		for (const entry of this.loadServers().filter(
+			(candidate) => this.shouldExposeTools(candidate) && !candidate.config.deferToolSchemas,
+		)) {
 			const probe = await this.probeEntry(entry);
 			if (!probe.ok) continue;
 			for (const tool of probe.tools) {
@@ -959,6 +1184,66 @@ export class McpManager {
 			if (result.tools.length > 20) lines.push(`  ... ${result.tools.length - 20} more tools`);
 			if (result.stderrTail) lines.push(`  stderr_tail=${result.stderrTail.replace(/\s+/g, " ").slice(-500)}`);
 		}
+		return lines.join("\n");
+	}
+
+	formatToolSearchResult(result: McpToolSearchResult): string {
+		const lines = [
+			`MCP tool search: ${result.serverId} [${result.ok ? "ok" : "fail"}] query=${JSON.stringify(result.query ?? "")} total=${result.total} limit=${result.limit}`,
+		];
+		if (result.error) lines.push(`error=${result.error}`);
+		for (const tool of result.tools) {
+			lines.push(`- ${tool.name}${tool.description ? ` — ${tool.description}` : ""}`);
+			if (tool.inputSchema) lines.push(`  inputSchema=${JSON.stringify(tool.inputSchema)}`);
+		}
+		if (result.stderrTail) lines.push(`stderr_tail=${result.stderrTail.replace(/\s+/g, " ").slice(-500)}`);
+		return lines.join("\n");
+	}
+
+	formatResources(result: McpResourceListResult): string {
+		const lines = [`MCP resources: ${result.serverId} [${result.ok ? "ok" : "fail"}]`];
+		if (result.error) lines.push(`error=${result.error}`);
+		for (const resource of result.resources) {
+			lines.push(`- ${resource.uri}${resource.name ? ` — ${resource.name}` : ""}`);
+			if (resource.mimeType) lines.push(`  mimeType=${resource.mimeType}`);
+			if (resource.description) lines.push(`  description=${resource.description}`);
+		}
+		if (result.stderrTail) lines.push(`stderr_tail=${result.stderrTail.replace(/\s+/g, " ").slice(-500)}`);
+		return lines.join("\n");
+	}
+
+	formatPrompts(result: McpPromptListResult): string {
+		const lines = [`MCP prompts: ${result.serverId} [${result.ok ? "ok" : "fail"}]`];
+		if (result.error) lines.push(`error=${result.error}`);
+		for (const prompt of result.prompts) {
+			lines.push(`- ${prompt.name}${prompt.description ? ` — ${prompt.description}` : ""}`);
+			if (prompt.arguments) lines.push(`  arguments=${JSON.stringify(prompt.arguments)}`);
+		}
+		if (result.stderrTail) lines.push(`stderr_tail=${result.stderrTail.replace(/\s+/g, " ").slice(-500)}`);
+		return lines.join("\n");
+	}
+
+	formatToolResult(result: McpToolCallResult, label = "MCP result"): string {
+		const lines = [
+			`${label}: ${result.details.serverId}/${result.details.toolName} [${result.isError ? "fail" : "ok"}]`,
+		];
+		for (const item of result.content) {
+			if (item.type === "text") lines.push(item.text);
+			else lines.push(`[${item.type}:${item.mimeType || "unknown"}]`);
+		}
+		if (result.details.stderrTail)
+			lines.push(`stderr_tail=${result.details.stderrTail.replace(/\s+/g, " ").slice(-500)}`);
+		return lines.join("\n");
+	}
+
+	formatAuthInfo(result: McpAuthInfoResult): string {
+		const lines = [`MCP auth info: ${result.serverId} [${result.ok ? "ok" : "fail"}] transport=${result.transport}`];
+		if (result.url) lines.push(`url=${result.url}`);
+		if (result.status) lines.push(`status=${result.status}`);
+		if (result.wwwAuthenticate) lines.push(`wwwAuthenticate=${result.wwwAuthenticate}`);
+		if (result.resourceMetadataUrl) lines.push(`resourceMetadataUrl=${result.resourceMetadataUrl}`);
+		if (result.resourceMetadata) lines.push(`resourceMetadata=${JSON.stringify(result.resourceMetadata, null, 2)}`);
+		if (result.error) lines.push(`error=${result.error}`);
 		return lines.join("\n");
 	}
 
@@ -1168,34 +1453,38 @@ preview_chars=${artifact.previewChars}`,
 		}
 	}
 
-	private async probeEntry(entry: McpServerEntry): Promise<McpProbeResult> {
+	private async probeEntry(entry: McpServerEntry, signal?: AbortSignal): Promise<McpProbeResult> {
 		const transport = normalizeTransport(entry.config);
 		if (entry.config.disabled)
 			return { serverId: entry.id, ok: false, transport, tools: [], error: "server_disabled" };
 
 		let stderrTail = "";
 		try {
-			const result = await this.withInitializedMcpClient(entry, async (client, init) => {
-				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
-				const listed = await client.request("tools/list", {}, timeoutMs).catch((error) => ({ error }));
-				const tools = this.filterTools(entry, listed?.tools);
-				stderrTail = client.stderrTail;
-				return {
-					serverId: entry.id,
-					ok: true,
-					transport,
-					command:
-						transport === "stdio"
-							? [entry.config.command, ...(entry.config.args ?? [])].filter(Boolean).join(" ")
-							: undefined,
-					url: transport === "http" ? entry.config.url : undefined,
-					protocolVersion: typeof init?.protocolVersion === "string" ? init.protocolVersion : undefined,
-					serverInfo: init?.serverInfo,
-					capabilities: init?.capabilities,
-					tools,
-					stderrTail: client.stderrTail,
-				} satisfies McpProbeResult;
-			});
+			const result = await this.withInitializedMcpClient(
+				entry,
+				async (client, init) => {
+					const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+					const listed = await client.request("tools/list", {}, timeoutMs, signal).catch((error) => ({ error }));
+					const tools = this.filterTools(entry, listed?.tools);
+					stderrTail = client.stderrTail;
+					return {
+						serverId: entry.id,
+						ok: true,
+						transport,
+						command:
+							transport === "stdio"
+								? [entry.config.command, ...(entry.config.args ?? [])].filter(Boolean).join(" ")
+								: undefined,
+						url: transport === "http" ? entry.config.url : undefined,
+						protocolVersion: typeof init?.protocolVersion === "string" ? init.protocolVersion : undefined,
+						serverInfo: init?.serverInfo,
+						capabilities: init?.capabilities,
+						tools,
+						stderrTail: client.stderrTail,
+					} satisfies McpProbeResult;
+				},
+				signal,
+			);
 			return result;
 		} catch (error) {
 			return {

@@ -113,6 +113,8 @@ MCP:
   repi mcp status
   repi mcp list
   repi mcp probe <server-id>
+  repi mcp search <server-id> [query]
+  repi mcp resources <server-id>
 
 Memory:
   repi memory status|list|show|why|forget|quarantine|doctor|export|purge|sanitize|diff|consolidate
@@ -166,7 +168,7 @@ MSG
     sub="${2:-status}"
     if [ "$#" -ge 2 ]; then shift 2; else shift 1; fi
     case "$sub" in
-      status|config|list|tools|probe|call|prompts|get-prompt|prompt|help|--help|-h)
+      status|config|list|tools|probe|search|find|call|resources|read-resource|resource|read|prompts|get-prompt|prompt|auth-info|auth|help|--help|-h)
         exec node "$ROOT/scripts/reverse-agent/repi-mcp.mjs" "$ROOT" "$sub" "$@"
         ;;
       *)

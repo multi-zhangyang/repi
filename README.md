@@ -704,7 +704,12 @@ REPI 支持读取 MCP server 配置、探测 stdio server，并把明确 opt-in 
       "headers": {
         "Authorization": "Bearer $MCP_API_KEY"
       },
+      "oauth": {
+        "accessToken": "$MCP_OAUTH_ACCESS_TOKEN",
+        "resourceMetadataUrl": "https://mcp.example.com/.well-known/oauth-protected-resource"
+      },
       "autoRegisterTools": true,
+      "deferToolSchemas": true,
       "allowedTools": ["search", "fetch"]
     }
   }
@@ -717,9 +722,13 @@ REPI 支持读取 MCP server 配置、探测 stdio server，并把明确 opt-in 
 repi mcp status
 repi mcp list
 repi mcp probe demo              # stdio / streamable HTTP 都支持
+repi mcp search demo search      # 只查工具名/描述，不把全量 schema 塞进上下文
 repi mcp call demo search '{"q":"target"}'
+repi mcp resources demo
+repi mcp read-resource demo 'file:///demo.txt'
 repi mcp prompts demo
 repi mcp get-prompt demo triage '{"target":"example.test"}'
+repi mcp auth-info remote-demo
 ```
 
 会话内：
@@ -728,18 +737,25 @@ repi mcp get-prompt demo triage '{"target":"example.test"}'
 /mcp
 /mcp list
 /mcp demo
+/mcp search demo search
+/mcp resources demo
+/mcp read demo file:///demo.txt
+/mcp prompts demo
+/mcp prompt demo triage {"target":"example.test"}
+/mcp auth-info remote-demo
 ```
 
 `autoRegisterTools: true` 后，REPI 会暴露运行时工具：
 
 - `mcp__demo__call`：轻量 proxy，参数是 `{ "tool": "search", "arguments": { ... } }`。
+- `mcp__demo__search_tools`：按名称/描述搜索 MCP tools，需要时再返回 inputSchema，避免工具很多时污染上下文。
 - `mcp__demo__search` / `mcp__demo__fetch`：执行 `/mcp list` 或 `/mcp demo` 探测成功后，按 MCP `inputSchema` 生成的直连工具。
 - `mcp__demo__list_resources`：列出 MCP server 暴露的 resources。
 - `mcp__demo__read_resource`：读取指定 MCP resource URI，大资源同样落 artifact。
 - `mcp__demo__list_prompts`：列出 MCP server 暴露的 prompts。
 - `mcp__demo__get_prompt`：按名称和参数获取 MCP prompt，长 prompt 同样落 artifact。
 
-`headers` 支持 `$ENV_NAME` 或 `Bearer $ENV_NAME` 形式的本地环境变量展开；也可以用 `"bearerToken": "$MCP_API_KEY"` 自动生成 `Authorization: Bearer ...`。`allowedTools` / `blockedTools` 会同时作用于探测、直连工具和 proxy 调用。stdout/stderr 与返回文本会做默认脱敏；超过阈值的大文本不会整段塞回上下文，而是写入：
+`headers` 支持 `$ENV_NAME` 或 `Bearer $ENV_NAME` 形式的本地环境变量展开；也可以用 `"bearerToken": "$MCP_API_KEY"` 或 `"oauth": {"accessToken": "$TOKEN"}` 自动生成 `Authorization: Bearer ...`。`repi mcp auth-info <server>` 会读取远程 server 的 `WWW-Authenticate` / protected-resource metadata，方便接入 OAuth MCP server。`deferToolSchemas: true` 时不会把直连工具 schema 注册进 runtime，只保留 search/proxy/resources/prompts 这些轻量入口。`allowedTools` / `blockedTools` 会同时作用于探测、直连工具和 proxy 调用。stdout/stderr 与返回文本会做默认脱敏；超过阈值的大文本不会整段塞回上下文，而是写入：
 
 ```text
 ~/.repi/agent/recon/mcp-artifacts/<server>/<timestamp>-<tool>-<sha>.txt

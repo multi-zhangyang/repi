@@ -18,9 +18,13 @@ Usage:
   repi mcp status [--json]
   repi mcp list [--json]
   repi mcp probe <server-id> [--json]
+  repi mcp search <server-id> [query] [--json]
   repi mcp call <server-id> <tool-name> [json-args] [--json]
+  repi mcp resources <server-id> [--json]
+  repi mcp read-resource <server-id> <uri> [--json]
   repi mcp prompts <server-id> [--json]
   repi mcp get-prompt <server-id> <prompt-name> [json-args] [--json]
+  repi mcp auth-info <server-id> [--json]
 
 Config files:
   ~/.repi/agent/mcp.json
@@ -52,6 +56,7 @@ function redactConfig(cfg) {
 	if (out.env) out.env = Object.fromEntries(Object.entries(out.env).map(([k, v]) => [k, String(v).startsWith("$") ? v : "<redacted>"]));
 	if (out.headers) out.headers = Object.fromEntries(Object.entries(out.headers).map(([k, v]) => [k, String(v).startsWith("$") ? v : "<redacted>"]));
 	if (out.bearerToken) out.bearerToken = String(out.bearerToken).startsWith("$") ? out.bearerToken : "<redacted>";
+	if (out.oauth?.accessToken) out.oauth = { ...out.oauth, accessToken: String(out.oauth.accessToken).startsWith("$") ? out.oauth.accessToken : "<redacted>" };
 	return out;
 }
 function redactServers(servers) { return servers.map(s => ({ ...s, config: redactConfig(s.config) })); }
@@ -73,6 +78,7 @@ function headerMap(cfg, sessionId, protocolVersion = "2025-11-25") {
 	const headers = { ...(cfg.headers || {}), Accept: "application/json, text/event-stream", "Content-Type": "application/json", "MCP-Protocol-Version": protocolVersion };
 	for (const [k, v] of Object.entries(headers)) headers[k] = headerValue(v);
 	if (cfg.bearerToken && !Object.keys(headers).some(k => k.toLowerCase() === "authorization")) headers.Authorization = `Bearer ${envValue(cfg.bearerToken)}`;
+	if (cfg.oauth?.accessToken && !Object.keys(headers).some(k => k.toLowerCase() === "authorization")) headers.Authorization = `${cfg.oauth.tokenType || "Bearer"} ${envValue(cfg.oauth.accessToken)}`;
 	if (sessionId) headers["Mcp-Session-Id"] = sessionId;
 	return headers;
 }
@@ -84,6 +90,41 @@ function parseSseJsonMessages(text) {
 		try { messages.push(JSON.parse(data)); } catch {}
 	}
 	return messages;
+}
+function parseBearerParam(header, key) {
+	const match = String(header || "").match(new RegExp(`${key}=(?:"([^"]+)"|([^,\\s]+))`, "i"));
+	return match?.[1] || match?.[2];
+}
+async function authInfo(entry) {
+	const cfg = entry.config;
+	if ((cfg.transport || "stdio") !== "http") return { serverId: entry.id, ok: false, transport: cfg.transport || "stdio", error: "auth_info_only_applies_to_http_mcp" };
+	if (!cfg.url) return { serverId: entry.id, ok: false, transport: "http", error: "missing_url" };
+	const timeoutMs = cfg.timeoutMs || 10000;
+	let status; let wwwAuthenticate; let resourceMetadataUrl = cfg.oauth?.resourceMetadataUrl; let resourceMetadata;
+	try {
+		if (!resourceMetadataUrl) {
+			const controller = new AbortController(); const timer = setTimeout(() => controller.abort(new Error("MCP HTTP request timeout")), timeoutMs);
+			try {
+				const response = await fetch(cfg.url, { method: "POST", headers: { Accept: "application/json, text/event-stream", "Content-Type": "application/json", "MCP-Protocol-Version": "2025-11-25" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "repi", version: "cli" } } }), signal: controller.signal });
+				status = response.status;
+				wwwAuthenticate = redact(response.headers.get("www-authenticate") || "");
+				const raw = parseBearerParam(response.headers.get("www-authenticate"), "resource_metadata") || parseBearerParam(response.headers.get("www-authenticate"), "resource_metadata_uri");
+				if (raw) resourceMetadataUrl = new URL(raw, cfg.url).toString();
+			} finally { clearTimeout(timer); }
+		}
+		if (resourceMetadataUrl) {
+			const controller = new AbortController(); const timer = setTimeout(() => controller.abort(new Error("MCP HTTP request timeout")), timeoutMs);
+			try {
+				const response = await fetch(resourceMetadataUrl, { headers: { Accept: "application/json" }, signal: controller.signal });
+				status = status || response.status;
+				const text = await response.text();
+				try { resourceMetadata = JSON.parse(text); } catch { resourceMetadata = redact(text.slice(0, 2000)); }
+			} finally { clearTimeout(timer); }
+		}
+		return { serverId: entry.id, ok: true, transport: "http", url: cfg.url, status, wwwAuthenticate, resourceMetadataUrl, resourceMetadata };
+	} catch (error) {
+		return { serverId: entry.id, ok: false, transport: "http", url: cfg.url, status, wwwAuthenticate, resourceMetadataUrl, error: redact(error.message || String(error)) };
+	}
 }
 async function httpJsonRpcPost(entry, state, message, expectId) {
 	const cfg = entry.config;
@@ -160,6 +201,20 @@ function normalizeCallContent(result) {
 		}
 	}
 	if (!normalized.length) normalized.push({ type: "text", text: "MCP tool returned no content." });
+	return normalized;
+}
+function normalizeResourceRead(result, uri) {
+	const normalized = [];
+	for (const item of Array.isArray(result?.contents) ? result.contents : []) {
+		if (typeof item?.text === "string") {
+			normalized.push({ type: "text", text: redact([`uri=${item.uri || uri}`, item.mimeType ? `mimeType=${item.mimeType}` : undefined, "", item.text].filter(v => v !== undefined).join("\n")) });
+		} else if (typeof item?.blob === "string" && typeof item?.mimeType === "string" && item.mimeType.startsWith("image/")) {
+			normalized.push({ type: "image", data: item.blob, mimeType: item.mimeType });
+		} else if (item) {
+			normalized.push({ type: "text", text: redact(JSON.stringify(item)) });
+		}
+	}
+	if (!normalized.length) normalized.push({ type: "text", text: "MCP resource returned no content." });
 	return normalized;
 }
 function normalizePromptGet(result, promptName) {
@@ -308,8 +363,35 @@ function textProbe(results) {
 	}
 	return lines.join("\n");
 }
+function textSearch(result) {
+	const lines = [`MCP tool search: ${result.serverId} [${result.ok ? "ok" : "fail"}] query=${JSON.stringify(result.query || "")} total=${result.total || 0}`];
+	if (result.error) lines.push(`error=${result.error}`);
+	for (const t of (result.tools || [])) lines.push(`- ${t.name}${t.description ? ` — ${t.description}` : ""}${t.inputSchema ? `\n  inputSchema=${JSON.stringify(t.inputSchema)}` : ""}`);
+	return lines.join("\n");
+}
 function textCall(result) {
 	const lines = [`MCP call: ${result.serverId}/${result.toolName} [${result.ok ? "ok" : "fail"}]`];
+	if (result.error) lines.push(`error=${result.error}`);
+	for (const item of result.content || []) {
+		if (item.type === "text") lines.push(item.text);
+		else lines.push(`[${item.type}:${item.mimeType || "unknown"}]`);
+	}
+	if (result.stderrTail) lines.push(`stderr_tail=${result.stderrTail.replace(/\s+/g, " ").slice(-500)}`);
+	return lines.join("\n");
+}
+function textResources(result) {
+	const lines = [`MCP resources: ${result.serverId} [${result.ok ? "ok" : "fail"}]`];
+	if (result.error) lines.push(`error=${result.error}`);
+	for (const resource of result.resources || []) {
+		lines.push(`- ${resource.uri}${resource.name ? ` — ${resource.name}` : ""}`);
+		if (resource.mimeType) lines.push(`  mimeType=${resource.mimeType}`);
+		if (resource.description) lines.push(`  description=${resource.description}`);
+	}
+	if (result.stderrTail) lines.push(`stderr_tail=${result.stderrTail.replace(/\s+/g, " ").slice(-500)}`);
+	return lines.join("\n");
+}
+function textResource(result) {
+	const lines = [`MCP resource: ${result.serverId}/${result.uri} [${result.ok ? "ok" : "fail"}]`];
 	if (result.error) lines.push(`error=${result.error}`);
 	for (const item of result.content || []) {
 		if (item.type === "text") lines.push(item.text);
@@ -328,6 +410,16 @@ function textPrompts(result) {
 	if (result.stderrTail) lines.push(`stderr_tail=${result.stderrTail.replace(/\s+/g, " ").slice(-500)}`);
 	return lines.join("\n");
 }
+function textAuthInfo(result) {
+	const lines = [`MCP auth info: ${result.serverId} [${result.ok ? "ok" : "fail"}] transport=${result.transport || "unknown"}`];
+	if (result.url) lines.push(`url=${result.url}`);
+	if (result.status) lines.push(`status=${result.status}`);
+	if (result.wwwAuthenticate) lines.push(`wwwAuthenticate=${result.wwwAuthenticate}`);
+	if (result.resourceMetadataUrl) lines.push(`resourceMetadataUrl=${result.resourceMetadataUrl}`);
+	if (result.resourceMetadata) lines.push(`resourceMetadata=${JSON.stringify(result.resourceMetadata, null, 2)}`);
+	if (result.error) lines.push(`error=${result.error}`);
+	return lines.join("\n");
+}
 function textPrompt(result) {
 	const lines = [`MCP prompt: ${result.serverId}/${result.name} [${result.ok ? "ok" : "fail"}]`];
 	if (result.error) lines.push(`error=${result.error}`);
@@ -343,6 +435,32 @@ if (["status", "config"].includes(command)) {
 	console.log(json ? JSON.stringify(report, null, 2) : textStatus(servers));
 	process.exit(0);
 }
+if (command === "auth-info" || command === "auth") {
+	const target = argv[1];
+	if (!target) { console.error(usage()); process.exit(2); }
+	const selected = servers.find(s => s.id === target || s.id.startsWith(target));
+	const result = selected ? await authInfo(selected) : { serverId: target, ok: false, transport: "http", error: "server_not_found" };
+	console.log(json ? JSON.stringify(result, null, 2) : textAuthInfo(result));
+	process.exit(result.ok ? 0 : 1);
+}
+if (command === "search" || command === "find") {
+	const target = argv[1];
+	const query = argv.filter(arg => arg !== "--json").slice(2).join(" ").trim();
+	if (!target) { console.error(usage()); process.exit(2); }
+	const selected = servers.find(s => s.id === target || s.id.startsWith(target));
+	if (!selected) {
+		const result = { serverId: target, ok: false, query, total: 0, limit: 20, tools: [], error: "server_not_found" };
+		console.log(json ? JSON.stringify(result, null, 2) : textSearch(result));
+		process.exit(1);
+	}
+	const probed = await probe(selected);
+	const allTools = probed.tools || [];
+	const lower = query.toLowerCase();
+	const matched = allTools.filter(t => !lower || `${t.name}\n${t.description || ""}`.toLowerCase().includes(lower));
+	const result = { serverId: selected.id, ok: probed.ok, query, total: matched.length, limit: 20, tools: matched.slice(0, 20), error: probed.error };
+	console.log(json ? JSON.stringify(result, null, 2) : textSearch(result));
+	process.exit(result.ok ? 0 : 1);
+}
 if (command === "call") {
 	const target = argv[1];
 	const toolName = argv[2];
@@ -352,6 +470,36 @@ if (command === "call") {
 	const selected = servers.find(s => s.id === target || s.id.startsWith(target));
 	const result = selected ? await callTool(selected, toolName, args) : { serverId: target, toolName, ok: false, transport: "stdio", error: "server_not_found" };
 	console.log(json ? JSON.stringify(result, null, 2) : textCall(result));
+	process.exit(result.ok ? 0 : 1);
+}
+if (command === "resources") {
+	const target = argv[1];
+	if (!target) { console.error(usage()); process.exit(2); }
+	const selected = servers.find(s => s.id === target || s.id.startsWith(target));
+	const result = selected ? await simpleMcpRequest(selected, "resources/list", {}, (raw, entry) => ({
+		serverId: entry.id,
+		ok: true,
+		transport: entry.config.transport || "stdio",
+		url: entry.config.transport === "http" ? entry.config.url : undefined,
+		resources: Array.isArray(raw.resources) ? raw.resources.filter(r => typeof r?.uri === "string").map(r => ({ uri: r.uri, name: r.name, description: r.description, mimeType: r.mimeType })) : [],
+	})) : { serverId: target, ok: false, transport: "stdio", resources: [], error: "server_not_found" };
+	console.log(json ? JSON.stringify(result, null, 2) : textResources(result));
+	process.exit(result.ok ? 0 : 1);
+}
+if (command === "read-resource" || command === "resource" || command === "read") {
+	const target = argv[1];
+	const uri = argv[2];
+	if (!target || !uri) { console.error(usage()); process.exit(2); }
+	const selected = servers.find(s => s.id === target || s.id.startsWith(target));
+	const result = selected ? await simpleMcpRequest(selected, "resources/read", { uri }, (raw, entry) => ({
+		serverId: entry.id,
+		uri,
+		ok: true,
+		transport: entry.config.transport || "stdio",
+		url: entry.config.transport === "http" ? entry.config.url : undefined,
+		content: normalizeResourceRead(raw, uri),
+	})) : { serverId: target, uri, ok: false, transport: "stdio", error: "server_not_found" };
+	console.log(json ? JSON.stringify(result, null, 2) : textResource(result));
 	process.exit(result.ok ? 0 : 1);
 }
 if (command === "prompts") {
