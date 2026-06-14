@@ -708,6 +708,7 @@ REPI 支持读取 MCP server 配置、探测 stdio server，并把明确 opt-in 
 repi mcp status
 repi mcp list
 repi mcp probe demo
+repi mcp call demo search '{"q":"target"}'
 ```
 
 会话内：

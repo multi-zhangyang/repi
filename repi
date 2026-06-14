@@ -166,7 +166,7 @@ MSG
     sub="${2:-status}"
     if [ "$#" -ge 2 ]; then shift 2; else shift 1; fi
     case "$sub" in
-      status|config|list|tools|probe|help|--help|-h)
+      status|config|list|tools|probe|call|help|--help|-h)
         exec node "$ROOT/scripts/reverse-agent/repi-mcp.mjs" "$ROOT" "$sub" "$@"
         ;;
       *)
