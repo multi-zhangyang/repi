@@ -1,4 +1,5 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -173,5 +174,149 @@ rl.on("line", (line) => {
 		expect(artifactText).toContain("<redacted>");
 		expect(artifactText).not.toContain("sk-secret-1234567890");
 		await expect(manager.callTool("fake", "blocked", {})).rejects.toThrow("not allowed");
+	});
+
+	it("probes and calls streamable HTTP MCP servers with env-backed headers", async () => {
+		tempRoot = mkdtempSync(join(tmpdir(), "repi-mcp-http-"));
+		const agentDir = join(tempRoot, "agent");
+		mkdirSync(agentDir, { recursive: true });
+		const requests: Array<{ method?: string; headers: Record<string, string | string[] | undefined>; body: any }> =
+			[];
+		const server = createServer((req, res) => {
+			let body = "";
+			req.setEncoding("utf8");
+			req.on("data", (chunk) => {
+				body += chunk;
+			});
+			req.on("end", () => {
+				const parsed = body ? JSON.parse(body) : {};
+				requests.push({ method: req.method, headers: req.headers, body: parsed });
+				if (req.method === "DELETE") {
+					res.writeHead(202).end();
+					return;
+				}
+				if (req.headers.authorization !== "Bearer http-test-token") {
+					res.writeHead(401).end("bad auth");
+					return;
+				}
+				if (parsed.method !== "initialize" && req.headers["mcp-session-id"] !== "session-1") {
+					res.writeHead(404).end("missing session");
+					return;
+				}
+				if (parsed.method === "initialize") {
+					res.writeHead(200, { "content-type": "application/json", "mcp-session-id": "session-1" }).end(
+						JSON.stringify({
+							jsonrpc: "2.0",
+							id: parsed.id,
+							result: {
+								protocolVersion: "2025-11-25",
+								serverInfo: { name: "httpfake" },
+								capabilities: { tools: {}, prompts: {} },
+							},
+						}),
+					);
+					return;
+				}
+				if (parsed.method === "notifications/initialized") {
+					res.writeHead(202).end();
+					return;
+				}
+				if (parsed.method === "tools/list") {
+					res.writeHead(200, { "content-type": "text/event-stream" }).end(
+						`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: parsed.id, result: { tools: [{ name: "echo", description: "HTTP echo", inputSchema: { type: "object" } }] } })}\n\n`,
+					);
+					return;
+				}
+				if (parsed.method === "tools/call") {
+					res.writeHead(200, { "content-type": "application/json" }).end(
+						JSON.stringify({
+							jsonrpc: "2.0",
+							id: parsed.id,
+							result: {
+								content: [{ type: "text", text: `http:${parsed.params.arguments.text}` }],
+								isError: false,
+							},
+						}),
+					);
+					return;
+				}
+				if (parsed.method === "prompts/list") {
+					res.writeHead(200, { "content-type": "application/json" }).end(
+						JSON.stringify({
+							jsonrpc: "2.0",
+							id: parsed.id,
+							result: { prompts: [{ name: "triage", description: "HTTP triage" }] },
+						}),
+					);
+					return;
+				}
+				if (parsed.method === "prompts/get") {
+					res.writeHead(200, { "content-type": "application/json" }).end(
+						JSON.stringify({
+							jsonrpc: "2.0",
+							id: parsed.id,
+							result: {
+								description: "HTTP triage",
+								messages: [
+									{
+										role: "user",
+										content: { type: "text", text: `triage ${parsed.params.arguments.target}` },
+									},
+								],
+							},
+						}),
+					);
+					return;
+				}
+				res.writeHead(404).end("unknown method");
+			});
+		});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		process.env.MCP_TEST_TOKEN = "http-test-token";
+		try {
+			const address = server.address();
+			if (!address || typeof address === "string") throw new Error("missing test server address");
+			writeFileSync(
+				join(agentDir, "mcp.json"),
+				JSON.stringify({
+					mcpServers: {
+						httpfake: {
+							transport: "http",
+							url: `http://127.0.0.1:${address.port}/mcp`,
+							headers: { Authorization: "Bearer $MCP_TEST_TOKEN" },
+							autoRegisterTools: true,
+						},
+					},
+				}),
+			);
+			const manager = createMcpManager({ cwd: tempRoot, agentDir });
+			const probe = await manager.probeServer("httpfake");
+			expect(probe.ok).toBe(true);
+			expect(probe.transport).toBe("http");
+			expect(probe.tools.map((tool) => tool.name)).toEqual(["echo"]);
+			const callResult = await manager.callTool("httpfake", "echo", { text: "live" });
+			expect(callResult.content).toEqual([{ type: "text", text: "http:live" }]);
+			const prompts = await manager.listPrompts("httpfake");
+			expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(["triage"]);
+			const prompt = await manager.getPrompt("httpfake", "triage", { target: "example.test" });
+			expect(String(prompt.content[0].type === "text" ? prompt.content[0].text : "")).toContain(
+				"triage example.test",
+			);
+			expect(requests.some((request) => request.body.method === "tools/list")).toBe(true);
+			expect(
+				requests
+					.filter((request) => request.body.method && request.body.method !== "initialize")
+					.every((request) => request.headers["mcp-session-id"] === "session-1"),
+			).toBe(true);
+			expect(
+				requests.every(
+					(request) => request.method === "DELETE" || request.headers.authorization === "Bearer http-test-token",
+				),
+			).toBe(true);
+			expect(manager.formatConfig()).not.toContain("http-test-token");
+		} finally {
+			delete process.env.MCP_TEST_TOKEN;
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
 	});
 });

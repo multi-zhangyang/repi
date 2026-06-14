@@ -17,6 +17,8 @@ export interface McpServerConfig {
 	env?: Record<string, string>;
 	url?: string;
 	headers?: Record<string, string>;
+	/** Optional bearer token value or env reference, e.g. "$MCP_TOKEN". */
+	bearerToken?: string;
 	disabled?: boolean;
 	timeoutMs?: number;
 	allowedTools?: string[];
@@ -176,10 +178,23 @@ function envValue(value: string): string {
 	return value;
 }
 
+function expandHeaderValue(value: string): string {
+	return envValue(value).replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_match, name: string) => process.env[name] ?? "");
+}
+
 function expandEnv(env?: Record<string, string>): NodeJS.ProcessEnv {
 	const result: NodeJS.ProcessEnv = { ...process.env };
 	for (const [key, value] of Object.entries(env ?? {})) result[key] = envValue(value);
 	return result;
+}
+
+function expandHeaders(config: McpServerConfig): Record<string, string> {
+	const headers: Record<string, string> = {};
+	for (const [key, value] of Object.entries(config.headers ?? {})) headers[key] = expandHeaderValue(value);
+	if (config.bearerToken && !Object.keys(headers).some((key) => key.toLowerCase() === "authorization")) {
+		headers.Authorization = `Bearer ${envValue(config.bearerToken)}`;
+	}
+	return headers;
 }
 
 function redactedConfig(config: McpServerConfig): McpServerConfig {
@@ -193,7 +208,12 @@ function redactedConfig(config: McpServerConfig): McpServerConfig {
 				Object.entries(config.headers).map(([key, value]) => [key, value.startsWith("$") ? value : "<redacted>"]),
 			)
 		: undefined;
-	return { ...config, env, headers };
+	const bearerToken = config.bearerToken
+		? config.bearerToken.startsWith("$")
+			? config.bearerToken
+			: "<redacted>"
+		: undefined;
+	return { ...config, env, headers, bearerToken };
 }
 
 function sanitizeToolNamePart(value: string, fallback: string): string {
@@ -272,7 +292,169 @@ function toAgentToolResult(result: McpToolCallResult): AgentToolResult<McpToolCa
 	return { content: result.content, details: result.details };
 }
 
-class StdioJsonRpcClient {
+interface McpJsonRpcClient {
+	stderrTail: string;
+	request(method: string, params?: Record<string, unknown>, timeoutMs?: number, signal?: AbortSignal): Promise<any>;
+	notify(
+		method: string,
+		params?: Record<string, unknown>,
+		timeoutMs?: number,
+		signal?: AbortSignal,
+	): Promise<void> | void;
+	close(timeoutMs?: number): Promise<void> | void;
+}
+
+function parseSseJsonMessages(text: string): any[] {
+	const messages: any[] = [];
+	for (const rawEvent of text.split(/\r?\n\r?\n/)) {
+		const dataLines = rawEvent
+			.split(/\r?\n/)
+			.filter((line) => line.startsWith("data:"))
+			.map((line) => line.slice(5).trimStart());
+		if (dataLines.length === 0) continue;
+		const data = dataLines.join("\n").trim();
+		if (!data || data === "[DONE]") continue;
+		try {
+			messages.push(JSON.parse(data));
+		} catch {}
+	}
+	return messages;
+}
+
+function createAbortController(timeoutMs: number, signal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+	const controller = new AbortController();
+	const onAbort = () => controller.abort(signal?.reason);
+	const timer = setTimeout(() => controller.abort(new Error("MCP HTTP request timeout")), timeoutMs);
+	if (signal?.aborted) controller.abort(signal.reason);
+	else signal?.addEventListener("abort", onAbort, { once: true });
+	return {
+		signal: controller.signal,
+		cleanup: () => {
+			clearTimeout(timer);
+			signal?.removeEventListener("abort", onAbort);
+		},
+	};
+}
+
+class StreamableHttpJsonRpcClient implements McpJsonRpcClient {
+	private nextId = 1;
+	private protocolVersion = "2025-11-25";
+	private sessionId: string | undefined;
+	private entry: McpServerEntry;
+
+	constructor(entry: McpServerEntry) {
+		this.entry = entry;
+		if (!entry.config.url) throw new Error(`MCP HTTP server ${entry.id} is missing url`);
+	}
+
+	get stderrTail(): string {
+		return "";
+	}
+
+	async request(
+		method: string,
+		params?: Record<string, unknown>,
+		timeoutMs = DEFAULT_MCP_TIMEOUT_MS,
+		signal?: AbortSignal,
+	): Promise<any> {
+		const id = this.nextId++;
+		const result = await this.post(
+			{ jsonrpc: "2.0", id, method, ...(params ? { params } : {}) },
+			timeoutMs,
+			signal,
+			id,
+		);
+		if (method === "initialize" && isRecord(result)) {
+			if (typeof result.protocolVersion === "string") this.protocolVersion = result.protocolVersion;
+		}
+		return result;
+	}
+
+	async notify(
+		method: string,
+		params?: Record<string, unknown>,
+		timeoutMs = DEFAULT_MCP_TIMEOUT_MS,
+		signal?: AbortSignal,
+	): Promise<void> {
+		await this.post({ jsonrpc: "2.0", method, ...(params ? { params } : {}) }, timeoutMs, signal);
+	}
+
+	async close(timeoutMs = 1000): Promise<void> {
+		if (!this.sessionId) return;
+		const abort = createAbortController(timeoutMs, undefined);
+		try {
+			await fetch(this.entry.config.url as string, {
+				method: "DELETE",
+				headers: this.buildHeaders(true, false),
+				signal: abort.signal,
+			}).catch(() => undefined);
+		} finally {
+			abort.cleanup();
+		}
+	}
+
+	private async post(
+		message: Record<string, unknown>,
+		timeoutMs: number,
+		signal?: AbortSignal,
+		expectId?: number,
+	): Promise<any> {
+		const abort = createAbortController(timeoutMs, signal);
+		let response: Response;
+		try {
+			response = await fetch(this.entry.config.url as string, {
+				method: "POST",
+				headers: this.buildHeaders(true, true),
+				body: JSON.stringify(message),
+				signal: abort.signal,
+			});
+			const sessionId = response.headers.get("mcp-session-id");
+			if (sessionId) this.sessionId = sessionId;
+			const bodyText = await response.text();
+			if (!response.ok) {
+				const body = redact(bodyText);
+				throw new Error(`MCP HTTP ${response.status}${body ? `: ${body.slice(0, 1000)}` : ""}`);
+			}
+			if (!expectId) return undefined;
+			const messages = this.parseResponseMessages(response.headers.get("content-type") ?? "", bodyText);
+			const messageResult =
+				messages.find((item) => item?.id === expectId) ?? messages.find((item) => item?.id !== undefined);
+			if (!messageResult) throw new Error("MCP HTTP response did not contain a JSON-RPC result");
+			if (messageResult.error) throw new Error(redact(JSON.stringify(messageResult.error)));
+			return messageResult.result;
+		} catch (error) {
+			throw new Error(redact(error instanceof Error ? error.message : String(error)));
+		} finally {
+			abort.cleanup();
+		}
+	}
+
+	private parseResponseMessages(contentType: string, bodyText: string): any[] {
+		if (!bodyText.trim()) return [];
+		if (contentType.includes("text/event-stream")) return parseSseJsonMessages(bodyText);
+		try {
+			const parsed = JSON.parse(bodyText);
+			return Array.isArray(parsed) ? parsed : [parsed];
+		} catch {
+			const sseMessages = parseSseJsonMessages(bodyText);
+			if (sseMessages.length > 0) return sseMessages;
+			throw new Error(`MCP HTTP response was not JSON/SSE: ${redact(bodyText.slice(0, 1000))}`);
+		}
+	}
+
+	private buildHeaders(includeSession: boolean, includeJsonContent: boolean): Record<string, string> {
+		const headers: Record<string, string> = {
+			...expandHeaders(this.entry.config),
+			Accept: "application/json, text/event-stream",
+		};
+		if (includeJsonContent) headers["Content-Type"] = "application/json";
+		if (this.protocolVersion) headers["MCP-Protocol-Version"] = this.protocolVersion;
+		if (includeSession && this.sessionId) headers["Mcp-Session-Id"] = this.sessionId;
+		return headers;
+	}
+}
+
+class StdioJsonRpcClient implements McpJsonRpcClient {
 	private child: ReturnType<typeof spawn>;
 	private nextId = 1;
 	private buffer = "";
@@ -473,9 +655,7 @@ export class McpManager {
 		if (!entry) throw new Error(`MCP server not found: ${serverId}`);
 		if (entry.config.disabled) throw new Error(`MCP server is disabled: ${entry.id}`);
 		if (!this.isToolAllowed(entry, toolName)) throw new Error(`MCP tool is not allowed: ${entry.id}/${toolName}`);
-		const transport = normalizeTransport(entry.config);
-		if (transport === "http") throw new Error("MCP HTTP transport is configured but not started yet");
-		return this.withInitializedStdioClient(
+		return this.withInitializedMcpClient(
 			entry,
 			async (client) => {
 				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
@@ -508,15 +688,7 @@ export class McpManager {
 		const entry = this.getServer(serverId);
 		if (!entry) return { serverId, ok: false, resources: [], error: "server_not_found" };
 		if (entry.config.disabled) return { serverId: entry.id, ok: false, resources: [], error: "server_disabled" };
-		const transport = normalizeTransport(entry.config);
-		if (transport === "http")
-			return {
-				serverId: entry.id,
-				ok: false,
-				resources: [],
-				error: "http_transport_configured_but_not_started_yet",
-			};
-		return this.withInitializedStdioClient(
+		return this.withInitializedMcpClient(
 			entry,
 			async (client) => {
 				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
@@ -537,9 +709,7 @@ export class McpManager {
 		const entry = this.getServer(serverId);
 		if (!entry) throw new Error(`MCP server not found: ${serverId}`);
 		if (entry.config.disabled) throw new Error(`MCP server is disabled: ${entry.id}`);
-		const transport = normalizeTransport(entry.config);
-		if (transport === "http") throw new Error("MCP HTTP transport is configured but not started yet");
-		return this.withInitializedStdioClient(
+		return this.withInitializedMcpClient(
 			entry,
 			async (client) => {
 				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
@@ -570,15 +740,7 @@ export class McpManager {
 		const entry = this.getServer(serverId);
 		if (!entry) return { serverId, ok: false, prompts: [], error: "server_not_found" };
 		if (entry.config.disabled) return { serverId: entry.id, ok: false, prompts: [], error: "server_disabled" };
-		const transport = normalizeTransport(entry.config);
-		if (transport === "http")
-			return {
-				serverId: entry.id,
-				ok: false,
-				prompts: [],
-				error: "http_transport_configured_but_not_started_yet",
-			};
-		return this.withInitializedStdioClient(
+		return this.withInitializedMcpClient(
 			entry,
 			async (client) => {
 				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
@@ -599,9 +761,7 @@ export class McpManager {
 		const entry = this.getServer(serverId);
 		if (!entry) throw new Error(`MCP server not found: ${serverId}`);
 		if (entry.config.disabled) throw new Error(`MCP server is disabled: ${entry.id}`);
-		const transport = normalizeTransport(entry.config);
-		if (transport === "http") throw new Error("MCP HTTP transport is configured but not started yet");
-		return this.withInitializedStdioClient(
+		return this.withInitializedMcpClient(
 			entry,
 			async (client) => {
 				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
@@ -980,12 +1140,15 @@ preview_chars=${artifact.previewChars}`,
 			}));
 	}
 
-	private async withInitializedStdioClient<T>(
+	private async withInitializedMcpClient<T>(
 		entry: McpServerEntry,
-		callback: (client: StdioJsonRpcClient, init: any) => Promise<T>,
+		callback: (client: McpJsonRpcClient, init: any) => Promise<T>,
 		signal?: AbortSignal,
 	): Promise<T> {
-		const client = new StdioJsonRpcClient(entry);
+		const client: McpJsonRpcClient =
+			normalizeTransport(entry.config) === "http"
+				? new StreamableHttpJsonRpcClient(entry)
+				: new StdioJsonRpcClient(entry);
 		try {
 			const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
 			const init = await client.request(
@@ -998,10 +1161,10 @@ preview_chars=${artifact.previewChars}`,
 				timeoutMs,
 				signal,
 			);
-			client.notify("notifications/initialized");
+			await client.notify("notifications/initialized", undefined, timeoutMs, signal);
 			return await callback(client, init);
 		} finally {
-			client.close();
+			await client.close();
 		}
 	}
 
@@ -1009,20 +1172,10 @@ preview_chars=${artifact.previewChars}`,
 		const transport = normalizeTransport(entry.config);
 		if (entry.config.disabled)
 			return { serverId: entry.id, ok: false, transport, tools: [], error: "server_disabled" };
-		if (transport === "http") {
-			return {
-				serverId: entry.id,
-				ok: false,
-				transport,
-				url: entry.config.url,
-				tools: [],
-				error: "http_transport_configured_but_not_started_yet",
-			};
-		}
 
 		let stderrTail = "";
 		try {
-			const result = await this.withInitializedStdioClient(entry, async (client, init) => {
+			const result = await this.withInitializedMcpClient(entry, async (client, init) => {
 				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
 				const listed = await client.request("tools/list", {}, timeoutMs).catch((error) => ({ error }));
 				const tools = this.filterTools(entry, listed?.tools);
@@ -1031,7 +1184,11 @@ preview_chars=${artifact.previewChars}`,
 					serverId: entry.id,
 					ok: true,
 					transport,
-					command: [entry.config.command, ...(entry.config.args ?? [])].filter(Boolean).join(" "),
+					command:
+						transport === "stdio"
+							? [entry.config.command, ...(entry.config.args ?? [])].filter(Boolean).join(" ")
+							: undefined,
+					url: transport === "http" ? entry.config.url : undefined,
 					protocolVersion: typeof init?.protocolVersion === "string" ? init.protocolVersion : undefined,
 					serverInfo: init?.serverInfo,
 					capabilities: init?.capabilities,
@@ -1045,7 +1202,11 @@ preview_chars=${artifact.previewChars}`,
 				serverId: entry.id,
 				ok: false,
 				transport,
-				command: [entry.config.command, ...(entry.config.args ?? [])].filter(Boolean).join(" "),
+				command:
+					transport === "stdio"
+						? [entry.config.command, ...(entry.config.args ?? [])].filter(Boolean).join(" ")
+						: undefined,
+				url: transport === "http" ? entry.config.url : undefined,
 				tools: [],
 				stderrTail,
 				error: redact(error instanceof Error ? error.message : String(error)),

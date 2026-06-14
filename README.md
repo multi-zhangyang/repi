@@ -697,6 +697,15 @@ REPI 支持读取 MCP server 配置、探测 stdio server，并把明确 opt-in 
       },
       "autoRegisterTools": true,
       "allowedTools": ["search", "fetch"]
+    },
+    "remote-demo": {
+      "transport": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer $MCP_API_KEY"
+      },
+      "autoRegisterTools": true,
+      "allowedTools": ["search", "fetch"]
     }
   }
 }
@@ -707,7 +716,7 @@ REPI 支持读取 MCP server 配置、探测 stdio server，并把明确 opt-in 
 ```bash
 repi mcp status
 repi mcp list
-repi mcp probe demo
+repi mcp probe demo              # stdio / streamable HTTP 都支持
 repi mcp call demo search '{"q":"target"}'
 repi mcp prompts demo
 repi mcp get-prompt demo triage '{"target":"example.test"}'
@@ -730,7 +739,7 @@ repi mcp get-prompt demo triage '{"target":"example.test"}'
 - `mcp__demo__list_prompts`：列出 MCP server 暴露的 prompts。
 - `mcp__demo__get_prompt`：按名称和参数获取 MCP prompt，长 prompt 同样落 artifact。
 
-`allowedTools` / `blockedTools` 会同时作用于探测、直连工具和 proxy 调用。stdout/stderr 与返回文本会做默认脱敏；超过阈值的大文本不会整段塞回上下文，而是写入：
+`headers` 支持 `$ENV_NAME` 或 `Bearer $ENV_NAME` 形式的本地环境变量展开；也可以用 `"bearerToken": "$MCP_API_KEY"` 自动生成 `Authorization: Bearer ...`。`allowedTools` / `blockedTools` 会同时作用于探测、直连工具和 proxy 调用。stdout/stderr 与返回文本会做默认脱敏；超过阈值的大文本不会整段塞回上下文，而是写入：
 
 ```text
 ~/.repi/agent/recon/mcp-artifacts/<server>/<timestamp>-<tool>-<sha>.txt

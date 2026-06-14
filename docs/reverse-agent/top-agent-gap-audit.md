@@ -120,12 +120,13 @@ REPI 已经有逆向/渗透 profile、模型配置、隔离 profile、trust、co
 
 - 已新增 `packages/coding-agent/src/core/mcp-manager.ts`，可读取 `~/.repi/agent/mcp.json` 与 `<cwd>/.repi/mcp.json`，支持 `mcpServers`/`servers` 配置表。
 - 已支持 stdio server 的 `initialize`、`notifications/initialized`、`tools/list`、`tools/call`，并对 `allowedTools/blockedTools` 做统一过滤；输出默认脱敏。
+- 已支持 streamable HTTP MCP server：POST JSON-RPC、SSE/JSON 响应解析、`Mcp-Session-Id` 会话头、`MCP-Protocol-Version`、env-backed headers 与 `bearerToken`。
 - 已接入 CLI：`repi mcp status/list/probe <server>`，并接入交互式 `/mcp`、`/mcp list`、`/mcp <server>`。
 - 已把 `autoRegisterTools: true` 的 MCP server 接入 agent tool registry：启动即有 `mcp__server__call` proxy；显式 `/mcp list`/`/mcp <server>` 探测成功后生成 `mcp__server__tool` 直连工具。
 - 已补 MCP tool-call 大输出 artifact 落盘：长文本写到 `~/.repi/agent/recon/mcp-artifacts/`，上下文只收 preview、path、sha256、bytes。
 - 已补 MCP resources/list 与 resources/read runtime tools：`mcp__server__list_resources`、`mcp__server__read_resource`，resource 大文本同样复用 artifact 落盘。
 - 已补 MCP prompts/list 与 prompts/get runtime tools 和 CLI：`mcp__server__list_prompts`、`mcp__server__get_prompt`、`repi mcp prompts/get-prompt`。
-- 仍需后续补 streamable HTTP/OAuth、resource mention UX 和 tool-search/deferred-schema UX。
+- 仍需后续补 OAuth、resource mention UX 和 tool-search/deferred-schema UX。
 
 ### P0-5：context/compact 要升级为完整 context manager，不只是阈值触发 summary
 

@@ -29,7 +29,8 @@ Config files:
 Example ~/.repi/agent/mcp.json:
 {
   "mcpServers": {
-    "demo": { "transport": "stdio", "command": "node", "args": ["/path/server.js"], "autoRegisterTools": true }
+    "demo": { "transport": "stdio", "command": "node", "args": ["/path/server.js"], "autoRegisterTools": true },
+    "remote": { "transport": "http", "url": "https://mcp.example.com/mcp", "headers": { "Authorization": "Bearer $MCP_API_KEY" }, "autoRegisterTools": true }
   }
 }
 `;
@@ -50,6 +51,7 @@ function redactConfig(cfg) {
 	const out = { ...cfg };
 	if (out.env) out.env = Object.fromEntries(Object.entries(out.env).map(([k, v]) => [k, String(v).startsWith("$") ? v : "<redacted>"]));
 	if (out.headers) out.headers = Object.fromEntries(Object.entries(out.headers).map(([k, v]) => [k, String(v).startsWith("$") ? v : "<redacted>"]));
+	if (out.bearerToken) out.bearerToken = String(out.bearerToken).startsWith("$") ? out.bearerToken : "<redacted>";
 	return out;
 }
 function redactServers(servers) { return servers.map(s => ({ ...s, config: redactConfig(s.config) })); }
@@ -66,6 +68,70 @@ function loadServers() {
 }
 function envValue(value) { return String(value).startsWith("$") ? (process.env[String(value).slice(1)] || "") : String(value); }
 function envMap(env) { const out = { ...process.env }; for (const [k,v] of Object.entries(env || {})) out[k] = envValue(v); return out; }
+function headerValue(value) { return envValue(value).replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_m, name) => process.env[name] || ""); }
+function headerMap(cfg, sessionId, protocolVersion = "2025-11-25") {
+	const headers = { ...(cfg.headers || {}), Accept: "application/json, text/event-stream", "Content-Type": "application/json", "MCP-Protocol-Version": protocolVersion };
+	for (const [k, v] of Object.entries(headers)) headers[k] = headerValue(v);
+	if (cfg.bearerToken && !Object.keys(headers).some(k => k.toLowerCase() === "authorization")) headers.Authorization = `Bearer ${envValue(cfg.bearerToken)}`;
+	if (sessionId) headers["Mcp-Session-Id"] = sessionId;
+	return headers;
+}
+function parseSseJsonMessages(text) {
+	const messages = [];
+	for (const rawEvent of String(text || "").split(/\r?\n\r?\n/)) {
+		const data = rawEvent.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n").trim();
+		if (!data || data === "[DONE]") continue;
+		try { messages.push(JSON.parse(data)); } catch {}
+	}
+	return messages;
+}
+async function httpJsonRpcPost(entry, state, message, expectId) {
+	const cfg = entry.config;
+	if (!cfg.url) throw new Error("missing_url");
+	const timeoutMs = cfg.timeoutMs || 10000;
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(new Error("MCP HTTP request timeout")), timeoutMs);
+	try {
+		const response = await fetch(cfg.url, { method: "POST", headers: headerMap(cfg, state.sessionId, state.protocolVersion), body: JSON.stringify(message), signal: controller.signal });
+		const sessionId = response.headers.get("mcp-session-id");
+		if (sessionId) state.sessionId = sessionId;
+		const bodyText = await response.text();
+		if (!response.ok) throw new Error(`MCP HTTP ${response.status}${bodyText ? `: ${redact(bodyText).slice(0,1000)}` : ""}`);
+		if (!expectId) return undefined;
+		const contentType = response.headers.get("content-type") || "";
+		let messages = [];
+		if (contentType.includes("text/event-stream")) messages = parseSseJsonMessages(bodyText);
+		else {
+			try {
+				const parsed = JSON.parse(bodyText);
+				messages = Array.isArray(parsed) ? parsed : [parsed];
+			} catch {
+				messages = parseSseJsonMessages(bodyText);
+			}
+		}
+		const msg = messages.find(item => item?.id === expectId) || messages.find(item => item?.id !== undefined);
+		if (!msg) throw new Error("MCP HTTP response did not contain a JSON-RPC result");
+		if (msg.error) throw new Error(redact(JSON.stringify(msg.error)));
+		return msg.result || {};
+	} finally {
+		clearTimeout(timer);
+	}
+}
+async function httpMcpRequest(entry, method, params, mapResult) {
+	const cfg = entry.config;
+	if (cfg.disabled) return { serverId: entry.id, ok: false, transport: "http", url: cfg.url, error: "server_disabled" };
+	if (!cfg.url) return { serverId: entry.id, ok: false, transport: "http", error: "missing_url" };
+	const state = { sessionId: undefined, protocolVersion: "2025-11-25" };
+	try {
+		const init = await httpJsonRpcPost(entry, state, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "repi", version: "cli" } } }, 1);
+		if (typeof init?.protocolVersion === "string") state.protocolVersion = init.protocolVersion;
+		await httpJsonRpcPost(entry, state, { jsonrpc: "2.0", method: "notifications/initialized" });
+		const raw = await httpJsonRpcPost(entry, state, { jsonrpc: "2.0", id: 2, method, params: params || {} }, 2);
+		return mapResult(raw || {}, entry, init || {});
+	} catch (error) {
+		return { serverId: entry.id, ok: false, transport: "http", url: cfg.url, error: redact(error.message || String(error)) };
+	}
+}
 function writeLine(child, msg) { child.stdin.write(`${JSON.stringify(msg)}\n`, "utf8"); }
 function toolAllowed(cfg, toolName) {
 	const allowed = new Set(cfg.allowedTools || []);
@@ -114,10 +180,10 @@ function normalizePromptGet(result, promptName) {
 	return lines.join("\n");
 }
 function simpleMcpRequest(entry, method, params, mapResult) {
+	if ((entry.config.transport || "stdio") === "http") return httpMcpRequest(entry, method, params, mapResult);
 	return new Promise((resolveRequest) => {
 		const cfg = entry.config;
 		if (cfg.disabled) return resolveRequest({ serverId: entry.id, ok: false, transport: cfg.transport || "stdio", error: "server_disabled" });
-		if ((cfg.transport || "stdio") === "http") return resolveRequest({ serverId: entry.id, ok: false, transport: "http", url: cfg.url, error: "http_transport_configured_but_not_started_yet" });
 		if (!cfg.command) return resolveRequest({ serverId: entry.id, ok: false, transport: "stdio", error: "missing_command" });
 		const timeoutMs = cfg.timeoutMs || 10000;
 		const child = spawn(cfg.command, cfg.args || [], { cwd: cfg.cwd ? resolve(cfg.cwd) : root, env: envMap(cfg.env), stdio: ["pipe", "pipe", "pipe"] });
@@ -143,10 +209,19 @@ function simpleMcpRequest(entry, method, params, mapResult) {
 	});
 }
 function probe(entry) {
+	if ((entry.config.transport || "stdio") === "http") {
+		return httpMcpRequest(entry, "tools/list", {}, (raw, selected, init) => ({
+			serverId: selected.id,
+			ok: true,
+			transport: "http",
+			url: selected.config.url,
+			protocolVersion: init.protocolVersion || "2025-11-25",
+			tools: Array.isArray(raw.tools) ? raw.tools.map(t => ({ name: t.name, description: t.description })).filter(t => t.name && toolAllowed(selected.config, t.name)) : [],
+		}));
+	}
 	return new Promise((resolveProbe) => {
 		const cfg = entry.config;
 		if (cfg.disabled) return resolveProbe({ serverId: entry.id, ok: false, transport: cfg.transport || "stdio", tools: [], error: "server_disabled" });
-		if ((cfg.transport || "stdio") === "http") return resolveProbe({ serverId: entry.id, ok: false, transport: "http", url: cfg.url, tools: [], error: "http_transport_configured_but_not_started_yet" });
 		if (!cfg.command) return resolveProbe({ serverId: entry.id, ok: false, transport: "stdio", tools: [], error: "missing_command" });
 		const timeoutMs = cfg.timeoutMs || 10000;
 		const child = spawn(cfg.command, cfg.args || [], { cwd: cfg.cwd ? resolve(cfg.cwd) : root, env: envMap(cfg.env), stdio: ["pipe", "pipe", "pipe"] });
@@ -177,10 +252,21 @@ function probe(entry) {
 	});
 }
 function callTool(entry, toolName, args) {
+	if ((entry.config.transport || "stdio") === "http") {
+		if (!toolAllowed(entry.config, toolName)) return Promise.resolve({ serverId: entry.id, toolName, ok: false, transport: "http", url: entry.config.url, error: "tool_not_allowed" });
+		return httpMcpRequest(entry, "tools/call", { name: toolName, arguments: args || {} }, (raw, selected) => ({
+			serverId: selected.id,
+			toolName,
+			ok: !raw?.isError,
+			transport: "http",
+			url: selected.config.url,
+			isError: raw?.isError === true,
+			content: normalizeCallContent(raw),
+		}));
+	}
 	return new Promise((resolveCall) => {
 		const cfg = entry.config;
 		if (cfg.disabled) return resolveCall({ serverId: entry.id, toolName, ok: false, transport: cfg.transport || "stdio", error: "server_disabled" });
-		if ((cfg.transport || "stdio") === "http") return resolveCall({ serverId: entry.id, toolName, ok: false, transport: "http", url: cfg.url, error: "http_transport_configured_but_not_started_yet" });
 		if (!cfg.command) return resolveCall({ serverId: entry.id, toolName, ok: false, transport: "stdio", error: "missing_command" });
 		if (!toolAllowed(cfg, toolName)) return resolveCall({ serverId: entry.id, toolName, ok: false, transport: "stdio", error: "tool_not_allowed" });
 		const timeoutMs = cfg.timeoutMs || 10000;
@@ -275,7 +361,8 @@ if (command === "prompts") {
 	const result = selected ? await simpleMcpRequest(selected, "prompts/list", {}, (raw, entry) => ({
 		serverId: entry.id,
 		ok: true,
-		transport: "stdio",
+		transport: entry.config.transport || "stdio",
+		url: entry.config.transport === "http" ? entry.config.url : undefined,
 		prompts: Array.isArray(raw.prompts) ? raw.prompts.filter(p => typeof p?.name === "string").map(p => ({ name: p.name, description: p.description, arguments: p.arguments })) : [],
 	})) : { serverId: target, ok: false, transport: "stdio", prompts: [], error: "server_not_found" };
 	console.log(json ? JSON.stringify(result, null, 2) : textPrompts(result));
@@ -292,7 +379,8 @@ if (command === "get-prompt" || command === "prompt") {
 		serverId: entry.id,
 		name,
 		ok: true,
-		transport: "stdio",
+		transport: entry.config.transport || "stdio",
+		url: entry.config.transport === "http" ? entry.config.url : undefined,
 		text: normalizePromptGet(raw, name),
 	})) : { serverId: target, name, ok: false, transport: "stdio", error: "server_not_found" };
 	console.log(json ? JSON.stringify(result, null, 2) : textPrompt(result));
