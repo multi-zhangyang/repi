@@ -44,6 +44,13 @@ export interface McpToolSummary {
 	inputSchema?: unknown;
 }
 
+export interface McpResourceSummary {
+	uri: string;
+	name?: string;
+	description?: string;
+	mimeType?: string;
+}
+
 export interface McpProbeResult {
 	serverId: string;
 	ok: boolean;
@@ -80,6 +87,14 @@ export interface McpToolCallResult {
 	isError: boolean;
 }
 
+export interface McpResourceListResult {
+	serverId: string;
+	ok: boolean;
+	resources: McpResourceSummary[];
+	stderrTail?: string;
+	error?: string;
+}
+
 export interface McpManagerOptions {
 	cwd: string;
 	agentDir?: string;
@@ -95,6 +110,12 @@ const mcpProxyToolSchema = Type.Object({
 	arguments: Type.Optional(
 		Type.Record(Type.String(), Type.Any(), { description: "Arguments passed to the MCP tool" }),
 	),
+});
+
+const mcpResourceListSchema = Type.Object({});
+
+const mcpResourceReadSchema = Type.Object({
+	uri: Type.String({ description: "MCP resource URI to read" }),
 });
 
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
@@ -176,6 +197,14 @@ function createMcpToolName(serverId: string, toolName: string): string {
 
 function createMcpProxyToolName(serverId: string): string {
 	return `mcp__${sanitizeToolNamePart(serverId, "server")}__call`;
+}
+
+function createMcpResourceListToolName(serverId: string): string {
+	return `mcp__${sanitizeToolNamePart(serverId, "server")}__list_resources`;
+}
+
+function createMcpResourceReadToolName(serverId: string): string {
+	return `mcp__${sanitizeToolNamePart(serverId, "server")}__read_resource`;
 }
 
 function normalizeInputSchema(inputSchema: unknown): ToolDefinition["parameters"] {
@@ -446,27 +475,133 @@ export class McpManager {
 		);
 	}
 
+	async listResources(serverId: string, signal?: AbortSignal): Promise<McpResourceListResult> {
+		const entry = this.getServer(serverId);
+		if (!entry) return { serverId, ok: false, resources: [], error: "server_not_found" };
+		if (entry.config.disabled) return { serverId: entry.id, ok: false, resources: [], error: "server_disabled" };
+		const transport = normalizeTransport(entry.config);
+		if (transport === "http")
+			return {
+				serverId: entry.id,
+				ok: false,
+				resources: [],
+				error: "http_transport_configured_but_not_started_yet",
+			};
+		return this.withInitializedStdioClient(
+			entry,
+			async (client) => {
+				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+				const listed = await client.request("resources/list", {}, timeoutMs, signal);
+				const resources = this.filterResources(listed?.resources);
+				return { serverId: entry.id, ok: true, resources, stderrTail: client.stderrTail || undefined };
+			},
+			signal,
+		).catch((error) => ({
+			serverId: entry.id,
+			ok: false,
+			resources: [],
+			error: redact(error instanceof Error ? error.message : String(error)),
+		}));
+	}
+
+	async readResource(serverId: string, uri: string, signal?: AbortSignal): Promise<McpToolCallResult> {
+		const entry = this.getServer(serverId);
+		if (!entry) throw new Error(`MCP server not found: ${serverId}`);
+		if (entry.config.disabled) throw new Error(`MCP server is disabled: ${entry.id}`);
+		const transport = normalizeTransport(entry.config);
+		if (transport === "http") throw new Error("MCP HTTP transport is configured but not started yet");
+		return this.withInitializedStdioClient(
+			entry,
+			async (client) => {
+				const timeoutMs = entry.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+				const result = await client.request("resources/read", { uri }, timeoutMs, signal);
+				const normalized = this.normalizeMcpContent(
+					entry.id,
+					"read_resource",
+					this.resourceReadResultToToolContent(uri, result),
+				);
+				return {
+					content: normalized.content,
+					isError: false,
+					details: {
+						serverId: entry.id,
+						toolName: "resources/read",
+						isError: false,
+						contentItems: normalized.content.length,
+						artifacts: normalized.artifacts.length > 0 ? normalized.artifacts : undefined,
+						stderrTail: client.stderrTail || undefined,
+					},
+				};
+			},
+			signal,
+		);
+	}
+
 	createProxyToolDefinitions(): ToolDefinition[] {
 		return this.loadServers()
 			.filter((entry) => this.shouldExposeTools(entry))
-			.map((entry) => {
+			.flatMap((entry) => {
 				const serverId = entry.id;
-				const toolName = createMcpProxyToolName(serverId);
-				return {
-					name: toolName,
-					label: `MCP ${serverId}`,
-					description: `Call an allowed MCP tool on server '${serverId}'. Use /mcp ${serverId} or repi mcp probe ${serverId} to inspect available tool names.`,
-					promptSnippet: `Call MCP server ${serverId} tools`,
-					promptGuidelines: [
-						`This is a proxy for MCP server '${serverId}'. Pass the original MCP tool name in 'tool'.`,
-						"Respect allowedTools/blockedTools from ~/.repi/agent/mcp.json or project .repi/mcp.json.",
-					],
-					parameters: mcpProxyToolSchema,
-					execute: async (_toolCallId, params, signal) => {
-						const result = await this.callTool(serverId, params.tool, params.arguments ?? {}, signal);
-						return toAgentToolResult(result);
-					},
-				} satisfies ToolDefinition<typeof mcpProxyToolSchema, McpToolCallDetails>;
+				const callToolName = createMcpProxyToolName(serverId);
+				const listResourcesToolName = createMcpResourceListToolName(serverId);
+				const readResourceToolName = createMcpResourceReadToolName(serverId);
+				return [
+					{
+						name: callToolName,
+						label: `MCP ${serverId}`,
+						description: `Call an allowed MCP tool on server '${serverId}'. Use /mcp ${serverId} or repi mcp probe ${serverId} to inspect available tool names.`,
+						promptSnippet: `Call MCP server ${serverId} tools`,
+						promptGuidelines: [
+							`This is a proxy for MCP server '${serverId}'. Pass the original MCP tool name in 'tool'.`,
+							"Respect allowedTools/blockedTools from ~/.repi/agent/mcp.json or project .repi/mcp.json.",
+						],
+						parameters: mcpProxyToolSchema,
+						execute: async (_toolCallId, params, signal) => {
+							const result = await this.callTool(serverId, params.tool, params.arguments ?? {}, signal);
+							return toAgentToolResult(result);
+						},
+					} satisfies ToolDefinition<typeof mcpProxyToolSchema, McpToolCallDetails>,
+					{
+						name: listResourcesToolName,
+						label: `MCP ${serverId} resources`,
+						description: `List MCP resources exposed by server '${serverId}'.`,
+						promptSnippet: `List MCP resources from ${serverId}`,
+						parameters: mcpResourceListSchema,
+						execute: async () => {
+							const result = await this.listResources(serverId);
+							if (!result.ok) throw new Error(result.error ?? "MCP resources/list failed");
+							const text = result.resources.length
+								? result.resources
+										.map((resource) =>
+											[
+												`uri=${resource.uri}`,
+												resource.name ? `name=${resource.name}` : undefined,
+												resource.mimeType ? `mimeType=${resource.mimeType}` : undefined,
+												resource.description ? `description=${resource.description}` : undefined,
+											]
+												.filter(Boolean)
+												.join("\n"),
+										)
+										.join("\n\n")
+								: "No MCP resources found.";
+							return {
+								content: [{ type: "text", text }],
+								details: { serverId, toolName: "resources/list", isError: false, contentItems: 1 },
+							};
+						},
+					} satisfies ToolDefinition<typeof mcpResourceListSchema, McpToolCallDetails>,
+					{
+						name: readResourceToolName,
+						label: `MCP ${serverId} read resource`,
+						description: `Read an MCP resource URI from server '${serverId}'. Large text is stored as artifact.`,
+						promptSnippet: `Read MCP resource from ${serverId}`,
+						parameters: mcpResourceReadSchema,
+						execute: async (_toolCallId, params, signal) => {
+							const result = await this.readResource(serverId, params.uri, signal);
+							return toAgentToolResult(result);
+						},
+					} satisfies ToolDefinition<typeof mcpResourceReadSchema, McpToolCallDetails>,
+				];
 			});
 	}
 
@@ -546,6 +681,56 @@ export class McpManager {
 				return toAgentToolResult(result);
 			},
 		};
+	}
+
+	private filterResources(rawResources: unknown): McpResourceSummary[] {
+		const resources = Array.isArray(rawResources) ? rawResources : [];
+		return resources
+			.filter((resource: any) => typeof resource?.uri === "string")
+			.map((resource: any) => ({
+				uri: resource.uri,
+				name: typeof resource.name === "string" ? resource.name : undefined,
+				description: typeof resource.description === "string" ? resource.description : undefined,
+				mimeType: typeof resource.mimeType === "string" ? resource.mimeType : undefined,
+			}));
+	}
+
+	private resourceReadResultToToolContent(uri: string, result: unknown): { content: Array<Record<string, unknown>> } {
+		const contents = isRecord(result) && Array.isArray(result.contents) ? result.contents : [];
+		const content: Array<Record<string, unknown>> = [];
+		for (const item of contents) {
+			if (!isRecord(item)) continue;
+			const itemUri = typeof item.uri === "string" ? item.uri : uri;
+			const mimeType = typeof item.mimeType === "string" ? item.mimeType : undefined;
+			if (typeof item.text === "string") {
+				content.push({
+					type: "text",
+					text: [`uri=${itemUri}`, mimeType ? `mimeType=${mimeType}` : undefined, "", item.text]
+						.filter((part) => part !== undefined)
+						.join("\n"),
+				});
+				continue;
+			}
+			if (typeof item.blob === "string") {
+				if (mimeType?.startsWith("image/")) {
+					content.push({ type: "image", data: item.blob, mimeType });
+				} else {
+					content.push({
+						type: "text",
+						text: [
+							`uri=${itemUri}`,
+							mimeType ? `mimeType=${mimeType}` : undefined,
+							"encoding=base64",
+							"",
+							item.blob,
+						]
+							.filter((part) => part !== undefined)
+							.join("\n"),
+					});
+				}
+			}
+		}
+		return { content };
 	}
 
 	private normalizeMcpContent(serverId: string, toolName: string, result: unknown): NormalizedMcpContent {

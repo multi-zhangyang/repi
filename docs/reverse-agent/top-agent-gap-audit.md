@@ -123,7 +123,8 @@ REPI 已经有逆向/渗透 profile、模型配置、隔离 profile、trust、co
 - 已接入 CLI：`repi mcp status/list/probe <server>`，并接入交互式 `/mcp`、`/mcp list`、`/mcp <server>`。
 - 已把 `autoRegisterTools: true` 的 MCP server 接入 agent tool registry：启动即有 `mcp__server__call` proxy；显式 `/mcp list`/`/mcp <server>` 探测成功后生成 `mcp__server__tool` 直连工具。
 - 已补 MCP tool-call 大输出 artifact 落盘：长文本写到 `~/.repi/agent/recon/mcp-artifacts/`，上下文只收 preview、path、sha256、bytes。
-- 仍需后续补 streamable HTTP/OAuth、per-tool approval、resource mention 和 tool-search/deferred-schema UX。
+- 已补 MCP resources/list 与 resources/read runtime tools：`mcp__server__list_resources`、`mcp__server__read_resource`，resource 大文本同样复用 artifact 落盘。
+- 仍需后续补 streamable HTTP/OAuth、resource mention UX、prompts 和 tool-search/deferred-schema UX。
 
 ### P0-5：context/compact 要升级为完整 context manager，不只是阈值触发 summary
 

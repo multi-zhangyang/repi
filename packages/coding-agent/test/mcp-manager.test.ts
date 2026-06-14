@@ -70,6 +70,8 @@ rl.on("line", (line) => {
   const text = msg.params.arguments.text === "large" ? "x".repeat(21050) + " token=sk-secret-1234567890" : "echo:" + msg.params.arguments.text;
   console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }], isError: false } }));
  }
+ if (msg.method === "resources/list") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { resources: [{ uri: "file:///demo.txt", name: "demo", mimeType: "text/plain", description: "Demo resource" }] } }));
+ if (msg.method === "resources/read") console.log(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { contents: [{ uri: msg.params.uri, mimeType: "text/plain", text: "resource-body token=sk-secret-1234567890" }] } }));
 });
 `,
 		);
@@ -95,7 +97,11 @@ rl.on("line", (line) => {
 		expect(callResult.content).toEqual([{ type: "text", text: "echo:hi" }]);
 
 		const proxies = manager.createProxyToolDefinitions();
-		expect(proxies.map((tool) => tool.name)).toEqual(["mcp__fake__call"]);
+		expect(proxies.map((tool) => tool.name)).toEqual([
+			"mcp__fake__call",
+			"mcp__fake__list_resources",
+			"mcp__fake__read_resource",
+		]);
 		const proxyResult = await proxies[0].execute(
 			"tool-call-1",
 			{ tool: "echo", arguments: { text: "proxy" } },
@@ -115,6 +121,24 @@ rl.on("line", (line) => {
 			{} as any,
 		);
 		expect(directResult.content).toEqual([{ type: "text", text: "echo:direct" }]);
+
+		const resources = await manager.listResources("fake");
+		expect(resources.ok).toBe(true);
+		expect(resources.resources.map((resource) => resource.uri)).toEqual(["file:///demo.txt"]);
+		const listResourceResult = await proxies[1].execute("tool-call-r1", {}, undefined, undefined, {} as any);
+		expect(String(listResourceResult.content[0].type === "text" ? listResourceResult.content[0].text : "")).toContain(
+			"file:///demo.txt",
+		);
+		const readResourceResult = await proxies[2].execute(
+			"tool-call-r2",
+			{ uri: "file:///demo.txt" },
+			undefined,
+			undefined,
+			{} as any,
+		);
+		expect(String(readResourceResult.content[0].type === "text" ? readResourceResult.content[0].text : "")).toContain(
+			"resource-body token=<redacted>",
+		);
 
 		const largeResult = await manager.callTool("fake", "echo", { text: "large" });
 		expect(largeResult.details.artifacts).toHaveLength(1);
