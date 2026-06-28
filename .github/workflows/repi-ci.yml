@@ -15,6 +15,12 @@ jobs:
     name: check and smoke
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Hermetic REPI runtime dir so doctor/smoke don't depend on the
+      # runner's ~/.repi/agent being pre-provisioned. init-repi-profile
+      # writes settings.json (scoped memory defaults) here; smoke/doctor
+      # read the same env var.
+      REPI_CODING_AGENT_DIR: ${{ github.workspace }}/.repi-agent-ci
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -30,6 +36,9 @@ jobs:
 
       - name: Repository check
         run: npm run check
+
+      - name: Provision REPI runtime
+        run: node scripts/reverse-agent/init-repi-profile.mjs .
 
       - name: REPI offline smoke
         run: node scripts/reverse-agent/repi-smoke.mjs . --json
