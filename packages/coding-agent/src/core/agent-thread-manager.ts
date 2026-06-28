@@ -392,10 +392,13 @@ export class AgentThreadManager {
 		// config so the child can authenticate. The child boots with
 		// REPI_CODING_AGENT_DIR=workerAgentDir and would otherwise read an empty
 		// skeleton (no provider entries) and fail with "No API key found for the
-		// selected model". API keys referenced as $ENV in models.json resolve via the
-		// inherited process.env. Copying settings.json also makes the child default to
-		// the parent's defaultProvider/defaultModel when the caller omits --model.
-		for (const name of ["models.json", "settings.json"] as const) {
+		// selected model". Copy models.json + settings.json for provider/default
+		// resolution, and auth.json so `repi model login` credentials (the standard
+		// flow, where keys live in auth.json rather than $ENV refs) reach the child.
+		// API keys referenced as $ENV in models.json also resolve via the inherited
+		// process.env. Copying settings.json makes the child default to the parent's
+		// defaultProvider/defaultModel when the caller omits --model.
+		for (const name of ["models.json", "settings.json", "auth.json"] as const) {
 			const src = join(this.agentDir, name);
 			const dst = join(workerAgentDir, name);
 			if (existsSync(src) && !existsSync(dst)) {

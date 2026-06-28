@@ -1169,7 +1169,17 @@ function printExport(report) {
 
 function printMutationReport(title, report) {
 	if (!report.ok) {
-		console.error(report.error);
+		// `error` is only set when the spawned child itself fails to launch
+		// (e.g. ENOENT). For a model `test` that runs but the provider returns
+		// an HTTP error, `error` is undefined and the useful diagnostics are
+		// `exit` + `stderrTail` — print those instead of a bare `undefined`.
+		if (report.error) console.error(report.error);
+		if (report.exit !== undefined) {
+			console.error(`exit=${report.exit} ok=${report.ok}`);
+			if (report.stdoutTail) console.error(`stdout: ${report.stdoutTail.replace(/\n/g, "\\n").slice(-800)}`);
+			if (report.stderrTail) console.error(`stderr: ${report.stderrTail.replace(/\n/g, "\\n").slice(-800)}`);
+		}
+		console.error(`verdict: ${report.ok ? "pass" : "fail"}`);
 		return;
 	}
 	console.log(title);
