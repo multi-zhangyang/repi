@@ -1,0 +1,81 @@
+name: REPI Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # npm --provenance (OIDC)
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build, verify, publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Hermetic REPI runtime dir (same approach as repi-ci.yml) so doctor/smoke
+      # don't depend on a pre-provisioned ~/.repi/agent.
+      REPI_CODING_AGENT_DIR: ${{ github.workspace }}/.repi-agent-release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # full history is not required, but fetch tags for version sanity
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Repository check
+        run: npm run check
+
+      - name: Provision REPI runtime
+        run: node scripts/reverse-agent/init-repi-profile.mjs .
+
+      - name: REPI offline smoke
+        run: node scripts/reverse-agent/repi-smoke.mjs . --json
+
+      - name: No generated diff
+        run: |
+          git diff --check
+          git diff --exit-code
+
+      # Dry-run switch: set REPI_RELEASE_DRY_RUN=1 in the triggering workflow
+      # (or temporarily on the tag) to validate build+check+smoke+pack without
+      # publishing or creating a release. Remove once NPM_TOKEN is configured.
+      - name: Publish to npm (dry-run)
+        if: env.REPI_RELEASE_DRY_RUN == '1'
+        run: node scripts/publish.mjs --dry-run
+
+      - name: Configure npm auth
+        if: env.REPI_RELEASE_DRY_RUN != '1'
+        run: |
+          printf "//registry.npmjs.org/:_authToken=%s\n" "${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
+
+      - name: Publish to npm
+        if: env.REPI_RELEASE_DRY_RUN != '1'
+        run: node scripts/publish.mjs
+
+      - name: GitHub Release
+        if: env.REPI_RELEASE_DRY_RUN != '1'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

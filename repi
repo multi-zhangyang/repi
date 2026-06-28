@@ -77,6 +77,14 @@ case "${1:-}" in
     shift
     exec bash "$ROOT/scripts/reverse-agent/update-repi.sh" --root "$ROOT" "$@"
     ;;
+  bootstrap)
+    shift
+    exec node "$ROOT/scripts/reverse-agent/repi-bootstrap.mjs" "$ROOT" "$@"
+    ;;
+  uninstall)
+    shift
+    exec node "$ROOT/scripts/reverse-agent/repi-uninstall.mjs" "$ROOT" "$@"
+    ;;
   commands)
     cat <<'MSG'
 REPI command quick reference
@@ -84,6 +92,8 @@ REPI command quick reference
 Install / update:
   repi install [--user|--system|--bin-dir <dir>]     Refresh launcher/profile from this checkout
   repi update [--fast|--full|--no-pull]              Pull latest code, reinstall, run doctor/smoke
+  repi bootstrap [--dry-run|--only a,b|--list]      Install the RE/pentest toolchain (gdb/pwntools/binwalk/...)
+  repi uninstall [--apply] [--purge] [--source <dir>]  Remove the repi launcher (dry-run by default; never touches pi)
 
 Health:
   repi health [--fix] [--selfcheck|--deep]          Operator health dashboard and safe repair plan

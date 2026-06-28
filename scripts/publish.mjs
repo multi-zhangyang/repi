@@ -110,6 +110,10 @@ for (const pkg of packages) {
 		continue;
 	}
 
-	run("npm", ["publish", "--access", "public", "--provenance", "--ignore-scripts"], { cwd: pkg.directory });
+	// Prerelease versions (e.g. 0.78.1-repi.1) must be tagged, otherwise npm
+	// rejects them and they would otherwise steal `latest` from a stable release.
+	const publishArgs = ["publish", "--access", "public", "--provenance", "--ignore-scripts"];
+	if (version.includes("-")) publishArgs.push("--tag", "next");
+	run("npm", publishArgs, { cwd: pkg.directory });
 	console.log();
 }
