@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -51,14 +51,21 @@ describe("ProjectTrustStore", () => {
 		expect(store.get(child)).toBe(false);
 	});
 
-	it("fails loudly without overwriting malformed trust stores", () => {
+	it("quarantines malformed trust stores without losing the original content", () => {
 		const trustPath = join(agentDir, "trust.json");
 		writeFileSync(trustPath, "{not json", "utf-8");
 		const store = new ProjectTrustStore(agentDir);
 
-		expect(() => store.get(cwd)).toThrow(/Failed to read trust store/);
-		expect(() => store.set(cwd, true)).toThrow(/Failed to read trust store/);
-		expect(readFileSync(trustPath, "utf-8")).toBe("{not json");
+		// Quarantine contract: a corrupted trust file is moved aside (renamed to a
+		// .bad.* backup) and the store continues with an empty in-memory state
+		// rather than crashing the agent. The malformed content is preserved in
+		// the backup, never silently overwritten or destroyed.
+		expect(() => store.get(cwd)).not.toThrow();
+		expect(store.get(cwd)).toBe(null);
+
+		const backups = readdirSync(agentDir).filter((name) => name.startsWith("trust.json.bad."));
+		expect(backups.length).toBe(1);
+		expect(readFileSync(join(agentDir, backups[0]), "utf-8")).toBe("{not json");
 	});
 
 	it("detects project trust inputs", () => {

@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ExtensionRunner } from "../src/core/extensions/runner.ts";
@@ -11,6 +11,19 @@ import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import type { Skill } from "../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
+
+// Resolve the repo's built-in dark theme relative to this test file so the
+// fixture does not depend on vitest's process.cwd() (which is the repo root,
+// not packages/coding-agent, when run via --root).
+const darkThemePath = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"src",
+	"modes",
+	"interactive",
+	"theme",
+	"dark.json",
+);
 
 describe("DefaultResourceLoader", () => {
 	let tempDir: string;
@@ -130,9 +143,10 @@ description: project
 Project skill`,
 			);
 
-			const baseTheme = JSON.parse(
-				readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
-			) as { name: string; vars?: Record<string, string> };
+			const baseTheme = JSON.parse(readFileSync(darkThemePath, "utf-8")) as {
+				name: string;
+				vars?: Record<string, string>;
+			};
 			baseTheme.name = "collision-theme";
 			const userThemePath = join(agentDir, "themes", "collision.json");
 			const projectThemePath = join(cwd, ".repi", "themes", "collision.json");
@@ -353,9 +367,7 @@ description: Project skill
 Project skill content`,
 			);
 			writeFileSync(join(promptsDir, "project.md"), "Project prompt");
-			const themeData = JSON.parse(
-				readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
-			) as { name: string };
+			const themeData = JSON.parse(readFileSync(darkThemePath, "utf-8")) as { name: string };
 			themeData.name = "project-theme";
 			writeFileSync(join(themesDir, "project.json"), JSON.stringify(themeData, null, 2));
 			const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });

@@ -150,43 +150,43 @@ describe("AgentSession compaction characterization", () => {
 				.getEntries()
 				.filter(
 					(entry): entry is CustomEntry<Record<string, unknown>> =>
-						entry.type === "custom" && entry.customType === "pi-recon-compaction-resume-contract",
+						entry.type === "custom" && entry.customType === "repi-compaction-resume-contract",
 				);
 			const autoResumeEntries = harness.sessionManager
 				.getEntries()
 				.filter(
 					(entry): entry is CustomEntry<Record<string, unknown>> =>
-						entry.type === "custom" && entry.customType === "pi-recon-compaction-auto-resume",
+						entry.type === "custom" && entry.customType === "repi-compaction-auto-resume",
 				);
 			const telemetryEntries = harness.sessionManager
 				.getEntries()
 				.filter(
 					(entry): entry is CustomEntry<Record<string, unknown>> =>
-						entry.type === "custom" && entry.customType === "pi-recon-compaction-resume-telemetry",
+						entry.type === "custom" && entry.customType === "repi-compaction-resume-telemetry",
 				);
 
 			expect(result.summary).toContain("# REPI Compaction Summary");
-			expect(result.summary).toContain("kind: pi-recon-compaction");
+			expect(result.summary).toContain("kind: repi-compaction");
 			expect(result.summary).toContain("re_context resume");
-			expect(result.details).toMatchObject({ kind: "pi-recon-compaction" });
+			expect(result.details).toMatchObject({ kind: "repi-compaction" });
 			expect(compactionEntries).toHaveLength(1);
 			expect(compactionEntries[0]).toMatchObject({ fromHook: true });
 			expect(resumeContracts).toHaveLength(1);
 			expect(resumeContracts[0]?.data).toMatchObject({
-				kind: "pi-recon-compaction-resume-contract",
+				kind: "repi-compaction-resume-contract",
 				verified: true,
-				compactionKind: "pi-recon-compaction",
+				compactionKind: "repi-compaction",
 			});
 			expect(existsSync(String(resumeContracts[0]?.data?.contextPath))).toBe(true);
 			expect(autoResumeEntries).toHaveLength(1);
 			expect(autoResumeEntries[0]?.data).toMatchObject({
-				kind: "pi-recon-compaction-auto-resume",
+				kind: "repi-compaction-auto-resume",
 				triggered: true,
 				contractVerified: true,
 			});
 			expect(telemetryEntries).toHaveLength(1);
 			expect(telemetryEntries[0]?.data).toMatchObject({
-				kind: "pi-recon-compaction-resume-telemetry",
+				kind: "repi-compaction-resume-telemetry",
 				contractVerified: true,
 				autoResumeTriggered: true,
 			});
@@ -220,7 +220,7 @@ describe("AgentSession compaction characterization", () => {
 		expect(
 			harness.sessionManager
 				.getEntries()
-				.some((entry) => entry.type === "custom" && entry.customType === "pi-recon-compaction-auto-resume"),
+				.some((entry) => entry.type === "custom" && entry.customType === "repi-compaction-auto-resume"),
 		).toBe(false);
 	});
 

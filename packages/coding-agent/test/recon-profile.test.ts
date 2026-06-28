@@ -133,7 +133,7 @@ describe("REPI kernel profile", () => {
 			["re_autofix", {}],
 			["re_proof_loop", {}],
 			["re_knowledge_graph", {}],
-			["re_harness", {}],
+			["re_profile_check", {}],
 			["re_lane", {}],
 			["re_map", {}],
 			["re_autopilot", {}],
@@ -174,7 +174,7 @@ describe("REPI kernel profile", () => {
 			["re-autofix", {}],
 			["re-proof-loop", {}],
 			["re-knowledge-graph", {}],
-			["re-harness", {}],
+			["re-profile-check", {}],
 			["re-lane", {}],
 			["re-map", {}],
 			["re-auto", {}],
@@ -445,7 +445,7 @@ describe("REPI kernel profile", () => {
 			action: "show",
 			bridge: "web-cdp-replay",
 		});
-		expect(runtimeBridge.content[0]?.text).toContain("ProfessionalRuntimeBridgesGateV1");
+		expect(runtimeBridge.content[0]?.text).toContain("ProfessionalRuntimeBridgesCheckV1");
 		expect(runtimeBridge.content[0]?.text).toContain("cdp-network-capture");
 
 		const runtimeAdapterTool = tools.get("re_runtime_adapter") as {
@@ -458,7 +458,7 @@ describe("REPI kernel profile", () => {
 			action: "plan",
 			adapter: "r2-native-xref-adapter",
 		});
-		expect(runtimeAdapter.content[0]?.text).toContain("RuntimeAdapterExecutionGateV1");
+		expect(runtimeAdapter.content[0]?.text).toContain("RuntimeAdapterExecutionCheckV1");
 		expect(runtimeAdapter.content[0]?.text).toContain("adapter-r2-native-xref-runner");
 
 		const missionTool = tools.get("re_mission") as {
@@ -604,7 +604,7 @@ describe("REPI kernel profile", () => {
 		expect(commands.has("re-autofix")).toBe(true);
 		expect(commands.has("re-proof-loop")).toBe(true);
 		expect(commands.has("re-knowledge-graph")).toBe(true);
-		expect(commands.has("re-harness")).toBe(true);
+		expect(commands.has("re-profile-check")).toBe(true);
 		expect(commands.has("re-lane")).toBe(true);
 		expect(commands.has("re-map")).toBe(true);
 		expect(commands.has("re-auto")).toBe(true);
@@ -642,7 +642,7 @@ describe("REPI kernel profile", () => {
 		expect(tools.has("re_autofix")).toBe(true);
 		expect(tools.has("re_proof_loop")).toBe(true);
 		expect(tools.has("re_knowledge_graph")).toBe(true);
-		expect(tools.has("re_harness")).toBe(true);
+		expect(tools.has("re_profile_check")).toBe(true);
 		expect(tools.has("re_lane")).toBe(true);
 		expect(tools.has("re_map")).toBe(true);
 		expect(tools.has("re_autopilot")).toBe(true);
@@ -708,8 +708,10 @@ describe("REPI kernel profile", () => {
 		);
 		const missionAfterKernel = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterKernel.gates.find((gate) => gate.name === "execution_kernel_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterKernel.checkpoints.find((gate) => gate.name === "execution_kernel_ready")?.status).toBe(
+			"done",
+		);
 
 		const decisionTool = tools.get("re_decision_core") as {
 			execute: (
@@ -721,7 +723,7 @@ describe("REPI kernel profile", () => {
 		expect(decisionResult.content[0]?.text).toContain("decision_core:");
 		expect(decisionResult.content[0]?.text).toContain("decision_artifact:");
 		expect(decisionResult.content[0]?.text).toContain("objective_stack:");
-		expect(decisionResult.content[0]?.text).toContain("gate_pressure:");
+		expect(decisionResult.content[0]?.text).toContain("check_pressure:");
 		expect(decisionResult.content[0]?.text).toContain("evidence_priority:");
 		expect(decisionResult.content[0]?.text).toContain("tool_posture:");
 		expect(decisionResult.content[0]?.text).toContain("artifact_posture:");
@@ -736,8 +738,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(join(agentDir, "recon", "memory", "decision-core.md"), "utf-8")).toContain("Decision Core");
 		const missionAfterDecision = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterDecision.gates.find((gate) => gate.name === "decision_core_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterDecision.checkpoints.find((gate) => gate.name === "decision_core_ready")?.status).toBe("done");
 
 		const decisionRun = await decisionTool.execute("tool-call-id", {
 			action: "run",
@@ -778,8 +780,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(browserPath!, "utf-8")).toContain("REPI Live Browser Artifact");
 		const missionAfterBrowser = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterBrowser.gates.find((gate) => gate.name === "live_browser_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterBrowser.checkpoints.find((gate) => gate.name === "live_browser_ready")?.status).toBe("done");
 
 		const invalidBrowserPlan = await liveBrowserTool.execute("tool-call-id", {
 			action: "plan",
@@ -815,8 +817,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(webAuthzPath!, "utf-8")).toContain("REPI Web Authz State Artifact");
 		const missionAfterWebAuthz = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterWebAuthz.gates.find((gate) => gate.name === "web_authz_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterWebAuthz.checkpoints.find((gate) => gate.name === "web_authz_ready")?.status).toBe("done");
 
 		const exploitLabTool = tools.get("re_exploit_lab") as {
 			execute: (
@@ -844,8 +846,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(exploitLabPath!, "utf-8")).toContain("REPI Exploit Lab Artifact");
 		const missionAfterExploitLab = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterExploitLab.gates.find((gate) => gate.name === "exploit_lab_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterExploitLab.checkpoints.find((gate) => gate.name === "exploit_lab_ready")?.status).toBe("done");
 
 		const mobileRuntimeTool = tools.get("re_mobile_runtime") as {
 			execute: (
@@ -875,8 +877,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(mobilePath!, "utf-8")).toContain("REPI Mobile Runtime Artifact");
 		const missionAfterMobile = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterMobile.gates.find((gate) => gate.name === "mobile_runtime_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterMobile.checkpoints.find((gate) => gate.name === "mobile_runtime_ready")?.status).toBe("done");
 
 		const dynamicOnlyMobilePlan = await mobileRuntimeTool.execute("tool-call-id", {
 			action: "plan",
@@ -913,8 +915,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(nativePath!, "utf-8")).toContain("REPI Native Runtime Artifact");
 		const missionAfterNative = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterNative.gates.find((gate) => gate.name === "native_runtime_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterNative.checkpoints.find((gate) => gate.name === "native_runtime_ready")?.status).toBe("done");
 
 		const laneTool = tools.get("re_lane") as {
 			execute: (
@@ -943,9 +945,9 @@ describe("REPI kernel profile", () => {
 		const missionAfterPlan = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
 		) as {
-			gates: Array<{ name: string; status: string }>;
+			checkpoints: Array<{ name: string; status: string }>;
 		};
-		expect(missionAfterPlan.gates.find((gate) => gate.name === "repro_commands_ready")?.status).toBe("done");
+		expect(missionAfterPlan.checkpoints.find((gate) => gate.name === "repro_commands_ready")?.status).toBe("done");
 
 		const ctfDir = join(tempDir, "ctf");
 		mkdirSync(ctfDir, { recursive: true });
@@ -1027,13 +1029,13 @@ describe("REPI kernel profile", () => {
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
 		) as {
 			lanes: Array<{ name: string; status?: string; note?: string; next: string[] }>;
-			gates: Array<{ name: string; status: string }>;
+			checkpoints: Array<{ name: string; status: string }>;
 		};
 		expect(missionAfterRunAuto.lanes.find((lane) => lane.name === "runtime-proof")?.status).toBe("done");
 		const reportLane = missionAfterRunAuto.lanes.find((lane) => lane.name === "report");
 		expect(reportLane?.status).toBe("in_progress");
 		expect(reportLane?.next.join("\n")).toContain("[auto:runtime-compare-breakpoints]");
-		expect(missionAfterRunAuto.gates.find((gate) => gate.name === "memory_or_evolution_written")?.status).toBe(
+		expect(missionAfterRunAuto.checkpoints.find((gate) => gate.name === "memory_or_evolution_written")?.status).toBe(
 			"done",
 		);
 
@@ -1206,8 +1208,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(chainPath!, "utf-8")).toContain("primitive_or_state_transition");
 		const missionAfterChain = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterChain.gates.find((gate) => gate.name === "exploit_chain_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterChain.checkpoints.find((gate) => gate.name === "exploit_chain_ready")?.status).toBe("done");
 
 		await missionTool.execute("tool-call-id", {
 			action: "new",
@@ -1291,8 +1293,10 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(join(agentDir, "recon", "evidence", "ledger.md"), "utf-8")).toContain("operation-run");
 		const missionAfterOperation = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterOperation.gates.find((gate) => gate.name === "operation_queue_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterOperation.checkpoints.find((gate) => gate.name === "operation_queue_ready")?.status).toBe(
+			"done",
+		);
 
 		const delegateTool = tools.get("re_delegate") as {
 			execute: (
@@ -1326,8 +1330,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(join(agentDir, "recon", "evidence", "ledger.md"), "utf-8")).toContain("delegation-merge");
 		const missionAfterDelegation = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterDelegation.gates.find((gate) => gate.name === "delegation_packets_ready")?.status).toBe(
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterDelegation.checkpoints.find((gate) => gate.name === "delegation_packets_ready")?.status).toBe(
 			"done",
 		);
 
@@ -1404,8 +1408,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(join(agentDir, "recon", "memory", "swarm-board.md"), "utf-8")).toContain("Coverage matrix");
 		const missionAfterSwarm = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterSwarm.gates.find((gate) => gate.name === "swarm_plan_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterSwarm.checkpoints.find((gate) => gate.name === "swarm_plan_ready")?.status).toBe("done");
 
 		const supervisorTool = tools.get("re_supervisor") as {
 			execute: (
@@ -1428,9 +1432,9 @@ describe("REPI kernel profile", () => {
 		expect(supervisorReview.content[0]?.text).toContain("commander_merge_budget:");
 		expect(supervisorReview.content[0]?.text).toContain("worker_scoreboard:");
 		expect(supervisorReview.content[0]?.text).toContain("priority_queue:");
-		expect(supervisorReview.content[0]?.text).toContain("release_gate_metadata:");
-		expect(supervisorReview.content[0]?.text).toContain("strict_claim_gate:");
-		expect(supervisorReview.content[0]?.text).toContain("claim_gate_result:");
+		expect(supervisorReview.content[0]?.text).toContain("release_check_metadata:");
+		expect(supervisorReview.content[0]?.text).toContain("strict_claim_check:");
+		expect(supervisorReview.content[0]?.text).toContain("claim_check_result:");
 		expect(supervisorReview.content[0]?.text).toContain("next_supervisor_command:");
 		const supervisorPath = /supervisor_artifact: (.+)/.exec(supervisorReview.content[0]?.text ?? "")?.[1]?.trim();
 		expect(supervisorPath).toBeDefined();
@@ -1449,8 +1453,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(join(agentDir, "recon", "evidence", "ledger.md"), "utf-8")).toContain("supervisor-repair");
 		const missionAfterSupervisor = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterSupervisor.gates.find((gate) => gate.name === "supervisor_review_ready")?.status).toBe(
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterSupervisor.checkpoints.find((gate) => gate.name === "supervisor_review_ready")?.status).toBe(
 			"blocked",
 		);
 
@@ -1494,8 +1498,10 @@ describe("REPI kernel profile", () => {
 		);
 		const missionAfterReflect = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterReflect.gates.find((gate) => gate.name === "reflection_memory_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterReflect.checkpoints.find((gate) => gate.name === "reflection_memory_ready")?.status).toBe(
+			"done",
+		);
 
 		const contextTool = tools.get("re_context") as {
 			execute: (
@@ -1535,8 +1541,8 @@ describe("REPI kernel profile", () => {
 		expect(contextResume.content[0]?.text).toContain("next_operator_commands:");
 		const missionAfterContext = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterContext.gates.find((gate) => gate.name === "context_pack_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterContext.checkpoints.find((gate) => gate.name === "context_pack_ready")?.status).toBe("done");
 
 		const operatorTool = tools.get("re_operator") as {
 			execute: (
@@ -1578,8 +1584,10 @@ describe("REPI kernel profile", () => {
 		expect(operatorVerify.content[0]?.text).toContain("verification_matrix:");
 		const missionAfterOperator = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterOperator.gates.find((gate) => gate.name === "operator_queue_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterOperator.checkpoints.find((gate) => gate.name === "operator_queue_ready")?.status).toBe(
+			"done",
+		);
 
 		const verifierTool = tools.get("re_verifier") as {
 			execute: (
@@ -1607,8 +1615,10 @@ describe("REPI kernel profile", () => {
 		expect(verifierMatrix.content[0]?.text).toContain("gaps:");
 		const missionAfterVerifier = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterVerifier.gates.find((gate) => gate.name === "verifier_matrix_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterVerifier.checkpoints.find((gate) => gate.name === "verifier_matrix_ready")?.status).toBe(
+			"done",
+		);
 
 		const compilerTool = tools.get("re_compiler") as {
 			execute: (
@@ -1622,10 +1632,10 @@ describe("REPI kernel profile", () => {
 		expect(compilerDraft.content[0]?.text).toContain("operator_feedback:");
 		expect(compilerDraft.content[0]?.text).toContain("category=swarm_retry_queue");
 		expect(compilerDraft.content[0]?.text).toContain("supervisor_artifact:");
-		expect(compilerDraft.content[0]?.text).toContain("release_gate_metadata:");
-		expect(compilerDraft.content[0]?.text).toContain("strict_claim_gate:");
-		expect(compilerDraft.content[0]?.text).toContain("claim_gate_result:");
-		expect(compilerDraft.content[0]?.text).toContain("structured_claim_merge_gate:");
+		expect(compilerDraft.content[0]?.text).toContain("release_check_metadata:");
+		expect(compilerDraft.content[0]?.text).toContain("strict_claim_check:");
+		expect(compilerDraft.content[0]?.text).toContain("claim_check_result:");
+		expect(compilerDraft.content[0]?.text).toContain("structured_claim_merge_check:");
 		expect(compilerDraft.content[0]?.text).toContain("status=blocked");
 		expect(compilerDraft.content[0]?.text).toContain("structured claim merge error:");
 		expect(compilerDraft.content[0]?.text).toContain("key_evidence_block:");
@@ -1639,8 +1649,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(compilerPath!, "utf-8")).toContain("REPI Compiler Artifact");
 		const missionAfterCompiler = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterCompiler.gates.find((gate) => gate.name === "compiler_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterCompiler.checkpoints.find((gate) => gate.name === "compiler_ready")?.status).toBe("done");
 
 		const replayerTool = tools.get("re_replayer") as {
 			execute: (
@@ -1674,8 +1684,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(replayRunPath!, "utf-8")).toContain("REPI Replayer Artifact");
 		const missionAfterReplay = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterReplay.gates.find((gate) => gate.name === "replay_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterReplay.checkpoints.find((gate) => gate.name === "replay_ready")?.status).toBe("done");
 
 		const autofixTool = tools.get("re_autofix") as {
 			execute: (
@@ -1700,8 +1710,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(autofixPath!, "utf-8")).toContain("REPI Autofix Artifact");
 		const missionAfterAutofix = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterAutofix.gates.find((gate) => gate.name === "autofix_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterAutofix.checkpoints.find((gate) => gate.name === "autofix_ready")?.status).toBe("done");
 
 		const feedbackChainCompose = await chainTool.execute("tool-call-id", {
 			action: "compose",
@@ -1824,8 +1834,8 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(proofLoopRunPath!, "utf-8")).toContain("swarm_bridge:");
 		const missionAfterProofLoop = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterProofLoop.gates.find((gate) => gate.name === "proof_loop_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterProofLoop.checkpoints.find((gate) => gate.name === "proof_loop_ready")?.status).toBe("done");
 		const runtimeFailureLedger = join(agentDir, "recon", "evidence", "failures", "ledger.jsonl");
 		const runtimeRepairQueue = join(agentDir, "recon", "evidence", "repairs", "queue.jsonl");
 		expect(existsSync(runtimeFailureLedger)).toBe(true);
@@ -1886,25 +1896,25 @@ describe("REPI kernel profile", () => {
 		expect(readFileSync(join(agentDir, "recon", "memory", "dispatcher-promotion-playbook.md"), "utf-8")).toContain(
 			"Score decay",
 		);
-		const harnessTool = tools.get("re_harness") as {
+		const profileCheckTool = tools.get("re_profile_check") as {
 			execute: (
 				toolCallId: string,
 				params: Record<string, unknown>,
 			) => Promise<{ content: Array<{ text: string }> }>;
 		};
-		const harness = await harnessTool.execute("tool-call-id", { action: "full" });
-		expect(harness.content[0]?.text).toContain("harness:");
-		expect(harness.content[0]?.text).toContain("harness_artifact:");
-		expect(harness.content[0]?.text).toContain("verdict:");
-		expect(harness.content[0]?.text).toContain("install_readiness:");
-		expect(harness.content[0]?.text).toContain("reverse_capability_guards:");
-		expect(harness.content[0]?.text).toContain("regression_guards:");
-		expect(harness.content[0]?.text).toContain("compact_resume_case_memory");
-		expect(harness.content[0]?.text).toContain("re_native_runtime");
-		const harnessPath = /harness_artifact: (.+)/.exec(harness.content[0]?.text ?? "")?.[1]?.trim();
-		expect(harnessPath).toBeDefined();
-		expect(existsSync(harnessPath!)).toBe(true);
-		expect(readFileSync(harnessPath!, "utf-8")).toContain("REPI Harness Artifact");
+		const profileCheck = await profileCheckTool.execute("tool-call-id", { action: "full" });
+		expect(profileCheck.content[0]?.text).toContain("profile_check:");
+		expect(profileCheck.content[0]?.text).toContain("profile_check_artifact:");
+		expect(profileCheck.content[0]?.text).toContain("verdict:");
+		expect(profileCheck.content[0]?.text).toContain("install_readiness:");
+		expect(profileCheck.content[0]?.text).toContain("reverse_capability_guards:");
+		expect(profileCheck.content[0]?.text).toContain("regression_guards:");
+		expect(profileCheck.content[0]?.text).toContain("compact_resume_case_memory");
+		expect(profileCheck.content[0]?.text).toContain("re_native_runtime");
+		const profileCheckPath = /profile_check_artifact: (.+)/.exec(profileCheck.content[0]?.text ?? "")?.[1]?.trim();
+		expect(profileCheckPath).toBeDefined();
+		expect(existsSync(profileCheckPath!)).toBe(true);
+		expect(readFileSync(profileCheckPath!, "utf-8")).toContain("REPI Profile Check Artifact");
 
 		const migratedLanePlan = await laneTool.execute("tool-call-id", {
 			action: "plan",
@@ -1923,8 +1933,10 @@ describe("REPI kernel profile", () => {
 		expect(migratedAutopilotPlan.content[0]?.text).toMatch(/action: (reprioritized|added|skipped)/);
 		const missionAfterKnowledge = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
-		) as { gates: Array<{ name: string; status: string }> };
-		expect(missionAfterKnowledge.gates.find((gate) => gate.name === "knowledge_graph_ready")?.status).toBe("done");
+		) as { checkpoints: Array<{ name: string; status: string }> };
+		expect(missionAfterKnowledge.checkpoints.find((gate) => gate.name === "knowledge_graph_ready")?.status).toBe(
+			"done",
+		);
 
 		const completeTool = tools.get("re_complete") as {
 			execute: (
@@ -1934,7 +1946,7 @@ describe("REPI kernel profile", () => {
 		};
 		const completionAudit = await completeTool.execute("tool-call-id", { action: "audit" });
 		expect(completionAudit.content[0]?.text).toContain("completion_status:");
-		expect(completionAudit.content[0]?.text).toContain("pending gate:");
+		expect(completionAudit.content[0]?.text).toContain("pending check:");
 
 		const memoryTool = tools.get("re_memory") as {
 			execute: (
@@ -1989,7 +2001,7 @@ describe("REPI kernel profile", () => {
 		expect(injected?.systemPrompt).toContain("decision_core:");
 		expect(injected?.systemPrompt).toContain("Evidence ledger tail:");
 		expect(injected?.systemPrompt).toContain("Context/resume pack:");
-		expect(injected?.systemPrompt).toContain("Completion gate audit:");
+		expect(injected?.systemPrompt).toContain("Completion checkpoint audit:");
 		expect(readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8")).toContain("Native reverse");
 	});
 
@@ -2202,9 +2214,9 @@ describe("REPI kernel profile", () => {
 		expect(existsSync(artifactPath!)).toBe(true);
 		expect(readFileSync(artifactPath!, "utf-8")).toContain("REPI Exploit Lab Artifact");
 		const missionAfterLab = JSON.parse(readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8")) as {
-			gates: Array<{ name: string; status: string }>;
+			checkpoints: Array<{ name: string; status: string }>;
 		};
-		expect(missionAfterLab.gates.find((gate) => gate.name === "exploit_lab_ready")?.status).toBe("done");
+		expect(missionAfterLab.checkpoints.find((gate) => gate.name === "exploit_lab_ready")?.status).toBe("done");
 	});
 
 	it("runs the mobile runtime capture and records Frida/ADB anchors", async () => {
@@ -2285,9 +2297,9 @@ describe("REPI kernel profile", () => {
 		const missionAfterMobile = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
 		) as {
-			gates: Array<{ name: string; status: string }>;
+			checkpoints: Array<{ name: string; status: string }>;
 		};
-		expect(missionAfterMobile.gates.find((gate) => gate.name === "mobile_runtime_ready")?.status).toBe("done");
+		expect(missionAfterMobile.checkpoints.find((gate) => gate.name === "mobile_runtime_ready")?.status).toBe("done");
 	});
 
 	it("runs the web authz state capture and records principal/object anchors", async () => {
@@ -2366,9 +2378,9 @@ describe("REPI kernel profile", () => {
 		const missionAfterWebAuthz = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
 		) as {
-			gates: Array<{ name: string; status: string }>;
+			checkpoints: Array<{ name: string; status: string }>;
 		};
-		expect(missionAfterWebAuthz.gates.find((gate) => gate.name === "web_authz_ready")?.status).toBe("done");
+		expect(missionAfterWebAuthz.checkpoints.find((gate) => gate.name === "web_authz_ready")?.status).toBe("done");
 	});
 
 	it("runs the native runtime capture and records GDB/pwn anchors", async () => {
@@ -2451,9 +2463,9 @@ describe("REPI kernel profile", () => {
 		const missionAfterNative = JSON.parse(
 			readFileSync(join(agentDir, "recon", "mission", "current.json"), "utf-8"),
 		) as {
-			gates: Array<{ name: string; status: string }>;
+			checkpoints: Array<{ name: string; status: string }>;
 		};
-		expect(missionAfterNative.gates.find((gate) => gate.name === "native_runtime_ready")?.status).toBe("done");
+		expect(missionAfterNative.checkpoints.find((gate) => gate.name === "native_runtime_ready")?.status).toBe("done");
 	});
 
 	it("turns tool/runtime failures into repair matrix follow-ups", async () => {
@@ -2691,12 +2703,12 @@ describe("REPI kernel profile", () => {
 
 		const missionAfterClosure = JSON.parse(readFileSync(missionPath, "utf-8")) as {
 			lanes: Array<{ name: string; status?: string; note?: string }>;
-			gates: Array<{ name: string; status: string; note?: string }>;
+			checkpoints: Array<{ name: string; status: string; note?: string }>;
 		};
 		expect(missionAfterClosure.lanes.find((lane) => lane.name === "tool-bootstrap")?.status).toBe("done");
 		expect(missionAfterClosure.lanes.find((lane) => lane.name === "control-flow")?.status).toBe("done");
 		expect(missionAfterClosure.lanes.find((lane) => lane.name === "runtime-proof")?.status).toBe("in_progress");
-		expect(missionAfterClosure.gates.find((gate) => gate.name === "tool_index_checked")?.status).toBe("done");
+		expect(missionAfterClosure.checkpoints.find((gate) => gate.name === "tool_index_checked")?.status).toBe("done");
 		expect(readFileSync(join(agentDir, "recon", "tools", "tool-index.md"), "utf-8")).toContain(
 			"| file | yes | /usr/bin/file | file |",
 		);

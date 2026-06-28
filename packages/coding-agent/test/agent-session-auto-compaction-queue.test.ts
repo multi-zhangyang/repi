@@ -45,7 +45,11 @@ vi.mock("../src/core/compaction/index.js", () => ({
 		return { tokens: 0, usageTokens: 0, trailingTokens: 0, lastUsageIndex: null };
 	},
 	generateBranchSummary: async () => ({ summary: "", aborted: false, readFiles: [], modifiedFiles: [] }),
-	prepareCompaction: () => ({ dummy: true }),
+	// Return a minimal but well-shaped CompactionPreparation so the real
+	// _runAutoCompaction can read preparation.messagesToSummarize /
+	// turnPrefixMessages without throwing. compact() is mocked below to provide
+	// the compaction payload.
+	prepareCompaction: () => ({ messagesToSummarize: [], turnPrefixMessages: [] }),
 	shouldCompact: (
 		contextTokens: number,
 		contextWindow: number,
