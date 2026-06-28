@@ -39,6 +39,15 @@ jobs:
       - name: Build all packages
         run: npm run build
 
+      # `npm run build` regenerates packages/ai/src/{models,image-models}.generated.ts
+      # from a live network fetch, which drifts vs the committed snapshot. We do
+      # not commit regenerated model files, so restore them to the committed
+      # state so the working tree stays clean for the no-diff gate. The built
+      # dist/ (and thus the release tarball) already contains the fresh list.
+      - name: Restore generated model snapshots
+        run: |
+          git checkout -- packages/ai/src/models.generated.ts packages/ai/src/image-models.generated.ts
+
       - name: Repository check
         run: npm run check
 
