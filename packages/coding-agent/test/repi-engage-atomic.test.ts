@@ -1063,17 +1063,26 @@ describe("repi-engage artifact writes", () => {
 		expect(report.target.kind).toBe("directory");
 		expect(report.target.lane).toBe("js-reverse");
 		expect(report.commands.map((row) => row.id)).toContain("workspace-source-runtime-map");
+		expect(report.commands.map((row) => row.id)).toContain("workspace-route-replay-harness-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("workspace-route-replay-plan");
 		expect(report.commands.map((row) => row.id)).toContain("proof-harness-self-test");
 		expect(report.summary.anchors).toContain("workspace source-to-runtime anchors");
+		expect(report.summary.anchors).toContain("workspace route replay/authz anchors");
 		expect(report.summary.anchors).toContain("proof harness/self-test anchors");
 		const mapPath = join(report.artifactDir, "workspace-source-runtime-map.json");
 		const harnessPath = join(report.artifactDir, "workspace-source-runtime-harness.mjs");
+		const routeReplayHarnessPath = join(report.artifactDir, "workspace-route-replay-harness.mjs");
+		const routeReplayPlanPath = join(report.artifactDir, "workspace-route-replay-plan.json");
 		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
 		expect(existsSync(mapPath)).toBe(true);
 		expect(existsSync(harnessPath)).toBe(true);
+		expect(existsSync(routeReplayHarnessPath)).toBe(true);
+		expect(existsSync(routeReplayPlanPath)).toBe(true);
 		expect(existsSync(proofMatrixPath)).toBe(true);
 		expect(statSync(mapPath).mode & 0o777).toBe(0o600);
 		expect(statSync(harnessPath).mode & 0o777).toBe(0o700);
+		expect(statSync(routeReplayHarnessPath).mode & 0o777).toBe(0o700);
+		expect(statSync(routeReplayPlanPath).mode & 0o777).toBe(0o600);
 		const sourceMap = JSON.parse(readFileSync(mapPath, "utf8")) as {
 			counts: { routes: number; sinks: number; proofTargets: number };
 			risks: string[];
@@ -1095,17 +1104,44 @@ describe("repi-engage artifact writes", () => {
 		expect(sourceMap.proofTargets[0].risks.length).toBeGreaterThan(0);
 		expect(sourceMap.routeReplayTemplates[0].negativeControls).toContain("repeat without Cookie/Authorization");
 		expect(sourceMap.runtimeCommands.map((row) => row.command)).toContain("npm run start");
+		const routeReplayPlan = JSON.parse(readFileSync(routeReplayPlanPath, "utf8")) as {
+			controls: string[];
+			proofExitRule: string;
+		};
+		expect(routeReplayPlan.controls).toContain("tampered-object");
+		expect(routeReplayPlan.proofExitRule).toContain("anonymous/session");
 		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
 			artifacts: Array<{ relPath: string }>;
 			liveChecks: Array<{ id: string }>;
 		};
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("workspace-source-runtime-map.json");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("workspace-route-replay-harness.mjs");
 		expect(proofMatrix.liveChecks.map((row) => row.id)).toContain("workspace-source-runtime-harness-self-test");
+		expect(proofMatrix.liveChecks.map((row) => row.id)).toContain("workspace-route-replay-harness-self-test");
 		expect(
 			report.nextQueue.some(
 				(command) => command.includes("workspace-source-runtime-harness.mjs") && command.includes(appDir),
 			),
 		).toBe(true);
+		expect(
+			report.nextQueue.some(
+				(command) => command.includes("workspace-route-replay-harness.mjs") && command.includes("--live"),
+			),
+		).toBe(true);
+		const routeReplaySelfTest = spawnSync(process.execPath, [routeReplayHarnessPath, "--self-test"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(routeReplaySelfTest.status, `${routeReplaySelfTest.stderr}\n${routeReplaySelfTest.stdout}`).toBe(0);
+		const selfTestReport = JSON.parse(routeReplaySelfTest.stdout) as {
+			proofReady: boolean;
+			promotionReport: { promotedClaims: unknown[] };
+			rows: Array<{ variants: Array<{ control: string }> }>;
+		};
+		expect(selfTestReport.proofReady).toBe(true);
+		expect(selfTestReport.promotionReport.promotedClaims.length).toBeGreaterThan(0);
+		expect(selfTestReport.rows[0].variants.map((row) => row.control)).toContain("anonymous");
+		expect(selfTestReport.rows[0].variants.map((row) => row.control)).toContain("session");
 	});
 
 	it("summarizes memory images and emits triage plans without requiring volatility", () => {

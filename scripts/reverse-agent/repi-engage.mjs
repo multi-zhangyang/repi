@@ -545,6 +545,9 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	if (targetInfo.kind === "directory") {
 		add("workspace-source-runtime-map.json", "workspace source-to-runtime route/sink/auth map");
 		add("workspace-source-runtime-harness.mjs", "workspace source-to-runtime extraction harness", 0o700);
+		add("workspace-route-replay-plan.json", "workspace route replay/authz matrix plan");
+		add("workspace-route-replay-results.json", "workspace route replay/authz matrix output");
+		add("workspace-route-replay-harness.mjs", "workspace route replay/authz matrix harness", 0o700);
 	}
 	if (targetInfo.lane === "native-pwn") {
 		add("native-elf-hardening.json", "ELF mitigation/import/relocation parser output");
@@ -646,6 +649,8 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 	if (targetInfo.kind === "directory") {
 		const workspaceHarness = proofArtifactPath(artifactDir, "workspace-source-runtime-harness.mjs");
 		if (existsSync(workspaceHarness)) add({ id: "workspace-source-runtime-harness-self-test", command: process.execPath, args: [workspaceHarness, "--self-test"], reason: "execute workspace source-to-runtime harness self-test" });
+		const routeReplayHarness = proofArtifactPath(artifactDir, "workspace-route-replay-harness.mjs");
+		if (existsSync(routeReplayHarness)) add({ id: "workspace-route-replay-harness-self-test", command: process.execPath, args: [routeReplayHarness, "--self-test"], reason: "execute workspace route replay/authz harness self-test" });
 	}
 	if (targetInfo.lane === "native-pwn" && python) {
 		const offsetHelper = proofArtifactPath(artifactDir, "native-cyclic-offset.py");
@@ -7569,6 +7574,363 @@ function writeWorkspaceSourceRuntimeHarness(artifactDir) {
 	return path;
 }
 
+function workspaceRouteReplayHarnessSource(plan) {
+	const planJson = JSON.stringify(plan, null, 2);
+	return String.raw`#!/usr/bin/env node
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+
+const plan = ${planJson};
+const selfTest = process.argv.includes("--self-test");
+const live = process.argv.includes("--live") || process.argv.includes("--execute");
+const baseUrlArgIndex = process.argv.findIndex((arg) => arg === "--base-url");
+const explicitBaseUrl = baseUrlArgIndex >= 0 ? process.argv[baseUrlArgIndex + 1] : undefined;
+const baseUrl = explicitBaseUrl || process.env.REPI_WORKSPACE_BASE_URL || process.env.BASE_URL || "";
+const output = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : plan.output;
+const maxRoutes = Number(process.env.REPI_WORKSPACE_REPLAY_MAX_ROUTES || "24");
+const timeoutMs = Number(process.env.REPI_WORKSPACE_REPLAY_TIMEOUT_MS || "6000");
+
+function sha256(value) {
+	return createHash("sha256").update(String(value ?? "")).digest("hex");
+}
+
+function redact(value) {
+	return String(value ?? "")
+		.replace(/\bsk-[A-Za-z0-9._-]{8,}\b/g, "<redacted:api-key>")
+		.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer <redacted>")
+		.replace(/([?&](?:api[_-]?key|token|access_token|refresh_token|client_secret|secret|password)=)[^&\s"'<>]{4,}/gi, "$1<redacted>")
+		.replace(/((?:authorization|x-api-key|api-key|cookie|set-cookie)\s*[:=]\s*["']?)([^"'\n;]{4,})/gi, "$1<redacted>");
+}
+
+function readMap() {
+	if (selfTest) return selfTestMap();
+	const mapPath = plan.mapPath || "workspace-source-runtime-map.json";
+	if (!existsSync(mapPath)) throw new Error("workspace source-runtime map missing: " + mapPath);
+	return JSON.parse(readFileSync(mapPath, "utf8"));
+}
+
+function selfTestMap() {
+	return {
+		kind: "repi-workspace-source-runtime-map",
+		counts: { routes: 2, proofTargets: 2 },
+		proofTargets: [
+			{
+				id: "self-account",
+				route: { method: "GET", path: "/api/account/:id", file: "src/server.js", line: 5 },
+				risks: ["route-to-dangerous-sink-candidate"],
+			},
+			{
+				id: "self-admin-run",
+				route: { method: "POST", path: "/api/admin/run", file: "src/server.js", line: 6 },
+				risks: ["state-changing-route-candidate", "route-to-dangerous-sink-candidate"],
+			},
+		],
+		routeReplayTemplates: [
+			{ route: "/api/account/:id", method: "GET", negativeControls: ["repeat without Cookie/Authorization", "mutate numeric/uuid object identifiers when present"] },
+			{ route: "/api/admin/run", method: "POST", negativeControls: ["repeat without Cookie/Authorization"] },
+		],
+	};
+}
+
+function routeTemplateRows(map) {
+	const fromProof = Array.isArray(map.proofTargets)
+		? map.proofTargets.map((target) => ({ route: target.route?.path || "/", method: target.route?.method || "GET", proofTargetId: target.id, risks: target.risks || [], source: target.route || {} }))
+		: [];
+	const fromTemplates = Array.isArray(map.routeReplayTemplates)
+		? map.routeReplayTemplates.map((template) => ({ route: template.route || "/", method: template.method || "GET", proofTargetId: null, risks: [], source: {}, negativeControls: template.negativeControls || [] }))
+		: [];
+	const rows = [];
+	const seen = new Set();
+	for (const row of [...fromProof, ...fromTemplates]) {
+		const route = String(row.route || "/");
+		const method = String(row.method || "GET").toUpperCase();
+		const key = method + " " + route;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		rows.push({ ...row, route, method });
+		if (rows.length >= maxRoutes) break;
+	}
+	return rows;
+}
+
+function pathParamNames(route) {
+	const names = [];
+	for (const match of String(route).matchAll(/(?::([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\}|<([A-Za-z_][A-Za-z0-9_]*)>|\[([A-Za-z_][A-Za-z0-9_]*)\])/g)) {
+		names.push(match[1] || match[2] || match[3] || match[4]);
+	}
+	return names;
+}
+
+function defaultParamValue(name) {
+	const envName = "REPI_ROUTE_PARAM_" + String(name || "ID").toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+	const fromEnv = process.env[envName];
+	if (fromEnv) return fromEnv;
+	if (/uuid|guid/i.test(name)) return "00000000-0000-4000-8000-000000000001";
+	if (/slug|name/i.test(name)) return "demo";
+	return "1";
+}
+
+function mutatedParamValue(value) {
+	const text = String(value ?? "1");
+	if (/^\d+$/.test(text)) return String(Number(text) + 1);
+	if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text)) return text.replace(/[0-9a-f](?=[^0-9a-f]*$)/i, (char) => (char.toLowerCase() === "a" ? "b" : "a"));
+	return text + "-repi-mutated";
+}
+
+function materializeRoute(route, mutated = false) {
+	let path = String(route || "/");
+	const params = {};
+	for (const name of pathParamNames(path)) {
+		const value = defaultParamValue(name);
+		const selected = mutated ? mutatedParamValue(value) : value;
+		params[name] = { value, selected };
+		path = path
+			.replace(new RegExp(":" + name + "\\b", "g"), encodeURIComponent(selected))
+			.replace(new RegExp("\\{" + name + "\\}", "g"), encodeURIComponent(selected))
+			.replace(new RegExp("<" + name + ">", "g"), encodeURIComponent(selected))
+			.replace(new RegExp("\\[" + name + "\\]", "g"), encodeURIComponent(selected));
+	}
+	return { path, params };
+}
+
+function headersFor(control) {
+	const headers = { "User-Agent": "REPI-workspace-route-replay" };
+	if (control === "session" || control === "tampered-object") {
+		if (process.env.REPI_REPLAY_COOKIE) headers.Cookie = process.env.REPI_REPLAY_COOKIE;
+		if (process.env.REPI_REPLAY_AUTHORIZATION) headers.Authorization = process.env.REPI_REPLAY_AUTHORIZATION;
+		if (!headers.Cookie && !headers.Authorization && selfTest) headers.Authorization = "Bearer self-test";
+	}
+	return headers;
+}
+
+function bodyFor(method, control) {
+	if (!/^(POST|PUT|PATCH|DELETE)$/i.test(method)) return undefined;
+	const raw = process.env.REPI_REPLAY_JSON_BODY || (selfTest ? JSON.stringify({ cmd: control === "tampered-object" ? "id" : "whoami" }) : "{}");
+	return raw;
+}
+
+function requestVariants(row) {
+	const base = materializeRoute(row.route, false);
+	const mutated = materializeRoute(row.route, true);
+	const method = row.method === "ANY" || row.method === "ALL" ? "GET" : row.method;
+	const controls = [
+		{ control: "anonymous", materialized: base, headers: headersFor("anonymous") },
+		{ control: "session", materialized: base, headers: headersFor("session") },
+	];
+	if (Object.keys(base.params).length) controls.push({ control: "tampered-object", materialized: mutated, headers: headersFor("tampered-object") });
+	return controls.map((variant) => ({
+		...variant,
+		method,
+		body: bodyFor(method, variant.control),
+	}));
+}
+
+function joinUrl(base, path) {
+	const url = new URL(path.startsWith("/") ? path : "/" + path, base.endsWith("/") ? base : base + "/");
+	return url.href;
+}
+
+async function fetchWithTimeout(url, options) {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		const response = await fetch(url, { ...options, signal: controller.signal });
+		const text = await response.text();
+		let appCode = null;
+		try {
+			const json = JSON.parse(text);
+			if (json && typeof json === "object") appCode = json.code ?? json.error ?? null;
+		} catch {
+			// Hash-only body evidence is enough for non-JSON responses.
+		}
+		return {
+			status: response.status,
+			ok: response.ok,
+			bytes: Buffer.byteLength(text),
+			responseSha256: sha256(text),
+			appCode: appCode == null ? null : redact(appCode),
+			bodySample: redact(text.slice(0, 500)),
+		};
+	} catch (error) {
+		return { status: null, ok: false, error: redact(error?.message || String(error)) };
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+async function replayRow(row, base) {
+	const variants = [];
+	for (const variant of requestVariants(row)) {
+		const url = joinUrl(base, variant.materialized.path);
+		const headers = variant.body ? { ...variant.headers, "Content-Type": "application/json" } : variant.headers;
+		const result = await fetchWithTimeout(url, {
+			method: variant.method,
+			headers,
+			body: variant.body,
+		});
+		variants.push({
+			control: variant.control,
+			method: variant.method,
+			url: redact(url),
+			paramBindings: variant.materialized.params,
+			headerNames: Object.keys(headers),
+			requestBodySha256: variant.body ? sha256(variant.body) : null,
+			...result,
+		});
+	}
+	const byControl = Object.fromEntries(variants.map((variant) => [variant.control, variant]));
+	const anonymous = byControl.anonymous;
+	const session = byControl.session;
+	const tampered = byControl["tampered-object"];
+	const authDifferential = Boolean(anonymous && session && anonymous.status !== session.status);
+	const objectDifferential = Boolean(tampered && session && (tampered.status !== session.status || tampered.responseSha256 !== session.responseSha256));
+	const statusCoverage = variants.some((variant) => typeof variant.status === "number");
+	const proofReady = statusCoverage && (authDifferential || objectDifferential || variants.some((variant) => variant.status >= 400));
+	return {
+		route: row.route,
+		method: row.method,
+		proofTargetId: row.proofTargetId,
+		risks: row.risks || [],
+		source: row.source || {},
+		variants,
+		authDifferential,
+		objectDifferential,
+		proofReady,
+	};
+}
+
+function promotionRows(rows) {
+	return rows.map((row) => {
+		const evidence = row.variants.map((variant) => variant.control + ": status=" + variant.status + " sha256=" + String(variant.responseSha256 || "").slice(0, 16));
+		const blockers = [];
+		if (!row.variants.some((variant) => typeof variant.status === "number")) blockers.push("no HTTP response status captured");
+		if (!row.authDifferential && !row.objectDifferential) blockers.push("no auth/object differential captured yet");
+		return {
+			id: "workspace-route-replay-" + sha256(JSON.stringify([row.method, row.route, row.proofTargetId])).slice(0, 12),
+			route: row.route,
+			method: row.method,
+			statement: row.proofReady
+				? "Runtime route replay produced status/hash evidence with auth/object negative-control differential."
+				: "Runtime route replay evidence is incomplete for claim promotion.",
+			verdict: row.proofReady ? "promoted" : "observation",
+			confidence: row.proofReady ? 0.82 : 0.3,
+			evidence,
+			blockers,
+		};
+	});
+}
+
+async function withSelfTestServer(callback) {
+	const server = createServer((request, response) => {
+		const authed = /^Bearer self-test$/i.test(String(request.headers.authorization || ""));
+		if (request.url?.startsWith("/api/account/")) {
+			if (!authed) {
+				response.writeHead(401, { "content-type": "application/json" });
+				response.end(JSON.stringify({ code: "missing_auth" }));
+				return;
+			}
+			const id = request.url.split("/").pop();
+			response.writeHead(id === "1" ? 200 : 404, { "content-type": "application/json" });
+			response.end(JSON.stringify({ code: id === "1" ? 0 : "not_found", id }));
+			return;
+		}
+		if (request.url === "/api/admin/run") {
+			response.writeHead(authed ? 403 : 401, { "content-type": "application/json" });
+			response.end(JSON.stringify({ code: authed ? "blocked_admin" : "missing_auth" }));
+			return;
+		}
+		response.writeHead(404, { "content-type": "application/json" });
+		response.end(JSON.stringify({ code: "not_found" }));
+	});
+	await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+	try {
+		const address = server.address();
+		return await callback("http://127.0.0.1:" + address.port);
+	} finally {
+		await new Promise((resolve) => server.close(resolve));
+	}
+}
+
+async function runAgainst(base, map) {
+	const rows = [];
+	for (const row of routeTemplateRows(map)) rows.push(await replayRow(row, base));
+	const claims = promotionRows(rows);
+	return {
+		kind: "repi-workspace-route-replay-results",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		baseUrl: redact(base),
+		live,
+		selfTest,
+		mapKind: map.kind,
+		routeCount: rows.length,
+		proofReady: claims.some((claim) => claim.verdict === "promoted"),
+		rows,
+		promotionReport: {
+			proofReady: claims.some((claim) => claim.verdict === "promoted"),
+			promotedClaims: claims.filter((claim) => claim.verdict === "promoted"),
+			observations: claims.filter((claim) => claim.verdict !== "promoted"),
+		},
+		next: "Bind promoted replay rows back to source file/line and keep anonymous/session/tampered controls with status/body hashes.",
+	};
+}
+
+async function main() {
+	const map = readMap();
+	const result = selfTest
+		? await withSelfTestServer((serverBase) => runAgainst(serverBase, map))
+		: baseUrl
+			? await runAgainst(baseUrl, map)
+			: {
+					kind: "repi-workspace-route-replay-plan",
+					schemaVersion: 1,
+					baseUrlRequired: true,
+					mapPath: plan.mapPath,
+					routeCount: routeTemplateRows(map).length,
+					routes: routeTemplateRows(map).map((row) => ({ route: row.route, method: row.method, proofTargetId: row.proofTargetId, risks: row.risks })),
+					run: "REPI_WORKSPACE_BASE_URL=http://127.0.0.1:PORT node " + plan.harnessPath + " --live",
+					controls: ["anonymous", "session", "tampered-object"],
+				};
+	if (!selfTest && output && output !== "-") writeFileSync(output, JSON.stringify(result, null, 2) + "\n", { mode: 0o600 });
+	console.log(JSON.stringify(result, null, 2));
+	process.exit(result.proofReady || result.baseUrlRequired ? 0 : 1);
+}
+
+main().catch((error) => {
+	console.error(redact(error?.stack || error?.message || String(error)));
+	process.exit(1);
+});
+`;
+}
+
+function writeWorkspaceRouteReplayHarness(artifactDir) {
+	if (noWrite || !artifactDir) return undefined;
+	const harnessPath = join(artifactDir, "workspace-route-replay-harness.mjs");
+	const planPath = join(artifactDir, "workspace-route-replay-plan.json");
+	const outputPath = join(artifactDir, "workspace-route-replay-results.json");
+	const plan = {
+		kind: "repi-workspace-route-replay-plan",
+		schemaVersion: 1,
+		mapPath: join(artifactDir, "workspace-source-runtime-map.json"),
+		harnessPath,
+		outputPath,
+		output: outputPath,
+		controls: ["anonymous", "session", "tampered-object"],
+		env: {
+			baseUrl: "REPI_WORKSPACE_BASE_URL or --base-url",
+			cookie: "REPI_REPLAY_COOKIE",
+			authorization: "REPI_REPLAY_AUTHORIZATION",
+			jsonBody: "REPI_REPLAY_JSON_BODY",
+			routeParams: "REPI_ROUTE_PARAM_<NAME>",
+		},
+		proofExitRule: "A promoted workspace route proof requires source file/line + live status/body hash + anonymous/session or object-mutation negative-control differential.",
+	};
+	writePrivate(planPath, `${JSON.stringify(plan, null, 2)}\n`, 0o600);
+	writePrivate(harnessPath, workspaceRouteReplayHarnessSource(plan), 0o700);
+	return { harnessPath, planPath, outputPath };
+}
+
 function engageFile(targetInfo, artifactDir) {
 	const target = targetInfo.path;
 	const rows = [];
@@ -7739,6 +8101,24 @@ function engageDirectory(targetInfo, artifactDir) {
 	if (workspaceHarnessPath) {
 		const outputPath = join(artifactDir, "workspace-source-runtime-map.json");
 		rows.push(run(process.execPath, [workspaceHarnessPath, target, outputPath], { id: "workspace-source-runtime-map", timeout: timeoutMs + 5000 }));
+	}
+	const routeReplayArtifacts = writeWorkspaceRouteReplayHarness(artifactDir);
+	if (routeReplayArtifacts) {
+		rows.push({
+			id: "workspace-route-replay-harness-artifact",
+			command: "internal",
+			args: [redact(routeReplayArtifacts.planPath), redact(routeReplayArtifacts.harnessPath)],
+			cwd: root,
+			exit: 0,
+			signal: null,
+			durationMs: 0,
+			stdout: `plan=${redact(routeReplayArtifacts.planPath)}\nharness=${redact(routeReplayArtifacts.harnessPath)}\nrun=REPI_WORKSPACE_BASE_URL=http://127.0.0.1:PORT node ${redact(routeReplayArtifacts.harnessPath)} ${redact(routeReplayArtifacts.outputPath)} --live\n`,
+			stderr: "",
+			error: undefined,
+		});
+		const replayPlanRun = run(process.execPath, [routeReplayArtifacts.harnessPath, routeReplayArtifacts.outputPath], { id: "workspace-route-replay-plan", timeout: timeoutMs + 3000 });
+		rows.push(replayPlanRun);
+		if (!existsSync(routeReplayArtifacts.outputPath) && replayPlanRun.stdout.trim()) writePrivate(routeReplayArtifacts.outputPath, replayPlanRun.stdout, 0o600);
 	}
 	if (targetInfo.lane === "agent-boundary") {
 		rows.push(...agentBoundaryRows(target, artifactDir));
@@ -11057,6 +11437,7 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 		const quotedDirectoryTarget = shellQuote(target);
 		if (!noWrite && existsSync(join(artifactDir, "workspace-source-runtime-map.json"))) q.push(`cat ${shellQuote(join(artifactDir, "workspace-source-runtime-map.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "workspace-source-runtime-harness.mjs"))) q.push(`node ${shellQuote(join(artifactDir, "workspace-source-runtime-harness.mjs"))} ${quotedDirectoryTarget} ${shellQuote(join(artifactDir, "workspace-source-runtime-map.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "workspace-route-replay-harness.mjs"))) q.push(`REPI_WORKSPACE_BASE_URL=http://127.0.0.1:PORT node ${shellQuote(join(artifactDir, "workspace-route-replay-harness.mjs"))} ${shellQuote(join(artifactDir, "workspace-route-replay-results.json"))} --live`);
 		q.push(`repi -p ${shellQuote(`Use ${artifactDir}/commands.jsonl to continue workspace exploitation: bind routes/sinks to runtime proof and create replay matrix.`)}`);
 	}
 	if (swarm) {
@@ -11119,6 +11500,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/TLS-candidate|client-hello|recordVersion|clientVersion|sni|alpn|ja3/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("TLS/SNI anchors");
 		if (/endpoint|graphql|oauth|api\/|\/api|form|fetch|axios/i.test(text) && targetInfo.kind === "url") anchors.push("route/API anchors");
 		if (/repi-workspace-source-runtime-map|workspace-source-runtime-map|sourceToRuntimeEdges|route-sensitive-no-nearby-auth-anchor|route-to-dangerous-sink-candidate|routeReplayTemplates/i.test(text) && targetInfo.kind === "directory") anchors.push("workspace source-to-runtime anchors");
+		if (/repi-workspace-route-replay|workspace-route-replay|tampered-object|authDifferential|objectDifferential|promotionReport/i.test(text) && targetInfo.kind === "directory") anchors.push("workspace route replay/authz anchors");
 		if (/repi-web-discovery-matrix|web-discovery|robots\.txt|sitemap\.xml|openapi|swagger|graphql/i.test(text) && targetInfo.kind === "url") anchors.push("web discovery anchors");
 		if (/repi-web-api-schema-probes|web-api-schema-probes|__typename|__schema|graphql-introspection|graphql-mutation-surface|openapi-unauthenticated|openapi-upload-surface|securitySchemes|openapi|swagger|GraphQL/i.test(text) && targetInfo.kind === "url") anchors.push("API schema anchors");
 		if (/repi-web-ssrf-matrix|web-ssrf-matrix|ssrf-|169\.254\.169\.254|repi-ssrf-canary/i.test(text) && targetInfo.kind === "url") anchors.push("SSRF parameter anchors");
