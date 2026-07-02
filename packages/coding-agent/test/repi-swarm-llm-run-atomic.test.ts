@@ -1032,6 +1032,87 @@ describe("repi-swarm-llm-run evidence artifact writes", () => {
 		expect(repairCommands.every((command) => command.includes(`--cwd '${workspace}'`))).toBe(true);
 	});
 
+	it("requires proof-ready promoted claims for every covered route before full-spectrum promotion", () => {
+		const fakeRepiPath = join(fakeRoot, "repi");
+		writeFileSync(
+			fakeRepiPath,
+			`#!/usr/bin/env node\nconst prompt=process.argv.at(-1)||"";\nconst routeLine=(prompt.match(/^Route:.*$/m)||[""])[0];\nif (/Frontend \\/ JS reverse/.test(routeLine)) {\n  console.log(JSON.stringify({workerId:"worker-2",role:"reverser",claims:[{id:"js-weak",statement:"signature rebuild is only partially proven",evidence:["node rebuild.js exited 0 body hash sha256:${"56".repeat(32)}"],confidence:0.9,blockers:[]}],blockers:[],nextCommands:["node rebuild.js"]}, null, 2));\n} else {\n  console.log(JSON.stringify({workerId:"worker-1",role:"mapper",claims:[{id:"web-proof",statement:"web authz replay is proven",evidence:["curl /api/object/1 exited 0 HTTP 200 body hash sha256:${"78".repeat(32)}","negative control: anonymous replay returned HTTP 403"],confidence:0.9,blockers:[]}],blockers:[],nextCommands:["curl -i http://example.test/api/object/1"]}, null, 2));\n}\n`,
+		);
+		chmodSync(fakeRepiPath, 0o755);
+
+		const result = spawnSync(
+			process.execPath,
+			[
+				SWARM,
+				fakeRoot,
+				"run",
+				"https://example.test/api uses javascript signature",
+				"--route",
+				"web-api,js-reverse",
+				"--workers",
+				"2",
+				"--max-concurrency",
+				"1",
+				"--provider",
+				"kimchi",
+				"--model",
+				"kimi-k2.7",
+				"--cwd",
+				workspace,
+				"--timeout-ms",
+				"5000",
+				"--json",
+			],
+			{
+				encoding: "utf8",
+				env: {
+					...process.env,
+					REPI_CODING_AGENT_DIR: agentDir,
+				},
+				timeout: 10_000,
+			},
+		);
+		expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(1);
+		const report = JSON.parse(result.stdout) as {
+			ok: boolean;
+			mergeFailureReason: string;
+			merge: {
+				finalPromotionReady: boolean;
+				routeProofReady: boolean;
+				proofReadyRouteIds: string[];
+				missingProofRoutes: Array<{ id: string }>;
+				routeReadinessRows: Array<{
+					routeId: string;
+					proofReady: boolean;
+					promotedClaimIds: string[];
+					proofReadyPromotedClaimIds: string[];
+					missing: string[];
+				}>;
+				nextCommands: string[];
+			};
+		};
+		expect(report.ok).toBe(false);
+		expect(report.merge.finalPromotionReady).toBe(false);
+		expect(report.merge.routeProofReady).toBe(false);
+		expect(report.merge.proofReadyRouteIds).toEqual(["web-api"]);
+		expect(report.merge.missingProofRoutes.map((route) => route.id)).toEqual(["js-reverse"]);
+		expect(report.mergeFailureReason).toContain("route proof incomplete");
+		const jsRoute = report.merge.routeReadinessRows.find((row) => row.routeId === "js-reverse");
+		expect(jsRoute).toMatchObject({
+			proofReady: false,
+			promotedClaimIds: ["js-weak"],
+			proofReadyPromotedClaimIds: [],
+		});
+		expect(jsRoute?.missing).toContain("proof-ready promoted claim");
+		const repairCommand = report.merge.nextCommands.find((command) =>
+			command.includes("Close route-level proof gap for Frontend / JS reverse"),
+		);
+		expect(repairCommand).toContain("--route 'js-reverse'");
+		expect(repairCommand).toContain("--provider 'kimchi'");
+		expect(repairCommand).toContain("--model 'kimi-k2.7'");
+		expect(repairCommand).toContain(`--cwd '${workspace}'`);
+	});
+
 	it("turns cross-route worker handoffs into provider-preserving repair commands", () => {
 		const fakeRepiPath = join(fakeRoot, "repi");
 		writeFileSync(

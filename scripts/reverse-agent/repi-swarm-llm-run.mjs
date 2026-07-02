@@ -1477,6 +1477,7 @@ function swarmRunBaseCommand(plan) {
 function proofRepairCommand(plan, checklist) {
 	if (!checklist || checklist.proofReady) return undefined;
 	const route = checklist.route?.domain || checklist.route?.id || "Reverse/Pentest general";
+	const routeFlag = checklist.route?.id ? ` --route ${shellQuote(checklist.route.id)}` : "";
 	const prompt = [
 		`Close proof gaps for worker-${checklist.workerId} route ${route}.`,
 		`Missing: ${checklist.missing.join(", ") || "none"}.`,
@@ -1485,7 +1486,7 @@ function proofRepairCommand(plan, checklist) {
 		`Pull or apply these route technique hints where applicable: ${JSON.stringify(checklist.techniqueHints)}`,
 		"Return only JSON claims/evidence/blockers/nextCommands with concrete commands, paths, hashes, diffs/status, and negative controls.",
 	].join(" ");
-	return `${swarmRunBaseCommand(plan)} --workers 1 --roles verifier --prompt ${shellQuote(prompt)}`;
+	return `${swarmRunBaseCommand(plan)} --workers 1${routeFlag} --roles verifier --prompt ${shellQuote(prompt)}`;
 }
 
 function routeCoverageRepairCommand(plan, route) {
@@ -1497,6 +1498,22 @@ function routeCoverageRepairCommand(plan, route) {
 		`Pull or apply these route technique hints where applicable: ${JSON.stringify(route.techniqueHints || techniqueHintsFor(route))}`,
 		"Produce one promoted-quality claim with passive evidence, proof/replay evidence, and negative control or counter-evidence.",
 	].join(" ");
+	return `${swarmRunBaseCommand(plan)} --workers 1 --route ${shellQuote(route.id)} --roles solo --prompt ${shellQuote(prompt)}`;
+}
+
+function routeProofRepairCommand(plan, readiness) {
+	if (!readiness || readiness.proofReady || !readiness.route?.id) return undefined;
+	const route = readiness.route;
+	const prompt = [
+		`Close route-level proof gap for ${route.domain || route.id}.`,
+		`Missing: ${readiness.missing.join(", ") || "proof-ready promoted claim"}.`,
+		readiness.assignedWorkerIds.length ? `Previous assigned workers: ${readiness.assignedWorkerIds.join(", ")}.` : undefined,
+		readiness.promotedClaimIds.length ? `Existing promoted-but-not-route-ready claims: ${readiness.promotedClaimIds.join(", ")}.` : undefined,
+		`Use this proof kit: ${JSON.stringify(route.proofKit || proofKitFor(route))}`,
+		`Start from this command palette where applicable: ${JSON.stringify(route.commandPalette || commandPaletteFor(route))}`,
+		`Pull or apply these route technique hints where applicable: ${JSON.stringify(route.techniqueHints || techniqueHintsFor(route))}`,
+		"Produce one promoted-quality claim with passive evidence, proof/replay evidence, and negative control or counter-evidence for this exact route.",
+	].filter(Boolean).join(" ");
 	return `${swarmRunBaseCommand(plan)} --workers 1 --route ${shellQuote(route.id)} --roles solo --prompt ${shellQuote(prompt)}`;
 }
 
@@ -1593,6 +1610,76 @@ function conflictResolutionForClaim(claim, conflictRows) {
 	};
 }
 
+function normalizedRouteRow(route) {
+	if (!route) return undefined;
+	const id = String(route.id ?? route.routeId ?? "").trim();
+	if (!id) return undefined;
+	const profile = routeProfileById(id) || route;
+	return {
+		id,
+		domain: route.domain ?? profile.domain ?? id,
+		workflow: Array.isArray(route.workflow) ? route.workflow : Array.isArray(profile.workflow) ? profile.workflow : [],
+		proofKit: route.proofKit ?? proofKitFor(profile),
+		commandPalette: route.commandPalette ?? commandPaletteFor(profile),
+		techniqueHints: route.techniqueHints ?? techniqueHintsFor(profile),
+	};
+}
+
+function uniqueRouteRows(routes) {
+	const seen = new Set();
+	const rows = [];
+	for (const route of routes) {
+		const normalized = normalizedRouteRow(route);
+		if (!normalized || seen.has(normalized.id)) continue;
+		seen.add(normalized.id);
+		rows.push(normalized);
+	}
+	return rows;
+}
+
+function requiredRouteRows(plan, workersReport, routeCoverage) {
+	const candidates = uniqueRouteRows(Array.isArray(plan?.routeCandidates) ? plan.routeCandidates : []);
+	if (candidates.length) return candidates;
+	const covered = uniqueRouteRows(Array.isArray(routeCoverage?.covered) ? routeCoverage.covered : []);
+	if (covered.length) return covered;
+	const workerRoutes = uniqueRouteRows(workersReport.map((worker) => worker.route).filter(Boolean));
+	if (workerRoutes.length) return workerRoutes;
+	return uniqueRouteRows([plan?.route, fallbackRouteProfile]);
+}
+
+function buildRouteReadinessRows(plan, workersReport, proofChecklists, promotedClaims, proofReadyPromotedClaims, routeCoverage) {
+	const workerById = new Map(workersReport.map((worker) => [String(worker.workerId), worker]));
+	const checklistByWorkerId = new Map(proofChecklists.map((row) => [String(row.workerId), row]));
+	const proofReadyClaimIds = new Set(proofReadyPromotedClaims.map((claim) => claim.claimId));
+	return requiredRouteRows(plan, workersReport, routeCoverage).map((route) => {
+		const assignedWorkers = workersReport.filter((worker) => String(worker.route?.id ?? plan?.route?.id ?? "") === route.id);
+		const routePromotedClaims = promotedClaims.filter((claim) => {
+			const claimWorker = workerById.get(String(claim.workerId));
+			return String(claim.route?.id ?? claimWorker?.route?.id ?? "") === route.id;
+		});
+		const routeProofReadyPromotedClaims = routePromotedClaims.filter((claim) => proofReadyClaimIds.has(claim.claimId));
+		const proofReadyWorkerIds = assignedWorkers
+			.filter((worker) => checklistByWorkerId.get(String(worker.workerId))?.proofReady)
+			.map((worker) => worker.workerId);
+		const missing = [];
+		if (!assignedWorkers.length) missing.push("assigned worker");
+		if (!routePromotedClaims.length) missing.push("promoted claim");
+		if (!routeProofReadyPromotedClaims.length) missing.push("proof-ready promoted claim");
+		return {
+			route,
+			routeId: route.id,
+			domain: route.domain,
+			assignedWorkerIds: assignedWorkers.map((worker) => worker.workerId),
+			passedWorkerIds: assignedWorkers.filter((worker) => worker.status === "pass").map((worker) => worker.workerId),
+			proofReadyWorkerIds,
+			promotedClaimIds: routePromotedClaims.map((claim) => claim.claimId),
+			proofReadyPromotedClaimIds: routeProofReadyPromotedClaims.map((claim) => claim.claimId),
+			proofReady: routeProofReadyPromotedClaims.length > 0,
+			missing,
+		};
+	});
+}
+
 function buildMergeReport(evidenceRoot) {
 	const reportPath = join(evidenceRoot, "report.json");
 	const report = existsSync(reportPath) ? readJson(reportPath) : undefined;
@@ -1671,6 +1758,7 @@ function buildMergeReport(evidenceRoot) {
 				claimId,
 				workerId: worker.workerId,
 				role: worker.role ?? parsed?.role ?? "worker",
+				route: worker.route ?? null,
 				statement: redact(String(claim.statement ?? claim.title ?? "")),
 				evidence: evidence.map(redact).slice(0, 8),
 				confidence,
@@ -1723,6 +1811,14 @@ function buildMergeReport(evidenceRoot) {
 	const promotedClaims = claimRows.filter((claim) => claim.status === "promoted");
 	const proofReadyWorkerIds = new Set(proofChecklists.filter((row) => row.proofReady).map((row) => row.workerId));
 	const proofReadyPromotedClaims = promotedClaims.filter((claim) => proofReadyWorkerIds.has(claim.workerId));
+	const routeReadinessRows = buildRouteReadinessRows(plan, workersReport, proofChecklists, promotedClaims, proofReadyPromotedClaims, routeCoverage);
+	for (const readiness of routeReadinessRows.filter((row) => !row.proofReady && row.assignedWorkerIds.length > 0)) {
+		const command = routeProofRepairCommand(plan, readiness);
+		if (command) nextCommands.add(command);
+	}
+	const missingProofRoutes = routeReadinessRows.filter((row) => !row.proofReady).map((row) => row.route);
+	const proofReadyRouteIds = routeReadinessRows.filter((row) => row.proofReady).map((row) => row.routeId);
+	const routeProofReady = routeReadinessRows.length > 0 && missingProofRoutes.length === 0;
 	const routeCoverageReady = routeCoverage?.complete !== false;
 	const allWorkersPassed = workersReport.length > 0 && workersReport.every((worker) => worker.status === "pass");
 	const mergeReport = {
@@ -1747,6 +1843,10 @@ function buildMergeReport(evidenceRoot) {
 		routeHandoffs,
 		proofReadyPromotedClaims,
 		proofPromotionReady: proofReadyPromotedClaims.length > 0 && allWorkersPassed,
+		routeReadinessRows,
+		proofReadyRouteIds,
+		missingProofRoutes,
+		routeProofReady,
 		routeCoverage,
 		routeCoverageReady,
 		evidencePriorityDoctrine: plan?.evidencePriorityDoctrine ?? evidencePriorityDoctrine,
@@ -1754,7 +1854,7 @@ function buildMergeReport(evidenceRoot) {
 		nextCommands: [...nextCommands].slice(0, 24),
 		mergeDigest: sha256(JSON.stringify({ workers: workersReport.map((worker) => [worker.workerId, worker.status, worker.stdoutSha256]), promotedClaims, blockerRows, conflictRows, evidenceItemRows })),
 		ok: allWorkersPassed,
-		finalPromotionReady: proofReadyPromotedClaims.length > 0 && allWorkersPassed && routeCoverageReady,
+		finalPromotionReady: proofReadyPromotedClaims.length > 0 && allWorkersPassed && routeCoverageReady && routeProofReady,
 		narrativeOnlyBlocked: claimRows.length === 0 && observations.length > 0,
 	};
 	atomicWriteFile(join(evidenceRoot, "merge-report.json"), `${JSON.stringify(mergeReport, null, 2)}\n`, 0o600);
@@ -1857,7 +1957,16 @@ function buildStatus(ref) {
 		provider: report?.provider ?? plan?.provider,
 		model: report?.model ?? plan?.model,
 		workers: report?.workersReport?.map((worker) => ({ workerId: worker.workerId, role: worker.role, status: worker.status, exit: worker.exit, ms: worker.ms })) ?? plan?.workerPackets?.map((worker) => ({ workerId: worker.workerId, role: worker.role, status: "planned" })) ?? [],
-		merge: merge ? { ok: merge.ok, promotedClaims: merge.promotedClaims?.length ?? 0, narrativeOnlyBlocked: merge.narrativeOnlyBlocked, mergeDigest: merge.mergeDigest } : undefined,
+		merge: merge
+			? {
+					ok: merge.ok,
+					promotedClaims: merge.promotedClaims?.length ?? 0,
+					routeProofReady: merge.routeProofReady,
+					missingProofRoutes: merge.missingProofRoutes?.map((route) => route.id ?? route.routeId).filter(Boolean) ?? [],
+					narrativeOnlyBlocked: merge.narrativeOnlyBlocked,
+					mergeDigest: merge.mergeDigest,
+				}
+			: undefined,
 	};
 }
 
@@ -1891,7 +2000,7 @@ function printStatus(status) {
 	console.log(`runId=${status.runId} state=${status.state} target=${status.target ?? "none"}`);
 	console.log(`provider=${status.provider ?? "default"} model=${status.model ?? "default"}`);
 	for (const worker of status.workers) console.log(`- worker-${worker.workerId}/${worker.role ?? "worker"} status=${worker.status} exit=${worker.exit ?? "n/a"} ms=${worker.ms ?? "n/a"}`);
-	if (status.merge) console.log(`merge ok=${status.merge.ok} promotedClaims=${status.merge.promotedClaims} narrativeOnlyBlocked=${status.merge.narrativeOnlyBlocked}`);
+	if (status.merge) console.log(`merge ok=${status.merge.ok} promotedClaims=${status.merge.promotedClaims} routeProofReady=${status.merge.routeProofReady} missingProofRoutes=${status.merge.missingProofRoutes?.join(",") ?? ""} narrativeOnlyBlocked=${status.merge.narrativeOnlyBlocked}`);
 	console.log(`evidence=${status.evidenceRoot}`);
 }
 
@@ -1905,6 +2014,7 @@ function printMerge(merge) {
 	}
 	if (Array.isArray(merge.proofReadyPromotedClaims)) console.log(`proofReadyPromotedClaims=${merge.proofReadyPromotedClaims.length} proofPromotionReady=${merge.proofPromotionReady}`);
 	if (merge.routeCoverage) console.log(`routeCoverage=${merge.routeCoverage.coveredCount}/${merge.routeCoverage.routeCount} covered uncovered=${merge.routeCoverage.uncoveredCount}`);
+	if (Array.isArray(merge.routeReadinessRows)) console.log(`routeProofReady=${merge.routeProofReady} readyRoutes=${merge.proofReadyRouteIds?.length ?? 0}/${merge.routeReadinessRows.length} missing=${merge.missingProofRoutes?.map((route) => route.id).join(",") ?? ""}`);
 	for (const claim of merge.promotedClaims.slice(0, 8)) console.log(`- claim=${claim.claimId} worker=${claim.workerId}/${claim.role} conf=${claim.confidence} ${claim.statement}`);
 	if (merge.narrativeOnlyBlocked) console.log("narrativeOnlyBlocked=true: worker output lacked structured evidence-bearing claims; keep as observations.");
 	console.log(`evidence=${merge.evidenceRoot}`);
@@ -1998,6 +2108,8 @@ if (mode === "run" && (!merge.finalPromotionReady || rows.some((worker) => worke
 			: "one or more workers failed before producing promoted evidence"
 		: merge.routeCoverageReady === false
 			? "route coverage incomplete; run generated route repair commands"
+			: merge.routeProofReady === false
+				? `route proof incomplete; missing proof-ready route(s): ${(merge.missingProofRoutes ?? []).map((route) => route.id ?? route.routeId ?? route.domain).filter(Boolean).join(", ") || "unknown"}`
 			: merge.narrativeOnlyBlocked
 				? "narrative-only worker output lacked structured evidence-bearing claims"
 				: !merge.proofPromotionReady
