@@ -3083,24 +3083,35 @@ jobs:
 		expect(JSON.stringify(report)).not.toContain(secret);
 		expect(report.target.lane).toBe("firmware-iot");
 		expect(report.commands.map((row) => row.id)).toContain("firmware-quicklook");
+		expect(report.commands.map((row) => row.id)).toContain("firmware-extraction-verification");
 		expect(report.commands.map((row) => row.id)).toContain("firmware-attack-surface");
+		expect(report.commands.map((row) => row.id)).toContain("firmware-extraction-verifier-artifact");
 		expect(report.commands.map((row) => row.id)).toContain("firmware-extract-plan-artifact");
 		expect(report.summary.missingCritical).not.toContain("binwalk");
 		expect(report.summary.anchors).toContain("firmware quicklook anchors");
 		expect(report.summary.anchors).toContain("firmware structure anchors");
+		expect(report.summary.anchors).toContain("firmware extraction verifier anchors");
 		expect(report.nextQueue.some((command) => command.includes("firmware-quicklook.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("firmware-extraction-verification.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("firmware-extraction-verifier.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("firmware-attack-surface.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("extractionTargets"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("firmware-extract-plan.sh"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("TRX/uImage/SquashFS/UBI offsets"))).toBe(true);
 		const summaryPath = join(report.artifactDir, "firmware-quicklook.json");
+		const extractionVerificationPath = join(report.artifactDir, "firmware-extraction-verification.json");
 		const attackSurfacePath = join(report.artifactDir, "firmware-attack-surface.json");
+		const extractionVerifierPath = join(report.artifactDir, "firmware-extraction-verifier.py");
 		const planPath = join(report.artifactDir, "firmware-extract-plan.sh");
 		expect(existsSync(summaryPath)).toBe(true);
+		expect(existsSync(extractionVerificationPath)).toBe(true);
 		expect(existsSync(attackSurfacePath)).toBe(true);
+		expect(existsSync(extractionVerifierPath)).toBe(true);
 		expect(existsSync(planPath)).toBe(true);
 		expect(statSync(summaryPath).mode & 0o777).toBe(0o600);
+		expect(statSync(extractionVerificationPath).mode & 0o777).toBe(0o600);
 		expect(statSync(attackSurfacePath).mode & 0o777).toBe(0o600);
+		expect(statSync(extractionVerifierPath).mode & 0o777).toBe(0o700);
 		expect(statSync(planPath).mode & 0o777).toBe(0o700);
 		const summary = JSON.parse(readFileSync(summaryPath, "utf8")) as {
 			signatures: Array<{ name: string; offsets: number[] }>;
@@ -3138,9 +3149,73 @@ jobs:
 			risks: string[];
 		};
 		expect(JSON.stringify(summary)).not.toContain(secret);
+		const extractionVerification = JSON.parse(readFileSync(extractionVerificationPath, "utf8")) as {
+			proofReady: boolean;
+			stats: {
+				signaturesVerified: number;
+				rootfsCarvesVerified: number;
+				completeRootfsCarves: number;
+				negativeControlsPassed: number;
+			};
+			carveChecks: Array<{
+				target: { type: string; offset: number };
+				verified: boolean;
+				complete: boolean;
+				reason: string;
+			}>;
+			negativeControls: Array<{ controlType: string; passed: boolean }>;
+			claimLedger: Array<{ claimType: string; verdict: string }>;
+			composedPaths: Array<{ claimType: string; verdict: string; blockers?: string[] }>;
+			repairQueue: Array<{ blocker: string }>;
+		};
+		expect(JSON.stringify(extractionVerification)).not.toContain(secret);
+		expect(extractionVerification.proofReady).toBe(true);
+		expect(extractionVerification.stats.signaturesVerified).toBeGreaterThanOrEqual(3);
+		expect(extractionVerification.stats.rootfsCarvesVerified).toBeGreaterThanOrEqual(2);
+		expect(extractionVerification.stats.completeRootfsCarves).toBeGreaterThanOrEqual(1);
+		expect(extractionVerification.stats.negativeControlsPassed).toBeGreaterThanOrEqual(1);
+		expect(
+			extractionVerification.carveChecks.some(
+				(row) =>
+					row.target.type === "squashfs-rootfs" &&
+					row.target.offset === 0x40 &&
+					row.verified &&
+					!row.complete &&
+					row.reason === "carve-header-match-but-truncated",
+			),
+		).toBe(true);
+		expect(extractionVerification.negativeControls.some((row) => row.passed)).toBe(true);
+		expect(
+			extractionVerification.claimLedger.some(
+				(claim) => claim.claimType === "firmware-rootfs-carve-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			extractionVerification.claimLedger.some(
+				(claim) => claim.claimType === "firmware-extraction-negative-control-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			extractionVerification.composedPaths.some(
+				(path) => path.claimType === "firmware-rootfs-carve-proof-path" && path.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(extractionVerification.repairQueue.some((row) => row.blocker === "rootfs-carve-truncated")).toBe(true);
+		const extractionVerifierSelfTest = spawnSync("python3", [extractionVerifierPath, "--self-test"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(
+			extractionVerifierSelfTest.status,
+			`${extractionVerifierSelfTest.stderr}\n${extractionVerifierSelfTest.stdout}`,
+		).toBe(0);
 		const attackSurface = JSON.parse(readFileSync(attackSurfacePath, "utf8")) as {
 			proofReady: boolean;
 			extractionTargets: Array<{ type: string; offset: number; size?: number; command: string }>;
+			extractionVerificationStats: {
+				rootfsCarvesVerified: number;
+				negativeControlsPassed: number;
+			};
 			claimLedger: Array<{ claimType: string; verdict: string; sourceBinding: Record<string, unknown> }>;
 			composedPaths: Array<{ claimType: string; verdict: string }>;
 			promotionReport: { promotedClaims: Array<{ claimType: string }> };
@@ -3148,6 +3223,8 @@ jobs:
 		};
 		expect(JSON.stringify(attackSurface)).not.toContain(secret);
 		expect(attackSurface.proofReady).toBe(true);
+		expect(attackSurface.extractionVerificationStats.rootfsCarvesVerified).toBeGreaterThanOrEqual(2);
+		expect(attackSurface.extractionVerificationStats.negativeControlsPassed).toBeGreaterThanOrEqual(1);
 		expect(attackSurface.extractionTargets.some((row) => row.type === "squashfs-rootfs" && row.offset === 0x40)).toBe(
 			true,
 		);
@@ -3172,6 +3249,16 @@ jobs:
 		expect(
 			attackSurface.claimLedger.some(
 				(claim) => claim.claimType === "firmware-management-credential-pivot" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			attackSurface.claimLedger.some(
+				(claim) => claim.claimType === "firmware-rootfs-carve-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			attackSurface.composedPaths.some(
+				(path) => path.claimType === "firmware-rootfs-carve-proof-path" && path.verdict === "promoted",
 			),
 		).toBe(true);
 		expect(

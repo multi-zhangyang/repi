@@ -599,7 +599,9 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	}
 	if (targetInfo.lane === "firmware-iot") {
 		add("firmware-quicklook.json", "firmware structure/string/signature quicklook output");
+		add("firmware-extraction-verification.json", "firmware signature/rootfs carve verifier output");
 		add("firmware-attack-surface.json", "firmware rootfs/service/credential claim ledger");
+		add("firmware-extraction-verifier.py", "firmware signature/rootfs carve verification harness", 0o700);
 		add("firmware-extract-plan.sh", "firmware extraction harness", 0o700);
 	}
 	if (targetInfo.lane === "crypto-stego") {
@@ -640,7 +642,7 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 	if (targetInfo.lane === "pcap-dfir") requireAny("pcap-flow-summary", ["pcap-flow-claims.json", "pcap-flow-summary.json"], "PCAP targets need parsed flow/stream evidence");
 	if (targetInfo.lane === "crypto-stego") requireAny("crypto-transform-solver", ["crypto-stego-transform-claims.json", "crypto-stego-solver.py", "crypto-stego-media-quicklook.json"], "crypto/stego targets need a transform-chain verifier or media structure proof");
 	if (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios") requireAny("mobile-runtime-hook", ["mobile-attack-surface-claims.json", "mobile-frida-hooks.js", "mobile-archive-summary.json"], "mobile targets need archive/runtime hook anchors");
-	if (targetInfo.lane === "firmware-iot") requireAny("firmware-extract-plan", ["firmware-attack-surface.json", "firmware-extract-plan.sh", "firmware-quicklook.json"], "firmware targets need structure/extraction anchors");
+	if (targetInfo.lane === "firmware-iot") requireAny("firmware-extract-plan", ["firmware-attack-surface.json", "firmware-extraction-verification.json", "firmware-extraction-verifier.py", "firmware-extract-plan.sh", "firmware-quicklook.json"], "firmware targets need structure/extraction verifier anchors");
 	if (targetInfo.lane === "memory-forensics") requireAny("memory-triage-plan", ["memory-evidence-claims.json", "memory-triage-plan.sh", "memory-quicklook.json"], "memory targets need triage/correlation anchors");
 	if (targetInfo.lane === "windows-ad") requireAny("windows-ad-triage-plan", ["windows-ad-triage-plan.sh", "windows-ad-quicklook.json"], "identity targets need AD graph/credential triage anchors");
 	if (targetInfo.lane === "malware") requireAny("malware-triage-plan", ["malware-behavior-claims.json", "malware-config-verification.json", "malware-config-verifier.py", "malware-triage-plan.sh", "malware-quicklook.json"], "malware targets need IOC/capability triage and verifier anchors");
@@ -705,6 +707,7 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 			["crypto-stego-solver-pycompile", "crypto-stego-solver.py", "syntax-check crypto/stego solver harness"],
 			["agent-boundary-payloads-pycompile", "agent-boundary-payloads.py", "syntax-check agent boundary payload harness"],
 			["malware-config-verifier-pycompile", "malware-config-verifier.py", "syntax-check malware config verifier"],
+			["firmware-extraction-verifier-pycompile", "firmware-extraction-verifier.py", "syntax-check firmware extraction verifier"],
 		]) {
 			const path = proofArtifactPath(artifactDir, relPath);
 			if (existsSync(path)) add({ id, command: python, args: ["-m", "py_compile", path], reason });
@@ -713,6 +716,8 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 		if (existsSync(agentBoundaryPayloads)) add({ id: "agent-boundary-payloads-self-test", command: python, args: [agentBoundaryPayloads, "--self-test"], reason: "execute agent boundary replay harness self-test with unsafe/control payloads" });
 		const malwareVerifier = proofArtifactPath(artifactDir, "malware-config-verifier.py");
 		if (existsSync(malwareVerifier)) add({ id: "malware-config-verifier-self-test", command: python, args: [malwareVerifier, "--self-test"], reason: "execute malware config verifier self-test with offset/hash negative controls" });
+		const firmwareVerifier = proofArtifactPath(artifactDir, "firmware-extraction-verifier.py");
+		if (existsSync(firmwareVerifier)) add({ id: "firmware-extraction-verifier-self-test", command: python, args: [firmwareVerifier, "--self-test"], reason: "execute firmware extraction verifier self-test with signature/carve negative controls" });
 	}
 	if (available.has("bash")) {
 		for (const [id, relPath, reason] of [
@@ -909,6 +914,7 @@ const unifiedProofGraphArtifactCandidates = [
 	"windows-ad-attack-paths.json",
 	"malware-config-verification.json",
 	"malware-behavior-claims.json",
+	"firmware-extraction-verification.json",
 	"firmware-attack-surface.json",
 	"agent-boundary-claim-promotion.json",
 	"agent-boundary-repair-queue.json",
@@ -959,6 +965,7 @@ function proofGraphRepairPriority(blocker) {
 	if (/missing-base-url|no-live-response|no-status|service|unreachable|endpoint/i.test(blocker)) return "high";
 	if (/missing-session|credential|authorization|cookie|token|principal/i.test(blocker)) return "high";
 	if (/missing-(?:ioc-offset|config-extraction|overlay-carve|sample-hash|import-parser|network-ioc-negative-control)/i.test(blocker)) return "high";
+	if (/missing-(?:firmware-image-hash|signature-offset|rootfs-carve|firmware-extraction-negative-control)|rootfs-carve-truncated/i.test(blocker)) return "high";
 	if (/no-differential|object-mutation|baseline|negative-control|oracle/i.test(blocker)) return "medium";
 	if (/missing-source|missing-.*map|missing-.*plan|missing-.*harness/i.test(blocker)) return "medium";
 	return "normal";
@@ -978,6 +985,11 @@ function proofGraphRepairAction(blocker) {
 		"missing-config-extraction-oracle": "Bind decoded malware config fields to a source offset/hash oracle before promotion.",
 		"missing-overlay-carve-verifier": "Carve overlay bytes by offset/size and match SHA-256 before treating it as payload/config proof.",
 		"missing-network-ioc-negative-control": "Add mismatch or mutated-offset controls so IOC matches also prove rejection behavior.",
+		"missing-firmware-image-hash-verification": "Rerun firmware-extraction-verifier.py against original bytes and require size/SHA-256 equality.",
+		"missing-signature-offset-verification": "Verify TRX/uImage/SquashFS/UBI signatures at exact offsets before carving.",
+		"missing-rootfs-carve-verifier": "Produce a rootfs carve with offset, bounded size, header/magic, and SHA-256.",
+		"rootfs-carve-truncated": "Acquire complete firmware/rootfs bytes or correct the requested carve size before full extraction claims.",
+		"missing-firmware-extraction-negative-control": "Add mutated image/offset controls so bad firmware offsets and bytes are rejected.",
 	};
 	return actions[blocker] ?? "Drain this blocker by collecting source-bound runtime evidence and rerun the relevant harness.";
 }
@@ -7490,7 +7502,270 @@ function firmwareQuicklookSummary(target) {
 	};
 }
 
-function firmwareAttackSurfaceClaims(summary) {
+function firmwareExtractionTargetsFromSummary(summary) {
+	const structures = summary.structures ?? {};
+	const extractionTargets = [];
+	const push = (target) => {
+		const key = `${target.type}:${target.offset}:${target.size ?? ""}`;
+		if (extractionTargets.some((row) => `${row.type}:${row.offset}:${row.size ?? ""}` === key)) return;
+		extractionTargets.push({ ...target });
+	};
+	for (const row of structures.trx ?? []) {
+		for (const partition of row.partitions ?? []) {
+			push({ type: "trx-partition", offset: partition.absoluteOffset, size: partition.size, containerOffset: row.offset });
+		}
+	}
+	for (const row of structures.squashfs ?? []) {
+		push({ type: "squashfs-rootfs", offset: row.offset, size: row.bytesUsed, endian: row.endian, compressionName: row.compressionName });
+	}
+	for (const row of structures.ubi ?? []) {
+		push({ type: "ubi-volume", offset: row.offset, vidHeaderOffset: row.vidHeaderOffset, dataOffset: row.dataOffset });
+	}
+	for (const row of structures.uImage ?? []) {
+		push({ type: "uimage-payload", offset: row.offset + 64, size: row.size, containerOffset: row.offset, arch: row.arch, compression: row.compression });
+	}
+	return extractionTargets;
+}
+
+function firmwareSignatureMagic(name) {
+	const map = {
+		uImage: Buffer.from([0x27, 0x05, 0x19, 0x56]),
+		TRX: Buffer.from("HDR0", "ascii"),
+		UBI: Buffer.from("UBI#", "ascii"),
+		"SquashFS-little": Buffer.from("hsqs", "ascii"),
+		"SquashFS-big": Buffer.from("sqsh", "ascii"),
+		CramFS: Buffer.from([0x45, 0x3d, 0xcd, 0x28]),
+		gzip: Buffer.from([0x1f, 0x8b, 0x08]),
+		xz: Buffer.from([0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]),
+		ZIP: Buffer.from("PK\u0003\u0004", "binary"),
+		ELF: Buffer.from([0x7f, 0x45, 0x4c, 0x46]),
+	};
+	return map[name] ?? null;
+}
+
+function firmwareExpectedMagicForTarget(target) {
+	if (target.type === "squashfs-rootfs") return target.endian === "big" ? firmwareSignatureMagic("SquashFS-big") : firmwareSignatureMagic("SquashFS-little");
+	if (target.type === "ubi-volume") return firmwareSignatureMagic("UBI");
+	if (target.type === "trx-partition" || target.type === "uimage-payload") return null;
+	return null;
+}
+
+function firmwareMagicAt(data, offset) {
+	for (const name of ["SquashFS-little", "SquashFS-big", "UBI", "uImage", "TRX", "CramFS", "gzip", "xz", "ZIP", "ELF"]) {
+		const magic = firmwareSignatureMagic(name);
+		if (magic && offset >= 0 && offset + magic.length <= data.length && data.subarray(offset, offset + magic.length).equals(magic)) return name;
+	}
+	return null;
+}
+
+function firmwareExtractionVerificationSummary(target, summary) {
+	const data = readFileSync(target);
+	const imageIdentity = {
+		size: data.length,
+		sha256: bufferSha256(data),
+		headerHex: data.subarray(0, 16).toString("hex"),
+		verified: data.length === summary.size && bufferSha256(data) === summary.sha256,
+	};
+	if (data.length) {
+		const mutated = Buffer.from(data);
+		mutated[0] ^= 0xff;
+		const mutatedSha256 = bufferSha256(mutated);
+		imageIdentity.negativeControl = {
+			controlType: "firmware-image-byte-mutation-rejection",
+			mutatedSha256,
+			passed: mutatedSha256 !== summary.sha256,
+		};
+	}
+	const signatureChecks = [];
+	for (const signature of summary.signatures ?? []) {
+		const magic = firmwareSignatureMagic(signature.name);
+		for (const offset of signature.offsets ?? []) {
+			let verified = false;
+			let reason = "missing-magic";
+			let actual = {};
+			let negativeControl = null;
+			if (magic && offset >= 0 && offset + magic.length <= data.length) {
+				const chunk = data.subarray(offset, offset + magic.length);
+				actual = { magicHex: chunk.toString("hex"), length: chunk.length, sha256: bufferSha256(chunk) };
+				verified = chunk.equals(magic);
+				reason = verified ? "signature-magic-match" : "signature-magic-mismatch";
+				const mutatedOffset = offset + 1 + magic.length <= data.length ? offset + 1 : offset > 0 ? offset - 1 : null;
+				if (mutatedOffset != null) {
+					const mutated = data.subarray(mutatedOffset, mutatedOffset + magic.length);
+					negativeControl = {
+						controlType: "signature-mutated-offset-rejection",
+						mutatedOffset,
+						mutatedSha256: bufferSha256(mutated),
+						passed: !mutated.equals(magic),
+					};
+				}
+			} else if (magic) {
+				reason = "signature-offset-out-of-range";
+			}
+			signatureChecks.push({ name: signature.name, offset, expectedMagicHex: magic?.toString("hex") ?? null, actual, verified, reason, negativeControl });
+		}
+	}
+	const extractionTargets = firmwareExtractionTargetsFromSummary(summary);
+	const carveChecks = [];
+	for (const extractionTarget of extractionTargets) {
+		const offset = Number(extractionTarget.offset);
+		const requestedSize = Number(extractionTarget.size ?? (data.length - offset));
+		let verified = false;
+		let complete = false;
+		let reason = "target-out-of-range";
+		let actual = {};
+		let negativeControl = null;
+		if (Number.isFinite(offset) && offset >= 0 && offset < data.length) {
+			const boundedSize = Number.isFinite(requestedSize) && requestedSize > 0 ? Math.min(requestedSize, data.length - offset) : data.length - offset;
+			const carved = data.subarray(offset, offset + boundedSize);
+			const expectedMagic = firmwareExpectedMagicForTarget(extractionTarget);
+			const observedMagic = firmwareMagicAt(data, offset);
+			complete = Number.isFinite(requestedSize) && requestedSize > 0 ? offset + requestedSize <= data.length : true;
+			actual = {
+				offset,
+				requestedSize: Number.isFinite(requestedSize) && requestedSize > 0 ? requestedSize : null,
+				carvedSize: carved.length,
+				sha256: bufferSha256(carved),
+				headerHex: carved.subarray(0, 16).toString("hex"),
+				observedMagic,
+				complete,
+			};
+			verified = expectedMagic ? carved.subarray(0, expectedMagic.length).equals(expectedMagic) : carved.length > 0;
+			reason = verified ? (complete ? "carve-offset-size-hash-match" : "carve-header-match-but-truncated") : "carve-header-mismatch";
+			const mutatedOffset = offset + 1 + Math.min(carved.length, 16) <= data.length ? offset + 1 : offset > 0 ? offset - 1 : null;
+			if (mutatedOffset != null) {
+				const mutated = data.subarray(mutatedOffset, mutatedOffset + Math.min(carved.length, 64));
+				negativeControl = {
+					controlType: "carve-mutated-offset-rejection",
+					mutatedOffset,
+					mutatedSha256: bufferSha256(mutated),
+					passed: bufferSha256(mutated) !== actual.sha256,
+				};
+			}
+		}
+		carveChecks.push({ target: extractionTarget, actual, verified, complete, reason, negativeControl });
+	}
+	const passedControls = [imageIdentity.negativeControl, ...signatureChecks.map((row) => row.negativeControl), ...carveChecks.map((row) => row.negativeControl)].filter((row) => row?.passed);
+	const claimLedger = [];
+	const composedPaths = [];
+	const addClaim = (claim) => claimLedger.push({ verdict: "promoted", confidence: 0.76, blockers: [], ...claim });
+	if (imageIdentity.verified) {
+		addClaim({
+			id: "firmware-image-hash-verification-" + shortHash(summary.sha256),
+			claimType: "firmware-image-hash-verification-proof",
+			sourceBinding: { artifact: "firmware-extraction-verification.json" },
+			evidenceBinding: { size: imageIdentity.size, sha256: imageIdentity.sha256, headerHex: imageIdentity.headerHex },
+			statement: "Verifier re-read the firmware image and matched size/SHA-256 against firmware quicklook.",
+			confidence: 0.9,
+			rerunCommand: "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json",
+		});
+	}
+	const verifiedSignatures = signatureChecks.filter((row) => row.verified);
+	if (verifiedSignatures.length) {
+		addClaim({
+			id: "firmware-signature-offset-verification-" + shortHash(verifiedSignatures.map((row) => `${row.name}:${row.offset}`).join("|")),
+			claimType: "firmware-signature-offset-verification-proof",
+			sourceBinding: { artifact: "firmware-extraction-verification.json", offsets: verifiedSignatures.map((row) => ({ name: row.name, offset: row.offset })) },
+			evidenceBinding: { verifiedSignatures: verifiedSignatures.map((row) => ({ name: row.name, offset: row.offset, magicHex: row.expectedMagicHex })) },
+			statement: "Verifier matched firmware container/rootfs signatures at exact offsets.",
+			confidence: 0.86,
+			rerunCommand: "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json",
+		});
+	}
+	const verifiedRootfsCarves = carveChecks.filter((row) => row.verified && /squashfs-rootfs|ubi-volume/.test(row.target?.type));
+	if (verifiedRootfsCarves.length) {
+		addClaim({
+			id: "firmware-rootfs-carve-proof-" + shortHash(verifiedRootfsCarves.map((row) => `${row.target.type}:${row.target.offset}:${row.actual.sha256}`).join("|")),
+			claimType: "firmware-rootfs-carve-proof",
+			sourceBinding: { artifact: "firmware-extraction-verification.json", carves: verifiedRootfsCarves.map((row) => ({ type: row.target.type, offset: row.target.offset, size: row.target.size ?? null })) },
+			evidenceBinding: { carves: verifiedRootfsCarves.map((row) => ({ type: row.target.type, offset: row.target.offset, requestedSize: row.actual.requestedSize, carvedSize: row.actual.carvedSize, sha256: row.actual.sha256, observedMagic: row.actual.observedMagic, complete: row.complete })) },
+			statement: "Verifier carved rootfs candidates by offset and bound each carve to a header, bounded size, SHA-256, and completeness flag.",
+			confidence: verifiedRootfsCarves.some((row) => row.complete) ? 0.9 : 0.76,
+			rerunCommand: "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json",
+		});
+	}
+	if (passedControls.length) {
+		addClaim({
+			id: "firmware-extraction-negative-control-" + shortHash(passedControls.map((row) => `${row.controlType}:${row.mutatedSha256}`).join("|")),
+			claimType: "firmware-extraction-negative-control-proof",
+			sourceBinding: { artifact: "firmware-extraction-verification.json" },
+			evidenceBinding: { passedControls },
+			statement: "Verifier ran mutation controls proving shifted offsets or mutated images do not share source hashes/magic.",
+			confidence: 0.84,
+			rerunCommand: "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json",
+		});
+	}
+	const imageClaim = claimLedger.find((claim) => claim.claimType === "firmware-image-hash-verification-proof");
+	const signatureClaim = claimLedger.find((claim) => claim.claimType === "firmware-signature-offset-verification-proof");
+	const rootfsClaim = claimLedger.find((claim) => claim.claimType === "firmware-rootfs-carve-proof");
+	const controlClaim = claimLedger.find((claim) => claim.claimType === "firmware-extraction-negative-control-proof");
+	if (imageClaim && signatureClaim && rootfsClaim && controlClaim) {
+		const segments = [imageClaim, signatureClaim, rootfsClaim, controlClaim];
+		const composed = {
+			id: "firmware-rootfs-carve-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "firmware-rootfs-carve-proof-path",
+			sourceBinding: { segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: claim.sourceBinding?.artifact })) },
+			evidenceBinding: {
+				imageSha256: summary.sha256,
+				rootfsCarves: verifiedRootfsCarves.map((row) => ({ type: row.target.type, offset: row.target.offset, complete: row.complete, sha256: row.actual.sha256 })),
+				hasCompleteRootfsCarve: verifiedRootfsCarves.some((row) => row.complete),
+				hasNegativeControl: true,
+			},
+			statement: "Firmware verification composes image identity, signature offsets, rootfs carve hashes, and mutation controls into a rerunnable extraction proof path.",
+			verdict: "promoted",
+			confidence: verifiedRootfsCarves.some((row) => row.complete) ? 0.88 : 0.78,
+			blockers: verifiedRootfsCarves.some((row) => !row.complete) ? ["rootfs-carve-truncated"] : [],
+			rerunCommand: "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json",
+		};
+		claimLedger.push(composed);
+		composedPaths.push(composed);
+	}
+	const blockers = [];
+	if (!imageIdentity.verified) blockers.push("missing-firmware-image-hash-verification");
+	if (!verifiedSignatures.length) blockers.push("missing-signature-offset-verification");
+	if (!verifiedRootfsCarves.length) blockers.push("missing-rootfs-carve-verifier");
+	if (verifiedRootfsCarves.some((row) => !row.complete)) blockers.push("rootfs-carve-truncated");
+	if (!passedControls.length) blockers.push("missing-firmware-extraction-negative-control");
+	const repairActions = {
+		"missing-firmware-image-hash-verification": "Rerun the verifier against the original firmware image and require size/SHA-256 equality.",
+		"missing-signature-offset-verification": "Verify each TRX/uImage/SquashFS/UBI signature by exact offset and magic bytes before carving.",
+		"missing-rootfs-carve-verifier": "Create at least one source-bound rootfs carve with offset, bounded size, header, and SHA-256.",
+		"rootfs-carve-truncated": "Acquire the complete firmware/rootfs bytes or adjust the carve size before claiming a full filesystem extraction.",
+		"missing-firmware-extraction-negative-control": "Add mutated image/offset controls so incorrect offsets or bytes are rejected by the verifier.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "firmware-extraction-verification-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect verifier-bound firmware extraction evidence and rerun the verifier.",
+		rerunCommand: "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json",
+	}));
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	return {
+		kind: "repi-firmware-extraction-verification",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		target: redact(target),
+		proofReady: promotedClaims.length > 0,
+		imageIdentity,
+		signatureChecks,
+		extractionTargets,
+		carveChecks,
+		negativeControls: passedControls,
+		stats: {
+			signaturesVerified: verifiedSignatures.length,
+			rootfsCarvesVerified: verifiedRootfsCarves.length,
+			completeRootfsCarves: verifiedRootfsCarves.filter((row) => row.complete).length,
+			negativeControlsPassed: passedControls.length,
+		},
+		claimLedger,
+		composedPaths,
+		promotionReport: { proofReady: promotedClaims.length > 0, promotedClaims, blockers },
+		repairQueue,
+	};
+}
+
+
+function firmwareAttackSurfaceClaims(summary, verification) {
 	const structures = summary.structures ?? {};
 	const signals = summary.stringScan?.signals ?? {};
 	const claimLedger = [];
@@ -7693,14 +7968,42 @@ function firmwareAttackSurfaceClaims(summary) {
 			rerunCommand: "cat firmware-quicklook.json | jq '.stringScan.signals.urls'",
 		});
 	}
+	for (const claim of verification?.claimLedger ?? []) {
+		if (claim.verdict !== "promoted") continue;
+		addClaim({
+			...claim,
+			id: claim.id || "firmware-verification-claim-" + shortHash(JSON.stringify(claim)),
+			sourceBinding: {
+				artifact: "firmware-extraction-verification.json",
+				...(claim.sourceBinding ?? {}),
+			},
+			rerunCommand: claim.rerunCommand ?? "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json",
+		});
+	}
 	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
 	const credentialClaim = promotedClaims.find((claim) => claim.claimType === "firmware-hardcoded-credential");
 	const serviceClaim = promotedClaims.find((claim) => claim.claimType === "firmware-exposed-management-surface");
 	const sensitivePathClaim = promotedClaims.find((claim) => claim.claimType === "firmware-sensitive-filesystem-path");
 	const rootfsClaim = promotedClaims.find((claim) => claim.claimType === "firmware-rootfs-extraction-target");
+	const rootfsVerifierClaim = promotedClaims.find((claim) => claim.claimType === "firmware-rootfs-carve-proof");
+	const extractionNegativeControlClaim = promotedClaims.find((claim) => claim.claimType === "firmware-extraction-negative-control-proof");
 	const composedPaths = [];
+	for (const path of verification?.composedPaths ?? []) {
+		const composed = {
+			...path,
+			id: path.id || "firmware-verification-path-" + shortHash(JSON.stringify(path)),
+			sourceBinding: {
+				artifact: "firmware-extraction-verification.json",
+				...(path.sourceBinding ?? {}),
+			},
+			rerunCommand: path.rerunCommand ?? "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json",
+		};
+		claimLedger.push(composed);
+		promotedClaims.push(composed);
+		composedPaths.push(composed);
+	}
 	if (credentialClaim && (serviceClaim || sensitivePathClaim)) {
-		const segments = [rootfsClaim, credentialClaim, serviceClaim, sensitivePathClaim].filter(Boolean);
+		const segments = [rootfsClaim, rootfsVerifierClaim, credentialClaim, serviceClaim, sensitivePathClaim, extractionNegativeControlClaim].filter(Boolean);
 		const composed = {
 			id: "firmware-management-credential-pivot-" + shortHash(segments.map((claim) => claim.id).join(">")),
 			claimType: "firmware-management-credential-pivot",
@@ -7713,13 +8016,15 @@ function firmwareAttackSurfaceClaims(summary) {
 			},
 			evidenceBinding: {
 				hasRootfsTarget: Boolean(rootfsClaim),
+				hasRootfsVerifier: Boolean(rootfsVerifierClaim),
 				hasCredential: true,
 				hasManagementService: Boolean(serviceClaim),
 				hasSensitivePath: Boolean(sensitivePathClaim),
+				hasNegativeControl: Boolean(extractionNegativeControlClaim),
 			},
-			statement: "Firmware evidence composes credential material with a management service/path, yielding a concrete rootfs triage pivot.",
+			statement: "Firmware evidence composes credential material, management service/path, rootfs carve verifier output, and extraction negative controls into a concrete triage pivot.",
 			verdict: "promoted",
-			confidence: rootfsClaim ? 0.82 : 0.74,
+			confidence: rootfsVerifierClaim && extractionNegativeControlClaim ? 0.86 : rootfsClaim ? 0.82 : 0.74,
 			blockers: [],
 			rerunCommand: "cat firmware-attack-surface.json | jq '.composedPaths'",
 		};
@@ -7733,25 +8038,36 @@ function firmwareAttackSurfaceClaims(summary) {
 	if (!serviceClaim) blockers.push("missing-management-service");
 	if (!(structures.uImage ?? []).length) blockers.push("missing-emulation-entrypoint");
 	if (!extractionTargets.length) blockers.push("missing-extraction-target");
+	for (const blocker of verification?.promotionReport?.blockers ?? []) {
+		if (!blockers.includes(blocker)) blockers.push(blocker);
+	}
 	const repairActions = {
 		"missing-rootfs-signature": "Run binwalk/unblob/deeper magic scans or carve nested containers until a root filesystem header is source-bound.",
 		"missing-credential-signal": "Scan extracted rootfs configs, NVRAM defaults, web assets, and init scripts for credential assignments.",
 		"missing-management-service": "Map init scripts and web roots to management daemons or CGI handlers before exploitation.",
 		"missing-emulation-entrypoint": "Bind architecture, kernel/uImage header, or init entrypoint before QEMU/chroot smoke testing.",
 		"missing-extraction-target": "Collect at least one carve target with offset/size before claiming rootfs extraction readiness.",
+		"missing-firmware-image-hash-verification": "Rerun firmware-extraction-verifier.py against original bytes and require size/SHA-256 equality.",
+		"missing-signature-offset-verification": "Bind TRX/uImage/SquashFS/UBI signature claims to exact offset and magic-byte checks.",
+		"missing-rootfs-carve-verifier": "Produce a rootfs carve record with offset, bounded size, header/magic, and SHA-256.",
+		"rootfs-carve-truncated": "Acquire complete firmware/rootfs bytes or correct the carve size before claiming a full filesystem extraction.",
+		"missing-firmware-extraction-negative-control": "Add mutated image/offset controls so bad offsets and byte changes are rejected.",
 	};
 	const repairQueue = blockers.map((blocker) => ({
 		id: "firmware-attack-surface-" + blocker,
 		blocker,
 		action: repairActions[blocker] ?? "Collect source-bound firmware evidence and rerun attack-surface claim promotion.",
-		rerunCommand: "repi engage <firmware-image> --json",
+		rerunCommand: /^missing-(?:firmware-image-hash|signature-offset|rootfs-carve|firmware-extraction-negative-control)|rootfs-carve-truncated/.test(blocker)
+			? "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json"
+			: "repi engage <firmware-image> --json",
 	}));
 	return {
 		kind: "repi-firmware-attack-surface",
-		schemaVersion: 1,
+		schemaVersion: 2,
 		generatedAt: new Date().toISOString(),
 		proofReady: promotedClaims.length > 0,
 		extractionTargets,
+		extractionVerificationStats: verification?.stats ?? null,
 		claimLedger,
 		composedPaths,
 		promotionReport: {
@@ -7762,6 +8078,196 @@ function firmwareAttackSurfaceClaims(summary) {
 		repairQueue,
 	};
 }
+
+function firmwareExtractionVerifierSource() {
+	return String.raw`#!/usr/bin/env python3
+import argparse
+import hashlib
+import json
+import os
+import sys
+import tempfile
+
+MAGICS = {
+    "uImage": bytes([0x27, 0x05, 0x19, 0x56]),
+    "TRX": b"HDR0",
+    "UBI": b"UBI#",
+    "SquashFS-little": b"hsqs",
+    "SquashFS-big": b"sqsh",
+    "CramFS": bytes([0x45, 0x3d, 0xcd, 0x28]),
+    "gzip": bytes([0x1F, 0x8B, 0x08]),
+    "xz": bytes([0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00]),
+    "ZIP": b"PK\x03\x04",
+    "ELF": bytes([0x7F, 0x45, 0x4C, 0x46]),
+}
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def expected_magic(target):
+    if target.get("type") == "squashfs-rootfs":
+        return MAGICS["SquashFS-big" if target.get("endian") == "big" else "SquashFS-little"]
+    if target.get("type") == "ubi-volume":
+        return MAGICS["UBI"]
+    return None
+
+
+def magic_at(data, offset):
+    for name in ("SquashFS-little", "SquashFS-big", "UBI", "uImage", "TRX", "CramFS", "gzip", "xz", "ZIP", "ELF"):
+        magic = MAGICS[name]
+        if offset >= 0 and offset + len(magic) <= len(data) and data[offset:offset + len(magic)] == magic:
+            return name
+    return None
+
+
+def extraction_targets(summary):
+    structures = summary.get("structures") or {}
+    rows = []
+    seen = set()
+    def push(row):
+        key = (row.get("type"), row.get("offset"), row.get("size"))
+        if key not in seen:
+            seen.add(key)
+            rows.append(row)
+    for trx in structures.get("trx") or []:
+        for part in trx.get("partitions") or []:
+            push({"type": "trx-partition", "offset": part.get("absoluteOffset"), "size": part.get("size"), "containerOffset": trx.get("offset")})
+    for sq in structures.get("squashfs") or []:
+        push({"type": "squashfs-rootfs", "offset": sq.get("offset"), "size": sq.get("bytesUsed"), "endian": sq.get("endian"), "compressionName": sq.get("compressionName")})
+    for ubi in structures.get("ubi") or []:
+        push({"type": "ubi-volume", "offset": ubi.get("offset"), "vidHeaderOffset": ubi.get("vidHeaderOffset"), "dataOffset": ubi.get("dataOffset")})
+    for ui in structures.get("uImage") or []:
+        push({"type": "uimage-payload", "offset": int(ui.get("offset", 0)) + 64, "size": ui.get("size"), "containerOffset": ui.get("offset"), "arch": ui.get("arch"), "compression": ui.get("compression")})
+    return rows
+
+
+def verify(firmware_path, quicklook_path):
+    with open(firmware_path, "rb") as handle:
+        data = handle.read()
+    with open(quicklook_path, "r", encoding="utf-8") as handle:
+        summary = json.load(handle)
+    image_identity = {"size": len(data), "sha256": sha256(data), "headerHex": data[:16].hex(), "verified": len(data) == summary.get("size") and sha256(data) == summary.get("sha256")}
+    if data:
+        mutated = bytearray(data)
+        mutated[0] ^= 0xFF
+        mutated_sha = sha256(bytes(mutated))
+        image_identity["negativeControl"] = {"controlType": "firmware-image-byte-mutation-rejection", "mutatedSha256": mutated_sha, "passed": mutated_sha != summary.get("sha256")}
+    signature_checks = []
+    for sig in summary.get("signatures") or []:
+        magic = MAGICS.get(sig.get("name"))
+        for offset in sig.get("offsets") or []:
+            verified = False
+            reason = "missing-magic"
+            actual = {}
+            control = None
+            if magic and offset >= 0 and offset + len(magic) <= len(data):
+                chunk = data[offset:offset + len(magic)]
+                actual = {"magicHex": chunk.hex(), "length": len(chunk), "sha256": sha256(chunk)}
+                verified = chunk == magic
+                reason = "signature-magic-match" if verified else "signature-magic-mismatch"
+                mutated_offset = offset + 1 if offset + 1 + len(magic) <= len(data) else (offset - 1 if offset > 0 else None)
+                if mutated_offset is not None:
+                    mutated = data[mutated_offset:mutated_offset + len(magic)]
+                    control = {"controlType": "signature-mutated-offset-rejection", "mutatedOffset": mutated_offset, "mutatedSha256": sha256(mutated), "passed": mutated != magic}
+            elif magic:
+                reason = "signature-offset-out-of-range"
+            signature_checks.append({"name": sig.get("name"), "offset": offset, "expectedMagicHex": magic.hex() if magic else None, "actual": actual, "verified": verified, "reason": reason, "negativeControl": control})
+    carve_checks = []
+    targets = extraction_targets(summary)
+    for target in targets:
+        try:
+            offset = int(target.get("offset"))
+        except Exception:
+            offset = -1
+        try:
+            requested = int(target.get("size", len(data) - offset))
+        except Exception:
+            requested = len(data) - offset
+        verified = False
+        complete = False
+        reason = "target-out-of-range"
+        actual = {}
+        control = None
+        if offset >= 0 and offset < len(data):
+            bounded = min(requested, len(data) - offset) if requested > 0 else len(data) - offset
+            carved = data[offset:offset + bounded]
+            exp = expected_magic(target)
+            complete = (offset + requested <= len(data)) if requested > 0 else True
+            actual = {"offset": offset, "requestedSize": requested if requested > 0 else None, "carvedSize": len(carved), "sha256": sha256(carved), "headerHex": carved[:16].hex(), "observedMagic": magic_at(data, offset), "complete": complete}
+            verified = carved.startswith(exp) if exp else len(carved) > 0
+            reason = "carve-offset-size-hash-match" if verified and complete else ("carve-header-match-but-truncated" if verified else "carve-header-mismatch")
+            mutated_offset = offset + 1 if offset + 1 + min(len(carved), 16) <= len(data) else (offset - 1 if offset > 0 else None)
+            if mutated_offset is not None:
+                mutated = data[mutated_offset:mutated_offset + min(len(carved), 64)]
+                control = {"controlType": "carve-mutated-offset-rejection", "mutatedOffset": mutated_offset, "mutatedSha256": sha256(mutated), "passed": sha256(mutated) != actual["sha256"]}
+        carve_checks.append({"target": target, "actual": actual, "verified": verified, "complete": complete, "reason": reason, "negativeControl": control})
+    controls = [image_identity.get("negativeControl")] + [row.get("negativeControl") for row in signature_checks] + [row.get("negativeControl") for row in carve_checks]
+    controls = [row for row in controls if row and row.get("passed")]
+    verified_sigs = [row for row in signature_checks if row.get("verified")]
+    rootfs = [row for row in carve_checks if row.get("verified") and row.get("target", {}).get("type") in {"squashfs-rootfs", "ubi-volume"}]
+    blockers = []
+    if not image_identity.get("verified"):
+        blockers.append("missing-firmware-image-hash-verification")
+    if not verified_sigs:
+        blockers.append("missing-signature-offset-verification")
+    if not rootfs:
+        blockers.append("missing-rootfs-carve-verifier")
+    if any(not row.get("complete") for row in rootfs):
+        blockers.append("rootfs-carve-truncated")
+    if not controls:
+        blockers.append("missing-firmware-extraction-negative-control")
+    repair_queue = [{"id": "firmware-extraction-verification-" + blocker, "blocker": blocker, "action": "Collect verifier-bound firmware extraction evidence and rerun firmware-extraction-verifier.py.", "rerunCommand": "python3 firmware-extraction-verifier.py <firmware> firmware-quicklook.json firmware-extraction-verification.json"} for blocker in blockers]
+    proof_ready = image_identity.get("verified") and bool(verified_sigs) and bool(rootfs) and bool(controls)
+    return {"kind": "repi-firmware-extraction-verification", "schemaVersion": 1, "target": firmware_path, "proofReady": proof_ready, "imageIdentity": image_identity, "signatureChecks": signature_checks, "extractionTargets": targets, "carveChecks": carve_checks, "negativeControls": controls, "stats": {"signaturesVerified": len(verified_sigs), "rootfsCarvesVerified": len(rootfs), "completeRootfsCarves": sum(1 for row in rootfs if row.get("complete")), "negativeControlsPassed": len(controls)}, "repairQueue": repair_queue, "promotionReport": {"proofReady": proof_ready, "blockers": blockers}}
+
+
+def self_test():
+    with tempfile.TemporaryDirectory() as tmp:
+        fw = bytearray(0x200)
+        fw[0:4] = b"HDR0"
+        fw[4:8] = (0x180).to_bytes(4, "little")
+        fw[16:20] = (0x40).to_bytes(4, "little")
+        fw[0x40:0x44] = b"hsqs"
+        fw[0x68:0x70] = (0x80).to_bytes(8, "little")
+        path = os.path.join(tmp, "fw.bin")
+        with open(path, "wb") as handle:
+            handle.write(fw)
+        summary = {"size": len(fw), "sha256": sha256(bytes(fw)), "signatures": [{"name": "TRX", "offsets": [0]}, {"name": "SquashFS-little", "offsets": [0x40]}], "structures": {"trx": [{"offset": 0, "partitions": [{"absoluteOffset": 0x40, "size": 0x140}]}], "squashfs": [{"offset": 0x40, "bytesUsed": 0x80, "endian": "little", "compressionName": "xz"}], "ubi": [], "uImage": []}}
+        quicklook = os.path.join(tmp, "firmware-quicklook.json")
+        with open(quicklook, "w", encoding="utf-8") as handle:
+            json.dump(summary, handle)
+        result = verify(path, quicklook)
+        assert result["proofReady"], json.dumps(result, sort_keys=True)
+        print(json.dumps({"kind": "repi-firmware-extraction-verifier-self-test", "status": "ok", "stats": result["stats"]}, sort_keys=True))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Verify REPI firmware signature/rootfs carve evidence without extracting or executing firmware.")
+    parser.add_argument("firmware", nargs="?")
+    parser.add_argument("quicklook", nargs="?", default="firmware-quicklook.json")
+    parser.add_argument("output", nargs="?", default="firmware-extraction-verification.json")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return 0
+    if not args.firmware:
+        parser.error("firmware is required unless --self-test is used")
+    result = verify(args.firmware, args.quicklook)
+    with open(args.output, "w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    print(json.dumps({"kind": result["kind"], "proofReady": result["proofReady"], "stats": result["stats"], "output": args.output}, sort_keys=True))
+    return 0 if result["proofReady"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`;
+}
+
 
 function firmwareExtractPlanSource(target, summary) {
 	const signatureRows = summary.signatures.flatMap((signature) => signature.offsets.map((offset) => ({ name: signature.name, offset })));
@@ -7808,7 +8314,8 @@ cat > "$OUT/next.txt" <<'EOF'
 1. Run file/find/strings over carves and extracted rootfs.
 2. Prioritize /etc/passwd, /etc/shadow, /etc/init.d, rcS, nvram defaults, www/cgi-bin.
 3. Map exposed services and web CGI handlers to credentials/config sinks.
-4. If rootfs is valid, build chroot/qemu smoke only after binding the entrypoint and architecture.
+4. Rerun firmware-extraction-verifier.py when present; require signature/carve hashes and mutation controls before proof promotion.
+5. If rootfs is valid and complete, build chroot/qemu smoke only after binding the entrypoint and architecture.
 EOF
 `;
 }
@@ -7816,8 +8323,10 @@ EOF
 function firmwareQuicklookRows(target, artifactDir) {
 	try {
 		const summary = firmwareQuicklookSummary(target);
-		const attackSurface = firmwareAttackSurfaceClaims(summary);
+		const extractionVerification = firmwareExtractionVerificationSummary(target, summary);
+		const attackSurface = firmwareAttackSurfaceClaims(summary, extractionVerification);
 		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "firmware-quicklook.json"), `${JSON.stringify(summary, null, 2)}\n`);
+		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "firmware-extraction-verification.json"), `${JSON.stringify(extractionVerification, null, 2)}\n`);
 		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "firmware-attack-surface.json"), `${JSON.stringify(attackSurface, null, 2)}\n`);
 		const rows = [
 			{
@@ -7833,6 +8342,18 @@ function firmwareQuicklookRows(target, artifactDir) {
 				error: undefined,
 			},
 			{
+				id: "firmware-extraction-verification",
+				command: "internal",
+				args: [redact(target)],
+				cwd: root,
+				exit: extractionVerification.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(extractionVerification, null, 2)}\n`,
+				stderr: "",
+				error: extractionVerification.proofReady ? undefined : "firmware extraction verification blockers present",
+			},
+			{
 				id: "firmware-attack-surface",
 				command: "internal",
 				args: [redact(target)],
@@ -7846,6 +8367,20 @@ function firmwareQuicklookRows(target, artifactDir) {
 			},
 		];
 		if (!noWrite && artifactDir) {
+			const verifierPath = join(artifactDir, "firmware-extraction-verifier.py");
+			writePrivate(verifierPath, firmwareExtractionVerifierSource(), 0o700);
+			rows.push({
+				id: "firmware-extraction-verifier-artifact",
+				command: "internal",
+				args: [redact(verifierPath)],
+				cwd: root,
+				exit: 0,
+				signal: null,
+				durationMs: 0,
+				stdout: `verifier=${redact(verifierPath)}\nrun=python3 ${redact(verifierPath)} ${redact(target)} ${redact(join(artifactDir, "firmware-quicklook.json"))} ${redact(join(artifactDir, "firmware-extraction-verification.json"))}\n`,
+				stderr: "",
+				error: undefined,
+			});
 			const planPath = join(artifactDir, "firmware-extract-plan.sh");
 			writePrivate(planPath, firmwareExtractPlanSource(target, summary), 0o700);
 			rows.push({
@@ -16955,9 +17490,11 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.lane === "firmware-iot") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "firmware-quicklook.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "firmware-extraction-verification.json"))) q.push(`cat ${shellQuote(join(artifactDir, "firmware-extraction-verification.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "firmware-attack-surface.json"))) q.push(`cat ${shellQuote(join(artifactDir, "firmware-attack-surface.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "firmware-extraction-verifier.py"))) q.push(`python3 ${shellQuote(join(artifactDir, "firmware-extraction-verifier.py"))} ${quotedTarget} ${shellQuote(join(artifactDir, "firmware-quicklook.json"))} ${shellQuote(join(artifactDir, "firmware-extraction-verification.json"))}`);
 		if (!noWrite) q.push(`bash ${shellQuote(join(artifactDir, "firmware-extract-plan.sh"))} ${quotedTarget}`);
-		q.push(`repi -p ${shellQuote(`Continue firmware/IoT from ${artifactDir}: use firmware-quicklook.json plus firmware-attack-surface.json claimLedger/extractionTargets to parse TRX/uImage/SquashFS/UBI offsets, extract rootfs, map services/config/CGI, identify credentials, and build an emulation smoke path.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue firmware/IoT from ${artifactDir}: use firmware-quicklook.json plus firmware-extraction-verification.json and firmware-attack-surface.json claimLedger/extractionTargets/composedPaths/repairQueue to parse TRX/uImage/SquashFS/UBI offsets, rerun firmware-extraction-verifier.py for signature/carve/hash/negative-control proof, extract complete rootfs when available, map services/config/CGI, identify credentials, and build an emulation smoke path.`)}`);
 	}
 	if (targetInfo.lane === "crypto-stego") {
 		if (!noWrite && dataLooksLikeCryptoStegoMedia(primaryTarget)) q.push(`cat ${shellQuote(join(artifactDir, "crypto-stego-media-quicklook.json"))}`);
@@ -17068,8 +17605,9 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/repi-malware-quicklook|malware-quicklook|malware-behavior-claims|malware-config-verification|malware-config-verifier|malware-triage|malware-behavior-chain|malware-ioc-config-proof-path|claimLedger|configFields|network-ioc-signal|CreateRemoteThread|VirtualAlloc|FLOSS|YARA|capa|ATT&CK|mutex|User-Agent/i.test(text) && targetInfo.lane === "malware") anchors.push("malware IOC/capability anchors");
 		if (/staticStructure|malware-overlay-signal|malware-suspicious-import-signal|suspiciousImports|overlay-data-present|rwx-section-signal|structured-executable-analysis-signal|malware-overlay-carve-target|malware-rwx-section/i.test(text) && targetInfo.lane === "malware") anchors.push("malware static structure anchors");
 		if (/malware-config-verification|malware-config-verifier|malware-overlay-carve-verifier-proof|signal-offset-hash-match|negative-control|malware-ioc-config-proof-path/i.test(text) && targetInfo.lane === "malware") anchors.push("malware verifier proof anchors");
-		if (/repi-firmware-quicklook|firmware-quicklook|firmware-attack-surface|firmware-extract-plan|claimLedger|extractionTargets|management-credential-pivot|SquashFS|UBI|uImage|dropbear|telnetd|cgi-bin|hardcoded-credential-signal/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware quicklook anchors");
-		if (/firmware-container-header-parsed|filesystem-superblock-parsed|ubi-header-parsed|partitionOffsets|bytesUsed|vidHeaderOffset/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware structure anchors");
+		if (/repi-firmware-quicklook|firmware-quicklook|firmware-attack-surface|firmware-extraction-verification|firmware-extraction-verifier|firmware-extract-plan|claimLedger|extractionTargets|management-credential-pivot|firmware-rootfs-carve-proof|SquashFS|UBI|uImage|dropbear|telnetd|cgi-bin|hardcoded-credential-signal/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware quicklook anchors");
+		if (/firmware-container-header-parsed|filesystem-superblock-parsed|ubi-header-parsed|partitionOffsets|bytesUsed|vidHeaderOffset|signature-magic-match|carve-header-match|firmware-rootfs-carve-proof-path|negative-control/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware structure anchors");
+		if (/firmware-extraction-verification|firmware-extraction-verifier|firmware-rootfs-carve-proof|firmware-extraction-negative-control-proof|rootfs-carve-truncated|carve-offset-size-hash-match/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware extraction verifier anchors");
 		if (/repi-agent-boundary-map|agent-boundary|prompt-injection|llm-to-shell-tool-boundary|tool-secret-exfiltration-boundary|tool_call|system-prompt/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary anchors");
 		if (/boundaryFlows|untrusted-input-to-shell-execution-flow|llm-to-shell-execution-flow|tool-secret-exfiltration-flow|prompt-injection-evidence-flow/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary flow anchors");
 		if (/repi-agent-boundary-replay|agent-boundary-(?:claim-promotion|repair-queue)|agent-boundary-unsafe-tool-proof-path|agent-boundary-blocked-control-proof-path|unsafe-promoted|control-promoted|responseSha256|composedPaths|claimLedger/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary replay anchors");
