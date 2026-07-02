@@ -1241,18 +1241,24 @@ describe("repi-engage artifact writes", () => {
 		expect(JSON.stringify(report)).not.toContain(secret);
 		expect(report.target.lane).toBe("memory-forensics");
 		expect(report.commands.map((row) => row.id)).toContain("memory-quicklook");
+		expect(report.commands.map((row) => row.id)).toContain("memory-evidence-claims");
 		expect(report.commands.map((row) => row.id)).toContain("memory-triage-plan-artifact");
 		expect(report.summary.missingCritical).not.toContain("strings");
 		expect(report.summary.anchors).toContain("memory quicklook anchors");
 		expect(report.summary.anchors).toContain("memory correlation anchors");
 		expect(report.nextQueue.some((command) => command.includes("memory-quicklook.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("memory-evidence-claims.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("memory-triage-plan.sh"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("correlations"))).toBe(true);
 		const summaryPath = join(report.artifactDir, "memory-quicklook.json");
+		const evidenceClaimsPath = join(report.artifactDir, "memory-evidence-claims.json");
 		const planPath = join(report.artifactDir, "memory-triage-plan.sh");
 		expect(existsSync(summaryPath)).toBe(true);
+		expect(existsSync(evidenceClaimsPath)).toBe(true);
 		expect(existsSync(planPath)).toBe(true);
 		expect(statSync(summaryPath).mode & 0o777).toBe(0o600);
+		expect(statSync(evidenceClaimsPath).mode & 0o777).toBe(0o600);
 		expect(statSync(planPath).mode & 0o777).toBe(0o700);
 		const summary = JSON.parse(readFileSync(summaryPath, "utf8")) as {
 			osGuess: string;
@@ -1280,6 +1286,40 @@ describe("repi-engage artifact writes", () => {
 			risks: string[];
 		};
 		expect(JSON.stringify(summary)).not.toContain(secret);
+		const evidenceClaims = JSON.parse(readFileSync(evidenceClaimsPath, "utf8")) as {
+			proofReady: boolean;
+			claimLedger: Array<{ claimType: string; verdict: string; evidenceBinding: Record<string, unknown> }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+			promotionReport: { promotedClaims: Array<{ claimType: string }> };
+			repairQueue: Array<{ blocker: string }>;
+		};
+		expect(JSON.stringify(evidenceClaims)).not.toContain(secret);
+		expect(evidenceClaims.proofReady).toBe(true);
+		expect(
+			evidenceClaims.claimLedger.some(
+				(claim) => claim.claimType === "memory-process-network-correlation" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			evidenceClaims.claimLedger.some(
+				(claim) => claim.claimType === "memory-credential-context" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			evidenceClaims.claimLedger.some(
+				(claim) => claim.claimType === "memory-timeline-correlation" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			evidenceClaims.claimLedger.some(
+				(claim) => claim.claimType === "memory-credential-network-pivot" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			evidenceClaims.promotionReport.promotedClaims.some(
+				(claim) => claim.claimType === "memory-credential-network-pivot",
+			),
+		).toBe(true);
 		expect(summary.osGuess).toBe("windows");
 		expect(summary.risks).toEqual(
 			expect.arrayContaining([
@@ -1311,6 +1351,12 @@ describe("repi-engage artifact writes", () => {
 		expect(plan).toContain("windows.pslist");
 		expect(plan).toContain("strings -a -n 5");
 		expect(plan).toContain("high-signal.txt");
+		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
+		expect(existsSync(proofMatrixPath)).toBe(true);
+		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
+			artifacts: Array<{ relPath: string }>;
+		};
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("memory-evidence-claims.json");
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
 
@@ -2636,18 +2682,24 @@ jobs:
 		expect(JSON.stringify(report)).not.toContain(secret);
 		expect(report.target.lane).toBe("firmware-iot");
 		expect(report.commands.map((row) => row.id)).toContain("firmware-quicklook");
+		expect(report.commands.map((row) => row.id)).toContain("firmware-attack-surface");
 		expect(report.commands.map((row) => row.id)).toContain("firmware-extract-plan-artifact");
 		expect(report.summary.missingCritical).not.toContain("binwalk");
 		expect(report.summary.anchors).toContain("firmware quicklook anchors");
 		expect(report.summary.anchors).toContain("firmware structure anchors");
 		expect(report.nextQueue.some((command) => command.includes("firmware-quicklook.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("firmware-attack-surface.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("extractionTargets"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("firmware-extract-plan.sh"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("TRX/uImage/SquashFS/UBI offsets"))).toBe(true);
 		const summaryPath = join(report.artifactDir, "firmware-quicklook.json");
+		const attackSurfacePath = join(report.artifactDir, "firmware-attack-surface.json");
 		const planPath = join(report.artifactDir, "firmware-extract-plan.sh");
 		expect(existsSync(summaryPath)).toBe(true);
+		expect(existsSync(attackSurfacePath)).toBe(true);
 		expect(existsSync(planPath)).toBe(true);
 		expect(statSync(summaryPath).mode & 0o777).toBe(0o600);
+		expect(statSync(attackSurfacePath).mode & 0o777).toBe(0o600);
 		expect(statSync(planPath).mode & 0o777).toBe(0o700);
 		const summary = JSON.parse(readFileSync(summaryPath, "utf8")) as {
 			signatures: Array<{ name: string; offsets: number[] }>;
@@ -2685,6 +2737,47 @@ jobs:
 			risks: string[];
 		};
 		expect(JSON.stringify(summary)).not.toContain(secret);
+		const attackSurface = JSON.parse(readFileSync(attackSurfacePath, "utf8")) as {
+			proofReady: boolean;
+			extractionTargets: Array<{ type: string; offset: number; size?: number; command: string }>;
+			claimLedger: Array<{ claimType: string; verdict: string; sourceBinding: Record<string, unknown> }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+			promotionReport: { promotedClaims: Array<{ claimType: string }> };
+			repairQueue: Array<{ blocker: string }>;
+		};
+		expect(JSON.stringify(attackSurface)).not.toContain(secret);
+		expect(attackSurface.proofReady).toBe(true);
+		expect(attackSurface.extractionTargets.some((row) => row.type === "squashfs-rootfs" && row.offset === 0x40)).toBe(
+			true,
+		);
+		expect(attackSurface.extractionTargets.some((row) => row.type === "ubi-volume" && row.offset === 0xb0)).toBe(
+			true,
+		);
+		expect(
+			attackSurface.claimLedger.some(
+				(claim) => claim.claimType === "firmware-rootfs-extraction-target" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			attackSurface.claimLedger.some(
+				(claim) => claim.claimType === "firmware-hardcoded-credential" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			attackSurface.claimLedger.some(
+				(claim) => claim.claimType === "firmware-exposed-management-surface" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			attackSurface.claimLedger.some(
+				(claim) => claim.claimType === "firmware-management-credential-pivot" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			attackSurface.promotionReport.promotedClaims.some(
+				(claim) => claim.claimType === "firmware-management-credential-pivot",
+			),
+		).toBe(true);
 		expect(summary.signatures.map((signature) => signature.name)).toEqual(
 			expect.arrayContaining(["TRX", "SquashFS-little", "UBI"]),
 		);
@@ -2729,6 +2822,12 @@ jobs:
 		expect(plan).toContain("binwalk -Me");
 		expect(plan).toContain("unblob");
 		expect(plan).toContain("repi-firmware-carve");
+		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
+		expect(existsSync(proofMatrixPath)).toBe(true);
+		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
+			artifacts: Array<{ relPath: string }>;
+		};
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("firmware-attack-surface.json");
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
 

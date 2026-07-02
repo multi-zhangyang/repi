@@ -577,6 +577,7 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	}
 	if (targetInfo.lane === "memory-forensics") {
 		add("memory-quicklook.json", "memory forensic quicklook/correlation output");
+		add("memory-evidence-claims.json", "memory process/network/credential correlation claim ledger");
 		add("memory-triage-plan.sh", "memory forensic triage harness", 0o700);
 	}
 	if (targetInfo.lane === "windows-ad") {
@@ -590,6 +591,7 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	}
 	if (targetInfo.lane === "firmware-iot") {
 		add("firmware-quicklook.json", "firmware structure/string/signature quicklook output");
+		add("firmware-attack-surface.json", "firmware rootfs/service/credential claim ledger");
 		add("firmware-extract-plan.sh", "firmware extraction harness", 0o700);
 	}
 	if (targetInfo.lane === "crypto-stego") {
@@ -627,8 +629,8 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 	if (targetInfo.lane === "pcap-dfir") requireAny("pcap-flow-summary", ["pcap-flow-summary.json"], "PCAP targets need parsed flow/stream evidence");
 	if (targetInfo.lane === "crypto-stego") requireAny("crypto-transform-solver", ["crypto-stego-solver.py", "crypto-stego-media-quicklook.json"], "crypto/stego targets need a transform-chain verifier or media structure proof");
 	if (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios") requireAny("mobile-runtime-hook", ["mobile-frida-hooks.js", "mobile-archive-summary.json"], "mobile targets need archive/runtime hook anchors");
-	if (targetInfo.lane === "firmware-iot") requireAny("firmware-extract-plan", ["firmware-extract-plan.sh", "firmware-quicklook.json"], "firmware targets need structure/extraction anchors");
-	if (targetInfo.lane === "memory-forensics") requireAny("memory-triage-plan", ["memory-triage-plan.sh", "memory-quicklook.json"], "memory targets need triage/correlation anchors");
+	if (targetInfo.lane === "firmware-iot") requireAny("firmware-extract-plan", ["firmware-attack-surface.json", "firmware-extract-plan.sh", "firmware-quicklook.json"], "firmware targets need structure/extraction anchors");
+	if (targetInfo.lane === "memory-forensics") requireAny("memory-triage-plan", ["memory-evidence-claims.json", "memory-triage-plan.sh", "memory-quicklook.json"], "memory targets need triage/correlation anchors");
 	if (targetInfo.lane === "windows-ad") requireAny("windows-ad-triage-plan", ["windows-ad-triage-plan.sh", "windows-ad-quicklook.json"], "identity targets need AD graph/credential triage anchors");
 	if (targetInfo.lane === "malware") requireAny("malware-triage-plan", ["malware-triage-plan.sh", "malware-quicklook.json"], "malware targets need IOC/capability triage anchors");
 	if (targetInfo.lane === "agent-boundary") requireAny("agent-boundary-replay", ["agent-boundary-payloads.py", "agent-boundary-map.json"], "agent-boundary targets need replay payloads and flow map");
@@ -5774,6 +5776,279 @@ function firmwareQuicklookSummary(target) {
 	};
 }
 
+function firmwareAttackSurfaceClaims(summary) {
+	const structures = summary.structures ?? {};
+	const signals = summary.stringScan?.signals ?? {};
+	const claimLedger = [];
+	const extractionTargets = [];
+	const addClaim = (claim) => {
+		claimLedger.push({
+			verdict: "promoted",
+			confidence: 0.72,
+			blockers: [],
+			...claim,
+		});
+	};
+	const pushExtractionTarget = (target) => {
+		const key = `${target.type}:${target.offset}:${target.size ?? ""}`;
+		if (extractionTargets.some((row) => `${row.type}:${row.offset}:${row.size ?? ""}` === key)) return;
+		extractionTargets.push({
+			...target,
+			command: target.size
+				? `dd if="$FW" of="$OUT/carves/${String(target.offset).padStart(8, "0")}-${target.type}.bin" bs=1 skip=${target.offset} count=${target.size} status=none`
+				: `dd if="$FW" of="$OUT/carves/${String(target.offset).padStart(8, "0")}-${target.type}.bin" bs=1 skip=${target.offset} status=none`,
+		});
+	};
+	for (const row of structures.trx ?? []) {
+		for (const partition of row.partitions ?? []) {
+			pushExtractionTarget({
+				type: "trx-partition",
+				offset: partition.absoluteOffset,
+				size: partition.size,
+				containerOffset: row.offset,
+			});
+		}
+		addClaim({
+			id: "firmware-container-partition-map-" + shortHash(`${row.offset}:${row.length}:${(row.partitionOffsets ?? []).join(",")}`),
+			claimType: "firmware-container-partition-map",
+			sourceBinding: {
+				artifact: "firmware-quicklook.json",
+				structure: "TRX",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				length: row.length,
+				version: row.version,
+				partitionOffsets: row.partitionOffsets ?? [],
+				partitions: row.partitions ?? [],
+			},
+			statement: "Firmware container header was parsed into concrete partition offsets suitable for carving.",
+			confidence: 0.86,
+			rerunCommand: "cat firmware-quicklook.json | jq '.structures.trx'",
+		});
+	}
+	for (const row of structures.uImage ?? []) {
+		addClaim({
+			id: "firmware-uimage-entrypoint-" + shortHash(`${row.offset}:${row.arch}:${row.type}:${row.compression}:${row.entryPoint}`),
+			claimType: "firmware-uimage-entrypoint",
+			sourceBinding: {
+				artifact: "firmware-quicklook.json",
+				structure: "uImage",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				arch: row.arch,
+				os: row.os,
+				type: row.type,
+				compression: row.compression,
+				loadAddress: row.loadAddress,
+				entryPoint: row.entryPoint,
+				size: row.size,
+			},
+			statement: "uImage header evidence binds architecture, compression, and entrypoint for an emulation or unpack path.",
+			confidence: 0.84,
+			rerunCommand: "cat firmware-quicklook.json | jq '.structures.uImage'",
+		});
+	}
+	for (const row of structures.squashfs ?? []) {
+		pushExtractionTarget({
+			type: "squashfs-rootfs",
+			offset: row.offset,
+			size: row.bytesUsed,
+			endian: row.endian,
+			compressionName: row.compressionName,
+		});
+		addClaim({
+			id: "firmware-rootfs-squashfs-" + shortHash(`${row.offset}:${row.bytesUsed}:${row.endian}:${row.compressionName}`),
+			claimType: "firmware-rootfs-extraction-target",
+			sourceBinding: {
+				artifact: "firmware-quicklook.json",
+				structure: "SquashFS",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				endian: row.endian,
+				version: row.version,
+				blockSize: row.blockSize,
+				compressionName: row.compressionName,
+				bytesUsed: row.bytesUsed,
+				inodes: row.inodes,
+			},
+			statement: "SquashFS superblock evidence identifies a concrete root filesystem carve target.",
+			confidence: 0.9,
+			rerunCommand: "cat firmware-quicklook.json | jq '.structures.squashfs'",
+		});
+	}
+	for (const row of structures.ubi ?? []) {
+		pushExtractionTarget({
+			type: "ubi-volume",
+			offset: row.offset,
+			vidHeaderOffset: row.vidHeaderOffset,
+			dataOffset: row.dataOffset,
+		});
+		addClaim({
+			id: "firmware-rootfs-ubi-" + shortHash(`${row.offset}:${row.vidHeaderOffset}:${row.dataOffset}:${row.imageSequence}`),
+			claimType: "firmware-rootfs-extraction-target",
+			sourceBinding: {
+				artifact: "firmware-quicklook.json",
+				structure: "UBI",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				version: row.version,
+				eraseCount: row.eraseCount,
+				vidHeaderOffset: row.vidHeaderOffset,
+				dataOffset: row.dataOffset,
+				imageSequence: row.imageSequence,
+			},
+			statement: "UBI EC header evidence identifies a concrete flash-volume extraction target.",
+			confidence: 0.86,
+			rerunCommand: "cat firmware-quicklook.json | jq '.structures.ubi'",
+		});
+	}
+	for (const row of (signals.credentials ?? []).slice(0, 24)) {
+		addClaim({
+			id: "firmware-hardcoded-credential-" + shortHash(`${row.offset}:${row.text}`),
+			claimType: "firmware-hardcoded-credential",
+			sourceBinding: {
+				artifact: "firmware-quicklook.json",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				text: row.text,
+				redacted: /<redacted>|\bredacted\b/i.test(row.text),
+			},
+			statement: "Firmware string evidence contains a redacted hardcoded credential or token assignment.",
+			confidence: 0.78,
+			rerunCommand: "cat firmware-quicklook.json | jq '.stringScan.signals.credentials'",
+		});
+	}
+	for (const row of (signals.services ?? []).slice(0, 32)) {
+		const exposed = /telnetd|dropbear|uhttpd|lighttpd|boa|login\.cgi|admin\.cgi/i.test(row.text);
+		addClaim({
+			id: "firmware-service-surface-" + shortHash(`${row.offset}:${row.text}`),
+			claimType: exposed ? "firmware-exposed-management-surface" : "firmware-service-or-init-signal",
+			sourceBinding: {
+				artifact: "firmware-quicklook.json",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				text: row.text,
+				exposed,
+			},
+			statement: exposed
+				? "Firmware string evidence identifies a management service or web-admin handler."
+				: "Firmware string evidence identifies a service/init component for runtime mapping.",
+			confidence: exposed ? 0.76 : 0.62,
+			rerunCommand: "cat firmware-quicklook.json | jq '.stringScan.signals.services'",
+		});
+	}
+	for (const row of (signals.paths ?? []).slice(0, 32)) {
+		const sensitive = /\/etc\/passwd|\/etc\/shadow|\/etc\/init\.d|rcS|\/www\/|cgi-bin/i.test(row.text);
+		addClaim({
+			id: "firmware-filesystem-path-" + shortHash(`${row.offset}:${row.text}`),
+			claimType: sensitive ? "firmware-sensitive-filesystem-path" : "firmware-filesystem-path",
+			sourceBinding: {
+				artifact: "firmware-quicklook.json",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				text: row.text,
+				sensitive,
+			},
+			statement: sensitive
+				? "Firmware string evidence identifies a sensitive filesystem, init, or web handler path."
+				: "Firmware string evidence identifies a filesystem path for rootfs mapping.",
+			confidence: sensitive ? 0.72 : 0.58,
+			rerunCommand: "cat firmware-quicklook.json | jq '.stringScan.signals.paths'",
+		});
+	}
+	for (const row of (signals.urls ?? []).slice(0, 16)) {
+		addClaim({
+			id: "firmware-network-endpoint-" + shortHash(`${row.offset}:${row.text}`),
+			claimType: "firmware-network-endpoint",
+			sourceBinding: {
+				artifact: "firmware-quicklook.json",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				text: row.text,
+			},
+			statement: "Firmware string evidence identifies a network endpoint for traffic or update-flow replay.",
+			confidence: 0.68,
+			rerunCommand: "cat firmware-quicklook.json | jq '.stringScan.signals.urls'",
+		});
+	}
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	const credentialClaim = promotedClaims.find((claim) => claim.claimType === "firmware-hardcoded-credential");
+	const serviceClaim = promotedClaims.find((claim) => claim.claimType === "firmware-exposed-management-surface");
+	const sensitivePathClaim = promotedClaims.find((claim) => claim.claimType === "firmware-sensitive-filesystem-path");
+	const rootfsClaim = promotedClaims.find((claim) => claim.claimType === "firmware-rootfs-extraction-target");
+	const composedPaths = [];
+	if (credentialClaim && (serviceClaim || sensitivePathClaim)) {
+		const segments = [rootfsClaim, credentialClaim, serviceClaim, sensitivePathClaim].filter(Boolean);
+		const composed = {
+			id: "firmware-management-credential-pivot-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "firmware-management-credential-pivot",
+			sourceBinding: {
+				segments: segments.map((claim) => ({
+					id: claim.id,
+					claimType: claim.claimType,
+					offset: claim.sourceBinding?.offset,
+				})),
+			},
+			evidenceBinding: {
+				hasRootfsTarget: Boolean(rootfsClaim),
+				hasCredential: true,
+				hasManagementService: Boolean(serviceClaim),
+				hasSensitivePath: Boolean(sensitivePathClaim),
+			},
+			statement: "Firmware evidence composes credential material with a management service/path, yielding a concrete rootfs triage pivot.",
+			verdict: "promoted",
+			confidence: rootfsClaim ? 0.82 : 0.74,
+			blockers: [],
+			rerunCommand: "cat firmware-attack-surface.json | jq '.composedPaths'",
+		};
+		claimLedger.push(composed);
+		promotedClaims.push(composed);
+		composedPaths.push(composed);
+	}
+	const blockers = [];
+	if (!rootfsClaim) blockers.push("missing-rootfs-signature");
+	if (!credentialClaim) blockers.push("missing-credential-signal");
+	if (!serviceClaim) blockers.push("missing-management-service");
+	if (!(structures.uImage ?? []).length) blockers.push("missing-emulation-entrypoint");
+	if (!extractionTargets.length) blockers.push("missing-extraction-target");
+	const repairActions = {
+		"missing-rootfs-signature": "Run binwalk/unblob/deeper magic scans or carve nested containers until a root filesystem header is source-bound.",
+		"missing-credential-signal": "Scan extracted rootfs configs, NVRAM defaults, web assets, and init scripts for credential assignments.",
+		"missing-management-service": "Map init scripts and web roots to management daemons or CGI handlers before exploitation.",
+		"missing-emulation-entrypoint": "Bind architecture, kernel/uImage header, or init entrypoint before QEMU/chroot smoke testing.",
+		"missing-extraction-target": "Collect at least one carve target with offset/size before claiming rootfs extraction readiness.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "firmware-attack-surface-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect source-bound firmware evidence and rerun attack-surface claim promotion.",
+		rerunCommand: "repi engage <firmware-image> --json",
+	}));
+	return {
+		kind: "repi-firmware-attack-surface",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		proofReady: promotedClaims.length > 0,
+		extractionTargets,
+		claimLedger,
+		composedPaths,
+		promotionReport: {
+			proofReady: promotedClaims.length > 0,
+			promotedClaims,
+			blockers,
+		},
+		repairQueue,
+	};
+}
+
 function firmwareExtractPlanSource(target, summary) {
 	const signatureRows = summary.signatures.flatMap((signature) => signature.offsets.map((offset) => ({ name: signature.name, offset })));
 	return `#!/usr/bin/env bash
@@ -5827,7 +6102,9 @@ EOF
 function firmwareQuicklookRows(target, artifactDir) {
 	try {
 		const summary = firmwareQuicklookSummary(target);
+		const attackSurface = firmwareAttackSurfaceClaims(summary);
 		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "firmware-quicklook.json"), `${JSON.stringify(summary, null, 2)}\n`);
+		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "firmware-attack-surface.json"), `${JSON.stringify(attackSurface, null, 2)}\n`);
 		const rows = [
 			{
 				id: "firmware-quicklook",
@@ -5840,6 +6117,18 @@ function firmwareQuicklookRows(target, artifactDir) {
 				stdout: `${JSON.stringify(summary, null, 2)}\n`,
 				stderr: "",
 				error: undefined,
+			},
+			{
+				id: "firmware-attack-surface",
+				command: "internal",
+				args: [redact(target)],
+				cwd: root,
+				exit: attackSurface.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(attackSurface, null, 2)}\n`,
+				stderr: "",
+				error: attackSurface.proofReady ? undefined : "no firmware attack-surface claims promoted",
 			},
 		];
 		if (!noWrite && artifactDir) {
@@ -5997,6 +6286,189 @@ function memoryQuicklookSummary(target) {
 	};
 }
 
+function memoryEvidenceClaims(summary) {
+	const signals = summary.stringScan?.signals ?? {};
+	const correlations = summary.correlations ?? {};
+	const claimLedger = [];
+	const addClaim = (claim) => {
+		claimLedger.push({
+			verdict: "promoted",
+			confidence: 0.7,
+			blockers: [],
+			...claim,
+		});
+	};
+	for (const row of (signals.processes ?? []).slice(0, 32)) {
+		const highValue = /lsass\.exe|sshd|mysql|postgres/i.test(row.text);
+		if (!highValue) continue;
+		addClaim({
+			id: "memory-high-value-process-" + shortHash(`${row.offset}:${row.text}`),
+			claimType: "memory-high-value-process",
+			sourceBinding: {
+				artifact: "memory-quicklook.json",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				process: row.text,
+				osGuess: summary.osGuess,
+			},
+			statement: "Memory strings identify a high-value process anchor for credential or session triage.",
+			confidence: 0.74,
+			rerunCommand: "cat memory-quicklook.json | jq '.stringScan.signals.processes'",
+		});
+	}
+	for (const row of (signals.cmdlines ?? []).slice(0, 32)) {
+		const suspicious = /powershell|certutil|bitsadmin|rundll32|regsvr32|nc|ncat|curl|wget/i.test(row.text);
+		if (!suspicious) continue;
+		addClaim({
+			id: "memory-suspicious-cmdline-" + shortHash(`${row.offset}:${row.text}`),
+			claimType: "memory-suspicious-commandline",
+			sourceBinding: {
+				artifact: "memory-quicklook.json",
+				offset: row.offset,
+			},
+			evidenceBinding: {
+				cmdline: row.text,
+			},
+			statement: "Memory strings identify a suspicious command line that should be tied to process and network context.",
+			confidence: 0.72,
+			rerunCommand: "cat memory-quicklook.json | jq '.stringScan.signals.cmdlines'",
+		});
+	}
+	for (const row of (correlations.processNetwork ?? []).slice(0, 32)) {
+		addClaim({
+			id: "memory-process-network-" + shortHash(`${row.cmdline?.offset}:${row.network?.offset}:${row.process ?? ""}`),
+			claimType: "memory-process-network-correlation",
+			sourceBinding: {
+				artifact: "memory-quicklook.json",
+				cmdlineOffset: row.cmdline?.offset,
+				networkOffset: row.network?.offset,
+			},
+			evidenceBinding: {
+				process: row.process ?? null,
+				cmdline: row.cmdline?.text ?? null,
+				network: row.network?.text ?? null,
+			},
+			statement: "Memory evidence correlates a process command line with a network endpoint, suitable for timeline replay.",
+			confidence: 0.82,
+			rerunCommand: "cat memory-quicklook.json | jq '.correlations.processNetwork'",
+		});
+	}
+	for (const row of (correlations.credentialContext ?? []).slice(0, 32)) {
+		addClaim({
+			id: "memory-credential-context-" + shortHash(`${row.credential?.offset}:${row.cmdline?.offset ?? ""}:${row.network?.offset ?? ""}:${row.file?.offset ?? ""}`),
+			claimType: "memory-credential-context",
+			sourceBinding: {
+				artifact: "memory-quicklook.json",
+				credentialOffset: row.credential?.offset,
+			},
+			evidenceBinding: {
+				credential: row.credential?.text ?? null,
+				process: row.process?.text ?? null,
+				cmdline: row.cmdline?.text ?? null,
+				network: row.network?.text ?? null,
+				file: row.file?.text ?? null,
+				distances: {
+					process: row.process?.distance ?? null,
+					cmdline: row.cmdline?.distance ?? null,
+					network: row.network?.distance ?? null,
+					file: row.file?.distance ?? null,
+				},
+			},
+			statement: "Memory evidence ties credential material to nearby process, command line, network, or file context.",
+			confidence: row.network || row.cmdline ? 0.84 : 0.74,
+			rerunCommand: "cat memory-quicklook.json | jq '.correlations.credentialContext'",
+		});
+	}
+	for (const row of (correlations.timeline ?? []).slice(0, 32)) {
+		addClaim({
+			id: "memory-timeline-correlation-" + shortHash(`${row.timestamp?.offset}:${row.cmdline?.offset ?? ""}:${row.network?.offset ?? ""}`),
+			claimType: "memory-timeline-correlation",
+			sourceBinding: {
+				artifact: "memory-quicklook.json",
+				timestampOffset: row.timestamp?.offset,
+			},
+			evidenceBinding: {
+				timestamp: row.timestamp?.text ?? null,
+				process: row.process?.text ?? null,
+				cmdline: row.cmdline?.text ?? null,
+				network: row.network?.text ?? null,
+			},
+			statement: "Memory evidence provides a timestamped pivot bound to nearby process, command line, or network material.",
+			confidence: row.cmdline || row.network ? 0.78 : 0.64,
+			rerunCommand: "cat memory-quicklook.json | jq '.correlations.timeline'",
+		});
+	}
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	const credentialClaim = promotedClaims.find((claim) => claim.claimType === "memory-credential-context");
+	const processNetworkClaim = promotedClaims.find((claim) => claim.claimType === "memory-process-network-correlation");
+	const timelineClaim = promotedClaims.find((claim) => claim.claimType === "memory-timeline-correlation");
+	const highValueClaim = promotedClaims.find((claim) => claim.claimType === "memory-high-value-process");
+	const composedPaths = [];
+	if (credentialClaim && (processNetworkClaim || highValueClaim)) {
+		const segments = [credentialClaim, processNetworkClaim, timelineClaim, highValueClaim].filter(Boolean);
+		const composed = {
+			id: "memory-credential-network-pivot-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "memory-credential-network-pivot",
+			sourceBinding: {
+				segments: segments.map((claim) => ({
+					id: claim.id,
+					claimType: claim.claimType,
+					offset: claim.sourceBinding?.credentialOffset ?? claim.sourceBinding?.cmdlineOffset ?? claim.sourceBinding?.offset,
+				})),
+			},
+			evidenceBinding: {
+				osGuess: summary.osGuess,
+				hasCredentialContext: true,
+				hasProcessNetwork: Boolean(processNetworkClaim),
+				hasTimeline: Boolean(timelineClaim),
+				hasHighValueProcess: Boolean(highValueClaim),
+			},
+			statement: "Memory correlations compose credential material with process/network context into a concrete investigation pivot.",
+			verdict: "promoted",
+			confidence: processNetworkClaim && timelineClaim ? 0.86 : 0.8,
+			blockers: [],
+			rerunCommand: "cat memory-evidence-claims.json | jq '.composedPaths'",
+		};
+		claimLedger.push(composed);
+		promotedClaims.push(composed);
+		composedPaths.push(composed);
+	}
+	const blockers = [];
+	if (summary.osGuess === "unknown") blockers.push("missing-os-profile");
+	if (!processNetworkClaim) blockers.push("missing-process-network-correlation");
+	if (!credentialClaim) blockers.push("missing-credential-context");
+	if (!timelineClaim) blockers.push("missing-timeline-correlation");
+	if (!highValueClaim) blockers.push("missing-high-value-process");
+	const repairActions = {
+		"missing-os-profile": "Run volatility info/banner plugins or collect OS strings until the memory profile is anchored.",
+		"missing-process-network-correlation": "Correlate netscan/socket endpoints with command lines or process names before claiming network activity.",
+		"missing-credential-context": "Tie credential strings to nearby process, file, registry, command line, or network offsets.",
+		"missing-timeline-correlation": "Extract timestamped rows and bind them to process/network context for ordering.",
+		"missing-high-value-process": "Collect process listings or strings for credential-bearing/high-value processes such as lsass or sshd.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "memory-evidence-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect source-bound memory evidence and rerun evidence claim promotion.",
+		rerunCommand: "repi engage <memory-image> --json",
+	}));
+	return {
+		kind: "repi-memory-evidence-claims",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		proofReady: promotedClaims.length > 0,
+		claimLedger,
+		composedPaths,
+		promotionReport: {
+			proofReady: promotedClaims.length > 0,
+			promotedClaims,
+			blockers,
+		},
+		repairQueue,
+	};
+}
+
 function memoryTriagePlanSource(target) {
 	return `#!/usr/bin/env bash
 set -euo pipefail
@@ -6036,7 +6508,9 @@ EOF
 function memoryQuicklookRows(target, artifactDir) {
 	try {
 		const summary = memoryQuicklookSummary(target);
+		const evidenceClaims = memoryEvidenceClaims(summary);
 		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "memory-quicklook.json"), `${JSON.stringify(summary, null, 2)}\n`);
+		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "memory-evidence-claims.json"), `${JSON.stringify(evidenceClaims, null, 2)}\n`);
 		const rows = [
 			{
 				id: "memory-quicklook",
@@ -6049,6 +6523,18 @@ function memoryQuicklookRows(target, artifactDir) {
 				stdout: `${JSON.stringify(summary, null, 2)}\n`,
 				stderr: "",
 				error: undefined,
+			},
+			{
+				id: "memory-evidence-claims",
+				command: "internal",
+				args: [redact(target)],
+				cwd: root,
+				exit: evidenceClaims.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(evidenceClaims, null, 2)}\n`,
+				stderr: "",
+				error: evidenceClaims.proofReady ? undefined : "no memory evidence claims promoted",
 			},
 		];
 		if (!noWrite && artifactDir) {
@@ -12500,8 +12986,9 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.lane === "memory-forensics") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "memory-quicklook.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "memory-evidence-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "memory-evidence-claims.json"))}`);
 		if (!noWrite) q.push(`bash ${shellQuote(join(artifactDir, "memory-triage-plan.sh"))} ${quotedTarget}`);
-		q.push(`repi -p ${shellQuote(`Continue memory forensics from ${artifactDir}: use memory-quicklook.json correlations to identify profile, rank process/cmdline/network/credential artifacts, carve IOC evidence, and produce timeline verification.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue memory forensics from ${artifactDir}: use memory-quicklook.json correlations plus memory-evidence-claims.json claimLedger to identify profile, rank process/cmdline/network/credential artifacts, carve IOC evidence, and produce timeline verification.`)}`);
 	}
 	if (targetInfo.lane === "windows-ad") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "windows-ad-quicklook.json"))}`);
@@ -12520,8 +13007,9 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.lane === "firmware-iot") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "firmware-quicklook.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "firmware-attack-surface.json"))) q.push(`cat ${shellQuote(join(artifactDir, "firmware-attack-surface.json"))}`);
 		if (!noWrite) q.push(`bash ${shellQuote(join(artifactDir, "firmware-extract-plan.sh"))} ${quotedTarget}`);
-		q.push(`repi -p ${shellQuote(`Continue firmware/IoT from ${artifactDir}: use firmware-quicklook.json structures/signatures/strings to parse TRX/uImage/SquashFS/UBI offsets, extract rootfs, map services/config/CGI, identify credentials, and build an emulation smoke path.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue firmware/IoT from ${artifactDir}: use firmware-quicklook.json plus firmware-attack-surface.json claimLedger/extractionTargets to parse TRX/uImage/SquashFS/UBI offsets, extract rootfs, map services/config/CGI, identify credentials, and build an emulation smoke path.`)}`);
 	}
 	if (targetInfo.lane === "crypto-stego") {
 		if (!noWrite && dataLooksLikeCryptoStegoMedia(primaryTarget)) q.push(`cat ${shellQuote(join(artifactDir, "crypto-stego-media-quicklook.json"))}`);
@@ -12619,13 +13107,13 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/repi-web-object-matrix|web-object|bolaSignal|path-number|query-number/i.test(text) && targetInfo.kind === "url") anchors.push("object authorization anchors");
 		if (/repi-web-replay-matrix|web-replay|responseSha256/i.test(text) && targetInfo.kind === "url") anchors.push("HTTP replay matrix anchors");
 		if (/volatility|windows\.info|linux\.banners|process|cmdline|lsass|netscan/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory forensic anchors");
-		if (/repi-memory-quicklook|memory-quicklook|memory-triage-plan|credential-string-signal|network-artifact-signal|suspicious-commandline-signal/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory quicklook anchors");
-		if (/process-network-correlation-signal|credential-context-correlation-signal|timeline-correlation-signal|processNetwork|credentialContext/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory correlation anchors");
+		if (/repi-memory-quicklook|memory-quicklook|memory-evidence-claims|memory-triage-plan|credential-string-signal|network-artifact-signal|suspicious-commandline-signal/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory quicklook anchors");
+		if (/process-network-correlation-signal|credential-context-correlation-signal|timeline-correlation-signal|processNetwork|credentialContext|memory-credential-network-pivot|claimLedger/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory correlation anchors");
 		if (/repi-windows-ad-quicklook|windows-ad-quicklook|windows-ad-triage|krbtgt|Kerberoast|DCSync|ADCS|Certipy|BloodHound|4769|4624/i.test(text) && targetInfo.lane === "windows-ad") anchors.push("Windows/AD identity anchors");
 		if (/bloodhound-graph-data-present|bloodhound-privilege-edge-signal|bloodhound-owned-principal-signal|bloodhound-owned-to-high-value-path|relationCounts|privilegeEdges|highValue|attackPaths|windows-ad-attack-path/i.test(text) && targetInfo.lane === "windows-ad") anchors.push("BloodHound graph anchors");
 		if (/repi-malware-quicklook|malware-quicklook|malware-triage|network-ioc-signal|CreateRemoteThread|VirtualAlloc|FLOSS|YARA|capa|ATT&CK|mutex|User-Agent/i.test(text) && targetInfo.lane === "malware") anchors.push("malware IOC/capability anchors");
 		if (/staticStructure|malware-overlay-signal|malware-suspicious-import-signal|suspiciousImports|overlay-data-present|rwx-section-signal|structured-executable-analysis-signal/i.test(text) && targetInfo.lane === "malware") anchors.push("malware static structure anchors");
-		if (/repi-firmware-quicklook|firmware-quicklook|firmware-extract-plan|SquashFS|UBI|uImage|dropbear|telnetd|cgi-bin|hardcoded-credential-signal/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware quicklook anchors");
+		if (/repi-firmware-quicklook|firmware-quicklook|firmware-attack-surface|firmware-extract-plan|claimLedger|extractionTargets|management-credential-pivot|SquashFS|UBI|uImage|dropbear|telnetd|cgi-bin|hardcoded-credential-signal/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware quicklook anchors");
 		if (/firmware-container-header-parsed|filesystem-superblock-parsed|ubi-header-parsed|partitionOffsets|bytesUsed|vidHeaderOffset/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware structure anchors");
 		if (/repi-agent-boundary-map|agent-boundary|prompt-injection|llm-to-shell-tool-boundary|tool-secret-exfiltration-boundary|tool_call|system-prompt/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary anchors");
 		if (/boundaryFlows|untrusted-input-to-shell-execution-flow|llm-to-shell-execution-flow|tool-secret-exfiltration-flow|prompt-injection-evidence-flow/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary flow anchors");
