@@ -2855,25 +2855,36 @@ jobs:
 		expect(report.commands.map((row) => row.id)).toContain("mobile-archive-quicklook");
 		expect(report.commands.map((row) => row.id)).toContain("mobile-attack-surface-claims");
 		expect(report.commands.map((row) => row.id)).toContain("mobile-frida-hook-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("mobile-archive-verifier-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("mobile-archive-verification");
 		expect(report.summary.missingCritical).not.toContain("unzip");
 		expect(report.summary.anchors).toContain("mobile package anchors");
 		expect(report.summary.anchors).toContain("mobile runtime hook anchors");
+		expect(report.summary.anchors).toContain("mobile archive verifier anchors");
 		expect(report.summary.anchors).toContain("mobile DEX quicklook anchors");
 		expect(report.summary.anchors).toContain("mobile manifest attack-surface anchors");
 		expect(report.nextQueue.some((command) => command.includes("mobile-archive-summary.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("mobile-archive-verification.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("mobile-attack-surface-claims.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("mobile-archive-verifier.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("mobile-frida-hooks.js"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("dexQuicklook"))).toBe(true);
 		const summaryPath = join(report.artifactDir, "mobile-archive-summary.json");
+		const verificationPath = join(report.artifactDir, "mobile-archive-verification.json");
 		const attackSurfacePath = join(report.artifactDir, "mobile-attack-surface-claims.json");
+		const verifierPath = join(report.artifactDir, "mobile-archive-verifier.py");
 		const hookPath = join(report.artifactDir, "mobile-frida-hooks.js");
 		expect(existsSync(summaryPath)).toBe(true);
+		expect(existsSync(verificationPath)).toBe(true);
 		expect(existsSync(attackSurfacePath)).toBe(true);
+		expect(existsSync(verifierPath)).toBe(true);
 		expect(existsSync(hookPath)).toBe(true);
 		expect(statSync(summaryPath).mode & 0o777).toBe(0o600);
+		expect(statSync(verificationPath).mode & 0o777).toBe(0o600);
 		expect(statSync(attackSurfacePath).mode & 0o777).toBe(0o600);
-		expect(statSync(hookPath).mode & 0o777).toBe(0o600);
+		expect(statSync(verifierPath).mode & 0o777).toBe(0o700);
+		expect(statSync(hookPath).mode & 0o777).toBe(0o700);
 		const summary = JSON.parse(readFileSync(summaryPath, "utf8")) as {
 			platform: string;
 			dex: Array<{ name: string }>;
@@ -2912,8 +2923,44 @@ jobs:
 			signalLines: string[];
 		};
 		expect(JSON.stringify(summary)).not.toContain(secret);
+		const verification = JSON.parse(readFileSync(verificationPath, "utf8")) as {
+			proofReady: boolean;
+			runtimeProofReady: boolean;
+			stats: {
+				entriesVerified: number;
+				dexVerified: number;
+				manifestsVerified: number;
+				negativeControlsPassed: number;
+			};
+			claimLedger: Array<{ claimType: string; verdict: string }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+		};
+		expect(JSON.stringify(verification)).not.toContain(secret);
+		expect(verification.proofReady).toBe(true);
+		expect(verification.runtimeProofReady).toBe(true);
+		expect(verification.stats.entriesVerified).toBeGreaterThanOrEqual(5);
+		expect(verification.stats.dexVerified).toBeGreaterThanOrEqual(1);
+		expect(verification.stats.manifestsVerified).toBeGreaterThanOrEqual(1);
+		expect(verification.stats.negativeControlsPassed).toBeGreaterThanOrEqual(1);
+		expect(verification.claimLedger).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ claimType: "mobile-archive-hash-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "mobile-zip-entry-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "mobile-dex-quicklook-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "mobile-manifest-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "mobile-frida-hook-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "mobile-verifier-negative-control-proof", verdict: "promoted" }),
+			]),
+		);
+		expect(
+			verification.composedPaths.some(
+				(claim) => claim.claimType === "mobile-runtime-evidence-proof-path" && claim.verdict === "promoted",
+			),
+		).toBe(true);
 		const attackSurface = JSON.parse(readFileSync(attackSurfacePath, "utf8")) as {
 			proofReady: boolean;
+			runtimeProofReady: boolean;
+			verificationStats: { negativeControlsPassed: number } | null;
 			hookTargets: Array<{ id: string; platform: string; hook: string }>;
 			claimLedger: Array<{ claimType: string; verdict: string; evidenceBinding: Record<string, unknown> }>;
 			composedPaths: Array<{ claimType: string; verdict: string }>;
@@ -2922,6 +2969,8 @@ jobs:
 		};
 		expect(JSON.stringify(attackSurface)).not.toContain(secret);
 		expect(attackSurface.proofReady).toBe(true);
+		expect(attackSurface.runtimeProofReady).toBe(true);
+		expect(attackSurface.verificationStats?.negativeControlsPassed).toBeGreaterThanOrEqual(1);
 		expect(attackSurface.hookTargets.map((row) => row.id)).toEqual(
 			expect.arrayContaining(["android-tls-pinning-bypass", "android-root-anti-tamper", "android-native-load"]),
 		);
@@ -2943,6 +2992,16 @@ jobs:
 		expect(
 			attackSurface.claimLedger.some(
 				(claim) => claim.claimType === "mobile-runtime-pivot" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			attackSurface.claimLedger.some(
+				(claim) => claim.claimType === "mobile-runtime-evidence-proof-path" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			attackSurface.composedPaths.some(
+				(claim) => claim.claimType === "mobile-runtime-evidence-proof-path" && claim.verdict === "promoted",
 			),
 		).toBe(true);
 		expect(
@@ -3016,7 +3075,15 @@ jobs:
 		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
 			artifacts: Array<{ relPath: string }>;
 		};
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("mobile-archive-verification.json");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("mobile-archive-verifier.py");
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("mobile-attack-surface-claims.json");
+		const mobileVerifier = spawnSync("python3", [verifierPath, "--self-test"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(mobileVerifier.status, `${mobileVerifier.stderr}\n${mobileVerifier.stdout}`).toBe(0);
+		expect(mobileVerifier.stdout).toContain("repi-mobile-archive-verifier-self-test");
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
 
@@ -3086,20 +3153,31 @@ jobs:
 		expect(report.commands.map((row) => row.id)).toContain("mobile-archive-quicklook");
 		expect(report.commands.map((row) => row.id)).toContain("mobile-attack-surface-claims");
 		expect(report.commands.map((row) => row.id)).toContain("mobile-frida-hook-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("mobile-archive-verifier-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("mobile-archive-verification");
 		expect(report.summary.anchors).toContain("mobile package anchors");
 		expect(report.summary.anchors).toContain("mobile iOS plist/entitlements anchors");
 		expect(report.summary.anchors).toContain("mobile runtime hook anchors");
+		expect(report.summary.anchors).toContain("mobile archive verifier anchors");
 		expect(report.nextQueue.some((command) => command.includes("iosPlistAnalysis"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("mobile-archive-verification.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("mobile-archive-verifier.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("mobile-attack-surface-claims.json"))).toBe(true);
 		const summaryPath = join(report.artifactDir, "mobile-archive-summary.json");
+		const verificationPath = join(report.artifactDir, "mobile-archive-verification.json");
 		const attackSurfacePath = join(report.artifactDir, "mobile-attack-surface-claims.json");
+		const verifierPath = join(report.artifactDir, "mobile-archive-verifier.py");
 		const hookPath = join(report.artifactDir, "mobile-frida-hooks.js");
 		expect(existsSync(summaryPath)).toBe(true);
+		expect(existsSync(verificationPath)).toBe(true);
 		expect(existsSync(attackSurfacePath)).toBe(true);
+		expect(existsSync(verifierPath)).toBe(true);
 		expect(existsSync(hookPath)).toBe(true);
 		expect(statSync(summaryPath).mode & 0o777).toBe(0o600);
+		expect(statSync(verificationPath).mode & 0o777).toBe(0o600);
 		expect(statSync(attackSurfacePath).mode & 0o777).toBe(0o600);
-		expect(statSync(hookPath).mode & 0o777).toBe(0o600);
+		expect(statSync(verifierPath).mode & 0o777).toBe(0o700);
+		expect(statSync(hookPath).mode & 0o777).toBe(0o700);
 		const summary = JSON.parse(readFileSync(summaryPath, "utf8")) as {
 			platform: string;
 			nativeLibs: Array<{ platform: string; name: string; path: string }>;
@@ -3128,11 +3206,38 @@ jobs:
 		};
 		const attackSurface = JSON.parse(readFileSync(attackSurfacePath, "utf8")) as {
 			proofReady: boolean;
+			runtimeProofReady: boolean;
+			verificationStats: { negativeControlsPassed: number } | null;
 			hookTargets: Array<{ id: string; platform: string }>;
 			claimLedger: Array<{ claimType: string; verdict: string }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
 			promotionReport: { promotedClaims: Array<{ claimType: string }> };
 		};
+		const verification = JSON.parse(readFileSync(verificationPath, "utf8")) as {
+			proofReady: boolean;
+			runtimeProofReady: boolean;
+			stats: { entriesVerified: number; manifestsVerified: number; negativeControlsPassed: number };
+			claimLedger: Array<{ claimType: string; verdict: string }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+		};
+		expect(verification.proofReady).toBe(true);
+		expect(verification.runtimeProofReady).toBe(true);
+		expect(verification.stats.entriesVerified).toBeGreaterThanOrEqual(3);
+		expect(verification.stats.manifestsVerified).toBeGreaterThanOrEqual(2);
+		expect(verification.stats.negativeControlsPassed).toBeGreaterThanOrEqual(1);
+		expect(
+			verification.claimLedger.some(
+				(claim) => claim.claimType === "mobile-manifest-verification-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			verification.composedPaths.some(
+				(claim) => claim.claimType === "mobile-runtime-evidence-proof-path" && claim.verdict === "promoted",
+			),
+		).toBe(true);
 		expect(attackSurface.proofReady).toBe(true);
+		expect(attackSurface.runtimeProofReady).toBe(true);
+		expect(attackSurface.verificationStats?.negativeControlsPassed).toBeGreaterThanOrEqual(1);
 		expect(attackSurface.hookTargets.map((row) => row.id)).toEqual(
 			expect.arrayContaining(["ios-trust-eval", "ios-jailbreak-path"]),
 		);
@@ -3153,6 +3258,11 @@ jobs:
 		).toBe(true);
 		expect(
 			attackSurface.promotionReport.promotedClaims.some((claim) => claim.claimType === "mobile-runtime-pivot"),
+		).toBe(true);
+		expect(
+			attackSurface.composedPaths.some(
+				(claim) => claim.claimType === "mobile-runtime-evidence-proof-path" && claim.verdict === "promoted",
+			),
 		).toBe(true);
 		expect(summary.platform).toBe("ios");
 		expect(summary.nativeLibs[0]).toMatchObject({
@@ -3200,6 +3310,12 @@ jobs:
 			]),
 		);
 		expect(readFileSync(hookPath, "utf8")).toContain("SecTrustEvaluate");
+		const mobileVerifier = spawnSync("python3", [verifierPath, "--self-test"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(mobileVerifier.status, `${mobileVerifier.stderr}\n${mobileVerifier.stdout}`).toBe(0);
+		expect(mobileVerifier.stdout).toContain("repi-mobile-archive-verifier-self-test");
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
 

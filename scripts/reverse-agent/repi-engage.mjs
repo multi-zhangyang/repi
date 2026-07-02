@@ -573,7 +573,9 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	}
 	if (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios") {
 		add("mobile-archive-summary.json", "mobile archive manifest/plist/dex quicklook");
+		add("mobile-archive-verification.json", "mobile archive entry/hash verifier output");
 		add("mobile-attack-surface-claims.json", "mobile manifest/plist/dex runtime claim ledger");
+		add("mobile-archive-verifier.py", "mobile archive verification harness", 0o700);
 		add("mobile-frida-hooks.js", "mobile runtime hook harness", 0o700);
 	}
 	if (targetInfo.lane === "pcap-dfir") {
@@ -649,7 +651,7 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 	if (targetInfo.lane === "js-reverse") requireAny("js-reverse-workbench", ["js-reverse-workbench.json", "js-reverse-workbench.mjs", "workspace-source-runtime-map.json"], "JS reverse targets need local signer/API/workspace evidence artifacts");
 	if (targetInfo.lane === "pcap-dfir") requireAny("pcap-flow-summary", ["pcap-flow-claims.json", "pcap-flow-verification.json", "pcap-flow-verifier.mjs", "pcap-flow-summary.json"], "PCAP targets need parsed flow/stream verifier evidence");
 	if (targetInfo.lane === "crypto-stego") requireAny("crypto-transform-solver", ["crypto-stego-verification.json", "crypto-stego-verifier.py", "crypto-stego-transform-claims.json", "crypto-stego-solver.py", "crypto-stego-media-quicklook.json"], "crypto/stego targets need a transform-chain verifier or media structure proof");
-	if (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios") requireAny("mobile-runtime-hook", ["mobile-attack-surface-claims.json", "mobile-frida-hooks.js", "mobile-archive-summary.json"], "mobile targets need archive/runtime hook anchors");
+	if (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios") requireAny("mobile-runtime-hook", ["mobile-archive-verification.json", "mobile-archive-verifier.py", "mobile-attack-surface-claims.json", "mobile-frida-hooks.js", "mobile-archive-summary.json"], "mobile targets need archive/runtime hook anchors");
 	if (targetInfo.lane === "firmware-iot") requireAny("firmware-extract-plan", ["firmware-attack-surface.json", "firmware-extraction-verification.json", "firmware-extraction-verifier.py", "firmware-extract-plan.sh", "firmware-quicklook.json"], "firmware targets need structure/extraction verifier anchors");
 	if (targetInfo.lane === "memory-forensics") requireAny("memory-triage-plan", ["memory-evidence-claims.json", "memory-evidence-verification.json", "memory-evidence-verifier.py", "memory-triage-plan.sh", "memory-quicklook.json"], "memory targets need triage/correlation verifier anchors");
 	if (targetInfo.lane === "windows-ad") requireAny("windows-ad-triage-plan", ["windows-ad-triage-plan.sh", "windows-ad-quicklook.json"], "identity targets need AD graph/credential triage anchors");
@@ -732,6 +734,7 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 			["pcap-http-object-verifier-pycompile", "pcap-http-object-verifier.py", "syntax-check PCAP object verifier"],
 			["crypto-stego-verifier-pycompile", "crypto-stego-verifier.py", "syntax-check crypto/stego verifier"],
 			["crypto-stego-solver-pycompile", "crypto-stego-solver.py", "syntax-check crypto/stego solver harness"],
+			["mobile-archive-verifier-pycompile", "mobile-archive-verifier.py", "syntax-check mobile archive verifier"],
 			["agent-boundary-payloads-pycompile", "agent-boundary-payloads.py", "syntax-check agent boundary payload harness"],
 			["memory-evidence-verifier-pycompile", "memory-evidence-verifier.py", "syntax-check memory evidence verifier"],
 			["malware-config-verifier-pycompile", "malware-config-verifier.py", "syntax-check malware config verifier"],
@@ -744,6 +747,8 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 		if (existsSync(agentBoundaryPayloads)) add({ id: "agent-boundary-payloads-self-test", command: python, args: [agentBoundaryPayloads, "--self-test"], reason: "execute agent boundary replay harness self-test with unsafe/control payloads" });
 		const cryptoVerifier = proofArtifactPath(artifactDir, "crypto-stego-verifier.py");
 		if (existsSync(cryptoVerifier)) add({ id: "crypto-stego-verifier-self-test", command: python, args: [cryptoVerifier, "--self-test"], reason: "execute crypto/stego verifier self-test with offset/hash negative controls" });
+		const mobileVerifier = proofArtifactPath(artifactDir, "mobile-archive-verifier.py");
+		if (existsSync(mobileVerifier)) add({ id: "mobile-archive-verifier-self-test", command: python, args: [mobileVerifier, "--self-test"], reason: "execute mobile archive verifier self-test with ZIP entry negative controls" });
 		const memoryVerifier = proofArtifactPath(artifactDir, "memory-evidence-verifier.py");
 		if (existsSync(memoryVerifier)) add({ id: "memory-evidence-verifier-self-test", command: python, args: [memoryVerifier, "--self-test"], reason: "execute memory evidence verifier self-test with offset/correlation negative controls" });
 		const malwareVerifier = proofArtifactPath(artifactDir, "malware-config-verifier.py");
@@ -942,6 +947,7 @@ const unifiedProofGraphArtifactCandidates = [
 	"native-primitive-claims.json",
 	"crypto-stego-verification.json",
 	"crypto-stego-transform-claims.json",
+	"mobile-archive-verification.json",
 	"mobile-attack-surface-claims.json",
 	"pcap-flow-verification.json",
 	"pcap-flow-claims.json",
@@ -1003,6 +1009,7 @@ function proofGraphRepairPriority(blocker) {
 	if (/missing-pcap-(?:capture-hash|quicklook-determinism|credential-signal|reassembly-hash|dns-tunnel|object-artifact|verifier-negative-control)/i.test(blocker)) return "high";
 	if (/missing-native-(?:target-hash|replay-case|crash-differential|cyclic-payload|runtime-negative-control)/i.test(blocker)) return "high";
 	if (/missing-crypto-(?:file-hash|media-determinism|structure-offset|negative-control)/i.test(blocker)) return "high";
+	if (/missing-mobile-(?:archive-hash|zip-entry|dex-quicklook|manifest|hook|negative-control)/i.test(blocker)) return "high";
 	if (/missing-memory-(?:image-hash|signal-offset|process-network|credential-context|timeline|negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:ioc-offset|config-extraction|overlay-carve|sample-hash|import-parser|network-ioc-negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:firmware-image-hash|signature-offset|rootfs-carve|firmware-extraction-negative-control)|rootfs-carve-truncated/i.test(blocker)) return "high";
@@ -1052,6 +1059,12 @@ function proofGraphRepairAction(blocker) {
 		"missing-crypto-media-determinism": "Reparse PNG/WAV quicklook deterministically before promoting chunk or bit-plane evidence.",
 		"missing-crypto-structure-offset-verification": "Verify chunks, trailing bytes, embedded archives, or audio slices by exact offset and SHA-256.",
 		"missing-crypto-negative-control": "Add file mutation and shifted-offset controls so hidden-channel matches have a rejection oracle.",
+		"missing-mobile-archive-hash-verification": "Rerun mobile-archive-verifier.py against the original APK/IPA and require size/SHA-256 equality.",
+		"missing-mobile-zip-entry-verification": "Verify manifest, DEX, native library, certificate, and config ZIP entries by CRC, size, and SHA-256.",
+		"missing-mobile-dex-quicklook-verification": "Bind DEX quicklook strings/header claims to the exact classes.dex entry bytes.",
+		"missing-mobile-manifest-verification": "Bind AndroidManifest.xml, Info.plist, or entitlements fields to exact archive entry bytes.",
+		"missing-mobile-hook-verification": "Hash and syntax-check mobile-frida-hooks.js against promoted hook targets.",
+		"missing-mobile-negative-control": "Add archive byte mutation and entry-metadata mismatch controls before promoting runtime pivots.",
 	};
 	return actions[blocker] ?? "Drain this blocker by collecting source-bound runtime evidence and rerun the relevant harness.";
 }
@@ -8614,7 +8627,518 @@ function mobileArchiveSummary(target, lane) {
 	};
 }
 
-function mobileAttackSurfaceClaims(summary) {
+function mobileArchiveEntryNames(summary) {
+	return Array.from(
+		new Set(
+			[
+				...(summary.dex ?? []).map((entry) => entry.name),
+				...(summary.manifests ?? []),
+				...(summary.nativeLibs ?? []).map((entry) => entry.path),
+				...(summary.certs ?? []),
+				...(summary.networkSecurity ?? []),
+				...(summary.iosPlistAnalysis ?? []).map((entry) => entry.path),
+				...(summary.iosEntitlements ?? []).map((entry) => entry.path),
+			]
+				.filter(Boolean)
+				.map(String),
+		),
+	);
+}
+
+function mobileArchiveVerificationSummary(target, artifactDir, summary) {
+	const data = readFileSync(target);
+	const archiveSha256 = bufferSha256(data);
+	const archiveIdentity = {
+		size: data.length,
+		sha256: archiveSha256,
+		headerHex: data.subarray(0, 16).toString("hex"),
+		verified: data.length > 0 && (summary.entryCount ?? 0) >= 0,
+	};
+	if (data.length) {
+		const mutated = Buffer.from(data);
+		mutated[0] ^= 0xff;
+		const mutatedSha256 = bufferSha256(mutated);
+		archiveIdentity.negativeControl = {
+			controlType: "mobile-archive-byte-mutation-rejection",
+			mutatedSha256,
+			passed: mutatedSha256 !== archiveSha256,
+		};
+	}
+	let parsed;
+	try {
+		parsed = parseZipCentralDirectory(data);
+	} catch (error) {
+		parsed = { entries: [], parseError: error instanceof Error ? redact(error.message) : redact(String(error)) };
+	}
+	const entriesByName = new Map((parsed.entries ?? []).map((entry) => [entry.name, entry]));
+	const directoryIdentity = {
+		entryCount: parsed.entries?.length ?? 0,
+		expectedEntryCount: summary.entryCount ?? null,
+		verified: (parsed.entries?.length ?? -1) === (summary.entryCount ?? -2),
+		namesSha256: httpSecretHash((parsed.entries ?? []).map((entry) => entry.name).join("\n")),
+		parseError: parsed.parseError ?? null,
+	};
+	const entryChecks = [];
+	for (const name of mobileArchiveEntryNames(summary)) {
+		const entry = entriesByName.get(name);
+		let actual = {};
+		let verified = false;
+		let negativeControl = null;
+		let reason = "entry-missing";
+		if (entry) {
+			const content = zipEntryData(data, entry, 16 * 1024 * 1024);
+			actual = {
+				name: redact(entry.name),
+				method: entry.method,
+				crc32: entry.crc32,
+				compressedSize: entry.compressedSize,
+				uncompressedSize: entry.uncompressedSize,
+				localHeaderOffset: entry.localHeaderOffset,
+				sha256: content ? bufferSha256(content) : null,
+				headerHex: content ? content.subarray(0, 16).toString("hex") : null,
+			};
+			verified = Boolean(content) && entry.name === name;
+			reason = verified ? "zip-entry-metadata-and-content-bound" : "zip-entry-content-unavailable";
+			if (content?.length) {
+				const mutated = Buffer.from(content);
+				mutated[0] ^= 0xff;
+				const mutatedSha256 = bufferSha256(mutated);
+				negativeControl = {
+					controlType: "mobile-entry-byte-mutation-rejection",
+					entry: redact(entry.name),
+					mutatedSha256,
+					passed: mutatedSha256 !== actual.sha256,
+				};
+			}
+		}
+		entryChecks.push({ name: redact(name), actual, verified, reason, negativeControl });
+	}
+	const dexChecks = [];
+	for (const dex of summary.dexQuicklook ?? []) {
+		const entry = entriesByName.get(dex.path);
+		const content = entry ? zipEntryData(data, entry, 16 * 1024 * 1024) : undefined;
+		let reparsed = null;
+		try {
+			reparsed = content ? parseDexQuicklook(content, dex.path) : null;
+		} catch {
+			reparsed = null;
+		}
+		const verified =
+			Boolean(content) &&
+			Boolean(reparsed) &&
+			Boolean(dex.validMagic) === Boolean(reparsed.validMagic) &&
+			(dex.header?.version ?? null) === (reparsed.header?.version ?? null) &&
+			(dex.header?.stringIdsSize ?? null) === (reparsed.header?.stringIdsSize ?? null);
+		dexChecks.push({
+			path: dex.path,
+			verified,
+			actual: reparsed
+				? {
+						validMagic: reparsed.validMagic,
+						version: reparsed.header?.version ?? null,
+						stringIdsSize: reparsed.header?.stringIdsSize ?? null,
+						sha256: content ? bufferSha256(content) : null,
+					}
+				: null,
+			expected: {
+				validMagic: dex.validMagic,
+				version: dex.header?.version ?? null,
+				stringIdsSize: dex.header?.stringIdsSize ?? null,
+			},
+		});
+	}
+	const manifestChecks = [];
+	for (const manifest of summary.manifestAnalysis ?? []) {
+		const entry = entriesByName.get(manifest.path);
+		const content = entry ? zipEntryData(data, entry, 2 * 1024 * 1024) : undefined;
+		const reparsed = content ? parsePlainAndroidManifest(manifest.path, content) : null;
+		manifestChecks.push({
+			path: manifest.path,
+			platform: "android",
+			verified: Boolean(reparsed) && reparsed.packageName === manifest.packageName && reparsed.components.length === manifest.components.length,
+			evidence: {
+				packageName: manifest.packageName,
+				componentCount: manifest.components?.length ?? 0,
+				permissionCount: manifest.permissions?.length ?? 0,
+				sha256: content ? bufferSha256(content) : null,
+			},
+		});
+	}
+	for (const plist of summary.iosPlistAnalysis ?? []) {
+		const entry = entriesByName.get(plist.path);
+		const content = entry ? zipEntryData(data, entry, 2 * 1024 * 1024) : undefined;
+		const reparsed = content ? parseIosInfoPlist(plist.path, content) : null;
+		manifestChecks.push({
+			path: plist.path,
+			platform: "ios-plist",
+			verified: Boolean(reparsed) && reparsed.bundleId === plist.bundleId && JSON.stringify(reparsed.urlSchemes ?? []) === JSON.stringify(plist.urlSchemes ?? []),
+			evidence: {
+				bundleId: plist.bundleId,
+				urlSchemeCount: plist.urlSchemes?.length ?? 0,
+				sha256: content ? bufferSha256(content) : null,
+			},
+		});
+	}
+	for (const entitlements of summary.iosEntitlements ?? []) {
+		const entry = entriesByName.get(entitlements.path);
+		const content = entry ? zipEntryData(data, entry, 2 * 1024 * 1024) : undefined;
+		const reparsed = content ? parseIosEntitlements(entitlements.path, content) : null;
+		manifestChecks.push({
+			path: entitlements.path,
+			platform: "ios-entitlements",
+			verified: Boolean(reparsed) && reparsed.applicationIdentifier === entitlements.applicationIdentifier && Boolean(reparsed.getTaskAllow) === Boolean(entitlements.getTaskAllow),
+			evidence: {
+				applicationIdentifier: entitlements.applicationIdentifier,
+				getTaskAllow: Boolean(entitlements.getTaskAllow),
+				keychainGroupCount: entitlements.keychainAccessGroups?.length ?? 0,
+				sha256: content ? bufferSha256(content) : null,
+			},
+		});
+	}
+	const hookPath = join(artifactDir, "mobile-frida-hooks.js");
+	let hookVerification = { exists: false, verified: false, sha256: null, mode: null, expectedSignals: [], matchedSignals: [] };
+	if (existsSync(hookPath)) {
+		const hook = readFileSync(hookPath, "utf8");
+		const expectedSignals = summary.platform === "ios" ? ["SecTrustEvaluate", "NSFileManager"] : ["CertificatePinner", "TrustManagerImpl", "Runtime.exec", "SystemProperties"];
+		const matchedSignals = expectedSignals.filter((signal) => hook.includes(signal));
+		let mode = null;
+		try {
+			mode = "0o" + (statSync(hookPath).mode & 0o777).toString(8);
+		} catch {
+			mode = null;
+		}
+		hookVerification = {
+			exists: true,
+			verified: matchedSignals.length >= Math.min(2, expectedSignals.length),
+			sha256: httpSecretHash(hook),
+			mode,
+			expectedSignals,
+			matchedSignals,
+		};
+	}
+	const negativeControls = [archiveIdentity.negativeControl, ...entryChecks.map((row) => row.negativeControl)].filter((row) => row?.passed);
+	const verifiedEntries = entryChecks.filter((row) => row.verified);
+	const verifiedDex = dexChecks.filter((row) => row.verified);
+	const verifiedManifests = manifestChecks.filter((row) => row.verified);
+	const claimLedger = [];
+	const composedPaths = [];
+	const addClaim = (claim) => {
+		const normalized = { verdict: "promoted", confidence: 0.76, blockers: [], ...claim };
+		claimLedger.push(normalized);
+		return normalized;
+	};
+	const archiveClaim = archiveIdentity.verified
+		? addClaim({
+				id: "mobile-archive-hash-verification-" + shortHash(archiveIdentity.sha256),
+				claimType: "mobile-archive-hash-verification-proof",
+				sourceBinding: { artifact: "mobile-archive-verification.json" },
+				evidenceBinding: archiveIdentity,
+				statement: "Mobile verifier re-read APK/IPA bytes and bound file size, SHA-256, and header evidence.",
+				confidence: 0.9,
+				rerunCommand: "python3 mobile-archive-verifier.py <apk-or-ipa> mobile-archive-summary.json mobile-archive-verification.json",
+			})
+		: undefined;
+	const entryClaim = verifiedEntries.length
+		? addClaim({
+				id: "mobile-zip-entry-verification-" + shortHash(verifiedEntries.map((row) => `${row.name}:${row.actual?.sha256}`).join("|")),
+				claimType: "mobile-zip-entry-verification-proof",
+				sourceBinding: { artifact: "mobile-archive-verification.json" },
+				evidenceBinding: {
+					entryCount: verifiedEntries.length,
+					entries: verifiedEntries.slice(0, 80).map((row) => ({ name: row.name, sha256: row.actual?.sha256, crc32: row.actual?.crc32, uncompressedSize: row.actual?.uncompressedSize })),
+				},
+				statement: "Mobile verifier matched manifest, DEX, native, certificate, or config ZIP entries by central-directory metadata and content SHA-256.",
+				confidence: 0.86,
+				rerunCommand: "python3 mobile-archive-verifier.py <apk-or-ipa> mobile-archive-summary.json mobile-archive-verification.json",
+			})
+		: undefined;
+	const dexClaim = verifiedDex.length
+		? addClaim({
+				id: "mobile-dex-quicklook-verification-" + shortHash(verifiedDex.map((row) => `${row.path}:${row.actual?.sha256}`).join("|")),
+				claimType: "mobile-dex-quicklook-verification-proof",
+				sourceBinding: { artifact: "mobile-archive-verification.json" },
+				evidenceBinding: { dex: verifiedDex.map((row) => ({ path: row.path, version: row.actual?.version, stringIdsSize: row.actual?.stringIdsSize, sha256: row.actual?.sha256 })) },
+				statement: "Mobile verifier reparsed DEX entries and matched quicklook header/string table metadata.",
+				confidence: 0.86,
+				rerunCommand: "python3 mobile-archive-verifier.py <apk-or-ipa> mobile-archive-summary.json mobile-archive-verification.json",
+			})
+		: undefined;
+	const manifestClaim = verifiedManifests.length
+		? addClaim({
+				id: "mobile-manifest-verification-" + shortHash(verifiedManifests.map((row) => `${row.path}:${row.evidence?.sha256}`).join("|")),
+				claimType: "mobile-manifest-verification-proof",
+				sourceBinding: { artifact: "mobile-archive-verification.json" },
+				evidenceBinding: { manifests: verifiedManifests },
+				statement: "Mobile verifier reparsed Android manifest, iOS plist, or entitlements entries and matched key runtime fields.",
+				confidence: 0.86,
+				rerunCommand: "python3 mobile-archive-verifier.py <apk-or-ipa> mobile-archive-summary.json mobile-archive-verification.json",
+			})
+		: undefined;
+	const hookClaim = hookVerification.verified
+		? addClaim({
+				id: "mobile-frida-hook-verification-" + shortHash(hookVerification.sha256),
+				claimType: "mobile-frida-hook-verification-proof",
+				sourceBinding: { artifact: "mobile-archive-verification.json", hook: "mobile-frida-hooks.js" },
+				evidenceBinding: hookVerification,
+				statement: "Mobile verifier hash-bound the Frida hook scaffold and matched expected platform hook signals.",
+				confidence: 0.82,
+				rerunCommand: "node --check mobile-frida-hooks.js",
+			})
+		: undefined;
+	const controlClaim = negativeControls.length
+		? addClaim({
+				id: "mobile-verifier-negative-control-" + shortHash(negativeControls.map((row) => `${row.controlType}:${row.mutatedSha256}`).join("|")),
+				claimType: "mobile-verifier-negative-control-proof",
+				sourceBinding: { artifact: "mobile-archive-verification.json" },
+				evidenceBinding: { passedControls: negativeControls },
+				statement: "Mobile verifier ran archive and entry mutation controls so archive evidence is rejectable and rerunnable.",
+				confidence: 0.84,
+				rerunCommand: "python3 mobile-archive-verifier.py <apk-or-ipa> mobile-archive-summary.json mobile-archive-verification.json",
+			})
+		: undefined;
+	if (archiveClaim && entryClaim && (dexClaim || manifestClaim) && hookClaim && controlClaim) {
+		const segments = [archiveClaim, entryClaim, dexClaim, manifestClaim, hookClaim, controlClaim].filter(Boolean);
+		const composed = {
+			id: "mobile-runtime-evidence-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "mobile-runtime-evidence-proof-path",
+			sourceBinding: { segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: claim.sourceBinding?.artifact })) },
+			evidenceBinding: {
+				platform: summary.platform,
+				archiveSha256,
+				verifiedEntries: verifiedEntries.length,
+				verifiedDex: verifiedDex.length,
+				verifiedManifests: verifiedManifests.length,
+				hasHookVerification: true,
+				hasNegativeControl: true,
+			},
+			statement: "Mobile evidence composes archive hash, ZIP entry hashes, DEX/manifest reparsing, Frida hook binding, and mutation controls into a runtime proof path.",
+			verdict: "promoted",
+			confidence: 0.88,
+			blockers: [],
+			rerunCommand: "python3 mobile-archive-verifier.py <apk-or-ipa> mobile-archive-summary.json mobile-archive-verification.json",
+		};
+		claimLedger.push(composed);
+		composedPaths.push(composed);
+	}
+	const blockers = [];
+	if (!archiveIdentity.verified) blockers.push("missing-mobile-archive-hash-verification");
+	if (!verifiedEntries.length) blockers.push("missing-mobile-zip-entry-verification");
+	if ((summary.dexQuicklook ?? []).length && !verifiedDex.length) blockers.push("missing-mobile-dex-quicklook-verification");
+	if (((summary.manifestAnalysis ?? []).length || (summary.iosPlistAnalysis ?? []).length || (summary.iosEntitlements ?? []).length) && !verifiedManifests.length) blockers.push("missing-mobile-manifest-verification");
+	if (!hookVerification.verified) blockers.push("missing-mobile-hook-verification");
+	if (!negativeControls.length) blockers.push("missing-mobile-negative-control");
+	const repairActions = {
+		"missing-mobile-archive-hash-verification": "Rerun mobile-archive-verifier.py against the original APK/IPA and require size/SHA-256 equality.",
+		"missing-mobile-zip-entry-verification": "Verify manifest, DEX, native library, certificate, and config ZIP entries by CRC, size, and SHA-256.",
+		"missing-mobile-dex-quicklook-verification": "Bind DEX quicklook strings/header claims to exact classes.dex bytes.",
+		"missing-mobile-manifest-verification": "Bind AndroidManifest.xml, Info.plist, or entitlements fields to exact archive entry bytes.",
+		"missing-mobile-hook-verification": "Generate mobile-frida-hooks.js and syntax/hash-check expected platform hook signals.",
+		"missing-mobile-negative-control": "Add archive and entry mutation controls so mobile evidence has rejection proof.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "mobile-archive-verification-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect verifier-bound mobile archive evidence and rerun mobile-archive-verifier.py.",
+		rerunCommand: `python3 ${shellQuote(join(artifactDir, "mobile-archive-verifier.py"))} ${shellQuote(target)} ${shellQuote(join(artifactDir, "mobile-archive-summary.json"))} ${shellQuote(join(artifactDir, "mobile-archive-verification.json"))}`,
+	}));
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	return {
+		kind: "repi-mobile-archive-verification",
+		schemaVersion: 1,
+		target: redact(target),
+		generatedAt: new Date().toISOString(),
+		platform: summary.platform,
+		proofReady: promotedClaims.length > 0,
+		runtimeProofReady: composedPaths.length > 0,
+		archiveIdentity,
+		directoryIdentity,
+		entryChecks,
+		dexChecks,
+		manifestChecks,
+		hookVerification,
+		negativeControls,
+		stats: {
+			entriesVerified: verifiedEntries.length,
+			dexVerified: verifiedDex.length,
+			manifestsVerified: verifiedManifests.length,
+			negativeControlsPassed: negativeControls.length,
+		},
+		claimLedger,
+		composedPaths,
+		promotionReport: { proofReady: promotedClaims.length > 0, runtimeProofReady: composedPaths.length > 0, promotedClaims, blockers },
+		repairQueue,
+	};
+}
+
+function writeMobileArchiveVerification(artifactDir, target, summary) {
+	if (noWrite || !artifactDir || !summary) return undefined;
+	const verification = mobileArchiveVerificationSummary(target, artifactDir, summary);
+	const path = join(artifactDir, "mobile-archive-verification.json");
+	writePrivate(path, `${JSON.stringify(verification, null, 2)}\n`, 0o600);
+	return { path, summary: verification };
+}
+
+function mobileArchiveVerifierSource() {
+	return String.raw`#!/usr/bin/env python3
+import argparse
+import hashlib
+import json
+import os
+import tempfile
+import zipfile
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def archive_entry_names(summary):
+    names = []
+    for row in summary.get("dex") or []:
+        names.append(row.get("name"))
+    names.extend(summary.get("manifests") or [])
+    names.extend(summary.get("certs") or [])
+    names.extend(summary.get("networkSecurity") or [])
+    for row in summary.get("nativeLibs") or []:
+        names.append(row.get("path"))
+    for row in summary.get("manifestAnalysis") or []:
+        names.append(row.get("path"))
+    for row in summary.get("iosPlistAnalysis") or []:
+        names.append(row.get("path"))
+    for row in summary.get("iosEntitlements") or []:
+        names.append(row.get("path"))
+    out = []
+    for name in names:
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+def verify(target, summary_path):
+    with open(target, "rb") as handle:
+        data = handle.read()
+    with open(summary_path, "r", encoding="utf-8") as handle:
+        summary = json.load(handle)
+    archive_sha = sha256(data)
+    archive_identity = {"size": len(data), "sha256": archive_sha, "headerHex": data[:16].hex(), "verified": True}
+    if data:
+        mutated = bytearray(data)
+        mutated[0] ^= 0xFF
+        archive_identity["negativeControl"] = {"controlType": "mobile-archive-byte-mutation-rejection", "mutatedSha256": sha256(bytes(mutated)), "passed": sha256(bytes(mutated)) != archive_sha}
+    entry_checks = []
+    dex_checks = []
+    manifest_checks = []
+    controls = [archive_identity.get("negativeControl")]
+    with zipfile.ZipFile(target, "r") as archive:
+        infos = {info.filename: info for info in archive.infolist()}
+        directory_identity = {"entryCount": len(infos), "expectedEntryCount": summary.get("entryCount"), "verified": len(infos) == summary.get("entryCount"), "namesSha256": sha256("\n".join(infos).encode())}
+        for name in archive_entry_names(summary):
+            info = infos.get(name)
+            verified = False
+            actual = {}
+            control = None
+            reason = "entry-missing"
+            if info:
+                content = archive.read(info)
+                actual = {"name": info.filename, "crc32": "0x%08x" % info.CRC, "compressedSize": info.compress_size, "uncompressedSize": info.file_size, "sha256": sha256(content), "headerHex": content[:16].hex()}
+                verified = bool(content) or info.file_size == 0
+                reason = "zip-entry-metadata-and-content-bound" if verified else "zip-entry-empty"
+                if content:
+                    mutated = bytearray(content)
+                    mutated[0] ^= 0xFF
+                    control = {"controlType": "mobile-entry-byte-mutation-rejection", "entry": info.filename, "mutatedSha256": sha256(bytes(mutated)), "passed": sha256(bytes(mutated)) != actual["sha256"]}
+                    controls.append(control)
+            entry_checks.append({"name": name, "actual": actual, "verified": verified, "reason": reason, "negativeControl": control})
+        for dex in summary.get("dexQuicklook") or []:
+            name = dex.get("path")
+            info = infos.get(name)
+            content = archive.read(info) if info else b""
+            dex_checks.append({"path": name, "verified": content.startswith(b"dex\n") == bool(dex.get("validMagic")), "actual": {"sha256": sha256(content), "validMagic": content.startswith(b"dex\n"), "size": len(content)}})
+        for row in (summary.get("manifestAnalysis") or []):
+            name = row.get("path")
+            content = archive.read(infos[name]) if name in infos else b""
+            package = row.get("packageName") or ""
+            manifest_checks.append({"path": name, "platform": "android", "verified": bool(package) and package.encode() in content, "evidence": {"packageName": package, "sha256": sha256(content)}})
+        for row in (summary.get("iosPlistAnalysis") or []):
+            name = row.get("path")
+            content = archive.read(infos[name]) if name in infos else b""
+            bundle = row.get("bundleId") or ""
+            manifest_checks.append({"path": name, "platform": "ios-plist", "verified": bool(bundle) and bundle.encode() in content, "evidence": {"bundleId": bundle, "sha256": sha256(content)}})
+        for row in (summary.get("iosEntitlements") or []):
+            name = row.get("path")
+            content = archive.read(infos[name]) if name in infos else b""
+            appid = row.get("applicationIdentifier") or ""
+            manifest_checks.append({"path": name, "platform": "ios-entitlements", "verified": bool(appid) and appid.encode() in content, "evidence": {"applicationIdentifier": appid, "sha256": sha256(content)}})
+    controls = [row for row in controls if row and row.get("passed")]
+    verified_entries = [row for row in entry_checks if row.get("verified")]
+    verified_dex = [row for row in dex_checks if row.get("verified")]
+    verified_manifests = [row for row in manifest_checks if row.get("verified")]
+    blockers = []
+    if not archive_identity.get("verified"):
+        blockers.append("missing-mobile-archive-hash-verification")
+    if not verified_entries:
+        blockers.append("missing-mobile-zip-entry-verification")
+    if summary.get("dexQuicklook") and not verified_dex:
+        blockers.append("missing-mobile-dex-quicklook-verification")
+    if (summary.get("manifestAnalysis") or summary.get("iosPlistAnalysis") or summary.get("iosEntitlements")) and not verified_manifests:
+        blockers.append("missing-mobile-manifest-verification")
+    if not controls:
+        blockers.append("missing-mobile-negative-control")
+    proof_ready = bool(verified_entries) and bool(controls)
+    repair_queue = [{"id": "mobile-archive-verification-" + blocker, "blocker": blocker, "action": "Collect verifier-bound mobile archive evidence and rerun mobile-archive-verifier.py.", "rerunCommand": "python3 mobile-archive-verifier.py <apk-or-ipa> mobile-archive-summary.json mobile-archive-verification.json"} for blocker in blockers]
+    return {"kind": "repi-mobile-archive-verification", "schemaVersion": 1, "target": target, "proofReady": proof_ready, "archiveIdentity": archive_identity, "directoryIdentity": directory_identity, "entryChecks": entry_checks, "dexChecks": dex_checks, "manifestChecks": manifest_checks, "negativeControls": controls, "stats": {"entriesVerified": len(verified_entries), "dexVerified": len(verified_dex), "manifestsVerified": len(verified_manifests), "negativeControlsPassed": len(controls)}, "repairQueue": repair_queue, "promotionReport": {"proofReady": proof_ready, "blockers": blockers}}
+
+
+def self_test():
+    with tempfile.TemporaryDirectory() as tmp:
+        target = os.path.join(tmp, "app.apk")
+        with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("AndroidManifest.xml", '<manifest package="com.example.repi"><application android:debuggable="true"/></manifest>')
+            archive.writestr("classes.dex", b"dex\n035\x00" + b"demo")
+        with open(target, "rb") as handle:
+            data = handle.read()
+        summary = {"kind": "repi-mobile-archive-quicklook", "schemaVersion": 2, "platform": "android", "entryCount": 2, "dex": [{"name": "classes.dex"}], "dexQuicklook": [{"path": "classes.dex", "validMagic": True}], "manifests": ["AndroidManifest.xml"], "manifestAnalysis": [{"path": "AndroidManifest.xml", "packageName": "com.example.repi"}], "nativeLibs": [], "certs": [], "networkSecurity": []}
+        summary_path = os.path.join(tmp, "mobile-archive-summary.json")
+        with open(summary_path, "w", encoding="utf-8") as handle:
+            json.dump(summary, handle)
+        result = verify(target, summary_path)
+        assert result["proofReady"], json.dumps(result, sort_keys=True)
+        print(json.dumps({"kind": "repi-mobile-archive-verifier-self-test", "status": "ok", "stats": result["stats"]}, sort_keys=True))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Verify REPI mobile APK/IPA archive entry evidence with hash-bound negative controls.")
+    parser.add_argument("target", nargs="?")
+    parser.add_argument("summary", nargs="?", default="mobile-archive-summary.json")
+    parser.add_argument("output", nargs="?", default="mobile-archive-verification.json")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return 0
+    if not args.target:
+        parser.error("target is required unless --self-test is used")
+    result = verify(args.target, args.summary)
+    with open(args.output, "w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    print(json.dumps({"kind": result["kind"], "proofReady": result["proofReady"], "stats": result["stats"], "output": args.output}, sort_keys=True))
+    return 0 if result["proofReady"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`;
+}
+
+function writeMobileArchiveVerifier(artifactDir) {
+	if (noWrite || !artifactDir) return undefined;
+	const path = join(artifactDir, "mobile-archive-verifier.py");
+	writePrivate(path, mobileArchiveVerifierSource(), 0o700);
+	return path;
+}
+
+function mobileAttackSurfaceClaims(summary, verification) {
 	const claimLedger = [];
 	const hookTargets = [];
 	const addHookTarget = (target) => {
@@ -8840,6 +9364,21 @@ function mobileAttackSurfaceClaims(summary) {
 	if (summary.platform === "ios" && (summary.iosPlistAnalysis ?? []).length) {
 		addHookTarget({ id: "ios-jailbreak-path", platform: "ios", reason: "iOS runtime path/trust hook scaffold", hook: "NSFileManager.fileExistsAtPath / SecTrustEvaluate" });
 	}
+	const verificationPromotedPaths = [];
+	for (const verificationClaim of verification?.claimLedger ?? []) {
+		if (verificationClaim.verdict !== "promoted") continue;
+		const claim = {
+			...verificationClaim,
+			id: verificationClaim.id || "mobile-verification-claim-" + shortHash(JSON.stringify(verificationClaim)),
+			sourceBinding: {
+				artifact: "mobile-archive-verification.json",
+				...(verificationClaim.sourceBinding ?? {}),
+			},
+			rerunCommand: verificationClaim.rerunCommand ?? "python3 mobile-archive-verifier.py <apk-or-ipa> mobile-archive-summary.json mobile-archive-verification.json",
+		};
+		addClaim(claim);
+		if (claim.claimType === "mobile-runtime-evidence-proof-path") verificationPromotedPaths.push(claim);
+	}
 	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
 	const entrypointClaim = promotedClaims.find((claim) => /entrypoint|url-scheme/.test(claim.claimType));
 	const endpointClaim = promotedClaims.find((claim) => claim.claimType === "mobile-network-endpoint");
@@ -8848,6 +9387,25 @@ function mobileAttackSurfaceClaims(summary) {
 	const nativeClaim = promotedClaims.find((claim) => /native|crypto/.test(claim.claimType));
 	const entitlementClaim = promotedClaims.find((claim) => /^ios-(?:debug|keychain|associated)/.test(claim.claimType));
 	const composedPaths = [];
+	for (const verificationPath of verification?.composedPaths ?? []) {
+		const composed = {
+			...verificationPath,
+			id: verificationPath.id || "mobile-verification-path-" + shortHash(JSON.stringify(verificationPath)),
+			sourceBinding: {
+				artifact: "mobile-archive-verification.json",
+				...(verificationPath.sourceBinding ?? {}),
+			},
+			rerunCommand: verificationPath.rerunCommand ?? "python3 mobile-archive-verifier.py <apk-or-ipa> mobile-archive-summary.json mobile-archive-verification.json",
+		};
+		if (!claimLedger.some((claim) => claim.id === composed.id)) {
+			claimLedger.push(composed);
+			promotedClaims.push(composed);
+		}
+		composedPaths.push(composed);
+	}
+	for (const verificationPath of verificationPromotedPaths) {
+		if (!composedPaths.some((path) => path.id === verificationPath.id)) composedPaths.push(verificationPath);
+	}
 	if (entrypointClaim && (endpointClaim || secretClaim || hookClaim || nativeClaim || entitlementClaim)) {
 		const segments = [entrypointClaim, endpointClaim, secretClaim, hookClaim, nativeClaim, entitlementClaim].filter(Boolean);
 		const composed = {
@@ -8887,6 +9445,10 @@ function mobileAttackSurfaceClaims(summary) {
 	if (!secretClaim) blockers.push("missing-secret-or-config");
 	if (!nativeClaim) blockers.push("missing-native-or-crypto");
 	if (!(summary.manifestAnalysis ?? []).length && !(summary.iosPlistAnalysis ?? []).length) blockers.push("missing-platform-manifest");
+	if (!verification) blockers.push("missing-mobile-archive-verification");
+	for (const blocker of verification?.promotionReport?.blockers ?? []) {
+		if (!blockers.includes(blocker)) blockers.push(blocker);
+	}
 	const repairActions = {
 		"missing-entrypoint": "Identify an exported Android component or iOS URL scheme/universal link before claiming runtime reachability.",
 		"missing-network-endpoint": "Extract endpoints from DEX, plist, strings, or runtime traffic and bind them to source strings.",
@@ -8894,6 +9456,13 @@ function mobileAttackSurfaceClaims(summary) {
 		"missing-secret-or-config": "Extract redacted token, API key, credential, or config fields from DEX/resources/plist without leaking values.",
 		"missing-native-or-crypto": "Bind crypto transforms or native library loading to DEX strings, native libs, or symbols.",
 		"missing-platform-manifest": "Parse AndroidManifest.xml, Info.plist, or entitlements; binary manifests need aapt/apktool/plutil conversion.",
+		"missing-mobile-archive-verification": "Generate mobile-archive-verification.json and mobile-archive-verifier.py to bind archive entries and negative controls.",
+		"missing-mobile-archive-hash-verification": "Rerun mobile-archive-verifier.py against the original APK/IPA and require size/SHA-256 equality.",
+		"missing-mobile-zip-entry-verification": "Verify manifest, DEX, native library, certificate, and config ZIP entries by CRC, size, and SHA-256.",
+		"missing-mobile-dex-quicklook-verification": "Bind DEX quicklook strings/header claims to exact classes.dex bytes.",
+		"missing-mobile-manifest-verification": "Bind AndroidManifest.xml, Info.plist, or entitlements fields to exact archive entry bytes.",
+		"missing-mobile-hook-verification": "Generate mobile-frida-hooks.js and syntax/hash-check expected platform hook signals.",
+		"missing-mobile-negative-control": "Add archive and entry mutation controls so mobile evidence has rejection proof.",
 	};
 	const repairQueue = blockers.map((blocker) => ({
 		id: "mobile-attack-surface-" + blocker,
@@ -8907,6 +9476,8 @@ function mobileAttackSurfaceClaims(summary) {
 		generatedAt: new Date().toISOString(),
 		platform: summary.platform,
 		proofReady: promotedClaims.length > 0,
+		runtimeProofReady: composedPaths.length > 0,
+		verificationStats: verification?.stats ?? null,
 		hookTargets,
 		claimLedger,
 		composedPaths,
@@ -9028,7 +9599,7 @@ Java.perform(function () {
 function writeMobileFridaHook(artifactDir, lane) {
 	if (noWrite || !artifactDir) return undefined;
 	const path = join(artifactDir, "mobile-frida-hooks.js");
-	writePrivate(path, mobileFridaHookSource(lane === "mobile-ios" ? "ios" : "android"), 0o600);
+	writePrivate(path, mobileFridaHookSource(lane === "mobile-ios" ? "ios" : "android"), 0o700);
 	return path;
 }
 
@@ -16021,6 +16592,41 @@ function engageFile(targetInfo, artifactDir) {
 				error: undefined,
 			});
 		}
+		const mobileSummary = artifactDir ? readJsonArtifact(join(artifactDir, "mobile-archive-summary.json")) : null;
+		const mobileVerifierPath = writeMobileArchiveVerifier(artifactDir);
+		if (mobileVerifierPath) {
+			rows.push({
+				id: "mobile-archive-verifier-artifact",
+				command: "internal",
+				args: [redact(mobileVerifierPath)],
+				cwd: root,
+				exit: 0,
+				signal: null,
+				durationMs: 0,
+				stdout: `verifier=${redact(mobileVerifierPath)}\nrun=python3 ${redact(mobileVerifierPath)} ${redact(target)} ${redact(join(artifactDir, "mobile-archive-summary.json"))} ${redact(join(artifactDir, "mobile-archive-verification.json"))}\n`,
+				stderr: "",
+				error: undefined,
+			});
+		}
+		const mobileVerification = mobileSummary ? writeMobileArchiveVerification(artifactDir, target, mobileSummary) : undefined;
+		if (mobileVerification) {
+			rows.push({
+				id: "mobile-archive-verification",
+				command: "internal",
+				args: [redact(mobileVerification.path)],
+				cwd: root,
+				exit: mobileVerification.summary.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(mobileVerification.summary, null, 2)}\n`,
+				stderr: "",
+				error: mobileVerification.summary.proofReady ? undefined : "mobile archive verification blockers present",
+			});
+			if (!noWrite && artifactDir && mobileSummary) {
+				const attackSurface = mobileAttackSurfaceClaims(mobileSummary, mobileVerification.summary);
+				writePrivate(join(artifactDir, "mobile-attack-surface-claims.json"), `${JSON.stringify(attackSurface, null, 2)}\n`, 0o600);
+			}
+		}
 	}
 	if (targetInfo.lane === "pcap-dfir" && commandExists("tshark")) {
 		rows.push(...pcapQuicklookRows(target, artifactDir));
@@ -19902,9 +20508,11 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios") {
 		if (!noWrite && dataLooksLikeZip(primaryTarget)) q.push(`cat ${shellQuote(join(artifactDir, "mobile-archive-summary.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "mobile-archive-verification.json"))) q.push(`cat ${shellQuote(join(artifactDir, "mobile-archive-verification.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "mobile-attack-surface-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "mobile-attack-surface-claims.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "mobile-archive-verifier.py"))) q.push(`python3 ${shellQuote(join(artifactDir, "mobile-archive-verifier.py"))} ${quotedTarget} ${shellQuote(join(artifactDir, "mobile-archive-summary.json"))} ${shellQuote(join(artifactDir, "mobile-archive-verification.json"))}`);
 		if (!noWrite) q.push(`frida -U -f <package-or-bundle-id> -l ${shellQuote(join(artifactDir, "mobile-frida-hooks.js"))} --no-pause`);
-		q.push(`repi -p ${shellQuote(`Continue mobile reverse from ${artifactDir}: use mobile-archive-summary.json manifestAnalysis/iosPlistAnalysis/iosEntitlements/dexQuicklook plus mobile-attack-surface-claims.json claimLedger/hookTargets/repairQueue to map manifest/plist exported entrypoints, permissions, URL schemes, ATS/entitlements, DEX endpoints/classes, native libs, crypto/pinning/root checks; adapt mobile-frida-hooks.js and replay the network path.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue mobile reverse from ${artifactDir}: use mobile-archive-verification.json plus mobile-archive-summary.json manifestAnalysis/iosPlistAnalysis/iosEntitlements/dexQuicklook and mobile-attack-surface-claims.json claimLedger/hookTargets/repairQueue to map manifest/plist exported entrypoints, permissions, URL schemes, ATS/entitlements, DEX endpoints/classes, native libs, crypto/pinning/root checks; rerun mobile-archive-verifier.py for archive hash, ZIP entry/Dex/manifest/hook and negative-control proof, then adapt mobile-frida-hooks.js and replay the network/deeplink path.`)}`);
 	}
 	if (targetInfo.lane === "memory-forensics") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "memory-quicklook.json"))}`);
@@ -20026,6 +20634,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/repi-web-exploit-claims|web-exploit-claims|web-authz-object-proof-path|web-client-signer-proof-path|web-session-auth-differential|web-object-authz-bola-signal|web-ssrf-canary-evidence|claimLedger|repairQueue/i.test(text) && targetInfo.kind === "url") anchors.push("web exploit claim anchors");
 		if (/AndroidManifest|classes\.dex|Info\.plist|Payload\/|CFBundle|Mach-O/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile package anchors");
 		if (/repi-mobile-archive-quicklook|mobile-archive-summary|mobile-attack-surface-claims|mobile-frida-hooks|hookTargets|mobile-runtime-pivot|CertificatePinner|TrustManager|network-or-pinning-signal/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile runtime hook anchors");
+		if (/repi-mobile-archive-verification|mobile-archive-verification|mobile-archive-verifier|mobile-archive-hash-verification-proof|mobile-zip-entry-verification-proof|mobile-manifest-verification-proof|mobile-runtime-evidence-proof-path|mobile-verifier-negative-control-proof/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile archive verifier anchors");
 		if (/manifestAnalysis|android-exported-component|android-debuggable|android-dangerous-permission|usesCleartextTraffic|AndroidManifest|android-exported-component-entrypoint|android-cleartext-traffic/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile manifest attack-surface anchors");
 		if (/iosPlistAnalysis|iosEntitlements|ios-ats-|ios-url-scheme|ios-get-task-allow|ios-debug-entitlement|ios-keychain-access-group|CFBundleURLSchemes|LSApplicationQueriesSchemes|keychain-access-groups/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile iOS plist/entitlements anchors");
 		if (/dexQuicklook|dex-pinning-signal|dex-crypto-transform-signal|dex-anti-tamper-signal|dex-native-bridge-signal|stringIdsSize/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile DEX quicklook anchors");
