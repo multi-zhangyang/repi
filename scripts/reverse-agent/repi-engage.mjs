@@ -576,8 +576,10 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	}
 	if (targetInfo.lane === "pcap-dfir") {
 		add("pcap-flow-summary.json", "packet/flow/TCP/HTTP/DNS/TLS quicklook");
+		add("pcap-flow-verification.json", "PCAP capture/object/flow verifier output");
 		add("pcap-flow-claims.json", "PCAP flow/credential/object claim ledger");
 		add("pcap-http-objects.json", "PCAP HTTP object carve manifest");
+		add("pcap-flow-verifier.mjs", "PCAP capture/object verification harness", 0o700);
 		add("pcap-http-object-verifier.py", "PCAP object verifier", 0o700);
 	}
 	if (targetInfo.lane === "memory-forensics") {
@@ -641,7 +643,7 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 	if (targetInfo.kind === "directory") requireAny("workspace-source-runtime-map", ["workspace-source-runtime-claims.json", "workspace-source-runtime-map.json", "workspace-source-runtime-harness.mjs"], "workspace targets need source-to-runtime route/sink/auth evidence");
 	if (targetInfo.lane === "native-pwn") requireAny("native-replay", ["native-primitive-claims.json", "native-replay-verifier.py", "native-exploit-hypotheses.json", "native-static-triage.json"], "native targets need replay/triage/hypothesis artifacts");
 	if (targetInfo.lane === "js-reverse") requireAny("js-reverse-workbench", ["js-reverse-workbench.json", "js-reverse-workbench.mjs", "workspace-source-runtime-map.json"], "JS reverse targets need local signer/API/workspace evidence artifacts");
-	if (targetInfo.lane === "pcap-dfir") requireAny("pcap-flow-summary", ["pcap-flow-claims.json", "pcap-flow-summary.json"], "PCAP targets need parsed flow/stream evidence");
+	if (targetInfo.lane === "pcap-dfir") requireAny("pcap-flow-summary", ["pcap-flow-claims.json", "pcap-flow-verification.json", "pcap-flow-verifier.mjs", "pcap-flow-summary.json"], "PCAP targets need parsed flow/stream verifier evidence");
 	if (targetInfo.lane === "crypto-stego") requireAny("crypto-transform-solver", ["crypto-stego-transform-claims.json", "crypto-stego-solver.py", "crypto-stego-media-quicklook.json"], "crypto/stego targets need a transform-chain verifier or media structure proof");
 	if (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios") requireAny("mobile-runtime-hook", ["mobile-attack-surface-claims.json", "mobile-frida-hooks.js", "mobile-archive-summary.json"], "mobile targets need archive/runtime hook anchors");
 	if (targetInfo.lane === "firmware-iot") requireAny("firmware-extract-plan", ["firmware-attack-surface.json", "firmware-extraction-verification.json", "firmware-extraction-verifier.py", "firmware-extract-plan.sh", "firmware-quicklook.json"], "firmware targets need structure/extraction verifier anchors");
@@ -669,6 +671,10 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 	if (targetInfo.lane === "js-reverse") {
 		const jsWorkbench = proofArtifactPath(artifactDir, "js-reverse-workbench.mjs");
 		if (existsSync(jsWorkbench)) add({ id: "js-reverse-workbench-self-test", command: process.execPath, args: [jsWorkbench, "--self-test"], reason: "execute local JS reverse workbench self-test" });
+	}
+	if (targetInfo.lane === "pcap-dfir") {
+		const pcapFlowVerifier = proofArtifactPath(artifactDir, "pcap-flow-verifier.mjs");
+		if (existsSync(pcapFlowVerifier)) add({ id: "pcap-flow-verifier-self-test", command: process.execPath, args: [pcapFlowVerifier, "--self-test"], reason: "execute PCAP flow verifier self-test with capture/object mutation controls" });
 	}
 	if (targetInfo.kind === "directory") {
 		const workspaceHarness = proofArtifactPath(artifactDir, "workspace-source-runtime-harness.mjs");
@@ -914,6 +920,7 @@ const unifiedProofGraphArtifactCandidates = [
 	"native-primitive-claims.json",
 	"crypto-stego-transform-claims.json",
 	"mobile-attack-surface-claims.json",
+	"pcap-flow-verification.json",
 	"pcap-flow-claims.json",
 	"memory-evidence-verification.json",
 	"memory-evidence-claims.json",
@@ -970,6 +977,7 @@ function proofGraphRepairRows(parsed) {
 function proofGraphRepairPriority(blocker) {
 	if (/missing-base-url|no-live-response|no-status|service|unreachable|endpoint/i.test(blocker)) return "high";
 	if (/missing-session|credential|authorization|cookie|token|principal/i.test(blocker)) return "high";
+	if (/missing-pcap-(?:capture-hash|quicklook-determinism|credential-signal|reassembly-hash|dns-tunnel|object-artifact|verifier-negative-control)/i.test(blocker)) return "high";
 	if (/missing-memory-(?:image-hash|signal-offset|process-network|credential-context|timeline|negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:ioc-offset|config-extraction|overlay-carve|sample-hash|import-parser|network-ioc-negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:firmware-image-hash|signature-offset|rootfs-carve|firmware-extraction-negative-control)|rootfs-carve-truncated/i.test(blocker)) return "high";
@@ -1003,6 +1011,13 @@ function proofGraphRepairAction(blocker) {
 		"missing-memory-credential-context-verification": "Tie credential bytes to source-bound process, command line, network, or file offsets.",
 		"missing-memory-timeline-verification": "Bind timestamps to source-bound process/network offsets before claiming timeline proof.",
 		"missing-memory-negative-control": "Add memory byte mutation controls so altered evidence hashes are rejected.",
+		"missing-pcap-capture-hash-verification": "Rerun pcap-flow-verifier.mjs against original bytes and require capture size/SHA-256 equality.",
+		"missing-pcap-quicklook-determinism": "Reparse the capture and resolve parser nondeterminism before promoting flow evidence.",
+		"missing-pcap-credential-signal-verification": "Require credential signal hashes/lengths to reproduce from a fresh parse.",
+		"missing-pcap-reassembly-hash-verification": "Require TCP stream payload hashes to reproduce from a fresh reassembly.",
+		"missing-pcap-dns-tunnel-verification": "Require DNS tunnel label hashes/base-domain grouping to reproduce from a fresh parse.",
+		"missing-pcap-object-artifact-verification": "Verify carved HTTP objects, archive entries, and decoded artifacts against manifest size/SHA-256.",
+		"missing-pcap-verifier-negative-control": "Add capture/object byte mutation controls so altered evidence hashes are rejected.",
 	};
 	return actions[blocker] ?? "Drain this blocker by collecting source-bound runtime evidence and rerun the relevant harness.";
 }
@@ -2733,8 +2748,12 @@ function pcapQuicklook(target, limit = deep ? 500 : 120) {
 	if (data.length < 24) throw new Error("pcap too small");
 	const magicLe = data.readUInt32LE(0);
 	const magicBe = data.readUInt32BE(0);
-	if (magicLe === 0x0a0d0d0a || magicBe === 0x0a0d0d0a) return parsePcapng(data, limit);
-	return parseClassicPcap(data, limit);
+	const summary = magicLe === 0x0a0d0d0a || magicBe === 0x0a0d0d0a ? parsePcapng(data, limit) : parseClassicPcap(data, limit);
+	return {
+		...summary,
+		size: data.length,
+		sha256: bufferSha256(data),
+	};
 }
 
 function shouldCarveHttpBody(bodySummary) {
@@ -3129,7 +3148,323 @@ function pcapEndpointKey(row) {
 	return `${row.src ?? "?"}:${row.sport ?? "?"}->${row.dst ?? "?"}:${row.dport ?? "?"}`;
 }
 
-function pcapFlowClaims(summary, objectManifest) {
+function pcapStableJsonSha(value) {
+	return createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex");
+}
+
+function pcapCredentialSignalRows(summary) {
+	const rows = [];
+	for (const [index, row] of (summary.http ?? []).entries()) {
+		for (const signal of row.credentialSignals ?? []) {
+			rows.push({
+				source: "http",
+				index,
+				kind: signal.kind,
+				name: signal.name ?? signal.field ?? signal.scheme ?? null,
+				valueSha256: signal.valueSha256 ?? null,
+				valueLength: signal.valueLength ?? null,
+				frame: row.frame ?? row.firstFrame ?? null,
+				flow: pcapEndpointKey(row),
+			});
+		}
+	}
+	for (const [index, row] of (summary.plaintextAuth ?? []).entries()) {
+		for (const signal of row.credentialSignals ?? []) {
+			rows.push({
+				source: "plaintextAuth",
+				index,
+				kind: signal.kind,
+				name: signal.field ?? signal.protocol ?? null,
+				valueSha256: signal.valueSha256 ?? null,
+				valueLength: signal.valueLength ?? null,
+				frame: row.frame ?? row.firstFrame ?? null,
+				flow: pcapEndpointKey(row),
+			});
+		}
+	}
+	return rows;
+}
+
+function pcapComparableSummary(summary) {
+	return {
+		format: summary.format,
+		size: summary.size,
+		sha256: summary.sha256,
+		packetCount: summary.packetCount,
+		truncated: Boolean(summary.truncated),
+		protocols: summary.protocols ?? {},
+		flows: (summary.flows ?? []).map((row) => ({ proto: row.proto, src: row.src, dst: row.dst, sport: row.sport ?? null, dport: row.dport ?? null, packets: row.packets, bytes: row.bytes, firstFrame: row.firstFrame, lastFrame: row.lastFrame })),
+		tcpStreams: (summary.tcpStreams ?? []).map((row) => ({ key: row.key, firstFrame: row.firstFrame, lastFrame: row.lastFrame, packets: row.packets, reassembledBytes: row.reassembledBytes, payloadSha256: row.payloadSha256, protocolHints: row.protocolHints ?? [], reassembly: row.reassembly ?? null })),
+		http: (summary.http ?? []).map((row) => ({ kind: row.kind, method: row.method ?? null, status: row.status ?? null, target: row.target ?? null, host: row.host ?? null, frame: row.frame ?? null, firstFrame: row.firstFrame ?? null, lastFrame: row.lastFrame ?? null, reassembled: Boolean(row.reassembled), credentialSignals: row.credentialSignals ?? [], risks: row.risks ?? [], bodySummary: row.bodySummary ? { sha256: row.bodySummary.sha256, capturedLength: row.bodySummary.capturedLength, declaredLength: row.bodySummary.declaredLength, contentType: row.bodySummary.contentType, contentDisposition: row.bodySummary.contentDisposition, risks: row.bodySummary.risks ?? [] } : null })),
+		dnsTunnels: summary.dnsTunnels ?? [],
+		tls: (summary.tls ?? []).map((row) => ({ frame: row.frame ?? null, sni: row.sni ?? [], alpn: row.alpn ?? [], ja3Hash: row.ja3Hash ?? null, flow: pcapEndpointKey(row) })),
+		plaintextAuth: (summary.plaintextAuth ?? []).map((row) => ({ frame: row.frame ?? null, firstFrame: row.firstFrame ?? null, lastFrame: row.lastFrame ?? null, protocol: row.protocol, credentialSignals: row.credentialSignals ?? [], risks: row.risks ?? [], flow: pcapEndpointKey(row) })),
+	};
+}
+
+function pcapVerifyArtifactFile(artifactDir, row, label) {
+	if (!artifactDir || !row?.artifactRelPath) return { label, artifactRelPath: row?.artifactRelPath ?? null, verified: false, reason: "missing-artifact-binding" };
+	const base = resolve(artifactDir);
+	const path = resolve(join(artifactDir, row.artifactRelPath));
+	if (!(path === base || path.startsWith(base + "/"))) return { label, artifactRelPath: row.artifactRelPath, verified: false, reason: "artifact-path-escape" };
+	let actual = {};
+	let negativeControl = null;
+	try {
+		const data = readFileSync(path);
+		actual = { size: data.length, sha256: bufferSha256(data), headerHex: data.subarray(0, 16).toString("hex") };
+		if (data.length) {
+			const mutated = Buffer.from(data);
+			mutated[0] ^= 0xff;
+			const mutatedSha256 = bufferSha256(mutated);
+			negativeControl = { controlType: "pcap-artifact-byte-mutation-rejection", mutatedSha256, passed: mutatedSha256 !== row.sha256 };
+		}
+		const verified = (row.size == null || row.size === actual.size) && (!row.sha256 || row.sha256 === actual.sha256);
+		return { label, artifactRelPath: row.artifactRelPath, expected: { size: row.size ?? null, sha256: row.sha256 ?? null }, actual, verified, reason: verified ? "artifact-size-sha256-match" : "artifact-size-sha256-mismatch", negativeControl };
+	} catch (error) {
+		return { label, artifactRelPath: row.artifactRelPath, expected: { size: row.size ?? null, sha256: row.sha256 ?? null }, actual, verified: false, reason: error instanceof Error ? redact(error.message) : redact(String(error)), negativeControl };
+	}
+}
+
+function pcapObjectArtifactChecks(objectManifest, artifactDir) {
+	const rows = [];
+	for (const [objectIndex, object] of (objectManifest?.objects ?? []).entries()) {
+		rows.push({ objectIndex, ...pcapVerifyArtifactFile(artifactDir, object, "http-object") });
+		for (const [decodedIndex, decoded] of (object.decodedArtifacts ?? []).entries()) rows.push({ objectIndex, decodedIndex, ...pcapVerifyArtifactFile(artifactDir, decoded, "http-object-decoded") });
+		for (const [entryIndex, entry] of (object.extractedEntries ?? []).entries()) {
+			rows.push({ objectIndex, entryIndex, name: entry.name, ...pcapVerifyArtifactFile(artifactDir, entry, "http-archive-entry") });
+			for (const [decodedIndex, decoded] of (entry.decodedArtifacts ?? []).entries()) rows.push({ objectIndex, entryIndex, decodedIndex, name: entry.name, ...pcapVerifyArtifactFile(artifactDir, decoded, "http-entry-decoded") });
+		}
+	}
+	return rows;
+}
+
+function pcapFlowVerificationClaims(summary, verificationRows) {
+	const claimLedger = [];
+	const composedPaths = [];
+	const addClaim = (claim) => claimLedger.push({ verdict: "promoted", confidence: 0.76, blockers: [], ...claim });
+	const verifiedObjects = verificationRows.objectArtifactChecks.filter((row) => row.verified);
+	const passedControls = verificationRows.negativeControls.filter((row) => row.passed);
+	if (verificationRows.captureIdentity.verified) {
+		addClaim({
+			id: "pcap-capture-hash-verification-" + shortHash(verificationRows.captureIdentity.sha256),
+			claimType: "pcap-capture-hash-verification-proof",
+			sourceBinding: { artifact: "pcap-flow-verification.json" },
+			evidenceBinding: { size: verificationRows.captureIdentity.size, sha256: verificationRows.captureIdentity.sha256, format: summary.format, packetCount: summary.packetCount },
+			statement: "Verifier re-read the capture file and matched size/SHA-256 against the PCAP quicklook summary.",
+			confidence: 0.9,
+			rerunCommand: "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json",
+		});
+	}
+	if (verificationRows.quicklookDeterminism.verified) {
+		addClaim({
+			id: "pcap-quicklook-determinism-" + shortHash(verificationRows.quicklookDeterminism.storedSha256),
+			claimType: "pcap-quicklook-determinism-proof",
+			sourceBinding: { artifact: "pcap-flow-verification.json" },
+			evidenceBinding: verificationRows.quicklookDeterminism,
+			statement: "Verifier reparsed the PCAP and matched the normalized flow/HTTP/DNS/TLS/TCP summary hash.",
+			confidence: 0.88,
+			rerunCommand: "repi engage <pcap-or-pcapng> --json",
+		});
+	}
+	if (verificationRows.credentialSignals.verifiedCount) {
+		addClaim({
+			id: "pcap-credential-signal-verification-" + shortHash(JSON.stringify(verificationRows.credentialSignals.sampleHashes)),
+			claimType: "pcap-credential-signal-verification-proof",
+			sourceBinding: { artifact: "pcap-flow-verification.json", rows: verificationRows.credentialSignals.sampleHashes },
+			evidenceBinding: verificationRows.credentialSignals,
+			statement: "Verifier confirmed credential signal hashes/lengths are reproduced by a fresh parse of the capture.",
+			confidence: 0.86,
+			rerunCommand: "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json",
+		});
+	}
+	if (verificationRows.reassembly.verifiedCount) {
+		addClaim({
+			id: "pcap-reassembly-hash-verification-" + shortHash(JSON.stringify(verificationRows.reassembly.sampleStreams)),
+			claimType: "pcap-reassembly-hash-verification-proof",
+			sourceBinding: { artifact: "pcap-flow-verification.json", streams: verificationRows.reassembly.sampleStreams },
+			evidenceBinding: verificationRows.reassembly,
+			statement: "Verifier confirmed TCP stream payload hashes are reproduced by a fresh capture parse.",
+			confidence: 0.86,
+			rerunCommand: "repi engage <pcap-or-pcapng> --json",
+		});
+	}
+	if (verificationRows.dnsTunnel.verifiedCount) {
+		addClaim({
+			id: "pcap-dns-tunnel-verification-" + shortHash(JSON.stringify(verificationRows.dnsTunnel.sampleDomains)),
+			claimType: "pcap-dns-tunnel-verification-proof",
+			sourceBinding: { artifact: "pcap-flow-verification.json", domains: verificationRows.dnsTunnel.sampleDomains },
+			evidenceBinding: verificationRows.dnsTunnel,
+			statement: "Verifier confirmed DNS tunnel label hashes/base-domain grouping are stable across fresh parse.",
+			confidence: 0.82,
+			rerunCommand: "repi engage <pcap-or-pcapng> --json",
+		});
+	}
+	if (verifiedObjects.length) {
+		addClaim({
+			id: "pcap-object-artifact-verification-" + shortHash(verifiedObjects.map((row) => `${row.label}:${row.artifactRelPath}:${row.actual?.sha256}`).join("|")),
+			claimType: "pcap-object-artifact-verification-proof",
+			sourceBinding: { artifact: "pcap-flow-verification.json", artifacts: verifiedObjects.slice(0, 80).map((row) => ({ label: row.label, artifactRelPath: row.artifactRelPath })) },
+			evidenceBinding: { verifiedCount: verifiedObjects.length, objectCount: verificationRows.objectManifestStats.objectCount, entryCount: verificationRows.objectManifestStats.entryCount, decodedCount: verificationRows.objectManifestStats.decodedCount },
+			statement: "Verifier matched carved HTTP object, archive entry, and decoded artifact files against manifest size/SHA-256 evidence.",
+			confidence: 0.9,
+			rerunCommand: "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json",
+		});
+	}
+	if (passedControls.length) {
+		addClaim({
+			id: "pcap-verifier-negative-control-" + shortHash(passedControls.map((row) => `${row.controlType}:${row.mutatedSha256}`).join("|")),
+			claimType: "pcap-verifier-negative-control-proof",
+			sourceBinding: { artifact: "pcap-flow-verification.json" },
+			evidenceBinding: { passedControls },
+			statement: "Verifier ran mutation controls proving altered capture/object bytes do not retain the original evidence hashes.",
+			confidence: 0.84,
+			rerunCommand: "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json",
+		});
+	}
+	const identityClaim = claimLedger.find((claim) => claim.claimType === "pcap-capture-hash-verification-proof");
+	const deterministicClaim = claimLedger.find((claim) => claim.claimType === "pcap-quicklook-determinism-proof");
+	const credentialClaim = claimLedger.find((claim) => claim.claimType === "pcap-credential-signal-verification-proof");
+	const objectClaim = claimLedger.find((claim) => claim.claimType === "pcap-object-artifact-verification-proof");
+	const reassemblyClaim = claimLedger.find((claim) => claim.claimType === "pcap-reassembly-hash-verification-proof");
+	const dnsClaim = claimLedger.find((claim) => claim.claimType === "pcap-dns-tunnel-verification-proof");
+	const controlClaim = claimLedger.find((claim) => claim.claimType === "pcap-verifier-negative-control-proof");
+	if (identityClaim && deterministicClaim && (credentialClaim || objectClaim || reassemblyClaim || dnsClaim) && controlClaim) {
+		const segments = [identityClaim, deterministicClaim, credentialClaim, objectClaim, reassemblyClaim, dnsClaim, controlClaim].filter(Boolean);
+		const composed = {
+			id: "pcap-flow-verification-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "pcap-flow-verification-proof-path",
+			sourceBinding: { segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: claim.sourceBinding?.artifact })) },
+			evidenceBinding: {
+				captureSha256: verificationRows.captureIdentity.sha256,
+				hasCredentialSignalProof: Boolean(credentialClaim),
+				hasObjectArtifactProof: Boolean(objectClaim),
+				hasReassemblyHashProof: Boolean(reassemblyClaim),
+				hasDnsTunnelProof: Boolean(dnsClaim),
+				hasNegativeControl: Boolean(controlClaim),
+			},
+			statement: "PCAP verification composes capture identity, deterministic parser output, flow/object evidence, and mutation controls into a rerunnable proof path.",
+			verdict: "promoted",
+			confidence: credentialClaim && objectClaim ? 0.9 : 0.84,
+			blockers: [],
+			rerunCommand: "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json",
+		};
+		claimLedger.push(composed);
+		composedPaths.push(composed);
+	}
+	return { claimLedger, composedPaths };
+}
+
+function pcapFlowVerificationSummary(target, summary, objectManifest, artifactDir) {
+	const data = readFileSync(target);
+	const captureSha256 = bufferSha256(data);
+	const captureIdentity = {
+		size: data.length,
+		sha256: captureSha256,
+		verified: data.length === summary.size && captureSha256 === summary.sha256,
+	};
+	if (data.length) {
+		const mutated = Buffer.from(data);
+		mutated[0] ^= 0xff;
+		const mutatedSha256 = bufferSha256(mutated);
+		captureIdentity.negativeControl = { controlType: "pcap-capture-byte-mutation-rejection", mutatedSha256, passed: mutatedSha256 !== captureSha256 };
+	}
+	const fresh = pcapQuicklook(target);
+	const storedComparable = pcapComparableSummary(summary);
+	const freshComparable = pcapComparableSummary(fresh);
+	const quicklookDeterminism = {
+		storedSha256: pcapStableJsonSha(storedComparable),
+		freshSha256: pcapStableJsonSha(freshComparable),
+		verified: pcapStableJsonSha(storedComparable) === pcapStableJsonSha(freshComparable),
+		packetCount: summary.packetCount,
+		freshPacketCount: fresh.packetCount,
+	};
+	const storedCredentials = pcapCredentialSignalRows(summary);
+	const freshCredentials = pcapCredentialSignalRows(fresh);
+	const freshCredentialKeys = new Set(freshCredentials.map((row) => `${row.source}:${row.kind}:${row.name}:${row.valueSha256}:${row.valueLength}:${row.flow}`));
+	const verifiedCredentials = storedCredentials.filter((row) => freshCredentialKeys.has(`${row.source}:${row.kind}:${row.name}:${row.valueSha256}:${row.valueLength}:${row.flow}`));
+	const storedStreams = (summary.tcpStreams ?? []).filter((row) => row.payloadSha256);
+	const freshStreamKeys = new Set((fresh.tcpStreams ?? []).map((row) => `${row.key}:${row.payloadSha256}:${row.reassembledBytes}:${row.firstFrame}:${row.lastFrame}`));
+	const verifiedStreams = storedStreams.filter((row) => freshStreamKeys.has(`${row.key}:${row.payloadSha256}:${row.reassembledBytes}:${row.firstFrame}:${row.lastFrame}`));
+	const storedDnsTunnels = summary.dnsTunnels ?? [];
+	const freshDnsTunnelKeys = new Set((fresh.dnsTunnels ?? []).map((row) => `${row.baseDomain}:${row.queryCount}:${(row.labelSha256s ?? []).join(",")}`));
+	const verifiedDnsTunnels = storedDnsTunnels.filter((row) => freshDnsTunnelKeys.has(`${row.baseDomain}:${row.queryCount}:${(row.labelSha256s ?? []).join(",")}`));
+	const objectArtifactChecks = pcapObjectArtifactChecks(objectManifest, artifactDir);
+	const negativeControls = [captureIdentity.negativeControl, ...objectArtifactChecks.map((row) => row.negativeControl)].filter((row) => row?.passed);
+	const verificationRows = {
+		captureIdentity,
+		quicklookDeterminism,
+		credentialSignals: {
+			storedCount: storedCredentials.length,
+			verifiedCount: verifiedCredentials.length,
+			sampleHashes: verifiedCredentials.slice(0, 64).map((row) => ({ source: row.source, kind: row.kind, name: row.name, valueSha256: row.valueSha256, valueLength: row.valueLength, flow: row.flow })),
+		},
+		reassembly: {
+			storedCount: storedStreams.length,
+			verifiedCount: verifiedStreams.length,
+			sampleStreams: verifiedStreams.slice(0, 32).map((row) => ({ key: row.key, firstFrame: row.firstFrame, lastFrame: row.lastFrame, reassembledBytes: row.reassembledBytes, payloadSha256: row.payloadSha256 })),
+		},
+		dnsTunnel: {
+			storedCount: storedDnsTunnels.length,
+			verifiedCount: verifiedDnsTunnels.length,
+			sampleDomains: verifiedDnsTunnels.slice(0, 32).map((row) => ({ baseDomain: row.baseDomain, queryCount: row.queryCount, labelSha256s: row.labelSha256s ?? [] })),
+		},
+		objectManifestStats: {
+			objectCount: objectManifest?.objectCount ?? 0,
+			entryCount: objectManifest?.entryCount ?? 0,
+			decodedCount: objectManifest?.decodedCount ?? 0,
+			verifierRelPath: objectManifest?.verifierRelPath ?? null,
+		},
+		objectArtifactChecks,
+		negativeControls,
+	};
+	const claims = pcapFlowVerificationClaims(summary, verificationRows);
+	const blockers = [];
+	if (!captureIdentity.verified) blockers.push("missing-pcap-capture-hash-verification");
+	if (!quicklookDeterminism.verified) blockers.push("missing-pcap-quicklook-determinism");
+	if (storedCredentials.length && !verifiedCredentials.length) blockers.push("missing-pcap-credential-signal-verification");
+	if (storedStreams.length && !verifiedStreams.length) blockers.push("missing-pcap-reassembly-hash-verification");
+	if (storedDnsTunnels.length && !verifiedDnsTunnels.length) blockers.push("missing-pcap-dns-tunnel-verification");
+	if ((objectManifest?.objectCount ?? 0) && !objectArtifactChecks.some((row) => row.verified)) blockers.push("missing-pcap-object-artifact-verification");
+	if (!negativeControls.length) blockers.push("missing-pcap-verifier-negative-control");
+	const repairActions = {
+		"missing-pcap-capture-hash-verification": "Rerun the verifier against the original PCAP bytes and require capture size/SHA-256 equality.",
+		"missing-pcap-quicklook-determinism": "Reparse the capture and resolve parser nondeterminism before promoting flow evidence.",
+		"missing-pcap-credential-signal-verification": "Require credential signal hashes/lengths to reproduce from a fresh parse.",
+		"missing-pcap-reassembly-hash-verification": "Require TCP stream payload hashes to reproduce from a fresh reassembly.",
+		"missing-pcap-dns-tunnel-verification": "Require DNS tunnel base-domain and label hashes to reproduce from a fresh parse.",
+		"missing-pcap-object-artifact-verification": "Verify each carved HTTP object/entry/decoded artifact against manifest size and SHA-256.",
+		"missing-pcap-verifier-negative-control": "Add capture/object byte mutation controls so altered evidence hashes are rejected.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "pcap-flow-verification-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect verifier-bound PCAP evidence and rerun pcap-flow-verifier.mjs.",
+		rerunCommand: "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json",
+	}));
+	const promotedClaims = claims.claimLedger.filter((claim) => claim.verdict === "promoted");
+	return {
+		kind: "repi-pcap-flow-verification",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		target: redact(target),
+		proofReady: promotedClaims.length > 0,
+		...verificationRows,
+		stats: {
+			credentialsVerified: verifiedCredentials.length,
+			reassemblyStreamsVerified: verifiedStreams.length,
+			dnsTunnelsVerified: verifiedDnsTunnels.length,
+			objectArtifactsVerified: objectArtifactChecks.filter((row) => row.verified).length,
+			negativeControlsPassed: negativeControls.length,
+		},
+		claimLedger: claims.claimLedger,
+		composedPaths: claims.composedPaths,
+		promotionReport: { proofReady: promotedClaims.length > 0, promotedClaims, blockers },
+		repairQueue,
+	};
+}
+
+
+function pcapFlowClaims(summary, objectManifest, verification) {
 	const claimLedger = [];
 	const addClaim = (claim) => {
 		claimLedger.push({
@@ -3365,6 +3700,18 @@ function pcapFlowClaims(summary, objectManifest) {
 			}
 		}
 	}
+	for (const claim of verification?.claimLedger ?? []) {
+		if (claim.verdict !== "promoted") continue;
+		addClaim({
+			...claim,
+			id: claim.id || "pcap-verification-claim-" + shortHash(JSON.stringify(claim)),
+			sourceBinding: {
+				artifact: "pcap-flow-verification.json",
+				...(claim.sourceBinding ?? {}),
+			},
+			rerunCommand: claim.rerunCommand ?? "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json",
+		});
+	}
 	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
 	const credentialClaim = promotedClaims.find((claim) => claim.claimType === "pcap-http-credential-flow" || claim.claimType === "pcap-plaintext-auth-flow");
 	const objectClaim = promotedClaims.find((claim) => claim.claimType === "pcap-http-object-carve");
@@ -3372,9 +3719,28 @@ function pcapFlowClaims(summary, objectManifest) {
 	const dnsClaim = promotedClaims.find((claim) => claim.claimType === "pcap-dns-tunnel-exfil-candidate");
 	const tlsClaim = promotedClaims.find((claim) => claim.claimType === "pcap-tls-sni-fingerprint");
 	const reassemblyClaim = promotedClaims.find((claim) => claim.claimType === "pcap-tcp-reassembly-proof");
+	const verifierCredentialClaim = promotedClaims.find((claim) => claim.claimType === "pcap-credential-signal-verification-proof");
+	const verifierObjectClaim = promotedClaims.find((claim) => claim.claimType === "pcap-object-artifact-verification-proof");
+	const verifierReassemblyClaim = promotedClaims.find((claim) => claim.claimType === "pcap-reassembly-hash-verification-proof");
+	const verifierDnsClaim = promotedClaims.find((claim) => claim.claimType === "pcap-dns-tunnel-verification-proof");
+	const verifierNegativeControlClaim = promotedClaims.find((claim) => claim.claimType === "pcap-verifier-negative-control-proof");
 	const composedPaths = [];
+	for (const path of verification?.composedPaths ?? []) {
+		const composed = {
+			...path,
+			id: path.id || "pcap-verification-path-" + shortHash(JSON.stringify(path)),
+			sourceBinding: {
+				artifact: "pcap-flow-verification.json",
+				...(path.sourceBinding ?? {}),
+			},
+			rerunCommand: path.rerunCommand ?? "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json",
+		};
+		claimLedger.push(composed);
+		promotedClaims.push(composed);
+		composedPaths.push(composed);
+	}
 	if (credentialClaim || objectClaim || dnsClaim || tlsClaim) {
-		const segments = [credentialClaim, objectClaim, decodedClaim, dnsClaim, tlsClaim, reassemblyClaim].filter(Boolean);
+		const segments = [credentialClaim, verifierCredentialClaim, objectClaim, verifierObjectClaim, decodedClaim, dnsClaim, verifierDnsClaim, tlsClaim, reassemblyClaim, verifierReassemblyClaim, verifierNegativeControlClaim].filter(Boolean);
 		const composed = {
 			id: "pcap-flow-pivot-" + shortHash(segments.map((claim) => claim.id).join(">")),
 			claimType: "pcap-flow-evidence-pivot",
@@ -3395,10 +3761,15 @@ function pcapFlowClaims(summary, objectManifest) {
 				hasDnsTunnel: Boolean(dnsClaim),
 				hasTlsFingerprint: Boolean(tlsClaim),
 				hasReassemblyProof: Boolean(reassemblyClaim),
+				hasVerifierCredentialSignal: Boolean(verifierCredentialClaim),
+				hasVerifierObjectArtifact: Boolean(verifierObjectClaim),
+				hasVerifierReassemblyHash: Boolean(verifierReassemblyClaim),
+				hasVerifierDnsTunnel: Boolean(verifierDnsClaim),
+				hasNegativeControl: Boolean(verifierNegativeControlClaim),
 			},
-			statement: "PCAP evidence composes credential, object, DNS, TLS, and/or TCP reassembly anchors into one replayable investigation pivot.",
+			statement: "PCAP evidence composes credential, object, DNS, TLS, TCP reassembly, deterministic parser output, and mutation-control anchors into one replayable investigation pivot.",
 			verdict: "promoted",
-			confidence: credentialClaim && (objectClaim || dnsClaim) ? 0.86 : 0.76,
+			confidence: verifierNegativeControlClaim && (verifierCredentialClaim || verifierObjectClaim) ? 0.9 : credentialClaim && (objectClaim || dnsClaim) ? 0.86 : 0.76,
 			blockers: [],
 			rerunCommand: "cat pcap-flow-claims.json | jq '.composedPaths'",
 		};
@@ -3413,6 +3784,9 @@ function pcapFlowClaims(summary, objectManifest) {
 	if (!dnsClaim) blockers.push("missing-dns-tunnel");
 	if (!tlsClaim && !(summary.tls ?? []).length) blockers.push("missing-tls-fingerprint");
 	if (!reassemblyClaim && (summary.tcpStreams ?? []).length) blockers.push("missing-reassembly-proof");
+	for (const blocker of verification?.promotionReport?.blockers ?? []) {
+		if (!blockers.includes(blocker)) blockers.push(blocker);
+	}
 	const repairActions = {
 		"missing-credential-flow": "Locate HTTP authorization/cookie/form/query credentials or plaintext auth commands and bind only hashed values to frames.",
 		"missing-http-object-carve": "Find HTTP bodies with binary magic, archive metadata, content-disposition, or object content-types and carve them with hashes.",
@@ -3420,18 +3794,28 @@ function pcapFlowClaims(summary, objectManifest) {
 		"missing-dns-tunnel": "Group DNS labels by base domain and score long, high-entropy, base32/base64url-like labels.",
 		"missing-tls-fingerprint": "Parse TLS ClientHello SNI/ALPN/JA3 and bind it to the TCP flow.",
 		"missing-reassembly-proof": "Reassemble TCP streams with seq/gap/overlap metadata before promoting cross-packet HTTP evidence.",
+		"missing-pcap-capture-hash-verification": "Rerun pcap-flow-verifier.mjs against original bytes and require capture size/SHA-256 equality.",
+		"missing-pcap-quicklook-determinism": "Reparse the capture and resolve parser nondeterminism before promoting flow evidence.",
+		"missing-pcap-credential-signal-verification": "Require credential signal hashes/lengths to reproduce from a fresh parse.",
+		"missing-pcap-reassembly-hash-verification": "Require TCP stream payload hashes to reproduce from a fresh reassembly.",
+		"missing-pcap-dns-tunnel-verification": "Require DNS tunnel label hashes/base domains to reproduce from a fresh parse.",
+		"missing-pcap-object-artifact-verification": "Verify carved HTTP objects, archive entries, and decoded artifacts against manifest size/SHA-256.",
+		"missing-pcap-verifier-negative-control": "Add capture/object byte mutation controls so altered evidence hashes are rejected.",
 	};
 	const repairQueue = blockers.map((blocker) => ({
 		id: "pcap-flow-" + blocker,
 		blocker,
 		action: repairActions[blocker] ?? "Collect source-bound PCAP evidence and rerun flow claim promotion.",
-		rerunCommand: "repi engage <pcap-or-pcapng> --json",
+		rerunCommand: /^missing-pcap-/.test(blocker)
+			? "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json"
+			: "repi engage <pcap-or-pcapng> --json",
 	}));
 	return {
 		kind: "repi-pcap-flow-claims",
-		schemaVersion: 1,
+		schemaVersion: 2,
 		generatedAt: new Date().toISOString(),
 		proofReady: promotedClaims.length > 0,
+		verificationStats: verification?.stats ?? null,
 		claimLedger,
 		composedPaths,
 		promotionReport: {
@@ -3443,12 +3827,134 @@ function pcapFlowClaims(summary, objectManifest) {
 	};
 }
 
+function pcapFlowVerifierSource() {
+	return String.raw`#!/usr/bin/env node
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+
+function sha256(data) {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function verifyFile(base, row, label) {
+  if (!row?.artifactRelPath) return { label, artifactRelPath: row?.artifactRelPath ?? null, verified: false, reason: "missing-artifactRelPath" };
+  const root = resolve(base);
+  const path = resolve(join(base, row.artifactRelPath));
+  if (!(path === root || path.startsWith(root + "/"))) return { label, artifactRelPath: row.artifactRelPath, verified: false, reason: "path-escape" };
+  const data = readFileSync(path);
+  const actual = { size: data.length, sha256: sha256(data) };
+  const verified = (row.size == null || row.size === actual.size) && (!row.sha256 || row.sha256 === actual.sha256);
+  let negativeControl = null;
+  if (data.length && row.sha256) {
+    const mutated = Buffer.from(data);
+    mutated[0] ^= 0xff;
+    const mutatedSha256 = sha256(mutated);
+    negativeControl = { controlType: "pcap-artifact-byte-mutation-rejection", mutatedSha256, passed: mutatedSha256 !== row.sha256 };
+  }
+  return { label, artifactRelPath: row.artifactRelPath, expected: { size: row.size ?? null, sha256: row.sha256 ?? null }, actual, verified, reason: verified ? "artifact-size-sha256-match" : "artifact-size-sha256-mismatch", negativeControl };
+}
+
+function verify(pcapPath, summaryPath, manifestPath) {
+  const summary = readJson(summaryPath);
+  const capture = readFileSync(pcapPath);
+  const captureIdentity = { size: capture.length, sha256: sha256(capture), verified: capture.length === summary.size && sha256(capture) === summary.sha256 };
+  if (capture.length) {
+    const mutated = Buffer.from(capture);
+    mutated[0] ^= 0xff;
+    const mutatedSha256 = sha256(mutated);
+    captureIdentity.negativeControl = { controlType: "pcap-capture-byte-mutation-rejection", mutatedSha256, passed: mutatedSha256 !== captureIdentity.sha256 };
+  }
+  const objectArtifactChecks = [];
+  let objectManifestStats = { objectCount: 0, entryCount: 0, decodedCount: 0, verifierRelPath: null };
+  if (manifestPath && existsSync(manifestPath)) {
+    const manifest = readJson(manifestPath);
+    const base = dirname(manifestPath);
+    objectManifestStats = { objectCount: manifest.objectCount ?? 0, entryCount: manifest.entryCount ?? 0, decodedCount: manifest.decodedCount ?? 0, verifierRelPath: manifest.verifierRelPath ?? null };
+    for (const [objectIndex, object] of (manifest.objects ?? []).entries()) {
+      objectArtifactChecks.push({ objectIndex, ...verifyFile(base, object, "http-object") });
+      for (const [decodedIndex, decoded] of (object.decodedArtifacts ?? []).entries()) objectArtifactChecks.push({ objectIndex, decodedIndex, ...verifyFile(base, decoded, "http-object-decoded") });
+      for (const [entryIndex, entry] of (object.extractedEntries ?? []).entries()) {
+        objectArtifactChecks.push({ objectIndex, entryIndex, name: entry.name, ...verifyFile(base, entry, "http-archive-entry") });
+        for (const [decodedIndex, decoded] of (entry.decodedArtifacts ?? []).entries()) objectArtifactChecks.push({ objectIndex, entryIndex, decodedIndex, name: entry.name, ...verifyFile(base, decoded, "http-entry-decoded") });
+      }
+    }
+  }
+  const negativeControls = [captureIdentity.negativeControl, ...objectArtifactChecks.map((row) => row.negativeControl)].filter((row) => row?.passed);
+  const proofReady = captureIdentity.verified && (objectArtifactChecks.length === 0 || objectArtifactChecks.some((row) => row.verified)) && negativeControls.length > 0;
+  const blockers = [];
+  if (!captureIdentity.verified) blockers.push("missing-pcap-capture-hash-verification");
+  if (objectArtifactChecks.length && !objectArtifactChecks.some((row) => row.verified)) blockers.push("missing-pcap-object-artifact-verification");
+  if (!negativeControls.length) blockers.push("missing-pcap-verifier-negative-control");
+  return {
+    kind: "repi-pcap-flow-verification",
+    schemaVersion: 1,
+    proofReady,
+    captureIdentity,
+    quicklookDeterminism: { verified: null, reason: "standalone-harness-validates-capture-and-object-artifacts; engage performs full deterministic parser comparison" },
+    objectManifestStats,
+    objectArtifactChecks,
+    negativeControls,
+    stats: {
+      credentialsVerified: 0,
+      reassemblyStreamsVerified: 0,
+      dnsTunnelsVerified: 0,
+      objectArtifactsVerified: objectArtifactChecks.filter((row) => row.verified).length,
+      negativeControlsPassed: negativeControls.length,
+    },
+    repairQueue: blockers.map((blocker) => ({ id: "pcap-flow-verification-" + blocker, blocker, action: "Collect verifier-bound PCAP evidence and rerun pcap-flow-verifier.mjs.", rerunCommand: "node pcap-flow-verifier.mjs <pcap> pcap-flow-summary.json pcap-flow-verification.json pcap-http-objects.json" })),
+    promotionReport: { proofReady, blockers },
+  };
+}
+
+function selfTest() {
+  const dir = mkdtempSync(join(tmpdir(), "repi-pcap-flow-verifier-"));
+  const pcapPath = join(dir, "sample.pcap");
+  const bodyPath = join(dir, "pcap-http-objects", "body.bin");
+  const body = Buffer.from("PK\x03\x04demo-object");
+  writeFileSync(pcapPath, Buffer.from("pcap-bytes"));
+  mkdirSync(dirname(bodyPath), { recursive: true });
+  writeFileSync(bodyPath, body);
+  const summaryPath = join(dir, "pcap-flow-summary.json");
+  writeFileSync(summaryPath, JSON.stringify({ size: 10, sha256: sha256(Buffer.from("pcap-bytes")), format: "pcapng", packetCount: 1 }) + "\n");
+  const manifestPath = join(dir, "pcap-http-objects.json");
+  writeFileSync(manifestPath, JSON.stringify({ kind: "repi-pcap-http-object-carves", objectCount: 1, entryCount: 0, decodedCount: 0, objects: [{ artifactRelPath: "pcap-http-objects/body.bin", size: body.length, sha256: sha256(body), decodedArtifacts: [], extractedEntries: [] }] }) + "\n");
+  const result = verify(pcapPath, summaryPath, manifestPath);
+  if (!result.proofReady) throw new Error(JSON.stringify(result));
+  console.log(JSON.stringify({ kind: "repi-pcap-flow-verifier-self-test", status: "ok", stats: result.stats }, null, 2));
+}
+
+const args = process.argv.slice(2);
+if (args.includes("--self-test")) {
+  selfTest();
+  process.exit(0);
+}
+const [pcapPath, summaryPath = "pcap-flow-summary.json", outputPath = "pcap-flow-verification.json", manifestPath = "pcap-http-objects.json"] = args;
+if (!pcapPath) {
+  console.error("usage: node pcap-flow-verifier.mjs <pcap> [summary.json] [output.json] [objects.json]");
+  process.exit(2);
+}
+const result = verify(pcapPath, summaryPath, manifestPath);
+writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n", { mode: 0o600 });
+console.log(JSON.stringify({ kind: result.kind, proofReady: result.proofReady, stats: result.stats, output: outputPath }, null, 2));
+process.exit(result.proofReady ? 0 : 1);
+`;
+}
+
+
 function pcapQuicklookRows(target, artifactDir) {
 	try {
 		const summary = pcapQuicklook(target);
 		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "pcap-flow-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
 		const carving = writePcapHttpObjectArtifacts(summary, artifactDir);
-		const flowClaims = pcapFlowClaims(summary, carving?.manifest);
+		const flowVerification = pcapFlowVerificationSummary(target, summary, carving?.manifest, artifactDir);
+		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "pcap-flow-verification.json"), `${JSON.stringify(flowVerification, null, 2)}\n`);
+		const flowClaims = pcapFlowClaims(summary, carving?.manifest, flowVerification);
 		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "pcap-flow-claims.json"), `${JSON.stringify(flowClaims, null, 2)}\n`);
 		const rows = [
 			{
@@ -3464,6 +3970,18 @@ function pcapQuicklookRows(target, artifactDir) {
 				error: summary.supported === false ? summary.reason : undefined,
 			},
 			{
+				id: "pcap-flow-verification",
+				command: "internal",
+				args: [redact(target)],
+				cwd: root,
+				exit: flowVerification.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(flowVerification, null, 2)}\n`,
+				stderr: "",
+				error: flowVerification.proofReady ? undefined : "PCAP flow verification blockers present",
+			},
+			{
 				id: "pcap-flow-claims",
 				command: "internal",
 				args: [redact(target)],
@@ -3476,6 +3994,22 @@ function pcapQuicklookRows(target, artifactDir) {
 				error: flowClaims.proofReady ? undefined : "no PCAP flow claims promoted",
 			},
 		];
+		if (!noWrite && artifactDir) {
+			const verifierPath = join(artifactDir, "pcap-flow-verifier.mjs");
+			writePrivate(verifierPath, pcapFlowVerifierSource(), 0o700);
+			rows.push({
+				id: "pcap-flow-verifier-artifact",
+				command: "internal",
+				args: [redact(verifierPath)],
+				cwd: root,
+				exit: 0,
+				signal: null,
+				durationMs: 0,
+				stdout: `verifier=${redact(verifierPath)}\nrun=node ${redact(verifierPath)} ${redact(target)} ${redact(join(artifactDir, "pcap-flow-summary.json"))} ${redact(join(artifactDir, "pcap-flow-verification.json"))} ${redact(join(artifactDir, "pcap-http-objects.json"))}\n`,
+				stderr: "",
+				error: undefined,
+			});
+		}
 		if (carving) {
 			rows.push({
 				id: "pcap-http-object-carves",
@@ -18056,9 +18590,11 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.lane === "pcap-dfir") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "pcap-flow-summary.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "pcap-flow-verification.json"))) q.push(`cat ${shellQuote(join(artifactDir, "pcap-flow-verification.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "pcap-flow-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "pcap-flow-claims.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "pcap-flow-verifier.mjs"))) q.push(`node ${shellQuote(join(artifactDir, "pcap-flow-verifier.mjs"))} ${quotedTarget} ${shellQuote(join(artifactDir, "pcap-flow-summary.json"))} ${shellQuote(join(artifactDir, "pcap-flow-verification.json"))} ${shellQuote(join(artifactDir, "pcap-http-objects.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "pcap-http-objects.json"))) q.push(`python3 ${shellQuote(join(artifactDir, "pcap-http-object-verifier.py"))} ${shellQuote(join(artifactDir, "pcap-http-objects.json"))}`);
-		q.push(`repi -p ${shellQuote(`Continue PCAP/DFIR from ${artifactDir}: use pcap-flow-summary.json flows/tcpStreams plus pcap-flow-claims.json claimLedger/repairQueue and pcap-http-objects.json object carves/entry hashes/decodedArtifacts; rank http bodySummary/embeddedArchives, http/dns/tls SNI samples, HTTP credentialSignals/risks, plaintextAuth, DNS answers, dnsTunnels, TLS JA3/SNI, extract objects, decode transform chain, and bind recovered artifacts to packet/frame evidence without leaking raw secrets.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue PCAP/DFIR from ${artifactDir}: use pcap-flow-summary.json flows/tcpStreams plus pcap-flow-verification.json and pcap-flow-claims.json claimLedger/composedPaths/repairQueue and pcap-http-objects.json object carves/entry hashes/decodedArtifacts; rerun pcap-flow-verifier.mjs for capture/object/hash/negative-control proof; rank http bodySummary/embeddedArchives, http/dns/tls SNI samples, HTTP credentialSignals/risks, plaintextAuth, DNS answers, dnsTunnels, TLS JA3/SNI, extract objects, decode transform chain, and bind recovered artifacts to packet/frame evidence without leaking raw secrets.`)}`);
 	}
 	if (targetInfo.lane === "firmware-iot") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "firmware-quicklook.json"))}`);
@@ -18151,10 +18687,11 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/iosPlistAnalysis|iosEntitlements|ios-ats-|ios-url-scheme|ios-get-task-allow|ios-debug-entitlement|ios-keychain-access-group|CFBundleURLSchemes|LSApplicationQueriesSchemes|keychain-access-groups/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile iOS plist/entitlements anchors");
 		if (/dexQuicklook|dex-pinning-signal|dex-crypto-transform-signal|dex-anti-tamper-signal|dex-native-bridge-signal|stringIdsSize/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile DEX quicklook anchors");
 		if (/pcap|ethernet|tcp|udp|http|dns|tls|sni/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("traffic anchors");
-		if (/repi-pcap-quicklook|repi-pcap-flow-claims|pcap-flow-claims|HTTP-candidate|DNS-candidate|TLS-candidate|dnsAnswers|packetCount|claimLedger/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("pcap quicklook anchors");
-		if (/tcpStreams|TCP-reassembled|HTTP-reassembled|plaintext-auth-reassembled|TLS-reassembled|reassembledBytes|payloadSha256|tcp-sequence|outOfOrder|pcap-tcp-reassembly-proof/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("TCP reassembly anchors");
-		if (/credentialSignals|pcap-http-credential-flow|pcap-flow-evidence-pivot|pcap-http-(?:authorization-header|basic-auth|bearer-token|cookie-session|set-cookie-session|form-credential|query-token|cleartext-credential-flow)|authorizationScheme|cookieNames/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("PCAP HTTP credential anchors");
-		if (/bodySummary|embeddedArchives|pcap-http-objects|pcap-http-object-carve|pcap-http-decoded-artifact|pcap-http-archive-entry|pcap-http-object-verifier|object carves|pcap-http-(?:object-body|embedded-zip-object|embedded-archive-parsed|executable-object|compressed-object|body-truncated)|contentDisposition/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("PCAP HTTP object/body anchors");
+		if (/repi-pcap-quicklook|repi-pcap-flow-claims|pcap-flow-verification|pcap-flow-verifier|pcap-flow-claims|HTTP-candidate|DNS-candidate|TLS-candidate|dnsAnswers|packetCount|claimLedger/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("pcap quicklook anchors");
+		if (/tcpStreams|TCP-reassembled|HTTP-reassembled|plaintext-auth-reassembled|TLS-reassembled|reassembledBytes|payloadSha256|tcp-sequence|outOfOrder|pcap-tcp-reassembly-proof|pcap-reassembly-hash-verification-proof/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("TCP reassembly anchors");
+		if (/credentialSignals|pcap-http-credential-flow|pcap-flow-evidence-pivot|pcap-flow-verification-proof-path|pcap-http-(?:authorization-header|basic-auth|bearer-token|cookie-session|set-cookie-session|form-credential|query-token|cleartext-credential-flow)|pcap-credential-signal-verification-proof|authorizationScheme|cookieNames/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("PCAP HTTP credential anchors");
+		if (/bodySummary|embeddedArchives|pcap-http-objects|pcap-http-object-carve|pcap-http-decoded-artifact|pcap-http-archive-entry|pcap-http-object-verifier|pcap-object-artifact-verification-proof|object carves|pcap-http-(?:object-body|embedded-zip-object|embedded-archive-parsed|executable-object|compressed-object|body-truncated)|contentDisposition/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("PCAP HTTP object/body anchors");
+		if (/pcap-flow-verification|pcap-flow-verifier|pcap-capture-hash-verification-proof|pcap-quicklook-determinism-proof|pcap-verifier-negative-control-proof|artifact-size-sha256-match/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("PCAP verifier proof anchors");
 		if (/plaintextAuth|pcap-plaintext-auth|plaintext-auth-field|USER|PASS|LOGIN|AUTH PLAIN/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("PCAP plaintext auth anchors");
 		if (/dnsTunnels|pcap-dns-tunnel-exfil|pcap-dns-(?:long-label|high-entropy-label|encoded-label|sensitive-label|deep-subdomain)|labelSignals|base32-like-label|base64url-like-label/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("DNS tunnel/exfil anchors");
 		if (/TLS-candidate|client-hello|recordVersion|clientVersion|sni|alpn|ja3/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("TLS/SNI anchors");

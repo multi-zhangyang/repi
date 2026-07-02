@@ -3486,8 +3486,13 @@ jobs:
 		expect(report.summary.anchors).toContain("PCAP plaintext auth anchors");
 		expect(report.summary.anchors).toContain("DNS tunnel/exfil anchors");
 		expect(report.summary.anchors).toContain("PCAP HTTP object/body anchors");
+		expect(report.summary.anchors).toContain("PCAP verifier proof anchors");
+		expect(report.commands.map((row) => row.id)).toContain("pcap-flow-verification");
 		expect(report.commands.map((row) => row.id)).toContain("pcap-flow-claims");
+		expect(report.commands.map((row) => row.id)).toContain("pcap-flow-verifier-artifact");
 		expect(report.nextQueue.some((command) => command.includes("bodySummary/embeddedArchives"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("pcap-flow-verification.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("pcap-flow-verifier.mjs"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("pcap-flow-claims.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("pcap-http-object-verifier.py"))).toBe(true);
@@ -3800,10 +3805,16 @@ jobs:
 			),
 		).toBe(true);
 		const objectManifestPath = join(report.artifactDir, "pcap-http-objects.json");
+		const flowVerificationPath = join(report.artifactDir, "pcap-flow-verification.json");
+		const flowVerifierPath = join(report.artifactDir, "pcap-flow-verifier.mjs");
 		const flowClaimsPath = join(report.artifactDir, "pcap-flow-claims.json");
 		expect(existsSync(objectManifestPath)).toBe(true);
+		expect(existsSync(flowVerificationPath)).toBe(true);
+		expect(existsSync(flowVerifierPath)).toBe(true);
 		expect(existsSync(flowClaimsPath)).toBe(true);
 		expect(statSync(objectManifestPath).mode & 0o777).toBe(0o600);
+		expect(statSync(flowVerificationPath).mode & 0o777).toBe(0o600);
+		expect(statSync(flowVerifierPath).mode & 0o777).toBe(0o700);
 		expect(statSync(flowClaimsPath).mode & 0o777).toBe(0o600);
 		const objectManifest = JSON.parse(readFileSync(objectManifestPath, "utf8")) as {
 			kind: string;
@@ -3839,18 +3850,73 @@ jobs:
 				}>;
 			}>;
 		};
+		const flowVerification = JSON.parse(readFileSync(flowVerificationPath, "utf8")) as {
+			proofReady: boolean;
+			captureIdentity: { verified: boolean; sha256: string; size: number };
+			quicklookDeterminism: { verified: boolean; storedSha256: string; freshSha256: string };
+			credentialSignals: { storedCount: number; verifiedCount: number };
+			reassembly: { storedCount: number; verifiedCount: number };
+			dnsTunnel: { storedCount: number; verifiedCount: number };
+			objectArtifactChecks: Array<{ label: string; verified: boolean; artifactRelPath: string }>;
+			negativeControls: Array<{ controlType: string; passed: boolean }>;
+			stats: {
+				credentialsVerified: number;
+				reassemblyStreamsVerified: number;
+				dnsTunnelsVerified: number;
+				objectArtifactsVerified: number;
+				negativeControlsPassed: number;
+			};
+			claimLedger: Array<{ claimType: string; verdict: string }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+		};
 		const flowClaims = JSON.parse(readFileSync(flowClaimsPath, "utf8")) as {
 			proofReady: boolean;
+			verificationStats: {
+				credentialsVerified: number;
+				objectArtifactsVerified: number;
+				negativeControlsPassed: number;
+			};
 			claimLedger: Array<{ claimType: string; verdict: string; evidenceBinding: Record<string, unknown> }>;
 			composedPaths: Array<{ claimType: string; verdict: string }>;
 			promotionReport: { promotedClaims: Array<{ claimType: string }> };
 			repairQueue: Array<{ blocker: string }>;
 		};
+		expect(JSON.stringify(flowVerification)).not.toContain("superSecretTokenValue");
+		expect(JSON.stringify(flowVerification)).not.toContain("flag{http_body_secret_must_not_leak}");
+		expect(flowVerification.proofReady).toBe(true);
+		expect(flowVerification.captureIdentity.verified).toBe(true);
+		expect(flowVerification.quicklookDeterminism.verified).toBe(true);
+		expect(flowVerification.credentialSignals.verifiedCount).toBeGreaterThanOrEqual(6);
+		expect(flowVerification.reassembly.verifiedCount).toBeGreaterThanOrEqual(1);
+		expect(flowVerification.dnsTunnel.verifiedCount).toBeGreaterThanOrEqual(1);
+		expect(flowVerification.objectArtifactChecks.filter((row) => row.verified).length).toBeGreaterThanOrEqual(3);
+		expect(flowVerification.negativeControls.some((row) => row.passed)).toBe(true);
+		expect(
+			flowVerification.claimLedger.some(
+				(claim) => claim.claimType === "pcap-quicklook-determinism-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowVerification.claimLedger.some(
+				(claim) => claim.claimType === "pcap-object-artifact-verification-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowVerification.composedPaths.some(
+				(path) => path.claimType === "pcap-flow-verification-proof-path" && path.verdict === "promoted",
+			),
+		).toBe(true);
+		const flowVerifierSelfTest = spawnSync(process.execPath, [flowVerifierPath, "--self-test"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(flowVerifierSelfTest.status, `${flowVerifierSelfTest.stderr}\n${flowVerifierSelfTest.stdout}`).toBe(0);
 		expect(JSON.stringify(flowClaims)).not.toContain("superSecretTokenValue");
 		expect(JSON.stringify(flowClaims)).not.toContain("flag{http_body_secret_must_not_leak}");
 		expect(JSON.stringify(flowClaims)).not.toContain("flag{http_transform_secret_must_not_leak}");
 		expect(JSON.stringify(flowClaims)).not.toContain("admin");
 		expect(flowClaims.proofReady).toBe(true);
+		expect(flowClaims.verificationStats.negativeControlsPassed).toBeGreaterThanOrEqual(1);
 		expect(
 			flowClaims.claimLedger.some(
 				(claim) => claim.claimType === "pcap-http-credential-flow" && claim.verdict === "promoted",
@@ -3879,6 +3945,16 @@ jobs:
 		expect(
 			flowClaims.claimLedger.some(
 				(claim) => claim.claimType === "pcap-flow-evidence-pivot" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowClaims.claimLedger.some(
+				(claim) => claim.claimType === "pcap-flow-verification-proof-path" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowClaims.claimLedger.some(
+				(claim) => claim.claimType === "pcap-verifier-negative-control-proof" && claim.verdict === "promoted",
 			),
 		).toBe(true);
 		expect(
@@ -3942,6 +4018,7 @@ jobs:
 		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
 			artifacts: Array<{ relPath: string }>;
 		};
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("pcap-flow-verification.json");
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("pcap-flow-claims.json");
 		expect(JSON.stringify(summary)).not.toContain("superSecretTokenValue");
 		expect(JSON.stringify(summary)).not.toContain("flag{http_body_secret_must_not_leak}");
