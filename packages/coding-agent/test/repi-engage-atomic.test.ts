@@ -1566,25 +1566,38 @@ describe("repi-engage artifact writes", () => {
 		expect(report.target.representativePath).toContain("ntds.dit");
 		expect(report.commands.map((row) => row.id)).toContain("windows-ad-quicklook");
 		expect(report.commands.map((row) => row.id)).toContain("windows-ad-attack-paths");
+		expect(report.commands.map((row) => row.id)).toContain("windows-ad-verifier-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("windows-ad-verification");
 		expect(report.commands.map((row) => row.id)).toContain("windows-ad-triage-plan-artifact");
 		expect(report.summary.anchors).toContain("Windows/AD identity anchors");
+		expect(report.summary.anchors).toContain("Windows/AD verifier anchors");
 		expect(report.summary.missingCritical).not.toContain("evtx_dump.py");
 		expect(report.nextQueue.some((command) => command.includes("windows-ad-quicklook.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("windows-ad-verification.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("windows-ad-attack-paths.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("windows-ad-verifier.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("windows-ad-triage-plan.sh"))).toBe(true);
 		expect(
 			report.nextQueue.some((command) => command.includes("claimLedger") && command.includes("composedPaths")),
 		).toBe(true);
 		const summaryPath = join(report.artifactDir, "windows-ad-quicklook.json");
+		const verificationPath = join(report.artifactDir, "windows-ad-verification.json");
 		const attackPathsPath = join(report.artifactDir, "windows-ad-attack-paths.json");
+		const verifierPath = join(report.artifactDir, "windows-ad-verifier.py");
 		const proofGraphPath = join(report.artifactDir, "repi-proof-graph.json");
+		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
 		const planPath = join(report.artifactDir, "windows-ad-triage-plan.sh");
 		expect(existsSync(summaryPath)).toBe(true);
+		expect(existsSync(verificationPath)).toBe(true);
 		expect(existsSync(attackPathsPath)).toBe(true);
+		expect(existsSync(verifierPath)).toBe(true);
 		expect(existsSync(proofGraphPath)).toBe(true);
+		expect(existsSync(proofMatrixPath)).toBe(true);
 		expect(existsSync(planPath)).toBe(true);
 		expect(statSync(summaryPath).mode & 0o777).toBe(0o600);
+		expect(statSync(verificationPath).mode & 0o777).toBe(0o600);
 		expect(statSync(attackPathsPath).mode & 0o777).toBe(0o600);
+		expect(statSync(verifierPath).mode & 0o777).toBe(0o700);
 		expect(statSync(proofGraphPath).mode & 0o777).toBe(0o600);
 		expect(statSync(planPath).mode & 0o777).toBe(0o700);
 		const summary = JSON.parse(readFileSync(summaryPath, "utf8")) as {
@@ -1631,12 +1644,37 @@ describe("repi-engage artifact writes", () => {
 			};
 			repairQueue: Array<{ blocker: string; action: string }>;
 		};
+		const verification = JSON.parse(readFileSync(verificationPath, "utf8")) as {
+			proofReady: boolean;
+			attackPathProofReady: boolean;
+			pivotProofReady: boolean;
+			fileHashVerification: { verified: boolean };
+			bloodhoundPathVerification: { verified: boolean };
+			signalCoverage: { verified: boolean };
+			composedPathVerification: { verified: boolean };
+			negativeControlVerification: { verified: boolean };
+			stats: {
+				checkedFiles: number;
+				verifiedFiles: number;
+				verifiedPathCount: number;
+				verifiedComposedPaths: number;
+				negativeControlsPassed: number;
+			};
+			claimLedger: Array<{ claimType: string }>;
+			composedPaths: Array<{ claimType: string }>;
+			repairQueue: Array<{ blocker: string }>;
+		};
 		const proofGraph = JSON.parse(readFileSync(proofGraphPath, "utf8")) as {
 			claimLedger: Array<{ claimType: string }>;
 			composedPaths: Array<{ claimType: string }>;
 		};
+		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
+			artifacts: Array<{ relPath: string }>;
+			liveChecks: Array<{ id: string }>;
+		};
 		expect(JSON.stringify(summary)).not.toContain(secret);
 		expect(JSON.stringify(attackPaths)).not.toContain(secret);
+		expect(JSON.stringify(verification)).not.toContain(secret);
 		expect(summary.files.map((file) => file.type)).toEqual(
 			expect.arrayContaining(["ntds", "registry-hive", "evtx", "kirbi"]),
 		);
@@ -1689,8 +1727,39 @@ describe("repi-engage artifact writes", () => {
 		expect(attackPaths.promotionReport.composedPaths.map((path) => path.claimType)).toContain(
 			"windows-ad-credential-graph-pivot",
 		);
+		expect(verification.proofReady).toBe(true);
+		expect(verification.attackPathProofReady).toBe(true);
+		expect(verification.pivotProofReady).toBe(true);
+		expect(verification.fileHashVerification.verified).toBe(true);
+		expect(verification.bloodhoundPathVerification.verified).toBe(true);
+		expect(verification.signalCoverage.verified).toBe(true);
+		expect(verification.composedPathVerification.verified).toBe(true);
+		expect(verification.negativeControlVerification.verified).toBe(true);
+		expect(verification.stats.checkedFiles).toBeGreaterThan(0);
+		expect(verification.stats.verifiedFiles).toBeGreaterThan(0);
+		expect(verification.stats.verifiedPathCount).toBeGreaterThan(0);
+		expect(verification.stats.verifiedComposedPaths).toBeGreaterThan(0);
+		expect(verification.stats.negativeControlsPassed).toBeGreaterThanOrEqual(3);
+		expect(verification.claimLedger.map((claim) => claim.claimType)).toEqual(
+			expect.arrayContaining([
+				"windows-ad-file-hash-verification-proof",
+				"windows-ad-bloodhound-path-verification-proof",
+				"windows-ad-signal-coverage-verification-proof",
+				"windows-ad-composed-path-verification-proof",
+				"windows-ad-verifier-negative-control-proof",
+			]),
+		);
+		expect(verification.composedPaths.map((path) => path.claimType)).toContain("windows-ad-verification-proof-path");
+		expect(verification.repairQueue).toEqual([]);
 		expect(proofGraph.claimLedger.map((claim) => claim.claimType)).toContain("windows-ad-attack-path");
+		expect(proofGraph.claimLedger.map((claim) => claim.claimType)).toContain(
+			"windows-ad-file-hash-verification-proof",
+		);
 		expect(proofGraph.composedPaths.map((path) => path.claimType)).toContain("windows-ad-credential-graph-pivot");
+		expect(proofGraph.composedPaths.map((path) => path.claimType)).toContain("windows-ad-verification-proof-path");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("windows-ad-verification.json");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("windows-ad-verifier.py");
+		expect(proofMatrix.liveChecks.map((row) => row.id)).toContain("windows-ad-verifier-self-test");
 		expect(attackPaths.repairQueue.map((row) => row.blocker)).toContain("needs-template-enrollment-proof");
 		expect(attackPaths.repairQueue[0].action).toContain("ADCS");
 		expect(summary.signals.domains.some((row) => row.text.includes("CORP.EXAMPLE.COM"))).toBe(true);
@@ -1702,6 +1771,12 @@ describe("repi-engage artifact writes", () => {
 		expect(plan).toContain("ntds.dit");
 		expect(plan).toContain("evtx_dump.py");
 		expect(plan).toContain("BloodHound");
+		const verifier = spawnSync("python3", [verifierPath, "--self-test"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(verifier.status, `${verifier.stderr}\n${verifier.stdout}`).toBe(0);
+		expect(verifier.stdout).toContain("repi-windows-ad-verifier-self-test");
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
 
