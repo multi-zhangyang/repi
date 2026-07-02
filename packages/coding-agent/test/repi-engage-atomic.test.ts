@@ -1638,14 +1638,23 @@ export async function runAgent(req) {
 		expect(report.commands.map((row) => row.id)).toContain("agent-boundary-map");
 		expect(report.commands.map((row) => row.id)).toContain("agent-boundary-payload-harness");
 		expect(report.commands.map((row) => row.id)).toContain("agent-boundary-replay-self-test");
+		expect(report.commands.map((row) => row.id)).toContain("repi-proof-graph");
+		expect(report.commands.map((row) => row.id)).toContain("repi-runtime-repair-loop-artifact");
 		expect(report.commands.map((row) => row.id)).toContain("proof-harness-self-test");
 		expect(report.summary.anchors).toContain("agent boundary anchors");
 		expect(report.summary.anchors).toContain("agent boundary flow anchors");
 		expect(report.summary.anchors).toContain("agent boundary replay anchors");
+		expect(report.summary.anchors).toContain("unified proof graph anchors");
 		expect(report.nextQueue.some((command) => command.includes("agent-boundary-map.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("agent-boundary-claim-promotion.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("agent-boundary-repair-queue.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("boundaryFlows"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("repi-proof-graph.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("runtimeRepairLoop"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("repi-runtime-repair-loop.mjs"))).toBe(true);
+		expect(
+			report.nextQueue.some((command) => command.includes("claimLedger") && command.includes("composedPaths")),
+		).toBe(true);
 		expect(
 			report.nextQueue.some(
 				(command) => command.includes("agent-boundary-payloads.py") && command.includes("--execute"),
@@ -1656,18 +1665,24 @@ export async function runAgent(req) {
 		const replayPath = join(report.artifactDir, "agent-boundary-replay-results.json");
 		const claimPromotionPath = join(report.artifactDir, "agent-boundary-claim-promotion.json");
 		const repairQueuePath = join(report.artifactDir, "agent-boundary-repair-queue.json");
+		const proofGraphPath = join(report.artifactDir, "repi-proof-graph.json");
+		const runtimeRepairLoopPath = join(report.artifactDir, "repi-runtime-repair-loop.mjs");
 		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
 		expect(existsSync(mapPath)).toBe(true);
 		expect(existsSync(harnessPath)).toBe(true);
 		expect(existsSync(replayPath)).toBe(true);
 		expect(existsSync(claimPromotionPath)).toBe(true);
 		expect(existsSync(repairQueuePath)).toBe(true);
+		expect(existsSync(proofGraphPath)).toBe(true);
+		expect(existsSync(runtimeRepairLoopPath)).toBe(true);
 		expect(existsSync(proofMatrixPath)).toBe(true);
 		expect(statSync(mapPath).mode & 0o777).toBe(0o600);
 		expect(statSync(harnessPath).mode & 0o777).toBe(0o700);
 		expect(statSync(replayPath).mode & 0o777).toBe(0o600);
 		expect(statSync(claimPromotionPath).mode & 0o777).toBe(0o600);
 		expect(statSync(repairQueuePath).mode & 0o777).toBe(0o600);
+		expect(statSync(proofGraphPath).mode & 0o777).toBe(0o600);
+		expect(statSync(runtimeRepairLoopPath).mode & 0o777).toBe(0o700);
 		const map = JSON.parse(readFileSync(mapPath, "utf8")) as {
 			risks: string[];
 			categories: Record<string, number>;
@@ -1714,35 +1729,79 @@ export async function runAgent(req) {
 			proofReady: boolean;
 			rows: Array<{ payloadId: string; status: number; responseSha256: string; signals: string[] }>;
 			promotionReport: {
+				unsafeProofReady: boolean;
 				promotedClaims: Array<{ verdict: string; evidenceBinding: { responseSha256: string; signals: string[] } }>;
 			};
-			claimLedger: Array<{ verdict: string; sourceBinding: { boundaryFlows: unknown[] } }>;
+			claimLedger: Array<{ claimType: string; verdict: string; sourceBinding: { boundaryFlows: unknown[] } }>;
+			composedPaths: Array<{ claimType: string; evidenceBinding: { responseSha256: string } }>;
 			repairQueue: Array<{ blocker: string }>;
 		};
 		const claimPromotion = JSON.parse(readFileSync(claimPromotionPath, "utf8")) as {
 			proofReady: boolean;
+			composedPaths: Array<{ claimType: string }>;
 			claimLedger: Array<{ verdict: string; payloadId: string }>;
 		};
 		const repairQueue = JSON.parse(readFileSync(repairQueuePath, "utf8")) as {
 			queue: Array<{ blocker: string; rerunCommand: string }>;
+		};
+		const proofGraph = JSON.parse(readFileSync(proofGraphPath, "utf8")) as {
+			proofReady: boolean;
+			exploitProofReady: boolean;
+			claimLedger: Array<{ claimType: string; graphNodeId: string }>;
+			composedPaths: Array<{ claimType: string }>;
+			repairQueue: Array<{ blocker: string; priority: string; rerunCommand: string }>;
+			runtimeRepairLoop: { queue: Array<{ blocker: string }>; nextCommands: string[]; blockers: string[] };
+			graph: { nodes: Array<{ nodeType: string }>; edges: Array<{ relation: string }> };
 		};
 		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
 			artifacts: Array<{ relPath: string }>;
 			liveChecks: Array<{ id: string }>;
 		};
 		expect(replay.proofReady).toBe(true);
+		expect(replay.promotionReport.unsafeProofReady).toBe(true);
 		expect(replay.rows.map((row) => row.payloadId)).toContain("secret-exfiltration-policy");
 		expect(replay.promotionReport.promotedClaims.some((claim) => claim.verdict === "unsafe-promoted")).toBe(true);
 		expect(replay.promotionReport.promotedClaims[0].evidenceBinding.responseSha256).toMatch(/^[a-f0-9]{64}$/);
 		expect(replay.claimLedger.some((claim) => claim.sourceBinding.boundaryFlows.length > 0)).toBe(true);
+		expect(replay.claimLedger.map((claim) => claim.claimType)).toContain("agent-boundary-unsafe-replay");
+		expect(replay.composedPaths.map((path) => path.claimType)).toContain("agent-boundary-unsafe-tool-proof-path");
+		expect(replay.composedPaths.map((path) => path.claimType)).toContain("agent-boundary-blocked-control-proof-path");
+		expect(replay.composedPaths[0].evidenceBinding.responseSha256).toMatch(/^[a-f0-9]{64}$/);
 		expect(replay.repairQueue.map((row) => row.blocker)).toContain("no-boundary-differential");
 		expect(claimPromotion.proofReady).toBe(true);
+		expect(claimPromotion.composedPaths.map((path) => path.claimType)).toContain(
+			"agent-boundary-unsafe-tool-proof-path",
+		);
 		expect(claimPromotion.claimLedger.some((claim) => claim.verdict === "control-promoted")).toBe(true);
 		expect(repairQueue.queue[0].rerunCommand).toContain("agent-boundary-payloads.py");
+		expect(proofGraph.proofReady).toBe(true);
+		expect(proofGraph.exploitProofReady).toBe(true);
+		expect(proofGraph.claimLedger.map((claim) => claim.claimType)).toContain("agent-boundary-unsafe-replay");
+		expect(proofGraph.composedPaths.map((path) => path.claimType)).toContain("agent-boundary-unsafe-tool-proof-path");
+		expect(proofGraph.repairQueue.map((row) => row.blocker)).toContain("no-boundary-differential");
+		expect(
+			proofGraph.runtimeRepairLoop.nextCommands.some((command) => command.includes("agent-boundary-payloads.py")),
+		).toBe(true);
+		expect(proofGraph.graph.nodes.some((node) => node.nodeType === "composed-path")).toBe(true);
+		expect(proofGraph.graph.edges.some((edge) => edge.relation === "segment-of")).toBe(true);
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("agent-boundary-replay-results.json");
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("agent-boundary-claim-promotion.json");
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("agent-boundary-repair-queue.json");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("repi-proof-graph.json");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("repi-runtime-repair-loop.mjs");
 		expect(proofMatrix.liveChecks.map((row) => row.id)).toContain("agent-boundary-payloads-self-test");
+		expect(proofMatrix.liveChecks.map((row) => row.id)).toContain("repi-runtime-repair-loop-self-test");
+		const repairLoop = spawnSync(process.execPath, [runtimeRepairLoopPath, "--self-test", "--max", "8"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(repairLoop.status, `${repairLoop.stderr}\n${repairLoop.stdout}`).toBe(0);
+		const repairLoopReport = JSON.parse(repairLoop.stdout) as {
+			kind: string;
+			selectedRepairs: Array<{ blocker: string; rerunCommand: string }>;
+		};
+		expect(repairLoopReport.kind).toBe("repi-runtime-repair-loop");
+		expect(repairLoopReport.selectedRepairs.some((row) => row.blocker === "no-boundary-differential")).toBe(true);
 		const harness = spawnSync("python3", [harnessPath, "--self-test"], {
 			encoding: "utf8",
 			timeout: 15_000,

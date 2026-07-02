@@ -617,6 +617,8 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 		add("cloud-identity-trust-claims.json", "cloud/container identity trust-chain claim ledger");
 		add("cloud-identity-verify.sh", "cloud identity verification harness", 0o700);
 	}
+	add("repi-proof-graph.json", "unified proof graph and runtime repair loop");
+	add("repi-runtime-repair-loop.mjs", "runtime repair-loop planner/executor", 0o700);
 	return candidates;
 }
 
@@ -668,6 +670,8 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 		const routeReplayHarness = proofArtifactPath(artifactDir, "workspace-route-replay-harness.mjs");
 		if (existsSync(routeReplayHarness)) add({ id: "workspace-route-replay-harness-self-test", command: process.execPath, args: [routeReplayHarness, "--self-test"], reason: "execute workspace route replay/authz harness self-test" });
 	}
+	const runtimeRepairLoop = proofArtifactPath(artifactDir, "repi-runtime-repair-loop.mjs");
+	if (existsSync(runtimeRepairLoop)) add({ id: "repi-runtime-repair-loop-self-test", command: process.execPath, args: [runtimeRepairLoop, "--self-test"], reason: "execute unified runtime repair-loop planner self-test" });
 	if (targetInfo.lane === "native-pwn" && python) {
 		const offsetHelper = proofArtifactPath(artifactDir, "native-cyclic-offset.py");
 		const payloadPath = proofArtifactPath(artifactDir, "native-cyclic-payload.bin");
@@ -885,6 +889,453 @@ function proofHarnessRows(targetInfo, artifactDir, commands, toolState) {
 		run(process.execPath, [harnessPath, "--self-test"], { id: "proof-harness-self-test", timeout: 30_000 }),
 	];
 	return rows;
+}
+
+const unifiedProofGraphArtifactCandidates = [
+	"web-exploit-claims.json",
+	"workspace-source-runtime-claims.json",
+	"workspace-route-claim-promotion.json",
+	"workspace-route-repair-queue.json",
+	"native-primitive-claims.json",
+	"crypto-stego-transform-claims.json",
+	"mobile-attack-surface-claims.json",
+	"pcap-flow-claims.json",
+	"memory-evidence-claims.json",
+	"windows-ad-attack-paths.json",
+	"malware-behavior-claims.json",
+	"firmware-attack-surface.json",
+	"agent-boundary-claim-promotion.json",
+	"agent-boundary-repair-queue.json",
+	"cloud-identity-trust-claims.json",
+];
+
+function proofGraphRedactJson(value, depth = 0) {
+	if (value == null || typeof value === "number" || typeof value === "boolean") return value;
+	if (typeof value === "string") return redact(value).slice(0, 1400);
+	if (depth >= 6) return `<truncated-depth:${depth}>`;
+	if (Array.isArray(value)) return value.slice(0, 80).map((item) => proofGraphRedactJson(item, depth + 1));
+	if (typeof value === "object") {
+		const out = {};
+		for (const [key, row] of Object.entries(value).slice(0, 80)) out[redact(key).slice(0, 160)] = proofGraphRedactJson(row, depth + 1);
+		return out;
+	}
+	return redact(String(value));
+}
+
+function proofGraphArray(value) {
+	return Array.isArray(value) ? value : [];
+}
+
+function proofGraphClaimRows(parsed) {
+	return proofGraphArray(parsed?.claimLedger).slice(0, 240);
+}
+
+function proofGraphComposedPathRows(parsed) {
+	const rows = [];
+	for (const row of [...proofGraphArray(parsed?.composedPaths), ...proofGraphArray(parsed?.promotionReport?.composedPaths)]) {
+		if (!row?.id && !row?.claimType) continue;
+		const key = row.id || `${row.claimType}:${shortHash(JSON.stringify(row))}`;
+		if (rows.some((existing) => (existing.id || `${existing.claimType}:${shortHash(JSON.stringify(existing))}`) === key)) continue;
+		rows.push(row);
+		if (rows.length >= 120) break;
+	}
+	return rows;
+}
+
+function proofGraphRepairRows(parsed) {
+	if (Array.isArray(parsed?.repairQueue)) return parsed.repairQueue.slice(0, 240);
+	if (Array.isArray(parsed?.repairQueue?.queue)) return parsed.repairQueue.queue.slice(0, 240);
+	if (Array.isArray(parsed?.queue)) return parsed.queue.slice(0, 240);
+	return [];
+}
+
+function proofGraphRepairPriority(blocker) {
+	if (/missing-base-url|no-live-response|no-status|service|unreachable|endpoint/i.test(blocker)) return "high";
+	if (/missing-session|credential|authorization|cookie|token|principal/i.test(blocker)) return "high";
+	if (/no-differential|object-mutation|baseline|negative-control|oracle/i.test(blocker)) return "medium";
+	if (/missing-source|missing-.*map|missing-.*plan|missing-.*harness/i.test(blocker)) return "medium";
+	return "normal";
+}
+
+function proofGraphRepairAction(blocker) {
+	const actions = {
+		"missing-base-url": "Start the target runtime and pass the exact base URL to the replay harness.",
+		"no-live-response": "Fix endpoint/body/auth configuration until the runtime harness captures a response hash.",
+		"no-status": "Fix reachability, route params, host binding, or timeout until an HTTP status is captured.",
+		"no-differential": "Add negative controls or credentials until success/error/status/body hashes diverge.",
+		"missing-session-credentials": "Provide a valid low/high privilege Cookie or Authorization value for replay.",
+		"object-mutation-inconclusive": "Bind route parameters to owned and tampered objects before replay.",
+		"baseline-not-accepted": "Make the benign baseline succeed before interpreting blocked malicious controls.",
+		"no-boundary-differential": "Bind the payload to a stronger leak, tool side-effect, audit log, or blocked/refused oracle.",
+	};
+	return actions[blocker] ?? "Drain this blocker by collecting source-bound runtime evidence and rerun the relevant harness.";
+}
+
+function writeUnifiedProofGraph(targetInfo, artifactDir, commands, toolState) {
+	if (noWrite || !artifactDir) return undefined;
+	const artifactFiles = [];
+	const nodes = [];
+	const edges = [];
+	const claimLedger = [];
+	const composedPaths = [];
+	const repairQueue = [];
+	const nodeIds = new Set();
+	const edgeIds = new Set();
+	const claimNodeByClaimId = new Map();
+	const addNode = (node) => {
+		if (!node?.id || nodeIds.has(node.id)) return;
+		nodeIds.add(node.id);
+		nodes.push(node);
+	};
+	const addEdge = (from, to, relation, data = {}) => {
+		if (!from || !to || !relation) return;
+		const id = `${from}->${relation}->${to}`;
+		if (edgeIds.has(id)) return;
+		edgeIds.add(id);
+		edges.push({ id, from, to, relation, ...data });
+	};
+	for (const relPath of unifiedProofGraphArtifactCandidates) {
+		const path = join(artifactDir, relPath);
+		const parsed = readJsonArtifact(path);
+		if (!parsed) continue;
+		let size = 0;
+		let artifactSha256 = "";
+		try {
+			const data = readFileSync(path);
+			size = data.length;
+			artifactSha256 = bufferSha256(data);
+		} catch {
+			// Artifact content is optional for graph construction once parsed.
+		}
+		artifactFiles.push({ relPath, size, sha256: artifactSha256, kind: parsed.kind ?? null });
+		const artifactNodeId = `artifact:${relPath}`;
+		addNode({ id: artifactNodeId, nodeType: "artifact", relPath, kind: parsed.kind ?? null, size, sha256: artifactSha256 });
+		for (const claim of proofGraphClaimRows(parsed)) {
+			const claimId = claim.id || claim.claimId || `${claim.claimType || "claim"}-${shortHash(JSON.stringify(claim))}`;
+			const nodeId = `claim:${relPath}:${claimId}`;
+			const normalized = {
+				graphNodeId: nodeId,
+				sourceArtifact: relPath,
+				id: claimId,
+				claimType: claim.claimType ?? claim.verdict ?? "claim",
+				verdict: claim.verdict ?? "unknown",
+				confidence: typeof claim.confidence === "number" ? claim.confidence : null,
+				blockers: proofGraphArray(claim.blockers).map(String),
+				sourceBinding: proofGraphRedactJson(claim.sourceBinding ?? {}),
+				evidenceBinding: proofGraphRedactJson(claim.evidenceBinding ?? {}),
+				statement: claim.statement ? redact(claim.statement) : null,
+				rerunCommand: claim.rerunCommand ? redact(claim.rerunCommand) : null,
+				claimSha256: createHash("sha256").update(JSON.stringify(proofGraphRedactJson(claim))).digest("hex"),
+			};
+			claimLedger.push(normalized);
+			if (!claimNodeByClaimId.has(claimId)) claimNodeByClaimId.set(claimId, nodeId);
+			addNode({
+				id: nodeId,
+				nodeType: "claim",
+				sourceArtifact: relPath,
+				claimId,
+				claimType: normalized.claimType,
+				verdict: normalized.verdict,
+				confidence: normalized.confidence,
+				blockers: normalized.blockers,
+				statement: normalized.statement,
+			});
+			addEdge(artifactNodeId, nodeId, "emits-claim");
+			for (const sourceArtifact of proofGraphArray(claim.sourceBinding?.artifacts)) addEdge(`artifact:${sourceArtifact}`, nodeId, "source-bound");
+			if (claim.sourceBinding?.artifact) addEdge(`artifact:${claim.sourceBinding.artifact}`, nodeId, "source-bound");
+		}
+		for (const pathRow of proofGraphComposedPathRows(parsed)) {
+			const pathId = pathRow.id || `${pathRow.claimType || "path"}-${shortHash(JSON.stringify(pathRow))}`;
+			const nodeId = `path:${relPath}:${pathId}`;
+			const normalized = {
+				graphNodeId: nodeId,
+				sourceArtifact: relPath,
+				id: pathId,
+				claimType: pathRow.claimType ?? "composed-proof-path",
+				verdict: pathRow.verdict ?? "unknown",
+				confidence: typeof pathRow.confidence === "number" ? pathRow.confidence : null,
+				blockers: proofGraphArray(pathRow.blockers).map(String),
+				sourceBinding: proofGraphRedactJson(pathRow.sourceBinding ?? {}),
+				evidenceBinding: proofGraphRedactJson(pathRow.evidenceBinding ?? {}),
+				statement: pathRow.statement ? redact(pathRow.statement) : null,
+				rerunCommand: pathRow.rerunCommand ? redact(pathRow.rerunCommand) : null,
+				pathSha256: createHash("sha256").update(JSON.stringify(proofGraphRedactJson(pathRow))).digest("hex"),
+			};
+			composedPaths.push(normalized);
+			addNode({
+				id: nodeId,
+				nodeType: "composed-path",
+				sourceArtifact: relPath,
+				pathId,
+				claimType: normalized.claimType,
+				verdict: normalized.verdict,
+				confidence: normalized.confidence,
+				blockers: normalized.blockers,
+				statement: normalized.statement,
+			});
+			addEdge(artifactNodeId, nodeId, "emits-composed-path");
+			for (const segment of proofGraphArray(pathRow.sourceBinding?.segments)) {
+				const claimNode = claimNodeByClaimId.get(segment?.id);
+				if (claimNode) addEdge(claimNode, nodeId, "segment-of");
+			}
+			if (pathRow.sourceBinding?.replayClaimId) {
+				const claimNode = claimNodeByClaimId.get(pathRow.sourceBinding.replayClaimId);
+				if (claimNode) {
+					addEdge(claimNode, nodeId, "replay-claim-of");
+					addEdge(claimNode, nodeId, "segment-of");
+				}
+			}
+		}
+		for (const row of proofGraphRepairRows(parsed)) {
+			const blocker = String(row.blocker ?? row.reason ?? "unknown-blocker");
+			const repairId = row.id || `${relPath}-${row.claimId || row.route || row.payloadId || blocker}-${shortHash(JSON.stringify(row))}`;
+			const nodeId = `repair:${relPath}:${repairId}`;
+			const normalized = {
+				graphNodeId: nodeId,
+				sourceArtifact: relPath,
+				id: repairId,
+				claimId: row.claimId ?? null,
+				blocker,
+				priority: proofGraphRepairPriority(blocker),
+				action: row.action ? redact(row.action) : proofGraphRepairAction(blocker),
+				route: row.route ?? row.sourceBinding?.route ?? null,
+				method: row.method ?? row.sourceBinding?.method ?? null,
+				payloadId: row.payloadId ?? null,
+				sourceBinding: proofGraphRedactJson(row.sourceBinding ?? {}),
+				rerunCommand: row.rerunCommand ? redact(row.rerunCommand) : null,
+			};
+			repairQueue.push(normalized);
+			addNode({ id: nodeId, nodeType: "repair", sourceArtifact: relPath, blocker, priority: normalized.priority, claimId: normalized.claimId, action: normalized.action });
+			addEdge(artifactNodeId, nodeId, "emits-repair");
+			if (normalized.claimId) {
+				const claimNode = claimNodeByClaimId.get(normalized.claimId);
+				if (claimNode) addEdge(nodeId, claimNode, "repairs-claim");
+			}
+		}
+		for (const blocker of proofGraphArray(parsed?.promotionReport?.blockers).map(String)) {
+			if (repairQueue.some((row) => row.blocker === blocker && row.sourceArtifact === relPath)) continue;
+			const repairId = `${relPath}-${blocker}`;
+			const nodeId = `repair:${repairId}`;
+			const normalized = {
+				graphNodeId: nodeId,
+				sourceArtifact: relPath,
+				id: repairId,
+				claimId: null,
+				blocker,
+				priority: proofGraphRepairPriority(blocker),
+				action: proofGraphRepairAction(blocker),
+				route: null,
+				method: null,
+				payloadId: null,
+				sourceBinding: { artifact: relPath },
+				rerunCommand: null,
+			};
+			repairQueue.push(normalized);
+			addNode({ id: nodeId, nodeType: "repair", sourceArtifact: relPath, blocker, priority: normalized.priority, action: normalized.action });
+			addEdge(artifactNodeId, nodeId, "emits-repair");
+		}
+	}
+	for (const command of commands.slice(0, 160)) {
+		const nodeId = `command:${command.id}`;
+		addNode({
+			id: nodeId,
+			nodeType: "command",
+			commandId: command.id,
+			exit: command.exit,
+			durationMs: command.durationMs,
+			stdoutSha256: createHash("sha256").update(command.stdout ?? "").digest("hex"),
+			stderrSha256: createHash("sha256").update(command.stderr ?? "").digest("hex"),
+		});
+	}
+	const blockers = Array.from(new Set([...claimLedger.flatMap((claim) => claim.blockers), ...composedPaths.flatMap((path) => path.blockers), ...repairQueue.map((row) => row.blocker).filter(Boolean)])).sort();
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted" || /promoted|unsafe-promoted|control-promoted/i.test(claim.verdict));
+	const promotedPaths = composedPaths.filter((path) => path.verdict === "promoted" || /promoted/i.test(path.verdict));
+	const nextCommands = Array.from(
+		new Set([
+			...repairQueue.map((row) => row.rerunCommand).filter(Boolean),
+			...(existsSync(join(artifactDir, "proof-harness.mjs")) ? [`node ${shellQuote(join(artifactDir, "proof-harness.mjs"))} --self-test`, `node ${shellQuote(join(artifactDir, "proof-harness.mjs"))} --execute`] : []),
+		]),
+	).slice(0, 60);
+	const summary = {
+		kind: "repi-unified-proof-graph",
+		schemaVersion: 1,
+		target: redact(targetInfo.target),
+		lane: targetInfo.lane,
+		domain: targetInfo.domain,
+		generatedAt: new Date().toISOString(),
+		artifactFiles,
+		proofReady: promotedClaims.length > 0,
+		exploitProofReady: promotedPaths.length > 0,
+		nodeCount: nodes.length,
+		edgeCount: edges.length,
+		claimLedger,
+		composedPaths,
+		repairQueue,
+		runtimeRepairLoop: {
+			ready: repairQueue.length > 0,
+			blockers,
+			queue: repairQueue,
+			nextCommands,
+			exitRule: "Drain repairQueue until each promoted path has source binding, runtime/status/hash evidence, and a negative-control or verifier oracle.",
+		},
+		graph: {
+			nodes,
+			edges,
+		},
+		promotionReport: {
+			proofReady: promotedClaims.length > 0,
+			exploitProofReady: promotedPaths.length > 0,
+			promotedClaims,
+			composedPaths: promotedPaths,
+			blockers,
+		},
+		toolState: toolState.map((row) => ({ tool: row.tool, available: row.available })),
+	};
+	const path = join(artifactDir, "repi-proof-graph.json");
+	writePrivate(path, `${JSON.stringify(summary, null, 2)}\n`, 0o600);
+	return { path, summary };
+}
+
+function runtimeRepairLoopSource(plan) {
+	const planJson = JSON.stringify(plan, null, 2);
+	return `#!/usr/bin/env node
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { spawnSync } from "node:child_process";
+
+const plan = ${planJson};
+const selfTest = process.argv.includes("--self-test") || process.argv.includes("--plan") || !process.argv.includes("--execute");
+const execute = process.argv.includes("--execute");
+const graphPath = process.argv.find((arg) => arg.endsWith(".json")) || plan.graphPath;
+const maxIndex = process.argv.findIndex((arg) => arg === "--max");
+const maxRepairs = Number((maxIndex >= 0 ? process.argv[maxIndex + 1] : "") || process.env.REPI_REPAIR_MAX || "1");
+const timeoutMs = Number(process.env.REPI_REPAIR_TIMEOUT_MS || "20000");
+
+function sha256(value) {
+	return createHash("sha256").update(String(value ?? "")).digest("hex");
+}
+
+function redact(value) {
+	return String(value ?? "")
+		.replace(/\\bsk-[A-Za-z0-9._-]{8,}\\b/g, "<redacted:api-key>")
+		.replace(/\\bBearer\\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer <redacted>")
+		.replace(/((?:authorization|x-api-key|api-key|cookie|set-cookie)\\s*[:=]\\s*["']?)([^"'\\n;]{4,})/gi, "$1<redacted>")
+		.replace(/([?&](?:api[_-]?key|token|access_token|refresh_token|client_secret|secret|password)=)[^&\\s"'<>]{4,}/gi, "$1<redacted>");
+}
+
+function priorityScore(priority) {
+	if (/^high$/i.test(priority || "")) return 3;
+	if (/^medium$/i.test(priority || "")) return 2;
+	if (/^normal$/i.test(priority || "")) return 1;
+	return 0;
+}
+
+function readGraph() {
+	if (!existsSync(graphPath)) throw new Error("proof graph missing: " + graphPath);
+	return JSON.parse(readFileSync(graphPath, "utf8"));
+}
+
+function selectedRepairs(graph) {
+	const queue = Array.isArray(graph.runtimeRepairLoop?.queue) ? graph.runtimeRepairLoop.queue : Array.isArray(graph.repairQueue) ? graph.repairQueue : [];
+	return queue
+		.filter((row) => row && row.blocker)
+		.sort((a, b) => priorityScore(b.priority) - priorityScore(a.priority))
+		.slice(0, Math.max(1, maxRepairs))
+		.map((row) => ({
+			id: row.id || row.graphNodeId || sha256(JSON.stringify(row)).slice(0, 12),
+			blocker: row.blocker,
+			priority: row.priority || "normal",
+			action: redact(row.action || ""),
+			rerunCommand: row.rerunCommand ? redact(row.rerunCommand) : null,
+			sourceArtifact: row.sourceArtifact || null,
+			claimId: row.claimId || null,
+			route: row.route || null,
+			payloadId: row.payloadId || null,
+		}));
+}
+
+function executeRepair(row) {
+	if (!row.rerunCommand) return { id: row.id, skipped: true, reason: "missing-rerun-command", ok: false };
+	const started = Date.now();
+	const result = spawnSync("bash", ["-lc", row.rerunCommand], {
+		cwd: dirname(graphPath),
+		encoding: "utf8",
+		timeout: timeoutMs,
+		maxBuffer: 4 * 1024 * 1024,
+		env: {
+			...process.env,
+			REPI_SKIP_VERSION_CHECK: "1",
+			REPI_SKIP_PACKAGE_UPDATE_CHECK: "1",
+			REPI_TELEMETRY: "0",
+		},
+	});
+	const stdout = redact(result.stdout || "");
+	const stderr = redact(result.stderr || "");
+	return {
+		id: row.id,
+		blocker: row.blocker,
+		command: row.rerunCommand,
+		exit: result.status ?? (result.signal ? 128 : 1),
+		signal: result.signal,
+		durationMs: Date.now() - started,
+		ok: (result.status ?? (result.signal ? 128 : 1)) === 0,
+		stdoutSha256: sha256(stdout),
+		stderrSha256: sha256(stderr),
+		stdoutSample: stdout.slice(0, 1000),
+		stderrSample: stderr.slice(0, 1000),
+		error: result.error ? redact(result.error.message || String(result.error)) : undefined,
+	};
+}
+
+function main() {
+	const graph = readGraph();
+	const repairs = selectedRepairs(graph);
+	const executionRows = execute ? repairs.map(executeRepair) : [];
+	const report = {
+		kind: "repi-runtime-repair-loop",
+		schemaVersion: 1,
+		mode: execute ? "execute" : selfTest ? "self-test" : "plan",
+		graphPath: redact(graphPath),
+		graphSha256: sha256(readFileSync(graphPath, "utf8")),
+		lane: graph.lane,
+		domain: graph.domain,
+		proofReady: Boolean(graph.proofReady),
+		exploitProofReady: Boolean(graph.exploitProofReady),
+		blockers: graph.runtimeRepairLoop?.blockers || [],
+		selectedRepairs: repairs,
+		executionRows,
+		next: execute
+			? "Re-run repi engage after successful repairs to rebuild claimLedger/composedPaths and verify the blocker drained."
+			: "Review selectedRepairs, set required env/credentials/URLs, then run this harness with --execute.",
+	};
+	console.log(JSON.stringify(report, null, 2));
+	process.exit(execute && executionRows.length ? (executionRows.every((row) => row.ok) ? 0 : 1) : 0);
+}
+
+try {
+	main();
+} catch (error) {
+	console.error(redact(error?.stack || error?.message || String(error)));
+	process.exit(1);
+}
+`;
+}
+
+function writeRuntimeRepairLoopHarness(artifactDir, graphPath) {
+	if (noWrite || !artifactDir || !graphPath || !existsSync(graphPath)) return undefined;
+	const path = join(artifactDir, "repi-runtime-repair-loop.mjs");
+	writePrivate(
+		path,
+		runtimeRepairLoopSource({
+			kind: "repi-runtime-repair-loop-plan",
+			schemaVersion: 1,
+			graphPath,
+			proofExitRule: "A repair is successful only when rerunning repi engage removes the blocker and promotes a source-bound proof path with hashes/negative controls.",
+		}),
+		0o700,
+	);
+	return { path };
 }
 
 function toolSnapshot() {
@@ -8130,6 +8581,7 @@ def claim_for(row, baseline, boundary_map, target):
         blockers = []
     return {
         "id": "agent-boundary-" + sha256(row.get("payloadId", ""))[:12],
+        "claimType": "agent-boundary-unsafe-replay" if unsafe else "agent-boundary-blocked-control" if controlled else "agent-boundary-observation",
         "payloadId": row.get("payloadId"),
         "sourceBinding": source_binding(row.get("payloadId"), boundary_map),
         "evidenceBinding": {
@@ -8169,12 +8621,54 @@ def repair_queue(claims):
             })
     return rows
 
+def composed_paths(claims, baseline):
+    baseline_ok = bool(baseline and baseline.get("status") and 200 <= baseline.get("status") < 400)
+    paths = []
+    for claim in claims:
+        verdict = claim.get("verdict")
+        if verdict not in ("unsafe-promoted", "control-promoted"):
+            continue
+        evidence = claim.get("evidenceBinding") or {}
+        flows = (claim.get("sourceBinding") or {}).get("boundaryFlows") or []
+        if not flows:
+            continue
+        if verdict == "control-promoted" and not baseline_ok:
+            continue
+        claim_type = "agent-boundary-unsafe-tool-proof-path" if verdict == "unsafe-promoted" else "agent-boundary-blocked-control-proof-path"
+        path = {
+            "id": claim_type + "-" + sha256(str(claim.get("id")) + json.dumps(flows, sort_keys=True))[:12],
+            "claimType": claim_type,
+            "sourceBinding": {
+                "replayClaimId": claim.get("id"),
+                "payloadId": claim.get("payloadId"),
+                "boundaryFlows": flows,
+                "flowTypes": sorted({flow.get("type") for flow in flows if flow.get("type")}),
+            },
+            "evidenceBinding": {
+                "status": evidence.get("status"),
+                "responseSha256": evidence.get("responseSha256"),
+                "requestSha256": evidence.get("requestSha256"),
+                "signals": evidence.get("signals") or [],
+                "blocked": bool(evidence.get("blocked")),
+                "baselineAccepted": baseline_ok,
+                "hasSourceFlow": bool(flows),
+            },
+            "statement": "Agent boundary replay composes source flow evidence with a live response hash and unsafe/control oracle.",
+            "verdict": "promoted",
+            "confidence": 0.9 if verdict == "unsafe-promoted" else 0.78,
+            "blockers": [],
+            "rerunCommand": claim.get("rerunCommand"),
+        }
+        paths.append(path)
+    return paths
+
 def build_report(target, rows):
     boundary_map = load_boundary_map()
     baseline = next((row for row in rows if row.get("payloadId") == "benign-baseline"), None)
     claims = [claim_for(row, baseline, boundary_map, target) for row in rows]
     promoted = [claim for claim in claims if claim["verdict"] in ("unsafe-promoted", "control-promoted")]
     repairs = repair_queue(claims)
+    paths = composed_paths(claims, baseline)
     return {
         "kind": "repi-agent-boundary-replay-results",
         "schemaVersion": 1,
@@ -8186,11 +8680,14 @@ def build_report(target, rows):
         "proofReady": bool(promoted),
         "rows": rows,
         "claimLedger": claims,
+        "composedPaths": paths,
         "promotionReport": {
             "proofReady": bool(promoted),
+            "unsafeProofReady": any(path.get("claimType") == "agent-boundary-unsafe-tool-proof-path" for path in paths),
             "promotedClaims": promoted,
             "observations": [claim for claim in claims if claim["verdict"] == "observation"],
             "baseline": [claim for claim in claims if claim["verdict"] == "baseline"],
+            "composedPaths": paths,
         },
         "repairQueue": repairs,
     }
@@ -8219,6 +8716,7 @@ def write_outputs(report, output):
                 "proofReady": report["proofReady"],
                 "promotionReport": report["promotionReport"],
                 "claimLedger": report["claimLedger"],
+                "composedPaths": report["composedPaths"],
             })
     if repair_path:
         write_json_private(repair_path, {
@@ -15397,6 +15895,14 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 		q.push(`node ${shellQuote(join(artifactDir, "proof-harness.mjs"))} --self-test`);
 		q.push(`node ${shellQuote(join(artifactDir, "proof-harness.mjs"))} --execute`);
 	}
+	if (!noWrite && existsSync(join(artifactDir, "repi-proof-graph.json"))) {
+		q.push(`cat ${shellQuote(join(artifactDir, "repi-proof-graph.json"))}`);
+		q.push(`repi -p ${shellQuote(`Use ${artifactDir}/repi-proof-graph.json graph.nodes/edges plus runtimeRepairLoop.queue to pick the highest-priority blocker, run its rerunCommand, and promote only paths with source binding, response/artifact hash, and a negative-control/verifier oracle.`)}`);
+	}
+	if (!noWrite && existsSync(join(artifactDir, "repi-runtime-repair-loop.mjs"))) {
+		q.push(`node ${shellQuote(join(artifactDir, "repi-runtime-repair-loop.mjs"))} --plan`);
+		q.push(`node ${shellQuote(join(artifactDir, "repi-runtime-repair-loop.mjs"))} --execute --max 1`);
+	}
 	if (targetInfo.kind === "url") {
 		if (!noWrite && existsSync(join(artifactDir, "web-exploit-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "web-exploit-claims.json"))}`);
 		q.push(`repi -p ${shellQuote(`For ${target}, use ${artifactDir}/web-exploit-claims.json claimLedger/composedPaths/repairQueue plus web-security-posture.json, web-discovery-matrix.json, web-api-schema-probes.json, web-ssrf-matrix.json, web-redirect-matrix.json, web-cors-matrix.json, web-object-matrix.json, web-replay-matrix.json, web-identity-jwt.json, web-js-sourcemap-summary.json, web-runtime-capture-plan.json/web-runtime-capture-harness.mjs, web-runtime-replay-plan.json/web-runtime-replay-verifier.mjs, web-signer-rebuild-workbench-plan.json/web-signer-rebuild-workbench.mjs, and web-js-signature-control-plan.json/web-js-signature-control-harness.mjs when present plus JS endpoint scans to build auth/session/JWT/CORS/header/redirect/SSRF/signature-control matrix; run browser/XHR/WS capture if needed; produce replay commands and IDOR/BOLA/object ownership/signature proof.`)}`);
@@ -15470,7 +15976,7 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 		if (!noWrite && existsSync(join(artifactDir, "agent-boundary-claim-promotion.json"))) q.push(`cat ${shellQuote(join(artifactDir, "agent-boundary-claim-promotion.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "agent-boundary-repair-queue.json"))) q.push(`cat ${shellQuote(join(artifactDir, "agent-boundary-repair-queue.json"))}`);
 		if (!noWrite) q.push(`python3 ${shellQuote(join(artifactDir, "agent-boundary-payloads.py"))} <chat-or-agent-endpoint> ${shellQuote(join(artifactDir, "agent-boundary-replay-results.json"))} --execute`);
-		q.push(`repi -p ${shellQuote(`Continue agent-boundary pentest from ${artifactDir}: use agent-boundary-map.json boundaryFlows plus agent-boundary-claim-promotion.json/agent-boundary-repair-queue.json to bind untrusted input to prompts/tools/credentials, replay HTTP payloads from agent-boundary-payloads.py, and prove one unsafe leak/tool execution or baseline-accepted blocked-control flow with response hashes.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue agent-boundary pentest from ${artifactDir}: use agent-boundary-map.json boundaryFlows plus agent-boundary-claim-promotion.json claimLedger/composedPaths and agent-boundary-repair-queue.json repairQueue to bind untrusted input to prompts/tools/credentials, replay HTTP payloads from agent-boundary-payloads.py, and prove one unsafe leak/tool execution or baseline-accepted blocked-control flow with response hashes.`)}`);
 	}
 	if (targetInfo.lane === "cloud-identity") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "cloud-identity-map.json"))}`);
@@ -15510,6 +16016,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		const text = `${row.stdout}\n${row.stderr}`.slice(0, row.id === "pcap-quicklook" ? 50_000 : 6000);
 		if (/ELF|PE32|Mach-O|executable|shared object/i.test(text)) anchors.push("native binary fingerprint");
 		if (/repi-proof-harness|proof-harness|proofReady|artifactRows|liveRows|coverageGaps/i.test(text)) anchors.push("proof harness/self-test anchors");
+		if (/repi-unified-proof-graph|repi-proof-graph|repi-runtime-repair-loop|runtimeRepairLoop|selectedRepairs|graph\.nodes|graph\.edges|composedPaths|repairQueue/i.test(text)) anchors.push("unified proof graph anchors");
 		if (/GNU_STACK|RELRO|NX|Canary|PIE/i.test(text)) anchors.push("mitigation anchors");
 		if (/repi-native-elf-hardening|stackExecutable|native-elf-hardening|no-gnu-relro|executable-stack/i.test(text)) anchors.push("native hardening anchors");
 		if (/elf-(?:unsafe-import|command-exec-import|dynamic-loader|plt-relocation|lazy-binding)|R_X86_64_JUMP_SLOT|dynamic.*imports|symtab|JUMP_SLOT/i.test(text)) anchors.push("native ELF import/relocation anchors");
@@ -15570,7 +16077,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/firmware-container-header-parsed|filesystem-superblock-parsed|ubi-header-parsed|partitionOffsets|bytesUsed|vidHeaderOffset/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware structure anchors");
 		if (/repi-agent-boundary-map|agent-boundary|prompt-injection|llm-to-shell-tool-boundary|tool-secret-exfiltration-boundary|tool_call|system-prompt/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary anchors");
 		if (/boundaryFlows|untrusted-input-to-shell-execution-flow|llm-to-shell-execution-flow|tool-secret-exfiltration-flow|prompt-injection-evidence-flow/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary flow anchors");
-		if (/repi-agent-boundary-replay|agent-boundary-(?:claim-promotion|repair-queue)|unsafe-promoted|control-promoted|responseSha256/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary replay anchors");
+		if (/repi-agent-boundary-replay|agent-boundary-(?:claim-promotion|repair-queue)|agent-boundary-unsafe-tool-proof-path|agent-boundary-blocked-control-proof-path|unsafe-promoted|control-promoted|responseSha256|composedPaths|claimLedger/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary replay anchors");
 		if (/repi-cloud-identity-map|cloud-identity|terraform|ClusterRoleBinding|aws_iam|id-token|public-network-exposure|ci-oidc-deployment-trust-chain/i.test(text) && targetInfo.lane === "cloud-identity") anchors.push("cloud identity anchors");
 		if (/trustChains|cloud-identity-trust-claims|cloud-trust-chain-pivot|claimLedger|repairQueue|github-oidc-role-assumption-signal|terraform-wildcard-iam-policy-signal|kubernetes-privileged-service-account-signal|kubernetes-clusterrolebinding-signal|container-build-runtime-risk-signal/i.test(text) && targetInfo.lane === "cloud-identity") anchors.push("cloud trust-chain anchors");
 		if (/ExifTool|PNG|IHDR|zsteg|binwalk|PK|flag|ctf|cipher|nonce|salt|base64|xor/i.test(text) && targetInfo.lane === "crypto-stego") anchors.push("crypto/stego anchors");
@@ -15769,6 +16276,54 @@ if (targetInfo.kind === "url") commands = engageUrl(targetInfo, artifactDir);
 else if (targetInfo.kind === "directory") commands = engageDirectory(targetInfo, artifactDir);
 else if (targetInfo.kind === "file") commands = engageFile(targetInfo, artifactDir);
 else commands = [run("bash", ["-lc", `printf '%s\n' ${shellQuote(targetInfo.target)}`], { id: "task-text", timeout: 3000 })];
+const proofGraph = writeUnifiedProofGraph(targetInfo, artifactDir, commands, toolState);
+if (proofGraph) {
+	commands.push({
+		id: "repi-proof-graph",
+		command: "internal",
+		args: [redact(proofGraph.path)],
+		cwd: root,
+		exit: proofGraph.summary.claimLedger.length || proofGraph.summary.artifactFiles.length ? 0 : 1,
+		signal: null,
+		durationMs: 0,
+		stdout: `${JSON.stringify(
+			{
+				kind: proofGraph.summary.kind,
+				proofReady: proofGraph.summary.proofReady,
+				exploitProofReady: proofGraph.summary.exploitProofReady,
+				nodeCount: proofGraph.summary.nodeCount,
+				edgeCount: proofGraph.summary.edgeCount,
+				claimCount: proofGraph.summary.claimLedger.length,
+				composedPathCount: proofGraph.summary.composedPaths.length,
+				repairQueueCount: proofGraph.summary.repairQueue.length,
+				runtimeRepairLoop: {
+					ready: proofGraph.summary.runtimeRepairLoop.ready,
+					blockers: proofGraph.summary.runtimeRepairLoop.blockers,
+					nextCommands: proofGraph.summary.runtimeRepairLoop.nextCommands.slice(0, 8),
+				},
+			},
+			null,
+			2,
+		)}\n`,
+		stderr: "",
+		error: proofGraph.summary.claimLedger.length || proofGraph.summary.artifactFiles.length ? undefined : "no proof graph evidence artifacts collected",
+	});
+	const repairLoop = writeRuntimeRepairLoopHarness(artifactDir, proofGraph.path);
+	if (repairLoop) {
+		commands.push({
+			id: "repi-runtime-repair-loop-artifact",
+			command: "internal",
+			args: [redact(repairLoop.path), redact(proofGraph.path)],
+			cwd: root,
+			exit: 0,
+			signal: null,
+			durationMs: 0,
+			stdout: `harness=${redact(repairLoop.path)}\ngraph=${redact(proofGraph.path)}\nrun=node ${redact(repairLoop.path)} --plan\nexecute=node ${redact(repairLoop.path)} --execute --max 1\n`,
+			stderr: "",
+			error: undefined,
+		});
+	}
+}
 commands.push(...proofHarnessRows(targetInfo, artifactDir, commands, toolState));
 const swarmReport = maybeRunSwarm(targetInfo);
 const summary = summarizeEvidence(commands, targetInfo, toolState);
