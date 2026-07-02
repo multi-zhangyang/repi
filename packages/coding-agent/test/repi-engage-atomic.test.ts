@@ -2205,16 +2205,23 @@ jobs:
 		expect(report.commands.some((row) => row.id.startsWith("crypto-stego-"))).toBe(true);
 		expect(report.commands.map((row) => row.id)).toContain("crypto-stego-media-quicklook");
 		expect(report.commands.map((row) => row.id)).toContain("crypto-stego-solver-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("crypto-stego-transform-claims");
 		expect(report.summary.anchors).toContain("crypto/stego anchors");
 		expect(report.summary.anchors).toContain("PNG/stego structure anchors");
+		expect(report.summary.anchors).toContain("crypto/stego transform claim anchors");
 		expect(report.nextQueue.some((command) => command.includes("crypto/stego"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("crypto-stego-media-quicklook.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("crypto-stego-transform-claims.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("crypto-stego-solver.py"))).toBe(true);
 		const mediaPath = join(report.artifactDir, "crypto-stego-media-quicklook.json");
+		const transformClaimsPath = join(report.artifactDir, "crypto-stego-transform-claims.json");
 		const solverPath = join(report.artifactDir, "crypto-stego-solver.py");
 		expect(existsSync(mediaPath)).toBe(true);
+		expect(existsSync(transformClaimsPath)).toBe(true);
 		expect(existsSync(solverPath)).toBe(true);
 		expect(statSync(mediaPath).mode & 0o777).toBe(0o600);
+		expect(statSync(transformClaimsPath).mode & 0o777).toBe(0o600);
 		expect(statSync(solverPath).mode & 0o777).toBe(0o700);
 		const media = JSON.parse(readFileSync(mediaPath, "utf8")) as {
 			ihdr: { width: number; height: number; colorType: number };
@@ -2246,6 +2253,36 @@ jobs:
 				"embedded-zip-archive-parsed",
 			]),
 		);
+		const transformClaims = JSON.parse(readFileSync(transformClaimsPath, "utf8")) as {
+			proofReady: boolean;
+			transformProofReady: boolean;
+			claimLedger: Array<{ claimType: string; verdict: string }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+			promotionReport: { promotedClaims: Array<{ claimType: string }> };
+		};
+		expect(JSON.stringify(transformClaims)).not.toContain(secret);
+		expect(transformClaims.proofReady).toBe(true);
+		expect(transformClaims.transformProofReady).toBe(true);
+		expect(
+			transformClaims.claimLedger.some(
+				(claim) => claim.claimType === "crypto-png-text-stego-signal" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			transformClaims.claimLedger.some(
+				(claim) => claim.claimType === "crypto-embedded-archive-carve" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			transformClaims.composedPaths.some(
+				(claim) => claim.claimType === "crypto-transform-proof-path" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			transformClaims.promotionReport.promotedClaims.some(
+				(claim) => claim.claimType === "crypto-transform-proof-path",
+			),
+		).toBe(true);
 		const solver = spawnSync("python3", [solverPath, stegoTarget], {
 			encoding: "utf8",
 			timeout: 15_000,
@@ -2287,14 +2324,20 @@ jobs:
 		expect(report.target.lane).toBe("crypto-stego");
 		expect(report.commands.map((row) => row.id)).toContain("crypto-stego-media-quicklook");
 		expect(report.commands.map((row) => row.id)).toContain("crypto-stego-solver-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("crypto-stego-transform-claims");
 		expect(report.summary.anchors).toContain("crypto/stego anchors");
 		expect(report.summary.anchors).toContain("WAV/stego structure anchors");
+		expect(report.summary.anchors).toContain("crypto/stego transform claim anchors");
 		expect(report.nextQueue.some((command) => command.includes("crypto-stego-media-quicklook.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("crypto-stego-transform-claims.json"))).toBe(true);
 		const mediaPath = join(report.artifactDir, "crypto-stego-media-quicklook.json");
+		const transformClaimsPath = join(report.artifactDir, "crypto-stego-transform-claims.json");
 		const solverPath = join(report.artifactDir, "crypto-stego-solver.py");
 		expect(existsSync(mediaPath)).toBe(true);
+		expect(existsSync(transformClaimsPath)).toBe(true);
 		expect(existsSync(solverPath)).toBe(true);
 		expect(statSync(mediaPath).mode & 0o777).toBe(0o600);
+		expect(statSync(transformClaimsPath).mode & 0o777).toBe(0o600);
 		expect(statSync(solverPath).mode & 0o777).toBe(0o700);
 		const media = JSON.parse(readFileSync(mediaPath, "utf8")) as {
 			format: string;
@@ -2329,6 +2372,30 @@ jobs:
 				"embedded-zip-archive-parsed",
 			]),
 		);
+		const transformClaims = JSON.parse(readFileSync(transformClaimsPath, "utf8")) as {
+			proofReady: boolean;
+			transformProofReady: boolean;
+			claimLedger: Array<{ claimType: string; verdict: string }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+		};
+		expect(JSON.stringify(transformClaims)).not.toContain(secret);
+		expect(transformClaims.proofReady).toBe(true);
+		expect(transformClaims.transformProofReady).toBe(true);
+		expect(
+			transformClaims.claimLedger.some(
+				(claim) => claim.claimType === "crypto-wav-lsb-printable-signal" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			transformClaims.claimLedger.some(
+				(claim) => claim.claimType === "crypto-wav-metadata-stego-signal" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			transformClaims.composedPaths.some(
+				(claim) => claim.claimType === "crypto-transform-proof-path" && claim.verdict === "promoted",
+			),
+		).toBe(true);
 		const solver = spawnSync("python3", [solverPath, stegoTarget], {
 			encoding: "utf8",
 			timeout: 15_000,
@@ -3809,6 +3876,7 @@ jobs:
 		expect(report.commands.map((row) => row.id)).toContain("native-elf-hardening");
 		expect(report.commands.map((row) => row.id)).toContain("native-static-triage");
 		expect(report.commands.map((row) => row.id)).toContain("native-exploit-hypotheses");
+		expect(report.commands.map((row) => row.id)).toContain("native-primitive-claims");
 		expect(report.commands.find((row) => row.id === "native-elf-hardening")?.stdout).toContain(
 			"repi-native-elf-hardening",
 		);
@@ -3817,20 +3885,26 @@ jobs:
 		expect(report.summary.anchors).toContain("native static sink anchors");
 		expect(report.summary.anchors).toContain("native ROP/gadget anchors");
 		expect(report.summary.anchors).toContain("native exploit hypothesis anchors");
+		expect(report.summary.anchors).toContain("native primitive claim anchors");
 		expect(report.nextQueue.some((command) => command.includes("native-elf-hardening.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("dynamic.imports/relocations"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-static-triage.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-exploit-hypotheses.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("native-primitive-claims.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("gadgetQuicklook"))).toBe(true);
 		const summaryPath = join(report.artifactDir, "native-elf-hardening.json");
 		const staticPath = join(report.artifactDir, "native-static-triage.json");
 		const hypothesesPath = join(report.artifactDir, "native-exploit-hypotheses.json");
+		const primitiveClaimsPath = join(report.artifactDir, "native-primitive-claims.json");
 		expect(existsSync(summaryPath)).toBe(true);
 		expect(existsSync(staticPath)).toBe(true);
 		expect(existsSync(hypothesesPath)).toBe(true);
+		expect(existsSync(primitiveClaimsPath)).toBe(true);
 		expect(statSync(summaryPath).mode & 0o777).toBe(0o600);
 		expect(statSync(staticPath).mode & 0o777).toBe(0o600);
 		expect(statSync(hypothesesPath).mode & 0o777).toBe(0o600);
+		expect(statSync(primitiveClaimsPath).mode & 0o777).toBe(0o600);
 		const hardening = JSON.parse(readFileSync(summaryPath, "utf8")) as {
 			elf: { class: number; machine: string; type: string };
 			hardening: {
@@ -3981,6 +4055,45 @@ jobs:
 				}),
 			]),
 		);
+		const primitiveClaims = JSON.parse(readFileSync(primitiveClaimsPath, "utf8")) as {
+			proofReady: boolean;
+			exploitProofReady: boolean;
+			claimLedger: Array<{ claimType: string; verdict: string; evidenceBinding: Record<string, unknown> }>;
+			promotionReport: { promotedClaims: Array<{ claimType: string }>; blockers: string[] };
+			repairQueue: Array<{ blocker: string }>;
+		};
+		expect(JSON.stringify(primitiveClaims)).not.toContain("flag{demo}");
+		expect(primitiveClaims.proofReady).toBe(true);
+		expect(primitiveClaims.exploitProofReady).toBe(false);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) => claim.claimType === "native-unsafe-import-surface" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) => claim.claimType === "native-ret2libc-surface" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) => claim.claimType === "native-syscall-rop-surface" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) => claim.claimType === "native-format-string-surface" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) => claim.claimType === "native-secret-flag-string-surface" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(primitiveClaims.promotionReport.blockers).toEqual(
+			expect.arrayContaining(["missing-crash-or-behavior-differential", "need-pie-base-leak"]),
+		);
+		expect(primitiveClaims.repairQueue.map((row) => row.blocker)).toContain("missing-crash-or-behavior-differential");
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
 
@@ -4220,18 +4333,21 @@ echo "ready"
 		expect(report.commands.map((row) => row.id)).toContain("native-replay-verifier-artifact");
 		expect(report.commands.map((row) => row.id)).toContain("native-gdb-trace-artifact");
 		expect(report.commands.map((row) => row.id)).toContain("native-exploit-hypotheses");
+		expect(report.commands.map((row) => row.id)).toContain("native-primitive-claims");
 		expect(report.commands.map((row) => row.id)).toContain("proof-harness-plan");
 		expect(report.commands.map((row) => row.id)).toContain("proof-harness-self-test");
 		expect(report.commands.find((row) => row.id === "native-run-empty")?.stdout).toContain("mode=empty exit=0");
 		expect(report.commands.find((row) => row.id === "native-run-cyclic")?.stdout).toContain("crash_signal=SIGSEGV");
 		expect(report.summary.anchors).toContain("dynamic execution/crash anchors");
 		expect(report.summary.anchors).toContain("native exploit hypothesis anchors");
+		expect(report.summary.anchors).toContain("native primitive claim anchors");
 		expect(report.summary.anchors).toContain("proof harness/self-test anchors");
 		const verifierPath = join(report.artifactDir, "native-replay-verifier.py");
 		const gdbPath = join(report.artifactDir, "native-gdb-trace.gdb");
 		const cyclicPayloadPath = join(report.artifactDir, "native-cyclic-payload.bin");
 		const cyclicOffsetPath = join(report.artifactDir, "native-cyclic-offset.py");
 		const hypothesesPath = join(report.artifactDir, "native-exploit-hypotheses.json");
+		const primitiveClaimsPath = join(report.artifactDir, "native-primitive-claims.json");
 		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
 		const proofHarnessPath = join(report.artifactDir, "proof-harness.mjs");
 		expect(existsSync(verifierPath)).toBe(true);
@@ -4239,12 +4355,14 @@ echo "ready"
 		expect(existsSync(cyclicPayloadPath)).toBe(true);
 		expect(existsSync(cyclicOffsetPath)).toBe(true);
 		expect(existsSync(hypothesesPath)).toBe(true);
+		expect(existsSync(primitiveClaimsPath)).toBe(true);
 		expect(existsSync(proofMatrixPath)).toBe(true);
 		expect(existsSync(proofHarnessPath)).toBe(true);
 		expect(statSync(verifierPath).mode & 0o777).toBe(0o700);
 		expect(statSync(gdbPath).mode & 0o777).toBe(0o600);
 		expect(statSync(cyclicPayloadPath).mode & 0o777).toBe(0o600);
 		expect(statSync(cyclicOffsetPath).mode & 0o777).toBe(0o700);
+		expect(statSync(primitiveClaimsPath).mode & 0o777).toBe(0o600);
 		expect(statSync(proofMatrixPath).mode & 0o777).toBe(0o600);
 		expect(statSync(proofHarnessPath).mode & 0o777).toBe(0o700);
 		const gdbScript = readFileSync(gdbPath, "utf8");
@@ -4256,6 +4374,7 @@ echo "ready"
 			liveChecks: Array<{ id: string; selfTest: boolean }>;
 		};
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("native-replay-verifier.py");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("native-primitive-claims.json");
 		expect(proofMatrix.liveChecks).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ id: "native-cyclic-offset-self-test", selfTest: true }),
@@ -4266,6 +4385,7 @@ echo "ready"
 		expect(report.nextQueue.some((command) => command.includes("stdin/argv/env I/O contract"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-cyclic-offset.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-exploit-hypotheses.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("native-primitive-claims.json"))).toBe(true);
 		expect(
 			report.nextQueue.some((command) => command.includes("proof-harness.mjs") && command.includes("--self-test")),
 		).toBe(true);
@@ -4312,6 +4432,40 @@ echo "ready"
 				}),
 			]),
 		);
+		const primitiveClaims = JSON.parse(readFileSync(primitiveClaimsPath, "utf8")) as {
+			proofReady: boolean;
+			exploitProofReady: boolean;
+			claimLedger: Array<{ claimType: string; verdict: string; evidenceBinding: Record<string, unknown> }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+			promotionReport: { promotedClaims: Array<{ claimType: string }> };
+		};
+		expect(primitiveClaims.proofReady).toBe(true);
+		expect(primitiveClaims.exploitProofReady).toBe(true);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) => claim.claimType === "native-crash-replay-signal" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) => claim.claimType === "native-cyclic-crash-control-claim" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) => claim.claimType === "native-io-contract-harness" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			primitiveClaims.composedPaths.some(
+				(claim) => claim.claimType === "native-exploit-proof-path" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			primitiveClaims.promotionReport.promotedClaims.some(
+				(claim) => claim.claimType === "native-exploit-proof-path",
+			),
+		).toBe(true);
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
 

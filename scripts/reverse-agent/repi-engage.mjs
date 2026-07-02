@@ -557,6 +557,7 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 		add("native-macho-quicklook.json", "Mach-O load-command/symbol parser output");
 		add("native-static-triage.json", "native static sink/gadget triage");
 		add("native-exploit-hypotheses.json", "native exploit hypothesis matrix");
+		add("native-primitive-claims.json", "native primitive claim ledger and repair queue");
 		add("native-replay-verifier.py", "native crash replay verifier", 0o700);
 		add("native-gdb-trace.gdb", "native debugger trace script");
 		add("native-cyclic-payload.bin", "native cyclic proof payload");
@@ -599,6 +600,7 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	}
 	if (targetInfo.lane === "crypto-stego") {
 		add("crypto-stego-media-quicklook.json", "crypto/stego media structure quicklook output");
+		add("crypto-stego-transform-claims.json", "crypto/stego transform claim ledger");
 		add("crypto-stego-solver.py", "crypto/stego transform-chain solver harness", 0o700);
 	}
 	if (targetInfo.lane === "agent-boundary") {
@@ -627,10 +629,10 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 		requireAny("web-route-matrix", ["web-api-schema-probes.json", "web-discovery-matrix.json", "web-object-matrix.json"], "web targets need route/schema/object matrix evidence");
 	}
 	if (targetInfo.kind === "directory") requireAny("workspace-source-runtime-map", ["workspace-source-runtime-map.json", "workspace-source-runtime-harness.mjs"], "workspace targets need source-to-runtime route/sink/auth evidence");
-	if (targetInfo.lane === "native-pwn") requireAny("native-replay", ["native-replay-verifier.py", "native-exploit-hypotheses.json", "native-static-triage.json"], "native targets need replay/triage/hypothesis artifacts");
+	if (targetInfo.lane === "native-pwn") requireAny("native-replay", ["native-primitive-claims.json", "native-replay-verifier.py", "native-exploit-hypotheses.json", "native-static-triage.json"], "native targets need replay/triage/hypothesis artifacts");
 	if (targetInfo.lane === "js-reverse") requireAny("js-reverse-workbench", ["js-reverse-workbench.json", "js-reverse-workbench.mjs", "workspace-source-runtime-map.json"], "JS reverse targets need local signer/API/workspace evidence artifacts");
 	if (targetInfo.lane === "pcap-dfir") requireAny("pcap-flow-summary", ["pcap-flow-claims.json", "pcap-flow-summary.json"], "PCAP targets need parsed flow/stream evidence");
-	if (targetInfo.lane === "crypto-stego") requireAny("crypto-transform-solver", ["crypto-stego-solver.py", "crypto-stego-media-quicklook.json"], "crypto/stego targets need a transform-chain verifier or media structure proof");
+	if (targetInfo.lane === "crypto-stego") requireAny("crypto-transform-solver", ["crypto-stego-transform-claims.json", "crypto-stego-solver.py", "crypto-stego-media-quicklook.json"], "crypto/stego targets need a transform-chain verifier or media structure proof");
 	if (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios") requireAny("mobile-runtime-hook", ["mobile-attack-surface-claims.json", "mobile-frida-hooks.js", "mobile-archive-summary.json"], "mobile targets need archive/runtime hook anchors");
 	if (targetInfo.lane === "firmware-iot") requireAny("firmware-extract-plan", ["firmware-attack-surface.json", "firmware-extract-plan.sh", "firmware-quicklook.json"], "firmware targets need structure/extraction anchors");
 	if (targetInfo.lane === "memory-forensics") requireAny("memory-triage-plan", ["memory-evidence-claims.json", "memory-triage-plan.sh", "memory-quicklook.json"], "memory targets need triage/correlation anchors");
@@ -4651,10 +4653,394 @@ function nativeExploitHypotheses(target, artifactDir, rows) {
 	};
 }
 
+function nativeSignalEvidenceRows(rows, limit = 16) {
+	return (rows ?? []).slice(0, limit).map((row) => ({
+		offset: row.offset ?? null,
+		match: row.match ?? null,
+		textLength: String(row.text ?? "").length,
+		textSha256: httpSecretHash(row.text ?? ""),
+	}));
+}
+
+function nativeExecutionEvidence(rows) {
+	const parsedRows = rows
+		.filter((row) => /^native-run-/.test(row.id))
+		.map((row) => {
+			const text = `${row.stdout ?? ""}\n${row.stderr ?? ""}`;
+			const nativeLines = text
+				.split(/\r?\n/)
+				.filter((line) => /^\[native-exec]/.test(line))
+				.map((line) => redact(line))
+				.slice(0, 8);
+			const joined = nativeLines.join(" ");
+			const mode = /mode=([a-z0-9_-]+)/i.exec(joined)?.[1] ?? row.id.replace(/^native-run-/, "");
+			const exitToken = /(?:^|\s)exit=([a-z0-9_-]+)/i.exec(joined)?.[1] ?? null;
+			const exit = exitToken && /^\d+$/.test(exitToken) ? Number(exitToken) : exitToken;
+			const crashSignal = /crash_signal=([A-Z0-9_-]+)/i.exec(joined)?.[1] ?? null;
+			const timeout = /timeout=true/i.test(joined) || exit === 124 || exit === 137;
+			const crashLike = Boolean(crashSignal) || (typeof exit === "number" && (exit === 134 || exit === 139 || exit > 128));
+			return {
+				id: row.id,
+				mode,
+				exit,
+				crashSignal,
+				timeout,
+				crashLike,
+				stdoutSha256: httpSecretHash(row.stdout ?? ""),
+				stderrSha256: httpSecretHash(row.stderr ?? ""),
+				nativeLines,
+			};
+		});
+	return {
+		rows: parsedRows,
+		crashRows: parsedRows.filter((row) => row.crashLike),
+		modes: parsedRows.map((row) => row.mode),
+	};
+}
+
+function nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary) {
+	const elf = readJsonArtifact(join(artifactDir, "native-elf-hardening.json"));
+	const pe = readJsonArtifact(join(artifactDir, "native-pe-quicklook.json"));
+	const macho = readJsonArtifact(join(artifactDir, "native-macho-quicklook.json"));
+	const triage = readJsonArtifact(join(artifactDir, "native-static-triage.json"));
+	const hypotheses = hypothesesSummary ?? readJsonArtifact(join(artifactDir, "native-exploit-hypotheses.json"));
+	const execution = nativeExecutionEvidence(rows);
+	const artifactFiles = [
+		elf ? "native-elf-hardening.json" : null,
+		pe ? "native-pe-quicklook.json" : null,
+		macho ? "native-macho-quicklook.json" : null,
+		triage ? "native-static-triage.json" : null,
+		hypotheses ? "native-exploit-hypotheses.json" : null,
+		existsSync(join(artifactDir, "native-replay-verifier.py")) ? "native-replay-verifier.py" : null,
+		existsSync(join(artifactDir, "native-gdb-trace.gdb")) ? "native-gdb-trace.gdb" : null,
+		existsSync(join(artifactDir, "native-cyclic-payload.bin")) ? "native-cyclic-payload.bin" : null,
+		existsSync(join(artifactDir, "native-cyclic-offset.py")) ? "native-cyclic-offset.py" : null,
+	].filter(Boolean);
+	const claimLedger = [];
+	const addClaim = (claim) => {
+		if (!claim?.id || claimLedger.some((row) => row.id === claim.id)) return undefined;
+		const normalized = {
+			verdict: "promoted",
+			confidence: 0.7,
+			blockers: [],
+			...claim,
+		};
+		claimLedger.push(normalized);
+		return normalized;
+	};
+	const importedNames = (elf?.dynamic?.imports ?? []).map((row) => String(row.name ?? "")).filter(Boolean);
+	const elfRisks = new Set([...(elf?.risk ?? []), ...(elf?.dynamic?.risks ?? [])]);
+	const staticRisks = new Set(triage?.risks ?? []);
+	const gadgetRisks = new Set(triage?.gadgetQuicklook?.risks ?? []);
+	const hypothesisRows = hypotheses?.hypotheses ?? [];
+	const hypothesisById = new Map(hypothesisRows.map((row) => [row.id, row]));
+	const mitigations = hypotheses?.evidence?.mitigations ?? {
+		pie: elf?.hardening?.pie ?? pe?.mitigations?.dynamicBase ?? null,
+		nx: elf?.hardening?.nx ?? pe?.mitigations?.nx ?? null,
+		canary: elf?.hardening?.canary ?? null,
+		relroLevel: elf?.hardening?.relroLevel ?? null,
+		bindNow: elf?.hardening?.bindNow ?? null,
+	};
+	const crashRow = execution.crashRows[0];
+	const crashClaim = crashRow
+		? addClaim({
+				id: "native-crash-replay-" + shortHash(`${target}:${crashRow.id}:${crashRow.exit}:${crashRow.stdoutSha256}`),
+				claimType: "native-crash-replay-signal",
+				sourceBinding: { artifact: "commands.jsonl", rowId: crashRow.id },
+				evidenceBinding: {
+					mode: crashRow.mode,
+					exit: crashRow.exit,
+					crashSignal: crashRow.crashSignal,
+					timeout: crashRow.timeout,
+					stdoutSha256: crashRow.stdoutSha256,
+					stderrSha256: crashRow.stderrSha256,
+					nativeLines: crashRow.nativeLines,
+				},
+				statement: "Bounded native execution reached a crash-like state from a controlled replay input.",
+				confidence: 0.86,
+				rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-replay-verifier.py"))} ${shellQuote(target)}`,
+			})
+		: undefined;
+	if (execution.rows.length && existsSync(join(artifactDir, "native-replay-verifier.py"))) {
+		addClaim({
+			id: "native-io-contract-" + shortHash(`${target}:${execution.modes.join(",")}`),
+			claimType: "native-io-contract-harness",
+			sourceBinding: { artifact: "native-replay-verifier.py", rows: execution.rows.map((row) => row.id) },
+			evidenceBinding: {
+				modes: execution.modes,
+				crashLikeCount: execution.crashRows.length,
+				rowHashes: execution.rows.map((row) => ({ id: row.id, stdoutSha256: row.stdoutSha256, stderrSha256: row.stderrSha256 })),
+			},
+			statement: "Native replay harness covers stdin, argv, env, and cyclic input contract cases for deterministic primitive reproduction.",
+			confidence: execution.crashRows.length ? 0.82 : 0.72,
+			rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-replay-verifier.py"))} ${shellQuote(target)}`,
+		});
+	}
+	if (existsSync(join(artifactDir, "native-cyclic-offset.py")) && existsSync(join(artifactDir, "native-cyclic-payload.bin")) && existsSync(join(artifactDir, "native-gdb-trace.gdb"))) {
+		addClaim({
+			id: "native-offset-control-workbench-" + shortHash(target),
+			claimType: "native-offset-control-workbench",
+			sourceBinding: {
+				payload: "native-cyclic-payload.bin",
+				offsetHelper: "native-cyclic-offset.py",
+				debuggerScript: "native-gdb-trace.gdb",
+			},
+			evidenceBinding: {
+				hasCyclicPayload: true,
+				hasOffsetHelper: true,
+				hasDebuggerTrace: true,
+				crashLikeCount: execution.crashRows.length,
+			},
+			statement: "Native cyclic payload, offset helper, and debugger trace script are ready to bind register/stack bytes to input offsets.",
+			confidence: execution.crashRows.length ? 0.84 : 0.74,
+			rerunCommand: `gdb -q -x ${shellQuote(join(artifactDir, "native-gdb-trace.gdb"))} ${shellQuote(target)}`,
+		});
+	}
+	if (elfRisks.has("elf-unsafe-import-surface") || staticRisks.has("unsafe-input-sink-signal") || (triage?.signals?.unsafeInput ?? []).length) {
+		addClaim({
+			id: "native-unsafe-import-surface-" + shortHash(`${target}:${importedNames.join(",")}:${JSON.stringify(triage?.signals?.unsafeInput ?? [])}`),
+			claimType: "native-unsafe-import-surface",
+			sourceBinding: { artifacts: ["native-elf-hardening.json", "native-static-triage.json"].filter((name) => artifactFiles.includes(name)) },
+			evidenceBinding: {
+				imports: importedNames.filter((name) => /^(gets|strcpy|strcat|sprintf|vsprintf|scanf|sscanf|fscanf|memcpy|memmove)$/i.test(name)).slice(0, 24),
+				staticSignals: nativeSignalEvidenceRows(triage?.signals?.unsafeInput),
+				risks: [...elfRisks, ...staticRisks].filter((risk) => /unsafe|stack|canary|pie|relro/i.test(risk)),
+			},
+			statement: "Native static/import evidence identifies unsafe input or memory-copy sinks that need callsite reachability proof.",
+			confidence: elfRisks.has("elf-unsafe-import-surface") ? 0.82 : 0.74,
+			rerunCommand: "cat native-elf-hardening.json native-static-triage.json",
+		});
+	}
+	if (elfRisks.has("elf-command-exec-import-surface") || staticRisks.has("command-execution-sink-signal") || (triage?.signals?.commandExec ?? []).length || (triage?.signals?.shellPaths ?? []).length) {
+		addClaim({
+			id: "native-command-exec-surface-" + shortHash(`${target}:${importedNames.join(",")}:${JSON.stringify(triage?.signals?.shellPaths ?? [])}`),
+			claimType: "native-command-exec-surface",
+			sourceBinding: { artifacts: ["native-elf-hardening.json", "native-static-triage.json"].filter((name) => artifactFiles.includes(name)) },
+			evidenceBinding: {
+				imports: importedNames.filter((name) => /^(system|popen|execv|execve|execl|execlp|execvp|posix_spawn)$/i.test(name)).slice(0, 24),
+				commandSignals: nativeSignalEvidenceRows(triage?.signals?.commandExec),
+				shellPathSignals: nativeSignalEvidenceRows(triage?.signals?.shellPaths),
+			},
+			statement: "Native evidence contains command-execution or shell-path anchors for ret2libc, command-injection, or sandbox escape triage.",
+			confidence: 0.82,
+			rerunCommand: "cat native-static-triage.json | jq '.signals.commandExec,.signals.shellPaths'",
+		});
+	}
+	if (gadgetRisks.has("native-rop-gadget-signal")) {
+		addClaim({
+			id: "native-gadget-corpus-" + shortHash(`${target}:${JSON.stringify(triage?.gadgetQuicklook?.gadgets ?? {})}`),
+			claimType: "native-gadget-corpus-surface",
+			sourceBinding: { artifact: "native-static-triage.json", field: "gadgetQuicklook" },
+			evidenceBinding: {
+				architecture: triage?.gadgetQuicklook?.architecture ?? null,
+				gadgetCount: triage?.gadgetQuicklook?.gadgetCount ?? 0,
+				gadgets: Object.fromEntries(
+					Object.entries(triage?.gadgetQuicklook?.gadgets ?? {}).map(([name, row]) => [
+						name,
+						{ count: row.count ?? 0, samples: (row.samples ?? []).slice(0, 6).map((sample) => ({ offsetHex: sample.offsetHex, gadget: sample.gadget })) },
+					]),
+				),
+				risks: [...gadgetRisks],
+			},
+			statement: "Native opcode scan found reusable control-flow gadgets; resolve virtual addresses under the final load base before chain construction.",
+			confidence: 0.78,
+			rerunCommand: "cat native-static-triage.json | jq '.gadgetQuicklook'",
+		});
+	}
+	const hypothesisClaimTypes = {
+		"cyclic-crash-control-proof": "native-cyclic-crash-control-claim",
+		"ret2libc-system-binsh": "native-ret2libc-surface",
+		"syscall-rop-chain": "native-syscall-rop-surface",
+		"format-string-leak-or-write": "native-format-string-surface",
+		"plt-got-resolution-surface": "native-plt-got-resolution-surface",
+	};
+	const hypothesisClaims = [];
+	for (const hypothesis of hypothesisRows) {
+		const claimType = hypothesisClaimTypes[hypothesis.id];
+		if (!claimType) continue;
+		const claim = addClaim({
+			id: `${claimType}-${shortHash(`${target}:${hypothesis.id}:${JSON.stringify(hypothesis.evidence ?? [])}`)}`,
+			claimType,
+			sourceBinding: { artifact: "native-exploit-hypotheses.json", hypothesisId: hypothesis.id },
+			evidenceBinding: {
+				priority: hypothesis.priority,
+				evidence: hypothesis.evidence ?? [],
+				verify: hypothesis.verify ?? [],
+				mitigations,
+			},
+			statement: hypothesis.claim ?? "Native exploit hypothesis promoted from static and replay evidence.",
+			confidence: hypothesis.id === "cyclic-crash-control-proof" && crashClaim ? 0.86 : 0.76,
+			blockers: hypothesis.blockers ?? [],
+			rerunCommand: "cat native-exploit-hypotheses.json | jq '.hypotheses'",
+		});
+		if (claim) hypothesisClaims.push(claim);
+	}
+	if ((pe?.suspiciousImports ?? []).length) {
+		addClaim({
+			id: "native-windows-injection-surface-" + shortHash(`${target}:${JSON.stringify(pe.suspiciousImports)}`),
+			claimType: "native-windows-injection-surface",
+			sourceBinding: { artifact: "native-pe-quicklook.json", field: "suspiciousImports" },
+			evidenceBinding: {
+				machine: pe.pe?.machine ?? null,
+				mitigations: pe.mitigations ?? {},
+				imports: (pe.suspiciousImports ?? []).slice(0, 32).map((row) => ({ dll: row.dll, name: row.name })),
+				risks: pe.risks ?? [],
+			},
+			statement: "PE import evidence identifies injection, loader, downloader, crypto, registry, or anti-debug primitives for Windows reverse triage.",
+			confidence: 0.82,
+			rerunCommand: "cat native-pe-quicklook.json | jq '.suspiciousImports'",
+		});
+	}
+	if ((macho?.risks ?? []).some((risk) => /rpath|dynamic-loader|dangerous-symbol/i.test(risk))) {
+		addClaim({
+			id: "native-macho-loader-surface-" + shortHash(`${target}:${JSON.stringify(macho?.risks ?? [])}`),
+			claimType: "native-macho-loader-surface",
+			sourceBinding: { artifact: "native-macho-quicklook.json", fields: ["rpaths", "dylibs", "symbols.signals"] },
+			evidenceBinding: {
+				cpu: macho?.macho?.cpu ?? null,
+				rpaths: macho?.rpaths ?? [],
+				dylibs: (macho?.dylibs ?? []).slice(0, 20).map((row) => row.name),
+				dangerousSymbols: (macho?.symbols?.signals?.dangerous ?? []).slice(0, 20).map((row) => row.name),
+				dynamicLoaderSymbols: (macho?.symbols?.signals?.dynamicLoader ?? []).slice(0, 20).map((row) => row.name),
+				risks: macho?.risks ?? [],
+			},
+			statement: "Mach-O load-command and symbol evidence exposes loader hijack or dangerous-symbol surfaces.",
+			confidence: 0.82,
+			rerunCommand: "cat native-macho-quicklook.json | jq '.rpaths,.symbols.signals'",
+		});
+	}
+	if ((macho?.symbols?.signals?.cryptoNetwork ?? []).length) {
+		addClaim({
+			id: "native-macho-trust-network-surface-" + shortHash(`${target}:${JSON.stringify(macho.symbols.signals.cryptoNetwork)}`),
+			claimType: "native-macho-trust-network-surface",
+			sourceBinding: { artifact: "native-macho-quicklook.json", field: "symbols.signals.cryptoNetwork" },
+			evidenceBinding: {
+				symbols: (macho.symbols.signals.cryptoNetwork ?? []).slice(0, 32).map((row) => row.name),
+				risks: macho.risks ?? [],
+			},
+			statement: "Mach-O symbol evidence identifies trust-evaluation or network surfaces for runtime hook/replay work.",
+			confidence: 0.78,
+			rerunCommand: "cat native-macho-quicklook.json | jq '.symbols.signals.cryptoNetwork'",
+		});
+	}
+	if ((triage?.signals?.networkIo ?? []).length || (triage?.signals?.urls ?? []).length) {
+		addClaim({
+			id: "native-network-string-surface-" + shortHash(`${target}:${JSON.stringify(triage?.signals?.networkIo ?? [])}:${JSON.stringify(triage?.signals?.urls ?? [])}`),
+			claimType: "native-network-string-surface",
+			sourceBinding: { artifact: "native-static-triage.json", fields: ["signals.networkIo", "signals.urls"] },
+			evidenceBinding: {
+				networkSignals: nativeSignalEvidenceRows(triage?.signals?.networkIo),
+				urlSignals: nativeSignalEvidenceRows(triage?.signals?.urls),
+			},
+			statement: "Native string evidence identifies network or URL pivots that should be tied to xrefs/runtime traffic.",
+			confidence: 0.72,
+			rerunCommand: "cat native-static-triage.json | jq '.signals.networkIo,.signals.urls'",
+		});
+	}
+	if ((triage?.signals?.secretsAndFlags ?? []).length) {
+		addClaim({
+			id: "native-secret-flag-string-surface-" + shortHash(`${target}:${JSON.stringify(triage?.signals?.secretsAndFlags ?? [])}`),
+			claimType: "native-secret-flag-string-surface",
+			sourceBinding: { artifact: "native-static-triage.json", field: "signals.secretsAndFlags" },
+			evidenceBinding: {
+				signals: nativeSignalEvidenceRows(triage?.signals?.secretsAndFlags),
+			},
+			statement: "Native string evidence contains secret/flag/config indicators; values are hash-bound instead of emitted.",
+			confidence: 0.72,
+			rerunCommand: "cat native-static-triage.json | jq '.signals.secretsAndFlags'",
+		});
+	}
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	const composedPaths = [];
+	const controlClaim = hypothesisClaims.find((claim) => claim.claimType === "native-cyclic-crash-control-claim");
+	const primitiveClaim = hypothesisClaims.find((claim) => /ret2libc|syscall|format-string|plt-got/.test(claim.claimType)) ?? promotedClaims.find((claim) => /unsafe-import|command-exec|windows-injection|macho-loader/.test(claim.claimType));
+	if (crashClaim && (controlClaim || primitiveClaim)) {
+		const segments = [crashClaim, controlClaim, primitiveClaim].filter(Boolean);
+		const composed = {
+			id: "native-exploit-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "native-exploit-proof-path",
+			sourceBinding: {
+				target: redact(target),
+				segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: claim.sourceBinding?.artifact })),
+			},
+			evidenceBinding: {
+				crashLike: true,
+				hasControlWorkbench: Boolean(controlClaim),
+				hasPrimitiveSurface: Boolean(primitiveClaim),
+				mitigations,
+				artifactFiles,
+			},
+			statement: "Native evidence composes replay crash, cyclic/control workbench, and primitive surface into a debugger-backed proof path.",
+			verdict: "promoted",
+			confidence: primitiveClaim ? 0.86 : 0.82,
+			blockers: primitiveClaim ? primitiveClaim.blockers ?? [] : ["Need exact register/stack bytes before claiming instruction-pointer control."],
+			rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-replay-verifier.py"))} ${shellQuote(target)} && gdb -q -x ${shellQuote(join(artifactDir, "native-gdb-trace.gdb"))} ${shellQuote(target)}`,
+		};
+		claimLedger.push(composed);
+		promotedClaims.push(composed);
+		composedPaths.push(composed);
+	}
+	const blockers = [];
+	if (!triage) blockers.push("missing-native-static-triage");
+	if (!execution.rows.length) blockers.push("missing-native-runtime-replay");
+	if (!execution.crashRows.length) blockers.push("missing-crash-or-behavior-differential");
+	if (!existsSync(join(artifactDir, "native-replay-verifier.py"))) blockers.push("missing-replay-verifier");
+	if (execution.crashRows.length && !existsSync(join(artifactDir, "native-cyclic-offset.py"))) blockers.push("missing-cyclic-offset-helper");
+	if (execution.crashRows.length && !existsSync(join(artifactDir, "native-gdb-trace.gdb"))) blockers.push("missing-debugger-trace");
+	if (!hypothesisRows.length) blockers.push("missing-native-primitive-hypothesis");
+	if ((hypothesisById.has("ret2libc-system-binsh") || hypothesisById.has("plt-got-resolution-surface")) && mitigations.pie) blockers.push("need-pie-base-leak");
+	if (mitigations.canary) blockers.push("need-canary-leak-or-non-stack-primitive");
+	const repairActions = {
+		"missing-native-static-triage": "Run strings/import/gadget triage and bind each sink/gadget to an artifact row before exploit planning.",
+		"missing-native-runtime-replay": "Run native-replay-verifier.py to establish stdin/argv/env behavior and deterministic output hashes.",
+		"missing-crash-or-behavior-differential": "Find a controlled crash, leak, branch, parser error, or output differential before promoting exploitability.",
+		"missing-replay-verifier": "Generate native-replay-verifier.py and keep it executable so primitive claims are rerunnable.",
+		"missing-cyclic-offset-helper": "Generate native-cyclic-offset.py and use debugger bytes to calculate exact control offset.",
+		"missing-debugger-trace": "Run or generate native-gdb-trace.gdb to capture registers, backtrace, stack, and nearby instructions.",
+		"missing-native-primitive-hypothesis": "Promote at least one ret2libc, syscall ROP, format-string, PLT/GOT, PE injection, or Mach-O loader hypothesis.",
+		"need-pie-base-leak": "Collect a code/libc base leak or non-PIE mapping before using fixed gadget/import addresses.",
+		"need-canary-leak-or-non-stack-primitive": "Avoid stack overwrite assumptions until canary leak, non-stack write, or logic primitive is proven.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "native-primitive-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect native runtime/static evidence and rerun claim promotion.",
+		rerunCommand: `repi engage ${shellQuote(target)} --json`,
+	}));
+	return {
+		kind: "repi-native-primitive-claims",
+		schemaVersion: 1,
+		target: redact(target),
+		generatedAt: new Date().toISOString(),
+		artifactFiles,
+		execution,
+		mitigations,
+		proofReady: promotedClaims.length > 0,
+		exploitProofReady: composedPaths.length > 0,
+		claimLedger,
+		composedPaths,
+		promotionReport: {
+			proofReady: promotedClaims.length > 0,
+			exploitProofReady: composedPaths.length > 0,
+			promotedClaims,
+			blockers,
+		},
+		repairQueue,
+	};
+}
+
 function writeNativeExploitHypotheses(artifactDir, target, rows) {
 	if (noWrite || !artifactDir) return undefined;
 	const summary = nativeExploitHypotheses(target, artifactDir, rows);
 	const path = join(artifactDir, "native-exploit-hypotheses.json");
+	writePrivate(path, `${JSON.stringify(summary, null, 2)}\n`, 0o600);
+	return { path, summary };
+}
+
+function writeNativePrimitiveClaims(artifactDir, target, rows, hypothesesSummary) {
+	if (noWrite || !artifactDir) return undefined;
+	const summary = nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary);
+	const path = join(artifactDir, "native-primitive-claims.json");
 	writePrivate(path, `${JSON.stringify(summary, null, 2)}\n`, 0o600);
 	return { path, summary };
 }
@@ -5239,6 +5625,216 @@ function cryptoStegoMediaQuicklookRows(target, artifactDir) {
 	} catch (error) {
 		return [{ id: "crypto-stego-media-quicklook", command: "internal", args: [redact(target)], cwd: root, exit: 1, signal: null, durationMs: 0, stdout: "", stderr: error instanceof Error ? error.message : String(error), error: error instanceof Error ? error.message : String(error) }];
 	}
+}
+
+function cryptoStegoEvidenceRows(rows, valueKey = "text", limit = 24) {
+	return (rows ?? []).slice(0, limit).map((row) => {
+		const value = row?.[valueKey] ?? "";
+		return {
+			offset: row?.offset ?? null,
+			type: row?.type ?? row?.id ?? null,
+			length: row?.length ?? row?.size ?? String(value).length,
+			valueSha256: httpSecretHash(value),
+			valueLength: String(value).length,
+		};
+	});
+}
+
+function cryptoStegoTransformClaims(target, artifactDir) {
+	const media = readJsonArtifact(join(artifactDir, "crypto-stego-media-quicklook.json"));
+	const solverPath = join(artifactDir, "crypto-stego-solver.py");
+	const solverExists = existsSync(solverPath);
+	const claimLedger = [];
+	const addClaim = (claim) => {
+		if (!claim?.id || claimLedger.some((row) => row.id === claim.id)) return undefined;
+		const normalized = {
+			verdict: "promoted",
+			confidence: 0.7,
+			blockers: [],
+			...claim,
+		};
+		claimLedger.push(normalized);
+		return normalized;
+	};
+	const mediaRisks = new Set(media?.risks ?? []);
+	const structureClaims = [];
+	if (solverExists) {
+		addClaim({
+			id: "crypto-transform-solver-harness-" + shortHash(target),
+			claimType: "crypto-transform-solver-harness",
+			sourceBinding: { artifact: "crypto-stego-solver.py" },
+			evidenceBinding: {
+				supportedTransforms: ["base64", "hex", "gzip", "zlib", "xor-single-byte", "signal-strings", "transform-chain"],
+				requiresExecute: true,
+			},
+			statement: "Crypto/stego solver harness can replay printable strings, base64/hex, compression, XOR, and chained transform candidates.",
+			confidence: 0.78,
+			rerunCommand: `python3 ${shellQuote(solverPath)} ${shellQuote(target)}`,
+		});
+	}
+	if (media?.format === "png" && (mediaRisks.has("png-text-stego-signal") || mediaRisks.has("png-text-metadata-signal"))) {
+		const claim = addClaim({
+			id: "crypto-png-text-signal-" + shortHash(`${target}:${JSON.stringify(media.text ?? [])}`),
+			claimType: "crypto-png-text-stego-signal",
+			sourceBinding: { artifact: "crypto-stego-media-quicklook.json", field: "text" },
+			evidenceBinding: {
+				chunks: (media.text ?? []).slice(0, 24).map((row) => ({ offset: row.offset, type: row.type, keyword: row.keyword, textSha256: httpSecretHash(row.text ?? ""), textLength: String(row.text ?? "").length })),
+				risks: media.risks ?? [],
+			},
+			statement: "PNG text chunk evidence contains metadata or stego keywords and is hash-bound for transform-chain replay.",
+			confidence: mediaRisks.has("png-text-stego-signal") ? 0.84 : 0.74,
+			rerunCommand: "cat crypto-stego-media-quicklook.json | jq '.text'",
+		});
+		if (claim) structureClaims.push(claim);
+	}
+	if (media?.format === "png" && media?.trailing) {
+		const claim = addClaim({
+			id: "crypto-png-trailing-data-" + shortHash(`${target}:${media.trailing.offset}:${media.trailing.sha256}`),
+			claimType: "crypto-png-trailing-data",
+			sourceBinding: { artifact: "crypto-stego-media-quicklook.json", field: "trailing" },
+			evidenceBinding: {
+				offset: media.trailing.offset,
+				length: media.trailing.length,
+				sha256: media.trailing.sha256,
+				risks: media.risks ?? [],
+			},
+			statement: "PNG structure evidence contains bytes after IEND; carve and decode from the exact trailing offset.",
+			confidence: 0.84,
+			rerunCommand: "cat crypto-stego-media-quicklook.json | jq '.trailing'",
+		});
+		if (claim) structureClaims.push(claim);
+	}
+	if (media?.format === "wav" && (mediaRisks.has("wav-text-stego-signal") || mediaRisks.has("wav-info-metadata-signal"))) {
+		const claim = addClaim({
+			id: "crypto-wav-metadata-signal-" + shortHash(`${target}:${JSON.stringify(media.metadata ?? [])}`),
+			claimType: "crypto-wav-metadata-stego-signal",
+			sourceBinding: { artifact: "crypto-stego-media-quicklook.json", field: "metadata" },
+			evidenceBinding: {
+				metadata: cryptoStegoEvidenceRows(media.metadata, "value"),
+				risks: media.risks ?? [],
+			},
+			statement: "WAV LIST/INFO metadata evidence contains stego keywords and is hash-bound for solver replay.",
+			confidence: mediaRisks.has("wav-text-stego-signal") ? 0.84 : 0.74,
+			rerunCommand: "cat crypto-stego-media-quicklook.json | jq '.metadata'",
+		});
+		if (claim) structureClaims.push(claim);
+	}
+	if (media?.format === "wav" && mediaRisks.has("wav-lsb-printable-signal")) {
+		const claim = addClaim({
+			id: "crypto-wav-lsb-printable-" + shortHash(`${target}:${JSON.stringify(media.audioData?.lsb?.printableRuns ?? [])}`),
+			claimType: "crypto-wav-lsb-printable-signal",
+			sourceBinding: { artifact: "crypto-stego-media-quicklook.json", field: "audioData.lsb.printableRuns" },
+			evidenceBinding: {
+				audioOffset: media.audioData?.offset ?? null,
+				audioLength: media.audioData?.length ?? null,
+				audioSha256: media.audioData?.sha256 ?? null,
+				lsbBit: media.audioData?.lsb?.bit ?? 0,
+				printableRuns: cryptoStegoEvidenceRows(media.audioData?.lsb?.printableRuns, "text"),
+			},
+			statement: "WAV LSB bit-plane evidence contains printable stego text candidates tied to audio offsets and hashes.",
+			confidence: 0.86,
+			rerunCommand: "cat crypto-stego-media-quicklook.json | jq '.audioData.lsb.printableRuns'",
+		});
+		if (claim) structureClaims.push(claim);
+	}
+	if ((media?.embeddedArchives ?? []).length) {
+		const claim = addClaim({
+			id: "crypto-embedded-archive-carve-" + shortHash(`${target}:${JSON.stringify(media.embeddedArchives ?? [])}`),
+			claimType: "crypto-embedded-archive-carve",
+			sourceBinding: { artifact: "crypto-stego-media-quicklook.json", field: "embeddedArchives" },
+			evidenceBinding: {
+				archives: (media.embeddedArchives ?? []).slice(0, 16).map((archive) => ({
+					format: archive.format,
+					offset: archive.offset,
+					length: archive.length ?? null,
+					sha256: archive.sha256 ?? null,
+					entryCount: archive.entryCount ?? archive.entries?.length ?? 0,
+					entries: (archive.entries ?? []).slice(0, 40).map((entry) => ({
+						name: entry.name,
+						method: entry.method,
+						compressedSize: entry.compressedSize,
+						uncompressedSize: entry.uncompressedSize,
+						crc32: entry.crc32,
+					})),
+				})),
+			},
+			statement: "Crypto/stego media evidence contains an embedded archive carve with entry metadata and hashes.",
+			confidence: 0.88,
+			rerunCommand: "cat crypto-stego-media-quicklook.json | jq '.embeddedArchives'",
+		});
+		if (claim) structureClaims.push(claim);
+	}
+	const solverClaim = claimLedger.find((claim) => claim.claimType === "crypto-transform-solver-harness");
+	const composedPaths = [];
+	if (solverClaim && structureClaims.length) {
+		const segments = [structureClaims[0], solverClaim];
+		const composed = {
+			id: "crypto-transform-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "crypto-transform-proof-path",
+			sourceBinding: {
+				target: redact(target),
+				segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: claim.sourceBinding?.artifact })),
+			},
+			evidenceBinding: {
+				format: media?.format ?? "unknown",
+				risks: media?.risks ?? [],
+				hasArchiveCarve: structureClaims.some((claim) => claim.claimType === "crypto-embedded-archive-carve"),
+				hasLsbSignal: structureClaims.some((claim) => claim.claimType === "crypto-wav-lsb-printable-signal"),
+				hasTextSignal: structureClaims.some((claim) => /text|metadata/.test(claim.claimType)),
+			},
+			statement: "Crypto/stego evidence composes a media hidden-channel signal with an executable transform-chain solver harness.",
+			verdict: "promoted",
+			confidence: 0.86,
+			blockers: [],
+			rerunCommand: `python3 ${shellQuote(solverPath)} ${shellQuote(target)}`,
+		};
+		claimLedger.push(composed);
+		composedPaths.push(composed);
+	}
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	const blockers = [];
+	if (!media) blockers.push("missing-media-quicklook");
+	if (!solverExists) blockers.push("missing-transform-solver");
+	if (media && !structureClaims.length) blockers.push("missing-hidden-channel-signal");
+	if (media && !(media.embeddedArchives ?? []).length && !mediaRisks.has("wav-lsb-printable-signal") && !media?.trailing) blockers.push("missing-carve-or-bitplane-target");
+	const repairActions = {
+		"missing-media-quicklook": "Parse PNG/WAV structure or run file-specific metadata/binwalk probes before claiming a hidden channel.",
+		"missing-transform-solver": "Generate crypto-stego-solver.py so each transform candidate is rerunnable with hashes.",
+		"missing-hidden-channel-signal": "Find text/private chunks, trailing bytes, embedded archives, metadata, LSB runs, or encoded strings before promotion.",
+		"missing-carve-or-bitplane-target": "Carve appended archives/data or extract prioritized bit-planes before brute forcing unrelated transforms.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "crypto-stego-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect crypto/stego structure evidence and rerun transform claim promotion.",
+		rerunCommand: `repi engage ${shellQuote(target)} --json`,
+	}));
+	return {
+		kind: "repi-crypto-stego-transform-claims",
+		schemaVersion: 1,
+		target: redact(target),
+		generatedAt: new Date().toISOString(),
+		format: media?.format ?? "unknown",
+		proofReady: promotedClaims.length > 0,
+		transformProofReady: composedPaths.length > 0,
+		claimLedger,
+		composedPaths,
+		promotionReport: {
+			proofReady: promotedClaims.length > 0,
+			transformProofReady: composedPaths.length > 0,
+			promotedClaims,
+			blockers,
+		},
+		repairQueue,
+	};
+}
+
+function writeCryptoStegoTransformClaims(artifactDir, target) {
+	if (noWrite || !artifactDir) return undefined;
+	const summary = cryptoStegoTransformClaims(target, artifactDir);
+	const path = join(artifactDir, "crypto-stego-transform-claims.json");
+	writePrivate(path, `${JSON.stringify(summary, null, 2)}\n`, 0o600);
+	return { path, summary };
 }
 
 function dataLooksLikeZip(target) {
@@ -10575,6 +11171,21 @@ function engageFile(targetInfo, artifactDir) {
 				error: undefined,
 			});
 		}
+		const primitiveClaims = writeNativePrimitiveClaims(artifactDir, target, rows, hypotheses?.summary);
+		if (primitiveClaims) {
+			rows.push({
+				id: "native-primitive-claims",
+				command: "internal",
+				args: [redact(primitiveClaims.path)],
+				cwd: root,
+				exit: primitiveClaims.summary.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(primitiveClaims.summary, null, 2)}\n`,
+				stderr: "",
+				error: primitiveClaims.summary.proofReady ? undefined : "no native primitive claims promoted",
+			});
+		}
 	}
 	if (targetInfo.lane === "js-reverse") {
 		const pattern = "fetch|xhr|XMLHttpRequest|websocket|sign|signature|encrypt|decrypt|crypto|subtle|wasm|WebAssembly";
@@ -10662,6 +11273,21 @@ function engageFile(targetInfo, artifactDir) {
 				stdout: `solver=${redact(solverPath)}\nrun=python3 ${redact(solverPath)} ${redact(target)}\n`,
 				stderr: "",
 				error: undefined,
+			});
+		}
+		const transformClaims = writeCryptoStegoTransformClaims(artifactDir, target);
+		if (transformClaims) {
+			rows.push({
+				id: "crypto-stego-transform-claims",
+				command: "internal",
+				args: [redact(transformClaims.path)],
+				cwd: root,
+				exit: transformClaims.summary.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(transformClaims.summary, null, 2)}\n`,
+				stderr: "",
+				error: transformClaims.summary.proofReady ? undefined : "no crypto/stego transform claims promoted",
 			});
 		}
 	}
@@ -13964,10 +14590,11 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 		if (!noWrite && dataLooksLikeMachO(primaryTarget)) q.push(`cat ${shellQuote(join(artifactDir, "native-macho-quicklook.json"))}`);
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "native-static-triage.json"))}`);
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "native-exploit-hypotheses.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "native-primitive-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "native-primitive-claims.json"))}`);
 		if (!noWrite) q.push(`python3 ${shellQuote(join(artifactDir, "native-replay-verifier.py"))} ${quotedTarget}`);
 		if (!noWrite && toolState.some((row) => row.tool === "gdb" && row.available)) q.push(`gdb -q -x ${shellQuote(join(artifactDir, "native-gdb-trace.gdb"))} ${quotedTarget}`);
 		if (!noWrite) q.push(`python3 ${shellQuote(join(artifactDir, "native-cyclic-offset.py"))} hex:<register-or-stack-bytes>`);
-		q.push(`repi -p ${shellQuote(`Continue native/pwn from ${artifactDir}: use native-exploit-hypotheses.json plus native-elf-hardening.json dynamic.imports/relocations, native-pe-quicklook.json/native-macho-quicklook.json and native-static-triage.json gadgetQuicklook to prioritize mitigations/imports/PLT-GOT/load-commands/symbols/sinks/ROP primitives; run native-replay-verifier.py to compare stdin/argv/env I/O contract cases, locate compare/decode/crash primitive, generate debugger/r2 trace, and produce a local verifier.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue native/pwn from ${artifactDir}: use native-primitive-claims.json claimLedger/composedPaths/repairQueue plus native-exploit-hypotheses.json, native-elf-hardening.json dynamic.imports/relocations, native-pe-quicklook.json/native-macho-quicklook.json, and native-static-triage.json gadgetQuicklook to prioritize mitigations/imports/PLT-GOT/load-commands/symbols/sinks/ROP primitives; run native-replay-verifier.py to compare stdin/argv/env I/O contract cases, locate compare/decode/crash primitive, generate debugger/r2 trace, and produce a local verifier.`)}`);
 	}
 	if (targetInfo.lane === "js-reverse") {
 		if (!noWrite && existsSync(join(artifactDir, "js-reverse-workbench.json"))) q.push(`cat ${shellQuote(join(artifactDir, "js-reverse-workbench.json"))}`);
@@ -14012,8 +14639,9 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.lane === "crypto-stego") {
 		if (!noWrite && dataLooksLikeCryptoStegoMedia(primaryTarget)) q.push(`cat ${shellQuote(join(artifactDir, "crypto-stego-media-quicklook.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "crypto-stego-transform-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "crypto-stego-transform-claims.json"))}`);
 		if (!noWrite) q.push(`python3 ${shellQuote(join(artifactDir, "crypto-stego-solver.py"))} ${quotedTarget}`);
-		q.push(`repi -p ${shellQuote(`Continue crypto/stego from ${artifactDir}: use crypto-stego-media-quicklook.json when present to prioritize PNG/WAV chunks/text/LSB/trailing data, reconstruct the transform chain, test metadata/bit-plane/archive layers, write a solver with asserts, and bind the result to artifact offsets/hashes.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue crypto/stego from ${artifactDir}: use crypto-stego-transform-claims.json claimLedger/composedPaths/repairQueue plus crypto-stego-media-quicklook.json when present to prioritize PNG/WAV chunks/text/LSB/trailing data, reconstruct the transform chain, test metadata/bit-plane/archive layers, write a solver with asserts, and bind the result to artifact offsets/hashes.`)}`);
 	}
 	if (targetInfo.lane === "agent-boundary") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "agent-boundary-map.json"))}`);
@@ -14070,6 +14698,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/\[native-exec\].*(mode=empty|mode=cyclic|crash_signal|exit=1[3-9][0-9])/i.test(text)) anchors.push("dynamic execution/crash anchors");
 		if (/native-cyclic-offset|native-gdb-trace|gdbScript/i.test(text)) anchors.push("gdb/cyclic offset artifacts");
 		if (/repi-native-exploit-hypotheses|native-exploit-hypotheses|ret2libc-system-binsh|cyclic-crash-control-proof|plt-got-resolution-surface|syscall-rop-chain/i.test(text)) anchors.push("native exploit hypothesis anchors");
+		if (/repi-native-primitive-claims|native-primitive-claims|native-crash-replay-signal|native-io-contract-harness|native-offset-control-workbench|native-exploit-proof-path|native-ret2libc-surface|native-windows-injection-surface|native-macho-loader-surface|repairQueue/i.test(text) && targetInfo.lane === "native-pwn") anchors.push("native primitive claim anchors");
 		if (/HTTP\/|server:|set-cookie|location:/i.test(text)) anchors.push("HTTP/header anchors");
 		if (/jwt|token|session|cookie|auth|signature|crypto/i.test(text)) anchors.push("auth/signing anchors");
 		if (/repi-web-session-hints|csrf|cookie-session/i.test(text) && targetInfo.kind === "url") anchors.push("session/CSRF anchors");
@@ -14122,6 +14751,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/ExifTool|PNG|IHDR|zsteg|binwalk|PK|flag|ctf|cipher|nonce|salt|base64|xor/i.test(text) && targetInfo.lane === "crypto-stego") anchors.push("crypto/stego anchors");
 		if (/repi-crypto-stego-media-quicklook|crypto-stego-media-quicklook|png-text-stego-signal|appended-data-after-iend|appended-zip-after-iend|private-or-nonstandard-png-chunk|embedded-zip-archive-parsed/i.test(text) && targetInfo.lane === "crypto-stego") anchors.push("PNG/stego structure anchors");
 		if (/wav-lsb-printable-signal|wav-info-metadata-signal|appended-data-after-riff|appended-zip-after-riff|embedded-zip-archive-parsed|audioData|RIFF|WAVE/i.test(text) && targetInfo.lane === "crypto-stego") anchors.push("WAV/stego structure anchors");
+		if (/repi-crypto-stego-transform-claims|crypto-stego-transform-claims|crypto-transform-proof-path|crypto-transform-solver-harness|crypto-embedded-archive-carve|claimLedger|repairQueue/i.test(text) && targetInfo.lane === "crypto-stego") anchors.push("crypto/stego transform claim anchors");
 	}
 	return {
 		commandCount: rows.length,
