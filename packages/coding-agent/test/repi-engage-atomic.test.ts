@@ -2967,7 +2967,10 @@ jobs:
 		expect(report.summary.anchors).toContain("PCAP plaintext auth anchors");
 		expect(report.summary.anchors).toContain("DNS tunnel/exfil anchors");
 		expect(report.summary.anchors).toContain("PCAP HTTP object/body anchors");
+		expect(report.commands.map((row) => row.id)).toContain("pcap-flow-claims");
 		expect(report.nextQueue.some((command) => command.includes("bodySummary/embeddedArchives"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("pcap-flow-claims.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("pcap-http-object-verifier.py"))).toBe(true);
 		expect(report.commands.map((row) => row.id)).toContain("pcap-http-object-carves");
 		expect(report.commands.map((row) => row.id)).not.toContain("file-strings-head");
@@ -3278,8 +3281,11 @@ jobs:
 			),
 		).toBe(true);
 		const objectManifestPath = join(report.artifactDir, "pcap-http-objects.json");
+		const flowClaimsPath = join(report.artifactDir, "pcap-flow-claims.json");
 		expect(existsSync(objectManifestPath)).toBe(true);
+		expect(existsSync(flowClaimsPath)).toBe(true);
 		expect(statSync(objectManifestPath).mode & 0o777).toBe(0o600);
+		expect(statSync(flowClaimsPath).mode & 0o777).toBe(0o600);
 		const objectManifest = JSON.parse(readFileSync(objectManifestPath, "utf8")) as {
 			kind: string;
 			objectCount: number;
@@ -3314,6 +3320,51 @@ jobs:
 				}>;
 			}>;
 		};
+		const flowClaims = JSON.parse(readFileSync(flowClaimsPath, "utf8")) as {
+			proofReady: boolean;
+			claimLedger: Array<{ claimType: string; verdict: string; evidenceBinding: Record<string, unknown> }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+			promotionReport: { promotedClaims: Array<{ claimType: string }> };
+			repairQueue: Array<{ blocker: string }>;
+		};
+		expect(JSON.stringify(flowClaims)).not.toContain("superSecretTokenValue");
+		expect(JSON.stringify(flowClaims)).not.toContain("flag{http_body_secret_must_not_leak}");
+		expect(JSON.stringify(flowClaims)).not.toContain("flag{http_transform_secret_must_not_leak}");
+		expect(JSON.stringify(flowClaims)).not.toContain("admin");
+		expect(flowClaims.proofReady).toBe(true);
+		expect(
+			flowClaims.claimLedger.some(
+				(claim) => claim.claimType === "pcap-http-credential-flow" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowClaims.claimLedger.some(
+				(claim) => claim.claimType === "pcap-plaintext-auth-flow" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowClaims.claimLedger.some(
+				(claim) => claim.claimType === "pcap-dns-tunnel-exfil-candidate" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowClaims.claimLedger.some(
+				(claim) => claim.claimType === "pcap-http-object-carve" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowClaims.claimLedger.some(
+				(claim) => claim.claimType === "pcap-http-decoded-artifact" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowClaims.claimLedger.some(
+				(claim) => claim.claimType === "pcap-flow-evidence-pivot" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			flowClaims.promotionReport.promotedClaims.some((claim) => claim.claimType === "pcap-flow-evidence-pivot"),
+		).toBe(true);
 		expect(JSON.stringify(objectManifest)).not.toContain("flag{http_body_secret_must_not_leak}");
 		expect(JSON.stringify(objectManifest)).not.toContain("flag{http_transform_secret_must_not_leak}");
 		expect(objectManifest).toMatchObject({
@@ -3367,6 +3418,12 @@ jobs:
 		expect(verifier.stdout).toContain("verdict: pass objects=1 entries=2 decoded=1");
 		expect(verifier.stdout).not.toContain("flag{http_body_secret_must_not_leak}");
 		expect(verifier.stdout).not.toContain("flag{http_transform_secret_must_not_leak}");
+		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
+		expect(existsSync(proofMatrixPath)).toBe(true);
+		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
+			artifacts: Array<{ relPath: string }>;
+		};
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("pcap-flow-claims.json");
 		expect(JSON.stringify(summary)).not.toContain("superSecretTokenValue");
 		expect(JSON.stringify(summary)).not.toContain("flag{http_body_secret_must_not_leak}");
 		expect(JSON.stringify(summary)).not.toContain("flag{http_transform_secret_must_not_leak}");
