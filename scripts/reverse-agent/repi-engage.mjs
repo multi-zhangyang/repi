@@ -581,6 +581,7 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	}
 	if (targetInfo.lane === "windows-ad") {
 		add("windows-ad-quicklook.json", "Windows/AD identity quicklook output");
+		add("windows-ad-attack-paths.json", "Windows/AD BloodHound owned-to-high-value attack path claims");
 		add("windows-ad-triage-plan.sh", "Windows/AD triage harness", 0o700);
 	}
 	if (targetInfo.lane === "malware") {
@@ -7086,6 +7087,144 @@ function parseBloodhoundJson(file) {
 	return { file: file.name, objectCount, nodes, edges };
 }
 
+function bloodhoundNameKey(name) {
+	return String(name ?? "")
+		.trim()
+		.toLowerCase();
+}
+
+function bloodhoundAttackPathPriority(relationships) {
+	const text = relationships.join(" ");
+	if (/DCSync|GenericAll|WriteDacl|WriteOwner|AllExtendedRights/i.test(text)) return "critical";
+	if (/AddMember|GenericWrite|ForceChangePassword|AllowedToDelegate|AdminTo/i.test(text)) return "high";
+	if (/MemberOf|CanRDP|Owns/i.test(text)) return "medium";
+	return "low";
+}
+
+function windowsAdBloodhoundAttackPaths(nodes, edges, owned, highValue) {
+	const nodeByKey = new Map();
+	for (const node of nodes) {
+		const key = bloodhoundNameKey(node.name);
+		if (!key || nodeByKey.has(key)) continue;
+		nodeByKey.set(key, node);
+	}
+	const adjacency = new Map();
+	for (const edge of edges) {
+		const sourceKey = bloodhoundNameKey(edge.source);
+		const targetKey = bloodhoundNameKey(edge.target);
+		if (!sourceKey || !targetKey) continue;
+		const list = adjacency.get(sourceKey) ?? [];
+		list.push({ ...edge, sourceKey, targetKey });
+		adjacency.set(sourceKey, list);
+	}
+	const targetKeys = new Set(highValue.map((node) => bloodhoundNameKey(node.name)).filter(Boolean));
+	const paths = [];
+	for (const source of owned.slice(0, 24)) {
+		const sourceKey = bloodhoundNameKey(source.name);
+		if (!sourceKey) continue;
+		const queue = [{ key: sourceKey, nodes: [source.name], edges: [] }];
+		const seen = new Set([sourceKey]);
+		while (queue.length && paths.length < 80) {
+			const current = queue.shift();
+			if (current.edges.length > 0 && targetKeys.has(current.key)) {
+				const relationships = current.edges.map((edge) => edge.relationship);
+				const target = current.nodes[current.nodes.length - 1];
+				paths.push({
+					id: "ad-path-" + shortHash(`${source.name}->${target}:${relationships.join(">")}`),
+					source: source.name,
+					target,
+					length: current.edges.length,
+					priority: bloodhoundAttackPathPriority(relationships),
+					relationships,
+					nodes: current.nodes,
+					edges: current.edges.map((edge) => ({
+						file: edge.file,
+						source: edge.source,
+						relationship: edge.relationship,
+						target: edge.target,
+					})),
+					evidence: {
+						sourceOwned: Boolean(source.owned),
+						targetHighValue: Boolean(nodeByKey.get(current.key)?.highValue || /domain admins|enterprise admins|administrators|krbtgt|dc\d/i.test(target)),
+						edgeCount: current.edges.length,
+						files: Array.from(new Set(current.edges.map((edge) => edge.file).filter(Boolean))).slice(0, 12),
+					},
+					proofReady: true,
+				});
+			}
+			if (current.edges.length >= 4) continue;
+			for (const edge of adjacency.get(current.key) ?? []) {
+				const visitKey = `${edge.targetKey}:${current.edges.length + 1}`;
+				if (seen.has(visitKey)) continue;
+				seen.add(visitKey);
+				queue.push({
+					key: edge.targetKey,
+					nodes: [...current.nodes, edge.target],
+					edges: [...current.edges, edge],
+				});
+			}
+		}
+	}
+	return paths.slice(0, 40);
+}
+
+function windowsAdAttackPathClaims(summary) {
+	const bloodhound = summary.bloodhound ?? {};
+	const attackPaths = Array.isArray(bloodhound.attackPaths) ? bloodhound.attackPaths : [];
+	const blockers = [];
+	if (!(bloodhound.owned ?? []).length) blockers.push("missing-owned-principal");
+	if (!(bloodhound.highValue ?? []).length) blockers.push("missing-high-value-target");
+	if (!attackPaths.length) blockers.push("missing-owned-to-high-value-path");
+	const claims = attackPaths.map((path) => ({
+		id: "windows-ad-attack-path-" + shortHash(path.id),
+		pathId: path.id,
+		sourceBinding: {
+			source: path.source,
+			target: path.target,
+			relationships: path.relationships,
+			files: path.evidence?.files ?? [],
+		},
+		evidenceBinding: {
+			nodes: path.nodes,
+			edges: path.edges,
+			sourceOwned: Boolean(path.evidence?.sourceOwned),
+			targetHighValue: Boolean(path.evidence?.targetHighValue),
+			edgeCount: path.evidence?.edgeCount ?? path.length,
+		},
+		statement: "BloodHound data contains an owned-principal to high-value target attack path with concrete edge evidence.",
+		verdict: "promoted",
+		confidence: path.priority === "critical" ? 0.9 : path.priority === "high" ? 0.84 : 0.76,
+		blockers: [],
+		rerunCommand: "cat windows-ad-quicklook.json | jq '.bloodhound.attackPaths'",
+	}));
+	const repairQueue = blockers.map((blocker) => ({
+		id: "windows-ad-attack-path-" + blocker,
+		blocker,
+		action:
+			blocker === "missing-owned-principal"
+				? "Import BloodHound owned/pwned principal data or mark a verified credential as owned."
+				: blocker === "missing-high-value-target"
+					? "Import BloodHound high-value nodes such as Domain Admins, Enterprise Admins, DCs, or krbtgt."
+					: "Import relationship/ACL/session edges or run path collection until an owned-to-high-value chain exists.",
+		rerunCommand: "repi engage <windows-ad-artifact-dir> --json",
+	}));
+	return {
+		kind: "repi-windows-ad-attack-paths",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		proofReady: claims.length > 0,
+		attackPaths,
+		claimLedger: claims,
+		promotionReport: {
+			proofReady: claims.length > 0,
+			promotedClaims: claims,
+			observations: [],
+			blockers,
+		},
+		repairQueue,
+	};
+}
+
 function windowsAdBloodhoundSummary(candidates) {
 	const files = windowsAdJsonFiles(candidates);
 	const parsed = files.map(parseBloodhoundJson);
@@ -7106,6 +7245,8 @@ function windowsAdBloodhoundSummary(candidates) {
 	if (owned.length) risks.push("bloodhound-owned-principal-signal");
 	if (privilegeEdges.length) risks.push("bloodhound-privilege-edge-signal");
 	if (owned.length && privilegeEdges.some((edge) => owned.some((node) => edge.source === node.name))) risks.push("bloodhound-owned-principal-edge-signal");
+	const attackPaths = windowsAdBloodhoundAttackPaths(nodes, edges, owned, highValue);
+	if (attackPaths.length) risks.push("bloodhound-owned-to-high-value-path-signal");
 	return {
 		fileCount: files.length,
 		files: parsed.map((item) => ({
@@ -7121,6 +7262,7 @@ function windowsAdBloodhoundSummary(candidates) {
 		highValue,
 		owned,
 		privilegeEdges,
+		attackPaths,
 		risks,
 	};
 }
@@ -7212,7 +7354,9 @@ EOF
 function windowsAdRows(target, artifactDir) {
 	try {
 		const summary = windowsAdQuicklookSummary(target);
+		const attackPathReport = windowsAdAttackPathClaims(summary);
 		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "windows-ad-quicklook.json"), `${JSON.stringify(summary, null, 2)}\n`);
+		if (!noWrite && artifactDir) writePrivate(join(artifactDir, "windows-ad-attack-paths.json"), `${JSON.stringify(attackPathReport, null, 2)}\n`);
 		const rows = [
 			{
 				id: "windows-ad-quicklook",
@@ -7225,6 +7369,18 @@ function windowsAdRows(target, artifactDir) {
 				stdout: `${JSON.stringify(summary, null, 2)}\n`,
 				stderr: "",
 				error: summary.fileCount || summary.risks.length ? undefined : "no Windows/AD artifacts",
+			},
+			{
+				id: "windows-ad-attack-paths",
+				command: "internal",
+				args: [redact(target)],
+				cwd: root,
+				exit: attackPathReport.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(attackPathReport, null, 2)}\n`,
+				stderr: "",
+				error: attackPathReport.proofReady ? undefined : "no owned-to-high-value BloodHound path",
 			},
 		];
 		if (!noWrite && artifactDir) {
@@ -12109,8 +12265,9 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.lane === "windows-ad") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "windows-ad-quicklook.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "windows-ad-attack-paths.json"))) q.push(`cat ${shellQuote(join(artifactDir, "windows-ad-attack-paths.json"))}`);
 		if (!noWrite) q.push(`bash ${shellQuote(join(artifactDir, "windows-ad-triage-plan.sh"))} ${quotedTarget}`);
-		q.push(`repi -p ${shellQuote(`Continue Windows/AD identity work from ${artifactDir}: use windows-ad-quicklook.json bloodhound graph, domain/DC/principal/credential/ADCS evidence, then prove one credential usability or high-value graph edge path.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue Windows/AD identity work from ${artifactDir}: use windows-ad-quicklook.json and windows-ad-attack-paths.json to bind BloodHound owned principals to high-value targets with exact edge chains, then verify one credential usability, ADCS, DCSync, or high-value graph path.`)}`);
 	}
 	if (targetInfo.lane === "malware") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "malware-quicklook.json"))}`);
@@ -12224,7 +12381,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/repi-memory-quicklook|memory-quicklook|memory-triage-plan|credential-string-signal|network-artifact-signal|suspicious-commandline-signal/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory quicklook anchors");
 		if (/process-network-correlation-signal|credential-context-correlation-signal|timeline-correlation-signal|processNetwork|credentialContext/i.test(text) && targetInfo.lane === "memory-forensics") anchors.push("memory correlation anchors");
 		if (/repi-windows-ad-quicklook|windows-ad-quicklook|windows-ad-triage|krbtgt|Kerberoast|DCSync|ADCS|Certipy|BloodHound|4769|4624/i.test(text) && targetInfo.lane === "windows-ad") anchors.push("Windows/AD identity anchors");
-		if (/bloodhound-graph-data-present|bloodhound-privilege-edge-signal|bloodhound-owned-principal-signal|relationCounts|privilegeEdges|highValue/i.test(text) && targetInfo.lane === "windows-ad") anchors.push("BloodHound graph anchors");
+		if (/bloodhound-graph-data-present|bloodhound-privilege-edge-signal|bloodhound-owned-principal-signal|bloodhound-owned-to-high-value-path|relationCounts|privilegeEdges|highValue|attackPaths|windows-ad-attack-path/i.test(text) && targetInfo.lane === "windows-ad") anchors.push("BloodHound graph anchors");
 		if (/repi-malware-quicklook|malware-quicklook|malware-triage|network-ioc-signal|CreateRemoteThread|VirtualAlloc|FLOSS|YARA|capa|ATT&CK|mutex|User-Agent/i.test(text) && targetInfo.lane === "malware") anchors.push("malware IOC/capability anchors");
 		if (/staticStructure|malware-overlay-signal|malware-suspicious-import-signal|suspiciousImports|overlay-data-present|rwx-section-signal|structured-executable-analysis-signal/i.test(text) && targetInfo.lane === "malware") anchors.push("malware static structure anchors");
 		if (/repi-firmware-quicklook|firmware-quicklook|firmware-extract-plan|SquashFS|UBI|uImage|dropbear|telnetd|cgi-bin|hardcoded-credential-signal/i.test(text) && targetInfo.lane === "firmware-iot") anchors.push("firmware quicklook anchors");
