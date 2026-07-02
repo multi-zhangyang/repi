@@ -535,6 +535,7 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 			"web-runtime-replay-plan.json",
 			"web-signer-rebuild-workbench-plan.json",
 			"web-js-signature-control-plan.json",
+			"web-exploit-claims.json",
 			"web-js-sourcemap-summary.json",
 		]) add(relPath, "web/API runtime evidence");
 		add("web-runtime-capture-harness.mjs", "browser runtime capture harness", 0o700);
@@ -626,7 +627,7 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 	};
 	if (targetInfo.kind === "url") {
 		requireAny("web-runtime-replay", ["web-runtime-replay-verifier.mjs", "web-replay-matrix.json"], "web targets need replayable HTTP/browser evidence");
-		requireAny("web-route-matrix", ["web-api-schema-probes.json", "web-discovery-matrix.json", "web-object-matrix.json"], "web targets need route/schema/object matrix evidence");
+		requireAny("web-route-matrix", ["web-exploit-claims.json", "web-api-schema-probes.json", "web-discovery-matrix.json", "web-object-matrix.json"], "web targets need route/schema/object matrix evidence");
 	}
 	if (targetInfo.kind === "directory") requireAny("workspace-source-runtime-map", ["workspace-source-runtime-map.json", "workspace-source-runtime-harness.mjs"], "workspace targets need source-to-runtime route/sink/auth evidence");
 	if (targetInfo.lane === "native-pwn") requireAny("native-replay", ["native-primitive-claims.json", "native-replay-verifier.py", "native-exploit-hypotheses.json", "native-static-triage.json"], "native targets need replay/triage/hypothesis artifacts");
@@ -14388,6 +14389,419 @@ function webSignerRebuildWorkbenchRows(target, jsUrls, signalLines, replayHints,
 	return rows;
 }
 
+function webAcceptedStatus(status) {
+	return [200, 201, 202, 204, 206, 301, 302, 304].includes(Number(status));
+}
+
+function webDeniedStatus(status) {
+	return [401, 403, 404].includes(Number(status));
+}
+
+function webClaimArtifacts(artifactDir) {
+	const names = [
+		"web-security-posture.json",
+		"web-discovery-matrix.json",
+		"web-api-schema-probes.json",
+		"web-replay-matrix.json",
+		"web-identity-jwt.json",
+		"web-ssrf-matrix.json",
+		"web-redirect-matrix.json",
+		"web-cors-matrix.json",
+		"web-object-matrix.json",
+		"web-runtime-capture-plan.json",
+		"web-runtime-replay-plan.json",
+		"web-signer-rebuild-workbench-plan.json",
+		"web-js-signature-control-plan.json",
+		"web-js-sourcemap-summary.json",
+	];
+	return Object.fromEntries(names.map((name) => [name, readJsonArtifact(join(artifactDir, name))]));
+}
+
+function webExploitClaims(target, artifactDir) {
+	const artifacts = webClaimArtifacts(artifactDir);
+	const replay = artifacts["web-replay-matrix.json"];
+	const objectMatrix = artifacts["web-object-matrix.json"];
+	const schema = artifacts["web-api-schema-probes.json"];
+	const ssrf = artifacts["web-ssrf-matrix.json"];
+	const redirect = artifacts["web-redirect-matrix.json"];
+	const cors = artifacts["web-cors-matrix.json"];
+	const identity = artifacts["web-identity-jwt.json"];
+	const posture = artifacts["web-security-posture.json"];
+	const sourceMap = artifacts["web-js-sourcemap-summary.json"];
+	const runtimeCapturePlan = artifacts["web-runtime-capture-plan.json"];
+	const runtimeReplayPlan = artifacts["web-runtime-replay-plan.json"];
+	const signerPlan = artifacts["web-signer-rebuild-workbench-plan.json"];
+	const signatureControlPlan = artifacts["web-js-signature-control-plan.json"];
+	const artifactFiles = Object.entries(artifacts)
+		.filter(([, value]) => Boolean(value))
+		.map(([name]) => name);
+	const claimLedger = [];
+	const addClaim = (claim) => {
+		if (!claim?.id || claimLedger.some((row) => row.id === claim.id)) return undefined;
+		const normalized = {
+			verdict: "promoted",
+			confidence: 0.7,
+			blockers: [],
+			...claim,
+		};
+		claimLedger.push(normalized);
+		return normalized;
+	};
+	const replayRows = replay?.rows ?? [];
+	if (replayRows.length) {
+		addClaim({
+			id: "web-http-replay-evidence-" + shortHash(`${target}:${replayRows.map((row) => `${row.principal}:${row.status}:${row.responseSha256}`).join("|")}`),
+			claimType: "web-http-replay-evidence",
+			sourceBinding: { artifact: "web-replay-matrix.json", rowCount: replayRows.length },
+			evidenceBinding: {
+				count: replayRows.length,
+				session: replay?.session ?? {},
+				statuses: Array.from(new Set(replayRows.map((row) => row.status).filter((status) => status != null))).slice(0, 24),
+				rows: replayRows.slice(0, 24).map((row) => ({
+					id: row.id,
+					principal: row.principal,
+					url: row.url,
+					status: row.status,
+					bytes: row.bytes ?? null,
+					responseSha256: row.responseSha256,
+				})),
+			},
+			statement: "HTTP replay matrix binds routes to status/body hashes for anonymous and session principals.",
+			confidence: replayRows.some((row) => webAcceptedStatus(row.status)) ? 0.8 : 0.66,
+			rerunCommand: "cat web-replay-matrix.json",
+		});
+	}
+	const replayByUrl = new Map();
+	for (const row of replayRows) {
+		const url = row.url || row.effectiveUrl || "";
+		if (!url) continue;
+		if (!replayByUrl.has(url)) replayByUrl.set(url, []);
+		replayByUrl.get(url).push(row);
+	}
+	for (const [url, rows] of replayByUrl) {
+		const anonymous = rows.find((row) => row.principal === "anonymous");
+		const session = rows.find((row) => row.principal !== "anonymous");
+		if (!anonymous || !session) continue;
+		if (!webDeniedStatus(anonymous.status) || !webAcceptedStatus(session.status)) continue;
+		addClaim({
+			id: "web-session-auth-differential-" + shortHash(`${url}:${anonymous.status}:${session.status}:${session.responseSha256}`),
+			claimType: "web-session-auth-differential",
+			sourceBinding: { artifact: "web-replay-matrix.json", url },
+			evidenceBinding: {
+				url,
+				anonymous: { status: anonymous.status, responseSha256: anonymous.responseSha256 },
+				session: { principal: session.principal, status: session.status, responseSha256: session.responseSha256 },
+				cookieNames: replay?.session?.cookieNames ?? [],
+			},
+			statement: "Replay evidence proves a route-level authorization differential between anonymous and session principals.",
+			confidence: 0.86,
+			rerunCommand: "cat web-replay-matrix.json | jq '.rows'",
+		});
+	}
+	const objectClaims = [];
+	for (const row of objectMatrix?.rows ?? []) {
+		if (!row.bolaSignal) continue;
+		const claim = addClaim({
+			id: "web-object-authz-bola-" + shortHash(`${row.id}:${row.sourceUrl}:${row.variantUrl}:${row.variant?.responseSha256}`),
+			claimType: "web-object-authz-bola-signal",
+			sourceBinding: { artifact: "web-object-matrix.json", rowId: row.id },
+			evidenceBinding: {
+				principal: row.principal,
+				reason: row.reason,
+				sourceUrl: row.sourceUrl,
+				variantUrl: row.variantUrl,
+				source: { status: row.source?.status, responseSha256: row.source?.responseSha256 },
+				variant: { status: row.variant?.status, responseSha256: row.variant?.responseSha256 },
+				statusDelta: row.statusDelta,
+				hashDelta: Boolean(row.hashDelta),
+			},
+			statement: "Object mutation matrix shows a session principal can access a mutated object identifier; requires ownership proof before final exploit claim.",
+			confidence: 0.82,
+			rerunCommand: "cat web-object-matrix.json | jq '.rows[] | select(.bolaSignal)'",
+		});
+		if (claim) objectClaims.push(claim);
+	}
+	for (const row of schema?.rows ?? []) {
+		const risks = row.risks ?? row.openapi?.risks ?? [];
+		for (const risk of risks) {
+			if (!/graphql|openapi|upload|unauthenticated|write|admin|sensitive/i.test(risk)) continue;
+			addClaim({
+				id: "web-api-schema-risk-" + shortHash(`${row.kind}:${row.principal ?? ""}:${row.url}:${risk}`),
+				claimType: risk,
+				sourceBinding: { artifact: "web-api-schema-probes.json", kind: row.kind, url: row.url },
+				evidenceBinding: {
+					principal: row.principal ?? null,
+					url: row.url,
+					status: row.status,
+					risk,
+					introspection: row.introspection
+						? {
+								enabled: Boolean(row.introspection.enabled),
+								queryType: row.introspection.queryType ?? null,
+								mutationType: row.introspection.mutationType ?? null,
+								queryFields: row.introspection.queryFields ?? [],
+								mutationFields: row.introspection.mutationFields ?? [],
+							}
+						: null,
+					openapi: row.openapi
+						? {
+								pathCount: row.openapi.pathCount,
+								operationCount: row.openapi.operationCount,
+								operationSamples: (row.openapi.operationSamples ?? []).slice(0, 20).map((operation) => ({
+									path: operation.path,
+									method: operation.method,
+									operationId: operation.operationId,
+									authRequired: operation.authRequired,
+									risks: operation.risks ?? [],
+								})),
+							}
+						: null,
+				},
+				statement: "API schema probe exposes a GraphQL/OpenAPI attack surface that can seed direct route replay and authz tests.",
+				confidence: /unauthenticated|introspection-enabled|admin|upload/i.test(risk) ? 0.84 : 0.74,
+				rerunCommand: "cat web-api-schema-probes.json | jq '.rows'",
+			});
+		}
+	}
+	for (const row of ssrf?.rows ?? []) {
+		if (!(row.risks ?? []).length) continue;
+		addClaim({
+			id: "web-ssrf-probe-signal-" + shortHash(`${row.id}:${row.param}:${row.kind}:${row.variant?.responseSha256}`),
+			claimType: row.canaryEvidence ? "web-ssrf-canary-evidence" : "web-ssrf-response-differential",
+			sourceBinding: { artifact: "web-ssrf-matrix.json", rowId: row.id },
+			evidenceBinding: {
+				param: row.param,
+				kind: row.kind,
+				payloadHost: row.payloadHost,
+				source: row.source,
+				variant: { status: row.variant?.status, bytes: row.variant?.bytes, responseSha256: row.variant?.responseSha256 },
+				statusDifferential: Boolean(row.statusDifferential),
+				bodyDifferential: Boolean(row.bodyDifferential),
+				canaryEvidence: Boolean(row.canaryEvidence),
+				risks: row.risks ?? [],
+			},
+			statement: "SSRF probe matrix produced canary/body/status evidence for a URL-like parameter.",
+			confidence: row.canaryEvidence ? 0.88 : 0.74,
+			rerunCommand: "cat web-ssrf-matrix.json | jq '.rows[] | select(.risks|length>0)'",
+		});
+	}
+	for (const row of redirect?.rows ?? []) {
+		if (!(row.risks ?? []).length) continue;
+		addClaim({
+			id: "web-open-redirect-" + shortHash(`${row.param}:${row.mutatedUrl}:${row.location}`),
+			claimType: row.canaryLocation ? "web-open-redirect-canary" : "web-external-redirect-signal",
+			sourceBinding: { artifact: "web-redirect-matrix.json", rowId: row.id },
+			evidenceBinding: {
+				param: row.param,
+				mutatedUrl: row.mutatedUrl,
+				status: row.status,
+				location: row.location,
+				locationHost: row.locationHost,
+				canaryLocation: Boolean(row.canaryLocation),
+				risks: row.risks ?? [],
+			},
+			statement: "Redirect matrix evidence shows an externally controllable redirect location.",
+			confidence: row.canaryLocation ? 0.88 : 0.76,
+			rerunCommand: "cat web-redirect-matrix.json | jq '.rows[] | select(.risks|length>0)'",
+		});
+	}
+	for (const row of cors?.rows ?? []) {
+		if (!(row.risks ?? []).length) continue;
+		addClaim({
+			id: "web-cors-policy-gap-" + shortHash(`${row.url}:${row.origin}:${row.mode}:${(row.risks ?? []).join(",")}`),
+			claimType: "web-cors-policy-gap",
+			sourceBinding: { artifact: "web-cors-matrix.json", rowId: row.id },
+			evidenceBinding: {
+				url: row.url,
+				origin: row.origin,
+				mode: row.mode,
+				status: row.status,
+				allowOrigin: row.headers?.accessControlAllowOrigin ?? row.acao ?? null,
+				allowCredentials: row.headers?.accessControlAllowCredentials ?? row.allowCredentials ?? null,
+				risks: row.risks ?? [],
+			},
+			statement: "CORS matrix evidence identifies a cross-origin policy gap that needs browser credential proof before data-exfil claim.",
+			confidence: 0.78,
+			rerunCommand: "cat web-cors-matrix.json | jq '.rows[] | select(.risks|length>0)'",
+		});
+	}
+	for (const risk of identity?.risks ?? []) {
+		addClaim({
+			id: "web-jwt-identity-risk-" + shortHash(`${risk}:${identity.jwtCount}:${JSON.stringify(identity.jwks ?? {})}`),
+			claimType: risk,
+			sourceBinding: { artifact: "web-identity-jwt.json", risk },
+			evidenceBinding: {
+				jwtCount: identity.jwtCount ?? 0,
+				oidc: identity.oidc ?? null,
+				jwks: identity.jwks ? { keyCount: identity.jwks.keyCount, keys: (identity.jwks.keys ?? []).slice(0, 12) } : null,
+				risk,
+			},
+			statement: "JWT/OIDC identity evidence exposes token validation, key-discovery, or claim-policy risk.",
+			confidence: 0.78,
+			rerunCommand: "cat web-identity-jwt.json",
+		});
+	}
+	if (posture?.risks?.length || posture?.cookies?.some((cookie) => cookie.risks?.length)) {
+		addClaim({
+			id: "web-security-posture-gap-" + shortHash(`${target}:${JSON.stringify(posture?.risks ?? [])}:${JSON.stringify(posture?.cookies ?? [])}`),
+			claimType: "web-security-posture-gap",
+			sourceBinding: { artifact: "web-security-posture.json" },
+			evidenceBinding: {
+				risks: posture?.risks ?? [],
+				cookies: (posture?.cookies ?? []).slice(0, 20).map((cookie) => ({
+					name: cookie.name,
+					sessionLike: cookie.sessionLike,
+					httpOnly: cookie.httpOnly,
+					secure: cookie.secure,
+					sameSite: cookie.sameSite,
+					risks: cookie.risks ?? [],
+				})),
+				headers: posture?.headers ?? {},
+			},
+			statement: "HTTP header/cookie posture evidence identifies hardening gaps that should be tied to browser or session proof.",
+			confidence: 0.7,
+			rerunCommand: "cat web-security-posture.json",
+		});
+	}
+	if (runtimeCapturePlan || runtimeReplayPlan || signerPlan || signatureControlPlan) {
+		addClaim({
+			id: "web-client-runtime-proof-harness-" + shortHash(`${target}:${artifactFiles.join(",")}`),
+			claimType: "web-client-runtime-proof-harness",
+			sourceBinding: {
+				artifacts: [
+					runtimeCapturePlan ? "web-runtime-capture-plan.json" : null,
+					runtimeReplayPlan ? "web-runtime-replay-plan.json" : null,
+					signerPlan ? "web-signer-rebuild-workbench-plan.json" : null,
+					signatureControlPlan ? "web-js-signature-control-plan.json" : null,
+				].filter(Boolean),
+			},
+			evidenceBinding: {
+				captureHooks: runtimeCapturePlan?.hooks ?? [],
+				replayNegativeControls: runtimeReplayPlan?.negativeControls ?? [],
+				byteForByteRule: signerPlan?.byteForByteRule ?? null,
+				signatureControlRule: signatureControlPlan?.requiredControls ?? signatureControlPlan?.proofRule ?? null,
+				sourceMapSignals: (sourceMap?.sourceMaps ?? []).reduce((count, item) => count + (item.signalLines?.length ?? 0), 0),
+			},
+			statement: "Client runtime capture, replay negative controls, and signer workbench artifacts are ready for browser-grounded proof.",
+			confidence: runtimeCapturePlan && runtimeReplayPlan ? 0.78 : 0.68,
+			rerunCommand: "node web-runtime-replay-verifier.mjs web-runtime-capture.json web-runtime-replay-results.json --live",
+		});
+	}
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	const authDifferentialClaim = promotedClaims.find((claim) => claim.claimType === "web-session-auth-differential");
+	const objectClaim = objectClaims[0];
+	const runtimeClaim = promotedClaims.find((claim) => claim.claimType === "web-client-runtime-proof-harness");
+	const signerOrSchemaClaim = promotedClaims.find((claim) => /signature|signer|graphql|openapi|unauthenticated|web-api-schema/i.test(claim.claimType));
+	const highImpactClaim = promotedClaims.find((claim) => /ssrf|redirect|cors|jwt|object-authz/.test(claim.claimType));
+	const composedPaths = [];
+	if (authDifferentialClaim && objectClaim) {
+		const segments = [authDifferentialClaim, objectClaim];
+		composedPaths.push({
+			id: "web-authz-object-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "web-authz-object-proof-path",
+			sourceBinding: { target: redact(target), segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType })) },
+			evidenceBinding: {
+				hasSessionDifferential: true,
+				hasObjectMutationSignal: true,
+				replayArtifacts: ["web-replay-matrix.json", "web-object-matrix.json"],
+			},
+			statement: "Web evidence composes session authorization differential and object mutation replay into an IDOR/BOLA proof path.",
+			verdict: "promoted",
+			confidence: 0.88,
+			blockers: ["Need target-specific ownership assertion before reporting business-impact BOLA."],
+			rerunCommand: "cat web-replay-matrix.json web-object-matrix.json",
+		});
+	}
+	if (runtimeClaim && signerOrSchemaClaim) {
+		const segments = [runtimeClaim, signerOrSchemaClaim];
+		composedPaths.push({
+			id: "web-client-signer-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "web-client-signer-proof-path",
+			sourceBinding: { target: redact(target), segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType })) },
+			evidenceBinding: {
+				hasRuntimeHarness: true,
+				hasSignerOrSchemaLead: true,
+				negativeControls: runtimeReplayPlan?.negativeControls ?? [],
+				candidateEndpoints: runtimeReplayPlan?.candidateEndpoints ?? signatureControlPlan?.candidateEndpoints ?? [],
+			},
+			statement: "Web evidence composes browser runtime capture/replay harnesses with signer/schema leads for negative-control proof.",
+			verdict: "promoted",
+			confidence: 0.78,
+			blockers: ["Need live browser capture or byte-for-byte signer match before final signer proof."],
+			rerunCommand: "node web-runtime-capture-harness.mjs <target-url> web-runtime-capture.json && node web-runtime-replay-verifier.mjs web-runtime-capture.json web-runtime-replay-results.json --live",
+		});
+	}
+	if (authDifferentialClaim && highImpactClaim && highImpactClaim !== objectClaim) {
+		const segments = [authDifferentialClaim, highImpactClaim];
+		composedPaths.push({
+			id: "web-route-impact-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "web-route-impact-proof-path",
+			sourceBinding: { target: redact(target), segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType })) },
+			evidenceBinding: {
+				hasSessionDifferential: true,
+				impactClaimType: highImpactClaim.claimType,
+				artifactFiles,
+			},
+			statement: "Web evidence composes authenticated route reachability with a high-impact API/browser policy signal.",
+			verdict: "promoted",
+			confidence: 0.8,
+			blockers: highImpactClaim.blockers ?? [],
+			rerunCommand: "cat web-exploit-claims.json | jq '.composedPaths'",
+		});
+	}
+	for (const path of composedPaths) claimLedger.push(path);
+	const finalPromotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	const blockers = [];
+	if (!replay) blockers.push("missing-http-replay-matrix");
+	if (!schema && !objectMatrix && !ssrf && !redirect && !cors) blockers.push("missing-route-risk-matrix");
+	if (!authDifferentialClaim) blockers.push("missing-auth-differential");
+	if (!objectClaims.length) blockers.push("missing-object-mutation-signal");
+	if (!runtimeCapturePlan) blockers.push("missing-browser-runtime-capture");
+	if (!runtimeReplayPlan) blockers.push("missing-runtime-negative-controls");
+	if (!signerPlan && !signatureControlPlan) blockers.push("missing-signer-or-signature-control-workbench");
+	const repairActions = {
+		"missing-http-replay-matrix": "Run web replay matrix with anonymous/session principals and bind status/body hashes to each route.",
+		"missing-route-risk-matrix": "Collect API schema, object mutation, SSRF, redirect, or CORS matrix evidence before impact ranking.",
+		"missing-auth-differential": "Capture a route where anonymous is denied and a session principal is accepted.",
+		"missing-object-mutation-signal": "Mutate numeric/UUID object IDs and replay with anonymous/session controls to test BOLA.",
+		"missing-browser-runtime-capture": "Run web-runtime-capture-harness.mjs in a browser to bind JS/XHR/WS/signature order.",
+		"missing-runtime-negative-controls": "Run web-runtime-replay-verifier.mjs with captured requests and require missing/tampered controls to fail.",
+		"missing-signer-or-signature-control-workbench": "Use source maps/signature hints to build byte-for-byte signer regression or JS signature controls.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "web-exploit-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect web/API evidence and rerun exploit claim promotion.",
+		rerunCommand: `repi engage ${shellQuote(target)} --json`,
+	}));
+	return {
+		kind: "repi-web-exploit-claims",
+		schemaVersion: 1,
+		target: redact(target),
+		generatedAt: new Date().toISOString(),
+		artifactFiles,
+		proofReady: finalPromotedClaims.length > 0,
+		exploitProofReady: composedPaths.length > 0,
+		claimLedger,
+		composedPaths,
+		promotionReport: {
+			proofReady: finalPromotedClaims.length > 0,
+			exploitProofReady: composedPaths.length > 0,
+			promotedClaims: finalPromotedClaims,
+			blockers,
+		},
+		repairQueue,
+	};
+}
+
+function writeWebExploitClaims(target, artifactDir) {
+	if (noWrite || !artifactDir) return undefined;
+	const summary = webExploitClaims(target, artifactDir);
+	const path = join(artifactDir, "web-exploit-claims.json");
+	writePrivate(path, `${JSON.stringify(summary, null, 2)}\n`, 0o600);
+	return { path, summary };
+}
+
 function engageUrl(targetInfo, artifactDir) {
 	const target = targetInfo.target;
 	const rows = [];
@@ -14507,6 +14921,21 @@ function engageUrl(targetInfo, artifactDir) {
 	rows.push(...webCorsMatrix(target, replayHints, artifactDir, sessionContext));
 	rows.push(...webObjectMatrix(target, replayHints, artifactDir, sessionContext));
 	rows.push(...webReplayMatrix(target, replayHints, artifactDir, sessionContext));
+	const exploitClaims = writeWebExploitClaims(target, artifactDir);
+	if (exploitClaims) {
+		rows.push({
+			id: "web-exploit-claims",
+			command: "internal",
+			args: [redact(exploitClaims.path)],
+			cwd: root,
+			exit: exploitClaims.summary.proofReady ? 0 : 1,
+			signal: null,
+			durationMs: 0,
+			stdout: `${JSON.stringify(exploitClaims.summary, null, 2)}\n`,
+			stderr: "",
+			error: exploitClaims.summary.proofReady ? undefined : "no web exploit claims promoted",
+		});
+	}
 	return rows;
 }
 
@@ -14577,7 +15006,8 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 		q.push(`node ${shellQuote(join(artifactDir, "proof-harness.mjs"))} --execute`);
 	}
 	if (targetInfo.kind === "url") {
-		q.push(`repi -p ${shellQuote(`For ${target}, use ${artifactDir}/web-security-posture.json, web-discovery-matrix.json, web-api-schema-probes.json, web-ssrf-matrix.json, web-redirect-matrix.json, web-cors-matrix.json, web-object-matrix.json, web-replay-matrix.json, web-identity-jwt.json, web-js-sourcemap-summary.json, web-runtime-capture-plan.json/web-runtime-capture-harness.mjs, web-runtime-replay-plan.json/web-runtime-replay-verifier.mjs, web-signer-rebuild-workbench-plan.json/web-signer-rebuild-workbench.mjs, and web-js-signature-control-plan.json/web-js-signature-control-harness.mjs when present plus JS endpoint scans to build auth/session/JWT/CORS/header/redirect/SSRF/signature-control matrix; run browser/XHR/WS capture if needed; produce replay commands and IDOR/BOLA/object ownership/signature proof.`)}`);
+		if (!noWrite && existsSync(join(artifactDir, "web-exploit-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "web-exploit-claims.json"))}`);
+		q.push(`repi -p ${shellQuote(`For ${target}, use ${artifactDir}/web-exploit-claims.json claimLedger/composedPaths/repairQueue plus web-security-posture.json, web-discovery-matrix.json, web-api-schema-probes.json, web-ssrf-matrix.json, web-redirect-matrix.json, web-cors-matrix.json, web-object-matrix.json, web-replay-matrix.json, web-identity-jwt.json, web-js-sourcemap-summary.json, web-runtime-capture-plan.json/web-runtime-capture-harness.mjs, web-runtime-replay-plan.json/web-runtime-replay-verifier.mjs, web-signer-rebuild-workbench-plan.json/web-signer-rebuild-workbench.mjs, and web-js-signature-control-plan.json/web-js-signature-control-harness.mjs when present plus JS endpoint scans to build auth/session/JWT/CORS/header/redirect/SSRF/signature-control matrix; run browser/XHR/WS capture if needed; produce replay commands and IDOR/BOLA/object ownership/signature proof.`)}`);
 		q.push(`repi swarm plan ${quotedTarget} --workers ${argValue("--workers") || "5"}${swarmRouteFlagsText(targetInfo)}`);
 	} else if (swarmRoutesForTargetInfo(targetInfo).length > 1) {
 		q.push(`repi swarm plan ${quotedTarget} --workers ${argValue("--workers") || String(swarmRoutesForTargetInfo(targetInfo).length)}${swarmRouteFlagsText(targetInfo)}`);
@@ -14711,6 +15141,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/repi-web-runtime-replay|web-runtime-replay|captured-signed|missing-signature|tampered-signature|stale-timestamp|signer_proven_negative_controls/i.test(text) && targetInfo.kind === "url") anchors.push("browser runtime replay verifier anchors");
 		if (/repi-web-signer-rebuild-workbench|web-signer-rebuild|assertByteForByte|canonicalUnsigned|byteForByteRule|regressionGates/i.test(text) && targetInfo.kind === "url") anchors.push("signer rebuild workbench anchors");
 		if (/repi-web-js-signature-control|web-js-signature-control|missing-signature|tampered-signature|assertPermutation|policy_gap_not_signer_proof/i.test(text) && targetInfo.kind === "url") anchors.push("JS signature control anchors");
+		if (/repi-web-exploit-claims|web-exploit-claims|web-authz-object-proof-path|web-client-signer-proof-path|web-session-auth-differential|web-object-authz-bola-signal|web-ssrf-canary-evidence|claimLedger|repairQueue/i.test(text) && targetInfo.kind === "url") anchors.push("web exploit claim anchors");
 		if (/AndroidManifest|classes\.dex|Info\.plist|Payload\/|CFBundle|Mach-O/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile package anchors");
 		if (/repi-mobile-archive-quicklook|mobile-archive-summary|mobile-attack-surface-claims|mobile-frida-hooks|hookTargets|mobile-runtime-pivot|CertificatePinner|TrustManager|network-or-pinning-signal/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile runtime hook anchors");
 		if (/manifestAnalysis|android-exported-component|android-debuggable|android-dangerous-permission|usesCleartextTraffic|AndroidManifest|android-exported-component-entrypoint|android-cleartext-traffic/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile manifest attack-surface anchors");

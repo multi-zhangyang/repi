@@ -4914,13 +4914,19 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 			};
 			expect(JSON.stringify(report)).not.toContain(schemaSecret);
 			expect(report.commands.map((row) => row.id)).toContain("web-api-schema-probes");
+			expect(report.commands.map((row) => row.id)).toContain("web-exploit-claims");
 			expect(report.commands.some((row) => row.id.startsWith("web-graphql-"))).toBe(true);
 			expect(report.commands.some((row) => row.id.startsWith("web-openapi-"))).toBe(true);
 			expect(report.summary.anchors).toContain("API schema anchors");
+			expect(report.summary.anchors).toContain("web exploit claim anchors");
 			expect(report.nextQueue.some((command) => command.includes("web-api-schema-probes.json"))).toBe(true);
+			expect(report.nextQueue.some((command) => command.includes("web-exploit-claims.json"))).toBe(true);
 			const schemaPath = join(report.artifactDir, "web-api-schema-probes.json");
+			const claimsPath = join(report.artifactDir, "web-exploit-claims.json");
 			expect(existsSync(schemaPath)).toBe(true);
+			expect(existsSync(claimsPath)).toBe(true);
 			expect(statSync(schemaPath).mode & 0o777).toBe(0o600);
+			expect(statSync(claimsPath).mode & 0o777).toBe(0o600);
 			const schema = JSON.parse(readFileSync(schemaPath, "utf8")) as {
 				rows: Array<{
 					kind: string;
@@ -5034,6 +5040,27 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 					"openapi-unauthenticated-upload-surface",
 				]),
 			);
+			const claims = JSON.parse(readFileSync(claimsPath, "utf8")) as {
+				proofReady: boolean;
+				claimLedger: Array<{ claimType: string; verdict: string }>;
+			};
+			expect(JSON.stringify(claims)).not.toContain(schemaSecret);
+			expect(claims.proofReady).toBe(true);
+			expect(
+				claims.claimLedger.some(
+					(claim) => claim.claimType === "graphql-introspection-enabled" && claim.verdict === "promoted",
+				),
+			).toBe(true);
+			expect(
+				claims.claimLedger.some(
+					(claim) => claim.claimType === "openapi-unauthenticated-admin-operation" && claim.verdict === "promoted",
+				),
+			).toBe(true);
+			expect(
+				claims.claimLedger.some(
+					(claim) => claim.claimType === "openapi-unauthenticated-upload-surface" && claim.verdict === "promoted",
+				),
+			).toBe(true);
 			expect(collectTmp(agentDir)).toEqual([]);
 		} finally {
 			server.kill("SIGTERM");
@@ -5101,12 +5128,19 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 			};
 			expect(JSON.stringify(report)).not.toContain(cookieSecret);
 			expect(report.commands.map((row) => row.id)).toContain("web-object-matrix");
+			expect(report.commands.map((row) => row.id)).toContain("web-exploit-claims");
 			expect(report.commands.some((row) => row.id.includes("web-object-1-cookie-session-variant"))).toBe(true);
 			expect(report.summary.anchors).toContain("object authorization anchors");
+			expect(report.summary.anchors).toContain("web exploit claim anchors");
 			expect(report.nextQueue.some((command) => command.includes("web-object-matrix.json"))).toBe(true);
+			expect(report.nextQueue.some((command) => command.includes("web-exploit-claims.json"))).toBe(true);
+			expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
 			const matrixPath = join(report.artifactDir, "web-object-matrix.json");
+			const claimsPath = join(report.artifactDir, "web-exploit-claims.json");
 			expect(existsSync(matrixPath)).toBe(true);
+			expect(existsSync(claimsPath)).toBe(true);
 			expect(statSync(matrixPath).mode & 0o777).toBe(0o600);
+			expect(statSync(claimsPath).mode & 0o777).toBe(0o600);
 			const matrix = JSON.parse(readFileSync(matrixPath, "utf8")) as {
 				signalCount: number;
 				rows: Array<{
@@ -5141,6 +5175,34 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 				),
 			).toBe(true);
 			expect(matrix.rows.every((row) => /^[a-f0-9]{64}$/.test(row.source.responseSha256))).toBe(true);
+			const claims = JSON.parse(readFileSync(claimsPath, "utf8")) as {
+				proofReady: boolean;
+				exploitProofReady: boolean;
+				claimLedger: Array<{ claimType: string; verdict: string }>;
+				composedPaths: Array<{ claimType: string; verdict: string }>;
+				promotionReport: { promotedClaims: Array<{ claimType: string }>; blockers: string[] };
+			};
+			expect(JSON.stringify(claims)).not.toContain(cookieSecret);
+			expect(claims.proofReady).toBe(true);
+			expect(claims.exploitProofReady).toBe(true);
+			expect(
+				claims.claimLedger.some(
+					(claim) => claim.claimType === "web-session-auth-differential" && claim.verdict === "promoted",
+				),
+			).toBe(true);
+			expect(
+				claims.claimLedger.some(
+					(claim) => claim.claimType === "web-object-authz-bola-signal" && claim.verdict === "promoted",
+				),
+			).toBe(true);
+			expect(
+				claims.composedPaths.some(
+					(claim) => claim.claimType === "web-authz-object-proof-path" && claim.verdict === "promoted",
+				),
+			).toBe(true);
+			expect(
+				claims.promotionReport.promotedClaims.some((claim) => claim.claimType === "web-authz-object-proof-path"),
+			).toBe(true);
 			expect(collectTmp(agentDir)).toEqual([]);
 		} finally {
 			server.kill("SIGTERM");
@@ -5816,6 +5878,7 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 				"web-discovery-matrix.json",
 				"web-api-schema-probes.json",
 				"web-replay-matrix.json",
+				"web-exploit-claims.json",
 				"web-js-sourcemap-summary.json",
 				"web-js-signature-control-plan.json",
 				"web-runtime-capture-plan.json",
