@@ -4323,6 +4323,8 @@ jobs:
 		expect(report.commands.map((row) => row.id)).toContain("native-elf-hardening");
 		expect(report.commands.map((row) => row.id)).toContain("native-static-triage");
 		expect(report.commands.map((row) => row.id)).toContain("native-exploit-hypotheses");
+		expect(report.commands.map((row) => row.id)).toContain("native-runtime-verifier-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("native-runtime-verification");
 		expect(report.commands.map((row) => row.id)).toContain("native-primitive-claims");
 		expect(report.commands.find((row) => row.id === "native-elf-hardening")?.stdout).toContain(
 			"repi-native-elf-hardening",
@@ -4332,25 +4334,34 @@ jobs:
 		expect(report.summary.anchors).toContain("native static sink anchors");
 		expect(report.summary.anchors).toContain("native ROP/gadget anchors");
 		expect(report.summary.anchors).toContain("native exploit hypothesis anchors");
+		expect(report.summary.anchors).toContain("native runtime verifier anchors");
 		expect(report.summary.anchors).toContain("native primitive claim anchors");
 		expect(report.nextQueue.some((command) => command.includes("native-elf-hardening.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("dynamic.imports/relocations"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-static-triage.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-exploit-hypotheses.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("native-runtime-verification.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("native-runtime-verifier.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-primitive-claims.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("gadgetQuicklook"))).toBe(true);
 		const summaryPath = join(report.artifactDir, "native-elf-hardening.json");
 		const staticPath = join(report.artifactDir, "native-static-triage.json");
 		const hypothesesPath = join(report.artifactDir, "native-exploit-hypotheses.json");
+		const runtimeVerifierPath = join(report.artifactDir, "native-runtime-verifier.py");
+		const runtimeVerificationPath = join(report.artifactDir, "native-runtime-verification.json");
 		const primitiveClaimsPath = join(report.artifactDir, "native-primitive-claims.json");
 		expect(existsSync(summaryPath)).toBe(true);
 		expect(existsSync(staticPath)).toBe(true);
 		expect(existsSync(hypothesesPath)).toBe(true);
+		expect(existsSync(runtimeVerifierPath)).toBe(true);
+		expect(existsSync(runtimeVerificationPath)).toBe(true);
 		expect(existsSync(primitiveClaimsPath)).toBe(true);
 		expect(statSync(summaryPath).mode & 0o777).toBe(0o600);
 		expect(statSync(staticPath).mode & 0o777).toBe(0o600);
 		expect(statSync(hypothesesPath).mode & 0o777).toBe(0o600);
+		expect(statSync(runtimeVerifierPath).mode & 0o777).toBe(0o700);
+		expect(statSync(runtimeVerificationPath).mode & 0o777).toBe(0o600);
 		expect(statSync(primitiveClaimsPath).mode & 0o777).toBe(0o600);
 		const hardening = JSON.parse(readFileSync(summaryPath, "utf8")) as {
 			elf: { class: number; machine: string; type: string };
@@ -4502,10 +4513,29 @@ jobs:
 				}),
 			]),
 		);
+		const runtimeVerification = JSON.parse(readFileSync(runtimeVerificationPath, "utf8")) as {
+			proofReady: boolean;
+			exploitProofReady: boolean;
+			stats: { replayCasesVerified: number; negativeControlsPassed: number };
+			claimLedger: Array<{ claimType: string; verdict: string }>;
+			promotionReport: { blockers: string[] };
+		};
+		expect(runtimeVerification.proofReady).toBe(true);
+		expect(runtimeVerification.exploitProofReady).toBe(false);
+		expect(runtimeVerification.stats.negativeControlsPassed).toBeGreaterThanOrEqual(1);
+		expect(runtimeVerification.claimLedger).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ claimType: "native-target-hash-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "native-cyclic-payload-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "native-runtime-negative-control-proof", verdict: "promoted" }),
+			]),
+		);
+		expect(runtimeVerification.promotionReport.blockers).toContain("missing-native-replay-case-verification");
 		const primitiveClaims = JSON.parse(readFileSync(primitiveClaimsPath, "utf8")) as {
 			proofReady: boolean;
 			exploitProofReady: boolean;
 			claimLedger: Array<{ claimType: string; verdict: string; evidenceBinding: Record<string, unknown> }>;
+			verificationStats: { negativeControlsPassed: number } | null;
 			promotionReport: { promotedClaims: Array<{ claimType: string }>; blockers: string[] };
 			repairQueue: Array<{ blocker: string }>;
 		};
@@ -4537,8 +4567,18 @@ jobs:
 				(claim) => claim.claimType === "native-secret-flag-string-surface" && claim.verdict === "promoted",
 			),
 		).toBe(true);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) => claim.claimType === "native-target-hash-verification-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(primitiveClaims.verificationStats?.negativeControlsPassed).toBeGreaterThanOrEqual(1);
 		expect(primitiveClaims.promotionReport.blockers).toEqual(
-			expect.arrayContaining(["missing-crash-or-behavior-differential", "need-pie-base-leak"]),
+			expect.arrayContaining([
+				"missing-crash-or-behavior-differential",
+				"need-pie-base-leak",
+				"missing-native-replay-case-verification",
+			]),
 		);
 		expect(primitiveClaims.repairQueue.map((row) => row.blocker)).toContain("missing-crash-or-behavior-differential");
 		expect(collectTmp(agentDir)).toEqual([]);
@@ -4778,8 +4818,10 @@ echo "ready"
 		expect(report.commands.map((row) => row.id)).toContain("native-run-empty");
 		expect(report.commands.map((row) => row.id)).toContain("native-run-cyclic");
 		expect(report.commands.map((row) => row.id)).toContain("native-replay-verifier-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("native-runtime-verifier-artifact");
 		expect(report.commands.map((row) => row.id)).toContain("native-gdb-trace-artifact");
 		expect(report.commands.map((row) => row.id)).toContain("native-exploit-hypotheses");
+		expect(report.commands.map((row) => row.id)).toContain("native-runtime-verification");
 		expect(report.commands.map((row) => row.id)).toContain("native-primitive-claims");
 		expect(report.commands.map((row) => row.id)).toContain("proof-harness-plan");
 		expect(report.commands.map((row) => row.id)).toContain("proof-harness-self-test");
@@ -4787,9 +4829,12 @@ echo "ready"
 		expect(report.commands.find((row) => row.id === "native-run-cyclic")?.stdout).toContain("crash_signal=SIGSEGV");
 		expect(report.summary.anchors).toContain("dynamic execution/crash anchors");
 		expect(report.summary.anchors).toContain("native exploit hypothesis anchors");
+		expect(report.summary.anchors).toContain("native runtime verifier anchors");
 		expect(report.summary.anchors).toContain("native primitive claim anchors");
 		expect(report.summary.anchors).toContain("proof harness/self-test anchors");
 		const verifierPath = join(report.artifactDir, "native-replay-verifier.py");
+		const runtimeVerifierPath = join(report.artifactDir, "native-runtime-verifier.py");
+		const runtimeVerificationPath = join(report.artifactDir, "native-runtime-verification.json");
 		const gdbPath = join(report.artifactDir, "native-gdb-trace.gdb");
 		const cyclicPayloadPath = join(report.artifactDir, "native-cyclic-payload.bin");
 		const cyclicOffsetPath = join(report.artifactDir, "native-cyclic-offset.py");
@@ -4798,6 +4843,8 @@ echo "ready"
 		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
 		const proofHarnessPath = join(report.artifactDir, "proof-harness.mjs");
 		expect(existsSync(verifierPath)).toBe(true);
+		expect(existsSync(runtimeVerifierPath)).toBe(true);
+		expect(existsSync(runtimeVerificationPath)).toBe(true);
 		expect(existsSync(gdbPath)).toBe(true);
 		expect(existsSync(cyclicPayloadPath)).toBe(true);
 		expect(existsSync(cyclicOffsetPath)).toBe(true);
@@ -4806,6 +4853,8 @@ echo "ready"
 		expect(existsSync(proofMatrixPath)).toBe(true);
 		expect(existsSync(proofHarnessPath)).toBe(true);
 		expect(statSync(verifierPath).mode & 0o777).toBe(0o700);
+		expect(statSync(runtimeVerifierPath).mode & 0o777).toBe(0o700);
+		expect(statSync(runtimeVerificationPath).mode & 0o777).toBe(0o600);
 		expect(statSync(gdbPath).mode & 0o777).toBe(0o600);
 		expect(statSync(cyclicPayloadPath).mode & 0o777).toBe(0o600);
 		expect(statSync(cyclicOffsetPath).mode & 0o777).toBe(0o700);
@@ -4821,14 +4870,20 @@ echo "ready"
 			liveChecks: Array<{ id: string; selfTest: boolean }>;
 		};
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("native-replay-verifier.py");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("native-runtime-verifier.py");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("native-runtime-verification.json");
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("native-primitive-claims.json");
 		expect(proofMatrix.liveChecks).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ id: "native-cyclic-offset-self-test", selfTest: true }),
+				expect.objectContaining({ id: "native-runtime-verifier-self-test", selfTest: true }),
 				expect.objectContaining({ id: "native-replay-verifier-live", selfTest: false }),
+				expect.objectContaining({ id: "native-runtime-verifier-live", selfTest: false }),
 			]),
 		);
 		expect(report.nextQueue.some((command) => command.includes("native-replay-verifier.py"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("native-runtime-verifier.py"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("native-runtime-verification.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("stdin/argv/env I/O contract"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-cyclic-offset.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-exploit-hypotheses.json"))).toBe(true);
@@ -4864,6 +4919,41 @@ echo "ready"
 		expect(verifier.stdout).toContain('"case": "argv-cyclic"');
 		expect(verifier.stdout).toContain('"ioContract"');
 		expect(verifier.stdout).toContain('"exit": 139');
+		const runtimeVerifierSelfTest = spawnSync("python3", [runtimeVerifierPath, "--self-test"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(
+			runtimeVerifierSelfTest.status,
+			`${runtimeVerifierSelfTest.stderr}\n${runtimeVerifierSelfTest.stdout}`,
+		).toBe(0);
+		expect(runtimeVerifierSelfTest.stdout).toContain("repi-native-runtime-verifier-self-test");
+		const runtimeVerification = JSON.parse(readFileSync(runtimeVerificationPath, "utf8")) as {
+			proofReady: boolean;
+			exploitProofReady: boolean;
+			stats: { replayCasesVerified: number; crashCases: number; negativeControlsPassed: number };
+			claimLedger: Array<{ claimType: string; verdict: string }>;
+			composedPaths: Array<{ claimType: string; verdict: string }>;
+		};
+		expect(runtimeVerification.proofReady).toBe(true);
+		expect(runtimeVerification.exploitProofReady).toBe(true);
+		expect(runtimeVerification.stats.replayCasesVerified).toBeGreaterThanOrEqual(8);
+		expect(runtimeVerification.stats.crashCases).toBeGreaterThanOrEqual(2);
+		expect(runtimeVerification.stats.negativeControlsPassed).toBeGreaterThanOrEqual(1);
+		expect(runtimeVerification.claimLedger).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ claimType: "native-target-hash-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "native-replay-case-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "native-crash-differential-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "native-cyclic-payload-verification-proof", verdict: "promoted" }),
+				expect.objectContaining({ claimType: "native-runtime-negative-control-proof", verdict: "promoted" }),
+			]),
+		);
+		expect(
+			runtimeVerification.composedPaths.some(
+				(claim) => claim.claimType === "native-runtime-exploit-proof-path" && claim.verdict === "promoted",
+			),
+		).toBe(true);
 		const hypotheses = JSON.parse(readFileSync(hypothesesPath, "utf8")) as {
 			hypotheses: Array<{ id: string; verify: string[] }>;
 		};
@@ -4884,6 +4974,7 @@ echo "ready"
 			exploitProofReady: boolean;
 			claimLedger: Array<{ claimType: string; verdict: string; evidenceBinding: Record<string, unknown> }>;
 			composedPaths: Array<{ claimType: string; verdict: string }>;
+			verificationStats: { replayCasesVerified: number; crashCases: number; negativeControlsPassed: number } | null;
 			promotionReport: { promotedClaims: Array<{ claimType: string }> };
 		};
 		expect(primitiveClaims.proofReady).toBe(true);
@@ -4901,6 +4992,18 @@ echo "ready"
 		expect(
 			primitiveClaims.claimLedger.some(
 				(claim) => claim.claimType === "native-io-contract-harness" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(
+			primitiveClaims.claimLedger.some(
+				(claim) =>
+					claim.claimType === "native-crash-differential-verification-proof" && claim.verdict === "promoted",
+			),
+		).toBe(true);
+		expect(primitiveClaims.verificationStats?.negativeControlsPassed).toBeGreaterThanOrEqual(1);
+		expect(
+			primitiveClaims.composedPaths.some(
+				(claim) => claim.claimType === "native-runtime-exploit-proof-path" && claim.verdict === "promoted",
 			),
 		).toBe(true);
 		expect(

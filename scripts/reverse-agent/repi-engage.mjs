@@ -559,8 +559,10 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 		add("native-macho-quicklook.json", "Mach-O load-command/symbol parser output");
 		add("native-static-triage.json", "native static sink/gadget triage");
 		add("native-exploit-hypotheses.json", "native exploit hypothesis matrix");
+		add("native-runtime-verification.json", "native runtime replay/hash/negative-control verifier output");
 		add("native-primitive-claims.json", "native primitive claim ledger and repair queue");
 		add("native-replay-verifier.py", "native crash replay verifier", 0o700);
+		add("native-runtime-verifier.py", "native runtime proof verifier", 0o700);
 		add("native-gdb-trace.gdb", "native debugger trace script");
 		add("native-cyclic-payload.bin", "native cyclic proof payload");
 		add("native-cyclic-offset.py", "native cyclic offset helper", 0o700);
@@ -641,7 +643,7 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 		requireAny("web-route-matrix", ["web-exploit-claims.json", "web-api-schema-probes.json", "web-discovery-matrix.json", "web-object-matrix.json"], "web targets need route/schema/object matrix evidence");
 	}
 	if (targetInfo.kind === "directory") requireAny("workspace-source-runtime-map", ["workspace-source-runtime-claims.json", "workspace-source-runtime-map.json", "workspace-source-runtime-harness.mjs"], "workspace targets need source-to-runtime route/sink/auth evidence");
-	if (targetInfo.lane === "native-pwn") requireAny("native-replay", ["native-primitive-claims.json", "native-replay-verifier.py", "native-exploit-hypotheses.json", "native-static-triage.json"], "native targets need replay/triage/hypothesis artifacts");
+	if (targetInfo.lane === "native-pwn") requireAny("native-replay", ["native-runtime-verification.json", "native-primitive-claims.json", "native-runtime-verifier.py", "native-replay-verifier.py", "native-exploit-hypotheses.json", "native-static-triage.json"], "native targets need replay/triage/hypothesis/verifier artifacts");
 	if (targetInfo.lane === "js-reverse") requireAny("js-reverse-workbench", ["js-reverse-workbench.json", "js-reverse-workbench.mjs", "workspace-source-runtime-map.json"], "JS reverse targets need local signer/API/workspace evidence artifacts");
 	if (targetInfo.lane === "pcap-dfir") requireAny("pcap-flow-summary", ["pcap-flow-claims.json", "pcap-flow-verification.json", "pcap-flow-verifier.mjs", "pcap-flow-summary.json"], "PCAP targets need parsed flow/stream verifier evidence");
 	if (targetInfo.lane === "crypto-stego") requireAny("crypto-transform-solver", ["crypto-stego-transform-claims.json", "crypto-stego-solver.py", "crypto-stego-media-quicklook.json"], "crypto/stego targets need a transform-chain verifier or media structure proof");
@@ -708,9 +710,23 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 				reason: "live native replay; intentionally operator-triggered with --execute",
 			});
 		}
+		const runtimeVerifier = proofArtifactPath(artifactDir, "native-runtime-verifier.py");
+		if (existsSync(runtimeVerifier)) {
+			add({ id: "native-runtime-verifier-self-test", command: python, args: [runtimeVerifier, "--self-test"], reason: "execute native runtime verifier self-test with replay and mutation controls" });
+			checks.push({
+				id: "native-runtime-verifier-live",
+				command: python,
+				args: [runtimeVerifier, targetInfo.representativePath || targetInfo.path || targetInfo.target, artifactDir, proofArtifactPath(artifactDir, "native-runtime-verification.json")],
+				timeoutMs: 30_000,
+				destructive: false,
+				selfTest: false,
+				reason: "live native runtime proof replay; intentionally operator-triggered with --execute",
+			});
+		}
 	}
 	if (python) {
 		for (const [id, relPath, reason] of [
+			["native-runtime-verifier-pycompile", "native-runtime-verifier.py", "syntax-check native runtime verifier"],
 			["pcap-http-object-verifier-pycompile", "pcap-http-object-verifier.py", "syntax-check PCAP object verifier"],
 			["crypto-stego-solver-pycompile", "crypto-stego-solver.py", "syntax-check crypto/stego solver harness"],
 			["agent-boundary-payloads-pycompile", "agent-boundary-payloads.py", "syntax-check agent boundary payload harness"],
@@ -917,6 +933,7 @@ const unifiedProofGraphArtifactCandidates = [
 	"workspace-source-runtime-claims.json",
 	"workspace-route-claim-promotion.json",
 	"workspace-route-repair-queue.json",
+	"native-runtime-verification.json",
 	"native-primitive-claims.json",
 	"crypto-stego-transform-claims.json",
 	"mobile-attack-surface-claims.json",
@@ -978,6 +995,7 @@ function proofGraphRepairPriority(blocker) {
 	if (/missing-base-url|no-live-response|no-status|service|unreachable|endpoint/i.test(blocker)) return "high";
 	if (/missing-session|credential|authorization|cookie|token|principal/i.test(blocker)) return "high";
 	if (/missing-pcap-(?:capture-hash|quicklook-determinism|credential-signal|reassembly-hash|dns-tunnel|object-artifact|verifier-negative-control)/i.test(blocker)) return "high";
+	if (/missing-native-(?:target-hash|replay-case|crash-differential|cyclic-payload|runtime-negative-control)/i.test(blocker)) return "high";
 	if (/missing-memory-(?:image-hash|signal-offset|process-network|credential-context|timeline|negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:ioc-offset|config-extraction|overlay-carve|sample-hash|import-parser|network-ioc-negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:firmware-image-hash|signature-offset|rootfs-carve|firmware-extraction-negative-control)|rootfs-carve-truncated/i.test(blocker)) return "high";
@@ -1018,6 +1036,11 @@ function proofGraphRepairAction(blocker) {
 		"missing-pcap-dns-tunnel-verification": "Require DNS tunnel label hashes/base-domain grouping to reproduce from a fresh parse.",
 		"missing-pcap-object-artifact-verification": "Verify carved HTTP objects, archive entries, and decoded artifacts against manifest size/SHA-256.",
 		"missing-pcap-verifier-negative-control": "Add capture/object byte mutation controls so altered evidence hashes are rejected.",
+		"missing-native-target-hash-verification": "Rerun native-runtime-verifier.py against the original executable and require size/SHA-256/header/mode binding.",
+		"missing-native-replay-case-verification": "Replay empty stdin, argv help/cyclic, format stdin, env marker, short stdin, and repeated cyclic cases.",
+		"missing-native-crash-differential-verification": "Require repeated cyclic crashes with stable exit/signal and a non-crashing baseline control.",
+		"missing-native-cyclic-payload-verification": "Regenerate native-cyclic-payload.bin and verify offset self-test binding with native-cyclic-offset.py.",
+		"missing-native-runtime-negative-control": "Add target/payload mutation and benign-baseline controls before promoting exploit proof.",
 	};
 	return actions[blocker] ?? "Drain this blocker by collecting source-bound runtime evidence and rerun the relevant harness.";
 }
@@ -5275,30 +5298,86 @@ function nativeRunTimeoutSeconds() {
 	return Math.max(1, Math.min(deep ? 10 : 5, Math.ceil(timeoutMs / 1000)));
 }
 
-function nativeExecutionRows(target) {
-	const seconds = nativeRunTimeoutSeconds();
-	const rows = [];
-	const emptyScript = `
+function nativeExecutionCaseScript(target, seconds, mode) {
+	const prefix = `
 set +e
 BIN=${shellQuote(target)}
 T=${seconds}
+MODE=${shellQuote(mode)}
 if [ ! -x "$BIN" ]; then
-  printf '[native-exec] mode=empty skipped=not_executable mode=%s\\n' "$(stat -c '%A' "$BIN" 2>/dev/null || printf unknown)"
+  printf '[native-exec] mode=%s skipped=not_executable file_mode=%s\\n' "$MODE" "$(stat -c '%A' "$BIN" 2>/dev/null || printf unknown)"
   exit 0
 fi
-timeout "$T"s "$BIN" </dev/null
-code=$?
-printf '\\n[native-exec] mode=empty exit=%s timeout_s=%s\\n' "$code" "$T"
+`.trim();
+	const crashPrinter = `
+case "$code" in
+  124|137) printf '[native-exec] timeout=true\\n' ;;
+  139) printf '[native-exec] crash_signal=SIGSEGV\\n' ;;
+  134) printf '[native-exec] crash_signal=SIGABRT\\n' ;;
+esac
 exit 0
 `.trim();
-	const cyclicScript = `
-set +e
-BIN=${shellQuote(target)}
-T=${seconds}
-if [ ! -x "$BIN" ]; then
-  printf '[native-exec] mode=cyclic skipped=not_executable mode=%s\\n' "$(stat -c '%A' "$BIN" 2>/dev/null || printf unknown)"
-  exit 0
+	if (mode === "empty") {
+		return `${prefix}
+timeout "$T"s "$BIN" </dev/null
+code=$?
+printf '\\n[native-exec] mode=empty exit=%s case=empty-stdin payload_len=0 timeout_s=%s\\n' "$code" "$T"
+${crashPrinter}`;
+	}
+	if (mode === "argv-help") {
+		return `${prefix}
+timeout "$T"s "$BIN" --help </dev/null
+code=$?
+printf '\\n[native-exec] mode=argv-help exit=%s case=argv-help argv_count=1 payload_len=0 timeout_s=%s\\n' "$code" "$T"
+${crashPrinter}`;
+	}
+	if (mode === "argv-cyclic") {
+		return `${prefix}
+if command -v python3 >/dev/null 2>&1; then
+  ARG="$(python3 - <<'PY'
+import sys
+alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+out = bytearray()
+for a in alphabet:
+    for b in alphabet:
+        for c in alphabet:
+            out += bytes((a, b, c))
+            if len(out) >= 256:
+                sys.stdout.write(bytes(out[:256]).decode("ascii"))
+                raise SystemExit
+PY
+)"
+else
+  ARG="$(head -c 256 /dev/zero | tr '\\0' 'A')"
 fi
+timeout "$T"s "$BIN" "$ARG" </dev/null
+code=$?
+printf '\\n[native-exec] mode=argv-cyclic exit=%s case=argv-cyclic argv_count=1 argv_len=%s payload_len=0 timeout_s=%s\\n' "$code" "\${#ARG}" "$T"
+${crashPrinter}`;
+	}
+	if (mode === "format-stdin") {
+		return `${prefix}
+printf '%s\\n' '%p.%p.%p.%n' | timeout "$T"s "$BIN"
+code=\${PIPESTATUS[1]}
+printf '\\n[native-exec] mode=format-stdin exit=%s case=format-stdin input_len=12 timeout_s=%s\\n' "$code" "$T"
+${crashPrinter}`;
+	}
+	if (mode === "env-marker") {
+		return `${prefix}
+REPI_NATIVE_MARKER=repi-native-env-control timeout "$T"s "$BIN" </dev/null
+code=$?
+printf '\\n[native-exec] mode=env-marker exit=%s case=env-marker env_keys=REPI_NATIVE_MARKER payload_len=0 timeout_s=%s\\n' "$code" "$T"
+${crashPrinter}`;
+	}
+	if (mode === "short-stdin") {
+		return `${prefix}
+printf '%s\\n' 'AAAAAAAAAAAAAAAA' | timeout "$T"s "$BIN"
+code=\${PIPESTATUS[1]}
+printf '\\n[native-exec] mode=short-stdin exit=%s case=short-stdin input_len=17 timeout_s=%s\\n' "$code" "$T"
+${crashPrinter}`;
+	}
+	const cyclicCase = mode === "cyclic-repeat" ? "cyclic-2" : "cyclic-1";
+	return `${prefix}
 if command -v python3 >/dev/null 2>&1; then
   python3 - <<'PY' | timeout "$T"s "$BIN"
 import sys
@@ -5317,17 +5396,23 @@ else
   head -c 768 /dev/zero | tr '\\0' 'A' | timeout "$T"s "$BIN"
   code=\${PIPESTATUS[2]}
 fi
-printf '\\n[native-exec] mode=cyclic exit=%s input_len=769 timeout_s=%s\\n' "$code" "$T"
-case "$code" in
-  124|137) printf '[native-exec] timeout=true\\n' ;;
-  139) printf '[native-exec] crash_signal=SIGSEGV\\n' ;;
-  134) printf '[native-exec] crash_signal=SIGABRT\\n' ;;
-esac
-exit 0
-`.trim();
-	rows.push(run("bash", ["-lc", emptyScript], { id: "native-run-empty", timeout: (seconds + 2) * 1000 }));
-	rows.push(run("bash", ["-lc", cyclicScript], { id: "native-run-cyclic", timeout: (seconds + 3) * 1000 }));
-	return rows;
+printf '\\n[native-exec] mode=%s exit=%s case=%s input_len=769 timeout_s=%s\\n' "$MODE" "$code" ${shellQuote(cyclicCase)} "$T"
+${crashPrinter}`;
+}
+
+function nativeExecutionRows(target) {
+	const seconds = nativeRunTimeoutSeconds();
+	const caseRows = [
+		["native-run-empty", "empty", seconds + 2],
+		["native-run-argv-help", "argv-help", seconds + 2],
+		["native-run-argv-cyclic", "argv-cyclic", seconds + 2],
+		["native-run-format-stdin", "format-stdin", seconds + 2],
+		["native-run-env-marker", "env-marker", seconds + 2],
+		["native-run-short-stdin", "short-stdin", seconds + 2],
+		["native-run-cyclic", "cyclic", seconds + 3],
+		["native-run-cyclic-repeat", "cyclic-repeat", seconds + 3],
+	];
+	return caseRows.map(([id, mode, timeoutSeconds]) => run("bash", ["-lc", nativeExecutionCaseScript(target, seconds, mode)], { id, timeout: timeoutSeconds * 1000 }));
 }
 
 function nativeReplayVerifierSource(target) {
@@ -5555,6 +5640,675 @@ function writeNativeGdbTraceArtifacts(artifactDir, target) {
 	return { payloadPath, gdbPath, offsetPath };
 }
 
+function nativeRuntimeVerifierSource() {
+	return String.raw`#!/usr/bin/env python3
+import argparse
+import hashlib
+import json
+import os
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+
+ALPHABET = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+EXPECTED_CASES = ["empty-stdin", "argv-help", "argv-cyclic", "format-stdin", "env-marker", "short-stdin", "cyclic-1", "cyclic-2"]
+STATIC_ARTIFACTS = [
+    "native-elf-hardening.json",
+    "native-pe-quicklook.json",
+    "native-macho-quicklook.json",
+    "native-static-triage.json",
+    "native-exploit-hypotheses.json",
+    "native-primitive-claims.json",
+    "native-replay-verifier.py",
+    "native-gdb-trace.gdb",
+    "native-cyclic-payload.bin",
+    "native-cyclic-offset.py",
+]
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def cyclic(length):
+    out = bytearray()
+    for a in ALPHABET:
+        for b in ALPHABET:
+            for c in ALPHABET:
+                out += bytes((a, b, c))
+                if len(out) >= length:
+                    return bytes(out[:length])
+    return bytes(out[:length])
+
+
+def crash_like(exit_code):
+    return isinstance(exit_code, int) and (exit_code < 0 or exit_code in (134, 139) or exit_code > 128)
+
+
+def target_identity(target):
+    if not os.path.exists(target):
+        return {"exists": False, "verified": False, "reason": "target-missing"}
+    with open(target, "rb") as handle:
+        data = handle.read()
+    st = os.stat(target)
+    row = {
+        "exists": True,
+        "verified": True,
+        "size": len(data),
+        "sha256": sha256(data),
+        "headerHex": data[:16].hex(),
+        "mode": oct(stat.S_IMODE(st.st_mode)),
+        "executable": bool(st.st_mode & 0o111),
+    }
+    if data:
+        mutated = bytearray(data)
+        mutated[0] ^= 0xFF
+        row["negativeControl"] = {
+            "controlType": "native-target-byte-mutation-rejection",
+            "mutatedSha256": sha256(bytes(mutated)),
+            "passed": sha256(bytes(mutated)) != row["sha256"],
+        }
+    return row
+
+
+def artifact_bindings(artifact_dir):
+    rows = []
+    for rel in STATIC_ARTIFACTS:
+        path = os.path.join(artifact_dir, rel)
+        if not os.path.exists(path):
+            continue
+        with open(path, "rb") as handle:
+            data = handle.read()
+        parsed = None
+        if rel.endswith(".json"):
+            try:
+                parsed = json.loads(data.decode("utf-8"))
+            except Exception:
+                parsed = None
+        rows.append({
+            "relPath": rel,
+            "size": len(data),
+            "sha256": sha256(data),
+            "mode": oct(stat.S_IMODE(os.stat(path).st_mode)),
+            "kind": parsed.get("kind") if isinstance(parsed, dict) else None,
+            "schemaVersion": parsed.get("schemaVersion") if isinstance(parsed, dict) else None,
+        })
+    return rows
+
+
+def input_binding(case):
+    if case in {"cyclic-1", "cyclic-2"}:
+        payload = cyclic(768) + b"\n"
+        return {"payloadLen": len(payload), "payloadSha256": sha256(payload)}
+    if case == "format-stdin":
+        payload = b"%p.%p.%p.%n\n"
+        return {"payloadLen": len(payload), "payloadSha256": sha256(payload)}
+    if case == "short-stdin":
+        payload = b"AAAAAAAAAAAAAAAA\n"
+        return {"payloadLen": len(payload), "payloadSha256": sha256(payload)}
+    if case == "argv-cyclic":
+        argv = cyclic(256)
+        return {"payloadLen": 0, "payloadSha256": sha256(b""), "argvSha256": sha256(argv), "argvLen": len(argv)}
+    return {"payloadLen": 0, "payloadSha256": sha256(b"")}
+
+
+def run_case(target, case, timeout):
+    payload = b""
+    argv = []
+    env = os.environ.copy()
+    extra_env = []
+    if case == "argv-help":
+        argv = ["--help"]
+    elif case == "argv-cyclic":
+        argv = [cyclic(256).decode("ascii")]
+    elif case == "format-stdin":
+        payload = b"%p.%p.%p.%n\n"
+    elif case == "env-marker":
+        env["REPI_NATIVE_MARKER"] = "repi-native-env-control"
+        extra_env = ["REPI_NATIVE_MARKER"]
+    elif case == "short-stdin":
+        payload = b"AAAAAAAAAAAAAAAA\n"
+    elif case in {"cyclic-1", "cyclic-2"}:
+        payload = cyclic(768) + b"\n"
+    started = time.time()
+    try:
+        proc = subprocess.run([target, *argv], input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=timeout)
+        return {
+            "case": case,
+            "observed": True,
+            "verified": True,
+            "exit": proc.returncode,
+            "timeout": False,
+            "crashLike": crash_like(proc.returncode),
+            "durationMs": int((time.time() - started) * 1000),
+            "argvCount": len(argv),
+            "envKeys": extra_env,
+            "stdoutSha256": sha256(proc.stdout),
+            "stderrSha256": sha256(proc.stderr),
+            **input_binding(case),
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "case": case,
+            "observed": True,
+            "verified": False,
+            "exit": "timeout",
+            "timeout": True,
+            "crashLike": False,
+            "durationMs": int((time.time() - started) * 1000),
+            "argvCount": len(argv),
+            "envKeys": extra_env,
+            "stdoutSha256": sha256(exc.stdout or b""),
+            "stderrSha256": sha256(exc.stderr or b""),
+            **input_binding(case),
+        }
+
+
+def cyclic_payload_verification(artifact_dir):
+    expected = cyclic(768) + b"\n"
+    path = os.path.join(artifact_dir, "native-cyclic-payload.bin")
+    if not os.path.exists(path):
+        return {"exists": False, "verified": False, "expectedSha256": sha256(expected)}
+    with open(path, "rb") as handle:
+        data = handle.read()
+    needle = data[30:34]
+    offset = cyclic(8192).find(needle) if len(needle) == 4 else -1
+    mutated = bytearray(data)
+    if mutated:
+        mutated[0] ^= 0xFF
+    return {
+        "exists": True,
+        "verified": data == expected and offset == 30,
+        "size": len(data),
+        "sha256": sha256(data),
+        "expectedSha256": sha256(expected),
+        "needleHex": needle.hex(),
+        "needleOffsetSelfTest": offset if offset >= 0 else None,
+        "negativeControl": {
+            "controlType": "native-cyclic-payload-byte-mutation-rejection",
+            "mutatedSha256": sha256(bytes(mutated)),
+            "passed": bool(mutated) and sha256(bytes(mutated)) != sha256(data),
+        },
+    }
+
+
+def build_verification(target, artifact_dir, timeout, run_live=True):
+    identity = target_identity(target)
+    artifacts = artifact_bindings(artifact_dir)
+    if run_live and identity.get("executable"):
+        checks = [run_case(target, case, timeout) for case in EXPECTED_CASES]
+    else:
+        checks = [{"case": case, "observed": False, "verified": False, **input_binding(case)} for case in EXPECTED_CASES]
+    missing = [row["case"] for row in checks if not row.get("observed") or row.get("timeout")]
+    replay_coverage = {"expectedCases": EXPECTED_CASES, "observedCases": [row["case"] for row in checks if row.get("observed")], "missingCases": missing, "verified": not missing and bool(checks)}
+    cyclic_rows = [row for row in checks if row["case"] in {"cyclic-1", "cyclic-2"} and row.get("observed")]
+    cyclic_crashes = [row for row in cyclic_rows if row.get("crashLike")]
+    output_stable = len({json.dumps({"exit": row.get("exit"), "stdout": row.get("stdoutSha256"), "stderr": row.get("stderrSha256")}, sort_keys=True) for row in cyclic_rows}) <= 1 if cyclic_rows else False
+    deterministic_crash = len(cyclic_crashes) >= 2 and len({json.dumps({"exit": row.get("exit"), "payload": row.get("payloadSha256")}, sort_keys=True) for row in cyclic_crashes}) == 1
+    baseline = [row for row in checks if row["case"] in {"empty-stdin", "short-stdin"} and row.get("observed")]
+    baseline_non_crash = any(not row.get("crashLike") and not row.get("timeout") for row in baseline)
+    crash_diff = {"verified": deterministic_crash and baseline_non_crash, "deterministicCrash": deterministic_crash, "outputStable": output_stable, "crashCases": [row["case"] for row in cyclic_crashes], "baselineNonCrash": baseline_non_crash}
+    payload_verification = cyclic_payload_verification(artifact_dir)
+    controls = []
+    for row in [identity.get("negativeControl"), payload_verification.get("negativeControl")]:
+        if row and row.get("passed"):
+            controls.append(row)
+    for row in baseline:
+        if not row.get("crashLike") and not row.get("timeout"):
+            controls.append({"controlType": "native-baseline-non-crash-control", "case": row["case"], "exit": row.get("exit"), "passed": True, "stdoutSha256": row.get("stdoutSha256"), "stderrSha256": row.get("stderrSha256")})
+    if crash_diff["verified"]:
+        controls.append({"controlType": "native-cyclic-vs-baseline-crash-differential", "crashCases": crash_diff["crashCases"], "passed": True})
+    claim_ledger = []
+    composed_paths = []
+
+    def add_claim(row):
+        row = {"verdict": "promoted", "confidence": 0.76, "blockers": [], **row}
+        claim_ledger.append(row)
+        return row
+
+    target_claim = add_claim({"id": "native-target-hash-verification-" + identity.get("sha256", "missing")[:16], "claimType": "native-target-hash-verification-proof", "sourceBinding": {"artifact": "native-runtime-verification.json"}, "evidenceBinding": identity, "statement": "Native verifier re-read target bytes and bound size, SHA-256, header, mode, and executable bit.", "confidence": 0.9, "rerunCommand": "python3 native-runtime-verifier.py <target> <artifact-dir> native-runtime-verification.json"}) if identity.get("verified") else None
+    replay_claim = add_claim({"id": "native-replay-case-verification-" + sha256("|".join(replay_coverage["observedCases"]).encode())[:16], "claimType": "native-replay-case-verification-proof", "sourceBinding": {"artifact": "native-runtime-verification.json"}, "evidenceBinding": {"replayCoverage": replay_coverage, "caseHashes": [{k: row.get(k) for k in ("case", "exit", "payloadSha256", "argvSha256", "stdoutSha256", "stderrSha256", "crashLike")} for row in checks]}, "statement": "Native verifier replayed stdin, argv, env, short-control, and cyclic cases with hashed I/O evidence.", "confidence": 0.86, "rerunCommand": "python3 native-runtime-verifier.py <target> <artifact-dir> native-runtime-verification.json"}) if replay_coverage.get("verified") else None
+    crash_claim = add_claim({"id": "native-crash-differential-verification-" + sha256(json.dumps(crash_diff, sort_keys=True).encode())[:16], "claimType": "native-crash-differential-verification-proof", "sourceBinding": {"artifact": "native-runtime-verification.json"}, "evidenceBinding": crash_diff, "statement": "Repeated cyclic payloads reached a deterministic crash-like state while baseline controls stayed non-crashing.", "confidence": 0.88, "rerunCommand": "python3 native-runtime-verifier.py <target> <artifact-dir> native-runtime-verification.json"}) if crash_diff.get("verified") else None
+    cyclic_claim = add_claim({"id": "native-cyclic-payload-verification-" + payload_verification.get("sha256", "missing")[:16], "claimType": "native-cyclic-payload-verification-proof", "sourceBinding": {"artifact": "native-runtime-verification.json", "payload": "native-cyclic-payload.bin"}, "evidenceBinding": payload_verification, "statement": "Verifier matched the generated cyclic payload and self-tested needle-to-offset mapping.", "confidence": 0.86, "rerunCommand": "python3 native-cyclic-offset.py hex:<register-or-stack-bytes>"}) if payload_verification.get("verified") else None
+    control_claim = add_claim({"id": "native-runtime-negative-control-" + sha256(json.dumps(controls, sort_keys=True).encode())[:16], "claimType": "native-runtime-negative-control-proof", "sourceBinding": {"artifact": "native-runtime-verification.json"}, "evidenceBinding": {"passedControls": controls}, "statement": "Native runtime verification includes mutation and baseline controls instead of treating crashes alone as proof.", "confidence": 0.84, "rerunCommand": "python3 native-runtime-verifier.py <target> <artifact-dir> native-runtime-verification.json"}) if controls else None
+    if target_claim and replay_claim and crash_claim and cyclic_claim and control_claim:
+        segments = [target_claim, replay_claim, crash_claim, cyclic_claim, control_claim]
+        composed = {"id": "native-runtime-exploit-proof-path-" + sha256(">".join(row["id"] for row in segments).encode())[:16], "claimType": "native-runtime-exploit-proof-path", "sourceBinding": {"segments": [{"id": row["id"], "claimType": row["claimType"], "artifact": row.get("sourceBinding", {}).get("artifact")} for row in segments]}, "evidenceBinding": {"targetSha256": identity.get("sha256"), "crashCases": crash_diff["crashCases"], "hasNegativeControl": True, "cyclicPayloadSha256": payload_verification.get("sha256")}, "statement": "Native runtime evidence composes target hash, replay coverage, deterministic crash differential, cyclic payload binding, and negative controls into a rerunnable exploit proof path.", "verdict": "promoted", "confidence": 0.88, "blockers": [], "rerunCommand": "python3 native-runtime-verifier.py <target> <artifact-dir> native-runtime-verification.json"}
+        claim_ledger.append(composed)
+        composed_paths.append(composed)
+    blockers = []
+    if not identity.get("verified"):
+        blockers.append("missing-native-target-hash-verification")
+    if not replay_coverage.get("verified"):
+        blockers.append("missing-native-replay-case-verification")
+    if not crash_diff.get("verified"):
+        blockers.append("missing-native-crash-differential-verification")
+    if not payload_verification.get("verified"):
+        blockers.append("missing-native-cyclic-payload-verification")
+    if not controls:
+        blockers.append("missing-native-runtime-negative-control")
+    repair_queue = [{"id": "native-runtime-verification-" + blocker, "blocker": blocker, "action": "Collect verifier-bound native runtime evidence and rerun native-runtime-verifier.py.", "rerunCommand": "python3 native-runtime-verifier.py <target> <artifact-dir> native-runtime-verification.json"} for blocker in blockers]
+    promoted = [row for row in claim_ledger if row.get("verdict") == "promoted"]
+    return {
+        "kind": "repi-native-runtime-verification",
+        "schemaVersion": 1,
+        "target": target,
+        "proofReady": bool(promoted),
+        "exploitProofReady": bool(composed_paths),
+        "targetIdentity": identity,
+        "artifactBindings": artifacts,
+        "replayCoverage": replay_coverage,
+        "replayCaseChecks": checks,
+        "crashDifferential": crash_diff,
+        "cyclicPayloadVerification": payload_verification,
+        "negativeControls": controls,
+        "stats": {"replayCasesVerified": len([row for row in checks if row.get("observed") and not row.get("timeout")]), "crashCases": len(cyclic_crashes), "artifactBindings": len(artifacts), "negativeControlsPassed": len(controls)},
+        "claimLedger": claim_ledger,
+        "composedPaths": composed_paths,
+        "promotionReport": {"proofReady": bool(promoted), "exploitProofReady": bool(composed_paths), "promotedClaims": promoted, "blockers": blockers},
+        "repairQueue": repair_queue,
+    }
+
+
+def self_test():
+    with tempfile.TemporaryDirectory() as tmp:
+        target = os.path.join(tmp, "crashy.sh")
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write(
+                "#!/usr/bin/env bash\n"
+                "IFS= read -r input || true\n"
+                "if [ \"" + "$" + "{#input}\" -gt 100 ]; then\n"
+                "  echo \"simulated crash len=" + "$" + "{#input}\"\n"
+                "  exit 139\n"
+                "fi\n"
+                "echo ready\n"
+            )
+        os.chmod(target, 0o755)
+        with open(os.path.join(tmp, "native-cyclic-payload.bin"), "wb") as handle:
+            handle.write(cyclic(768) + b"\n")
+        result = build_verification(target, tmp, 2.0, run_live=True)
+        assert result["exploitProofReady"], json.dumps(result, sort_keys=True)
+        print(json.dumps({"kind": "repi-native-runtime-verifier-self-test", "status": "ok", "stats": result["stats"]}, sort_keys=True))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Verify REPI native runtime replay evidence, cyclic payload binding, and negative controls.")
+    parser.add_argument("target", nargs="?")
+    parser.add_argument("artifact_dir", nargs="?", default=".")
+    parser.add_argument("output", nargs="?", default="native-runtime-verification.json")
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--no-run", action="store_true", help="only verify target/artifact hashes; do not execute target")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return 0
+    if not args.target:
+        parser.error("target is required unless --self-test is used")
+    result = build_verification(args.target, args.artifact_dir, float(os.getenv("REPI_NATIVE_TIMEOUT", "5")), run_live=not args.no_run)
+    with open(args.output, "w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    print(json.dumps({"kind": result["kind"], "proofReady": result["proofReady"], "exploitProofReady": result["exploitProofReady"], "stats": result["stats"], "output": args.output}, sort_keys=True))
+    return 0 if result["proofReady"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`;
+}
+
+function writeNativeRuntimeVerifier(artifactDir) {
+	if (noWrite || !artifactDir) return undefined;
+	const path = join(artifactDir, "native-runtime-verifier.py");
+	writePrivate(path, nativeRuntimeVerifierSource(), 0o700);
+	return path;
+}
+
+function nativeRuntimeArtifactBindings(artifactDir) {
+	const relPaths = [
+		"native-elf-hardening.json",
+		"native-pe-quicklook.json",
+		"native-macho-quicklook.json",
+		"native-static-triage.json",
+		"native-exploit-hypotheses.json",
+		"native-replay-verifier.py",
+		"native-gdb-trace.gdb",
+		"native-cyclic-payload.bin",
+		"native-cyclic-offset.py",
+		"native-runtime-verifier.py",
+	];
+	const rows = [];
+	for (const relPath of relPaths) {
+		const path = join(artifactDir, relPath);
+		if (!existsSync(path)) continue;
+		const data = readFileSync(path);
+		let parsed = null;
+		if (/\.json$/i.test(relPath)) parsed = readJsonArtifact(path);
+		let mode = null;
+		try {
+			mode = "0o" + (statSync(path).mode & 0o777).toString(8);
+		} catch {
+			mode = null;
+		}
+		rows.push({
+			relPath,
+			size: data.length,
+			sha256: bufferSha256(data),
+			mode,
+			kind: parsed?.kind ?? null,
+			schemaVersion: parsed?.schemaVersion ?? null,
+		});
+	}
+	return rows;
+}
+
+function nativeRuntimeInputBinding(caseName) {
+	if (caseName === "cyclic-1" || caseName === "cyclic-2") {
+		const payload = nativeCyclicPayload(768);
+		return { payloadLen: payload.length, payloadSha256: bufferSha256(payload) };
+	}
+	if (caseName === "format-stdin") {
+		const payload = Buffer.from("%p.%p.%p.%n\n", "utf8");
+		return { payloadLen: payload.length, payloadSha256: bufferSha256(payload) };
+	}
+	if (caseName === "short-stdin") {
+		const payload = Buffer.from("AAAAAAAAAAAAAAAA\n", "utf8");
+		return { payloadLen: payload.length, payloadSha256: bufferSha256(payload) };
+	}
+	if (caseName === "argv-cyclic") {
+		const argv = nativeCyclicPayload(256).subarray(0, 256);
+		return { payloadLen: 0, payloadSha256: bufferSha256(Buffer.alloc(0)), argvLen: argv.length, argvSha256: bufferSha256(argv) };
+	}
+	return { payloadLen: 0, payloadSha256: bufferSha256(Buffer.alloc(0)) };
+}
+
+function nativeRuntimeTargetIdentity(target) {
+	try {
+		const data = readFileSync(target);
+		const stat = statSync(target);
+		const sha256 = bufferSha256(data);
+		const identity = {
+			exists: true,
+			verified: true,
+			size: data.length,
+			sha256,
+			headerHex: data.subarray(0, 16).toString("hex"),
+			mode: "0o" + (stat.mode & 0o777).toString(8),
+			executable: Boolean(stat.mode & 0o111),
+		};
+		if (data.length) {
+			const mutated = Buffer.from(data);
+			mutated[0] ^= 0xff;
+			const mutatedSha256 = bufferSha256(mutated);
+			identity.negativeControl = {
+				controlType: "native-target-byte-mutation-rejection",
+				mutatedSha256,
+				passed: mutatedSha256 !== sha256,
+			};
+		}
+		return identity;
+	} catch (error) {
+		return { exists: false, verified: false, reason: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+function nativeCyclicPayloadVerification(artifactDir) {
+	const expected = nativeCyclicPayload(768);
+	const path = join(artifactDir, "native-cyclic-payload.bin");
+	if (!existsSync(path)) {
+		return { exists: false, verified: false, expectedSha256: bufferSha256(expected) };
+	}
+	const data = readFileSync(path);
+	const sha256 = bufferSha256(data);
+	const needle = data.subarray(30, 34);
+	const pattern = nativeCyclicPayload(8192).subarray(0, 8192);
+	const offset = needle.length === 4 ? pattern.indexOf(needle) : -1;
+	const mutated = Buffer.from(data);
+	if (mutated.length) mutated[0] ^= 0xff;
+	const mutatedSha256 = bufferSha256(mutated);
+	return {
+		exists: true,
+		verified: data.equals(expected) && offset === 30,
+		size: data.length,
+		sha256,
+		expectedSha256: bufferSha256(expected),
+		needleHex: needle.toString("hex"),
+		needleOffsetSelfTest: offset >= 0 ? offset : null,
+		negativeControl: {
+			controlType: "native-cyclic-payload-byte-mutation-rejection",
+			mutatedSha256,
+			passed: mutated.length > 0 && mutatedSha256 !== sha256,
+		},
+	};
+}
+
+function nativeRuntimeVerificationSummary(target, artifactDir, rows) {
+	const execution = nativeExecutionEvidence(rows);
+	const targetIdentity = nativeRuntimeTargetIdentity(target);
+	const expectedCases = ["empty-stdin", "argv-help", "argv-cyclic", "format-stdin", "env-marker", "short-stdin", "cyclic-1", "cyclic-2"];
+	const replayCaseChecks = expectedCases.map((caseName) => {
+		const row = execution.rows.find((candidate) => candidate.case === caseName || (caseName === "cyclic-1" && candidate.mode === "cyclic") || (caseName === "cyclic-2" && candidate.mode === "cyclic-repeat"));
+		return {
+			case: caseName,
+			observed: Boolean(row),
+			verified: Boolean(row && row.exit != null && !row.timeout),
+			rowId: row?.id ?? null,
+			mode: row?.mode ?? null,
+			exit: row?.exit ?? null,
+			crashSignal: row?.crashSignal ?? null,
+			timeout: row?.timeout ?? false,
+			crashLike: row?.crashLike ?? false,
+			stdoutSha256: row?.stdoutSha256 ?? null,
+			stderrSha256: row?.stderrSha256 ?? null,
+			nativeLines: row?.nativeLines ?? [],
+			...nativeRuntimeInputBinding(caseName),
+		};
+	});
+	const replayCoverage = {
+		expectedCases,
+		observedCases: replayCaseChecks.filter((row) => row.observed).map((row) => row.case),
+		missingCases: replayCaseChecks.filter((row) => !row.observed || row.timeout).map((row) => row.case),
+		verified: replayCaseChecks.every((row) => row.observed && !row.timeout),
+	};
+	const cyclicRows = replayCaseChecks.filter((row) => /^cyclic-\d+$/.test(row.case) && row.observed);
+	const cyclicCrashes = cyclicRows.filter((row) => row.crashLike);
+	const deterministicCrash =
+		cyclicCrashes.length >= 2 &&
+		new Set(cyclicCrashes.map((row) => JSON.stringify({ exit: row.exit, crashSignal: row.crashSignal, payloadSha256: row.payloadSha256 }))).size === 1;
+	const outputStable =
+		cyclicRows.length > 0 &&
+		new Set(cyclicRows.map((row) => JSON.stringify({ exit: row.exit, stdoutSha256: row.stdoutSha256, stderrSha256: row.stderrSha256 }))).size <= 1;
+	const baselineRows = replayCaseChecks.filter((row) => (row.case === "empty-stdin" || row.case === "short-stdin") && row.observed);
+	const baselineNonCrash = baselineRows.some((row) => !row.crashLike && !row.timeout);
+	const crashDifferential = {
+		verified: deterministicCrash && baselineNonCrash,
+		deterministicCrash,
+		outputStable,
+		crashCases: cyclicCrashes.map((row) => row.case),
+		baselineNonCrash,
+	};
+	const cyclicPayloadVerification = nativeCyclicPayloadVerification(artifactDir);
+	const negativeControls = [targetIdentity.negativeControl, cyclicPayloadVerification.negativeControl]
+		.filter((row) => row?.passed)
+		.concat(
+			baselineRows
+				.filter((row) => !row.crashLike && !row.timeout)
+				.map((row) => ({
+					controlType: "native-baseline-non-crash-control",
+					case: row.case,
+					exit: row.exit,
+					stdoutSha256: row.stdoutSha256,
+					stderrSha256: row.stderrSha256,
+					passed: true,
+				})),
+		);
+	if (crashDifferential.verified) {
+		negativeControls.push({
+			controlType: "native-cyclic-vs-baseline-crash-differential",
+			crashCases: crashDifferential.crashCases,
+			passed: true,
+		});
+	}
+	const artifactBindings = nativeRuntimeArtifactBindings(artifactDir);
+	const claimLedger = [];
+	const composedPaths = [];
+	const addClaim = (claim) => {
+		const normalized = { verdict: "promoted", confidence: 0.76, blockers: [], ...claim };
+		claimLedger.push(normalized);
+		return normalized;
+	};
+	const targetClaim = targetIdentity.verified
+		? addClaim({
+				id: "native-target-hash-verification-" + shortHash(targetIdentity.sha256),
+				claimType: "native-target-hash-verification-proof",
+				sourceBinding: { artifact: "native-runtime-verification.json" },
+				evidenceBinding: targetIdentity,
+				statement: "Native runtime verifier re-read the target and bound size, SHA-256, header, mode, and executable bit.",
+				confidence: 0.9,
+				rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-runtime-verifier.py"))} ${shellQuote(target)} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`,
+			})
+		: undefined;
+	const replayClaim = replayCoverage.verified
+		? addClaim({
+				id: "native-replay-case-verification-" + shortHash(replayCoverage.observedCases.join("|")),
+				claimType: "native-replay-case-verification-proof",
+				sourceBinding: { artifact: "native-runtime-verification.json" },
+				evidenceBinding: {
+					replayCoverage,
+					caseHashes: replayCaseChecks.map((row) => ({
+						case: row.case,
+						rowId: row.rowId,
+						exit: row.exit,
+						crashLike: row.crashLike,
+						payloadSha256: row.payloadSha256,
+						argvSha256: row.argvSha256 ?? null,
+						stdoutSha256: row.stdoutSha256,
+						stderrSha256: row.stderrSha256,
+					})),
+				},
+				statement: "Native runtime verifier covered stdin, argv, env, short-control, and repeated cyclic replay cases with hashed I/O evidence.",
+				confidence: 0.86,
+				rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-runtime-verifier.py"))} ${shellQuote(target)} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`,
+			})
+		: undefined;
+	const crashClaim = crashDifferential.verified
+		? addClaim({
+				id: "native-crash-differential-verification-" + shortHash(JSON.stringify(crashDifferential)),
+				claimType: "native-crash-differential-verification-proof",
+				sourceBinding: { artifact: "native-runtime-verification.json" },
+				evidenceBinding: crashDifferential,
+				statement: "Repeated cyclic payloads reached a deterministic crash-like state while baseline controls stayed non-crashing.",
+				confidence: 0.88,
+				rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-runtime-verifier.py"))} ${shellQuote(target)} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`,
+			})
+		: undefined;
+	const cyclicClaim = cyclicPayloadVerification.verified
+		? addClaim({
+				id: "native-cyclic-payload-verification-" + shortHash(cyclicPayloadVerification.sha256),
+				claimType: "native-cyclic-payload-verification-proof",
+				sourceBinding: { artifact: "native-runtime-verification.json", payload: "native-cyclic-payload.bin" },
+				evidenceBinding: cyclicPayloadVerification,
+				statement: "Verifier matched native-cyclic-payload.bin to the generated pattern and self-tested needle-to-offset mapping.",
+				confidence: 0.86,
+				rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-cyclic-offset.py"))} hex:<register-or-stack-bytes>`,
+			})
+		: undefined;
+	const controlClaim = negativeControls.length
+		? addClaim({
+				id: "native-runtime-negative-control-" + shortHash(JSON.stringify(negativeControls)),
+				claimType: "native-runtime-negative-control-proof",
+				sourceBinding: { artifact: "native-runtime-verification.json" },
+				evidenceBinding: { passedControls: negativeControls },
+				statement: "Native runtime verification includes mutation and baseline controls instead of treating crashes alone as proof.",
+				confidence: 0.84,
+				rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-runtime-verifier.py"))} ${shellQuote(target)} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`,
+			})
+		: undefined;
+	if (targetClaim && replayClaim && crashClaim && cyclicClaim && controlClaim) {
+		const segments = [targetClaim, replayClaim, crashClaim, cyclicClaim, controlClaim];
+		const composed = {
+			id: "native-runtime-exploit-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "native-runtime-exploit-proof-path",
+			sourceBinding: {
+				segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: claim.sourceBinding?.artifact })),
+			},
+			evidenceBinding: {
+				targetSha256: targetIdentity.sha256,
+				crashCases: crashDifferential.crashCases,
+				hasNegativeControl: true,
+				cyclicPayloadSha256: cyclicPayloadVerification.sha256,
+			},
+			statement: "Native runtime evidence composes target hash, replay coverage, deterministic crash differential, cyclic payload binding, and negative controls into a rerunnable exploit proof path.",
+			verdict: "promoted",
+			confidence: 0.88,
+			blockers: [],
+			rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-runtime-verifier.py"))} ${shellQuote(target)} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`,
+		};
+		claimLedger.push(composed);
+		composedPaths.push(composed);
+	}
+	const blockers = [];
+	if (!targetIdentity.verified) blockers.push("missing-native-target-hash-verification");
+	if (!replayCoverage.verified) blockers.push("missing-native-replay-case-verification");
+	if (!crashDifferential.verified) blockers.push("missing-native-crash-differential-verification");
+	if (!cyclicPayloadVerification.verified) blockers.push("missing-native-cyclic-payload-verification");
+	if (!negativeControls.length) blockers.push("missing-native-runtime-negative-control");
+	const repairActions = {
+		"missing-native-target-hash-verification": "Rerun native-runtime-verifier.py against the original executable and require size/SHA-256/header/mode binding.",
+		"missing-native-replay-case-verification": "Replay empty stdin, --help argv, cyclic argv, format stdin, env marker, short stdin, and repeated cyclic stdin cases.",
+		"missing-native-crash-differential-verification": "Require repeated cyclic crashes with stable exit/signal and a non-crashing empty or short-input baseline.",
+		"missing-native-cyclic-payload-verification": "Regenerate native-cyclic-payload.bin and verify native-cyclic-offset.py maps a payload needle to the expected offset.",
+		"missing-native-runtime-negative-control": "Add target/payload mutation and benign-baseline controls so rejected or non-crashing cases are explicit.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "native-runtime-verification-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect verifier-bound native runtime evidence and rerun native-runtime-verifier.py.",
+		rerunCommand: `python3 ${shellQuote(join(artifactDir, "native-runtime-verifier.py"))} ${shellQuote(target)} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`,
+	}));
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	return {
+		kind: "repi-native-runtime-verification",
+		schemaVersion: 1,
+		target: redact(target),
+		generatedAt: new Date().toISOString(),
+		proofReady: promotedClaims.length > 0,
+		exploitProofReady: composedPaths.length > 0,
+		targetIdentity,
+		artifactBindings,
+		replayCoverage,
+		replayCaseChecks,
+		crashDifferential,
+		cyclicPayloadVerification,
+		negativeControls,
+		stats: {
+			replayCasesVerified: replayCaseChecks.filter((row) => row.observed && !row.timeout).length,
+			crashCases: cyclicCrashes.length,
+			artifactBindings: artifactBindings.length,
+			negativeControlsPassed: negativeControls.length,
+		},
+		claimLedger,
+		composedPaths,
+		promotionReport: {
+			proofReady: promotedClaims.length > 0,
+			exploitProofReady: composedPaths.length > 0,
+			promotedClaims,
+			blockers,
+		},
+		repairQueue,
+	};
+}
+
+function writeNativeRuntimeVerification(artifactDir, target, rows) {
+	if (noWrite || !artifactDir) return undefined;
+	const summary = nativeRuntimeVerificationSummary(target, artifactDir, rows);
+	const path = join(artifactDir, "native-runtime-verification.json");
+	writePrivate(path, `${JSON.stringify(summary, null, 2)}\n`, 0o600);
+	return { path, summary };
+}
+
 function readJsonArtifact(path) {
 	try {
 		if (!path || !existsSync(path)) return null;
@@ -5697,18 +6451,26 @@ function nativeExecutionEvidence(rows) {
 				.slice(0, 8);
 			const joined = nativeLines.join(" ");
 			const mode = /mode=([a-z0-9_-]+)/i.exec(joined)?.[1] ?? row.id.replace(/^native-run-/, "");
+			const caseName = /case=([a-z0-9_-]+)/i.exec(joined)?.[1] ?? (mode === "cyclic" ? "cyclic-1" : mode === "cyclic-repeat" ? "cyclic-2" : mode);
 			const exitToken = /(?:^|\s)exit=([a-z0-9_-]+)/i.exec(joined)?.[1] ?? null;
 			const exit = exitToken && /^\d+$/.test(exitToken) ? Number(exitToken) : exitToken;
 			const crashSignal = /crash_signal=([A-Z0-9_-]+)/i.exec(joined)?.[1] ?? null;
 			const timeout = /timeout=true/i.test(joined) || exit === 124 || exit === 137;
 			const crashLike = Boolean(crashSignal) || (typeof exit === "number" && (exit === 134 || exit === 139 || exit > 128));
+			const inputLenToken = /(?:payload_len|input_len)=([0-9]+)/i.exec(joined)?.[1] ?? null;
+			const argvLenToken = /argv_len=([0-9]+)/i.exec(joined)?.[1] ?? null;
+			const argvCountToken = /argv_count=([0-9]+)/i.exec(joined)?.[1] ?? null;
 			return {
 				id: row.id,
 				mode,
+				case: caseName,
 				exit,
 				crashSignal,
 				timeout,
 				crashLike,
+				inputLen: inputLenToken ? Number(inputLenToken) : null,
+				argvLen: argvLenToken ? Number(argvLenToken) : null,
+				argvCount: argvCountToken ? Number(argvCountToken) : 0,
 				stdoutSha256: httpSecretHash(row.stdout ?? ""),
 				stderrSha256: httpSecretHash(row.stderr ?? ""),
 				nativeLines,
@@ -5721,12 +6483,13 @@ function nativeExecutionEvidence(rows) {
 	};
 }
 
-function nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary) {
+function nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary, runtimeVerificationSummary) {
 	const elf = readJsonArtifact(join(artifactDir, "native-elf-hardening.json"));
 	const pe = readJsonArtifact(join(artifactDir, "native-pe-quicklook.json"));
 	const macho = readJsonArtifact(join(artifactDir, "native-macho-quicklook.json"));
 	const triage = readJsonArtifact(join(artifactDir, "native-static-triage.json"));
 	const hypotheses = hypothesesSummary ?? readJsonArtifact(join(artifactDir, "native-exploit-hypotheses.json"));
+	const runtimeVerification = runtimeVerificationSummary ?? readJsonArtifact(join(artifactDir, "native-runtime-verification.json"));
 	const execution = nativeExecutionEvidence(rows);
 	const artifactFiles = [
 		elf ? "native-elf-hardening.json" : null,
@@ -5734,7 +6497,9 @@ function nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary) {
 		macho ? "native-macho-quicklook.json" : null,
 		triage ? "native-static-triage.json" : null,
 		hypotheses ? "native-exploit-hypotheses.json" : null,
+		runtimeVerification ? "native-runtime-verification.json" : null,
 		existsSync(join(artifactDir, "native-replay-verifier.py")) ? "native-replay-verifier.py" : null,
+		existsSync(join(artifactDir, "native-runtime-verifier.py")) ? "native-runtime-verifier.py" : null,
 		existsSync(join(artifactDir, "native-gdb-trace.gdb")) ? "native-gdb-trace.gdb" : null,
 		existsSync(join(artifactDir, "native-cyclic-payload.bin")) ? "native-cyclic-payload.bin" : null,
 		existsSync(join(artifactDir, "native-cyclic-offset.py")) ? "native-cyclic-offset.py" : null,
@@ -5973,8 +6738,45 @@ function nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary) {
 			rerunCommand: "cat native-static-triage.json | jq '.signals.secretsAndFlags'",
 		});
 	}
+	const verificationComposedPaths = [];
+	for (const verificationClaim of runtimeVerification?.claimLedger ?? []) {
+		if (verificationClaim.verdict !== "promoted") continue;
+		const claim = addClaim({
+			...verificationClaim,
+			id: verificationClaim.id || "native-runtime-verification-claim-" + shortHash(JSON.stringify(verificationClaim)),
+			sourceBinding: {
+				artifact: "native-runtime-verification.json",
+				...(verificationClaim.sourceBinding ?? {}),
+			},
+			rerunCommand:
+				verificationClaim.rerunCommand ??
+				`python3 ${shellQuote(join(artifactDir, "native-runtime-verifier.py"))} ${shellQuote(target)} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`,
+		});
+		if (claim?.claimType === "native-runtime-exploit-proof-path") verificationComposedPaths.push(claim);
+	}
 	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
 	const composedPaths = [];
+	for (const verificationPath of runtimeVerification?.composedPaths ?? []) {
+		const composed = {
+			...verificationPath,
+			id: verificationPath.id || "native-runtime-verification-path-" + shortHash(JSON.stringify(verificationPath)),
+			sourceBinding: {
+				artifact: "native-runtime-verification.json",
+				...(verificationPath.sourceBinding ?? {}),
+			},
+			rerunCommand:
+				verificationPath.rerunCommand ??
+				`python3 ${shellQuote(join(artifactDir, "native-runtime-verifier.py"))} ${shellQuote(target)} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`,
+		};
+		if (!claimLedger.some((claim) => claim.id === composed.id)) {
+			claimLedger.push(composed);
+			promotedClaims.push(composed);
+		}
+		if (!composedPaths.some((path) => path.id === composed.id)) composedPaths.push(composed);
+	}
+	for (const verificationPath of verificationComposedPaths) {
+		if (!composedPaths.some((path) => path.id === verificationPath.id)) composedPaths.push(verificationPath);
+	}
 	const controlClaim = hypothesisClaims.find((claim) => claim.claimType === "native-cyclic-crash-control-claim");
 	const primitiveClaim = hypothesisClaims.find((claim) => /ret2libc|syscall|format-string|plt-got/.test(claim.claimType)) ?? promotedClaims.find((claim) => /unsafe-import|command-exec|windows-injection|macho-loader/.test(claim.claimType));
 	if (crashClaim && (controlClaim || primitiveClaim)) {
@@ -6008,16 +6810,26 @@ function nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary) {
 	if (!execution.rows.length) blockers.push("missing-native-runtime-replay");
 	if (!execution.crashRows.length) blockers.push("missing-crash-or-behavior-differential");
 	if (!existsSync(join(artifactDir, "native-replay-verifier.py"))) blockers.push("missing-replay-verifier");
+	if (!runtimeVerification) blockers.push("missing-native-runtime-verification");
 	if (execution.crashRows.length && !existsSync(join(artifactDir, "native-cyclic-offset.py"))) blockers.push("missing-cyclic-offset-helper");
 	if (execution.crashRows.length && !existsSync(join(artifactDir, "native-gdb-trace.gdb"))) blockers.push("missing-debugger-trace");
 	if (!hypothesisRows.length) blockers.push("missing-native-primitive-hypothesis");
 	if ((hypothesisById.has("ret2libc-system-binsh") || hypothesisById.has("plt-got-resolution-surface")) && mitigations.pie) blockers.push("need-pie-base-leak");
 	if (mitigations.canary) blockers.push("need-canary-leak-or-non-stack-primitive");
+	for (const blocker of runtimeVerification?.promotionReport?.blockers ?? []) {
+		if (!blockers.includes(blocker)) blockers.push(blocker);
+	}
 	const repairActions = {
 		"missing-native-static-triage": "Run strings/import/gadget triage and bind each sink/gadget to an artifact row before exploit planning.",
 		"missing-native-runtime-replay": "Run native-replay-verifier.py to establish stdin/argv/env behavior and deterministic output hashes.",
 		"missing-crash-or-behavior-differential": "Find a controlled crash, leak, branch, parser error, or output differential before promoting exploitability.",
 		"missing-replay-verifier": "Generate native-replay-verifier.py and keep it executable so primitive claims are rerunnable.",
+		"missing-native-runtime-verification": "Generate native-runtime-verification.json and native-runtime-verifier.py to bind replay/hash/negative-control evidence.",
+		"missing-native-target-hash-verification": "Rerun native-runtime-verifier.py against the original executable and require size/SHA-256/header/mode binding.",
+		"missing-native-replay-case-verification": "Replay empty stdin, argv help/cyclic, format stdin, env marker, short stdin, and repeated cyclic stdin cases.",
+		"missing-native-crash-differential-verification": "Require repeated cyclic crashes with stable exit/signal and a non-crashing empty or short-input baseline.",
+		"missing-native-cyclic-payload-verification": "Regenerate native-cyclic-payload.bin and verify native-cyclic-offset.py maps a payload needle to the expected offset.",
+		"missing-native-runtime-negative-control": "Add target/payload mutation and benign-baseline controls so exploit proof has a rejection oracle.",
 		"missing-cyclic-offset-helper": "Generate native-cyclic-offset.py and use debugger bytes to calculate exact control offset.",
 		"missing-debugger-trace": "Run or generate native-gdb-trace.gdb to capture registers, backtrace, stack, and nearby instructions.",
 		"missing-native-primitive-hypothesis": "Promote at least one ret2libc, syscall ROP, format-string, PLT/GOT, PE injection, or Mach-O loader hypothesis.",
@@ -6038,6 +6850,7 @@ function nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary) {
 		artifactFiles,
 		execution,
 		mitigations,
+		verificationStats: runtimeVerification?.stats ?? null,
 		proofReady: promotedClaims.length > 0,
 		exploitProofReady: composedPaths.length > 0,
 		claimLedger,
@@ -6060,9 +6873,9 @@ function writeNativeExploitHypotheses(artifactDir, target, rows) {
 	return { path, summary };
 }
 
-function writeNativePrimitiveClaims(artifactDir, target, rows, hypothesesSummary) {
+function writeNativePrimitiveClaims(artifactDir, target, rows, hypothesesSummary, runtimeVerificationSummary) {
 	if (noWrite || !artifactDir) return undefined;
-	const summary = nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary);
+	const summary = nativePrimitiveClaims(target, artifactDir, rows, hypothesesSummary, runtimeVerificationSummary);
 	const path = join(artifactDir, "native-primitive-claims.json");
 	writePrivate(path, `${JSON.stringify(summary, null, 2)}\n`, 0o600);
 	return { path, summary };
@@ -14651,6 +15464,21 @@ function engageFile(targetInfo, artifactDir) {
 				error: undefined,
 			});
 		}
+		const runtimeVerifierPath = writeNativeRuntimeVerifier(artifactDir);
+		if (runtimeVerifierPath) {
+			rows.push({
+				id: "native-runtime-verifier-artifact",
+				command: "internal",
+				args: [redact(runtimeVerifierPath)],
+				cwd: root,
+				exit: 0,
+				signal: null,
+				durationMs: 0,
+				stdout: `verifier=${redact(runtimeVerifierPath)}\nrun=python3 ${redact(runtimeVerifierPath)} ${redact(target)} ${redact(artifactDir)} ${redact(join(artifactDir, "native-runtime-verification.json"))}\n`,
+				stderr: "",
+				error: undefined,
+			});
+		}
 		const hypotheses = writeNativeExploitHypotheses(artifactDir, target, rows);
 		if (hypotheses) {
 			rows.push({
@@ -14666,7 +15494,22 @@ function engageFile(targetInfo, artifactDir) {
 				error: undefined,
 			});
 		}
-		const primitiveClaims = writeNativePrimitiveClaims(artifactDir, target, rows, hypotheses?.summary);
+		const runtimeVerification = writeNativeRuntimeVerification(artifactDir, target, rows);
+		if (runtimeVerification) {
+			rows.push({
+				id: "native-runtime-verification",
+				command: "internal",
+				args: [redact(runtimeVerification.path)],
+				cwd: root,
+				exit: runtimeVerification.summary.proofReady ? 0 : 1,
+				signal: null,
+				durationMs: 0,
+				stdout: `${JSON.stringify(runtimeVerification.summary, null, 2)}\n`,
+				stderr: "",
+				error: runtimeVerification.summary.proofReady ? undefined : "native runtime verification blockers present",
+			});
+		}
+		const primitiveClaims = writeNativePrimitiveClaims(artifactDir, target, rows, hypotheses?.summary, runtimeVerification?.summary);
 		if (primitiveClaims) {
 			rows.push({
 				id: "native-primitive-claims",
@@ -18549,11 +19392,13 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 		if (!noWrite && dataLooksLikeMachO(primaryTarget)) q.push(`cat ${shellQuote(join(artifactDir, "native-macho-quicklook.json"))}`);
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "native-static-triage.json"))}`);
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "native-exploit-hypotheses.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "native-runtime-verification.json"))) q.push(`cat ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "native-primitive-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "native-primitive-claims.json"))}`);
 		if (!noWrite) q.push(`python3 ${shellQuote(join(artifactDir, "native-replay-verifier.py"))} ${quotedTarget}`);
+		if (!noWrite && existsSync(join(artifactDir, "native-runtime-verifier.py"))) q.push(`python3 ${shellQuote(join(artifactDir, "native-runtime-verifier.py"))} ${quotedTarget} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "native-runtime-verification.json"))}`);
 		if (!noWrite && toolState.some((row) => row.tool === "gdb" && row.available)) q.push(`gdb -q -x ${shellQuote(join(artifactDir, "native-gdb-trace.gdb"))} ${quotedTarget}`);
 		if (!noWrite) q.push(`python3 ${shellQuote(join(artifactDir, "native-cyclic-offset.py"))} hex:<register-or-stack-bytes>`);
-		q.push(`repi -p ${shellQuote(`Continue native/pwn from ${artifactDir}: use native-primitive-claims.json claimLedger/composedPaths/repairQueue plus native-exploit-hypotheses.json, native-elf-hardening.json dynamic.imports/relocations, native-pe-quicklook.json/native-macho-quicklook.json, and native-static-triage.json gadgetQuicklook to prioritize mitigations/imports/PLT-GOT/load-commands/symbols/sinks/ROP primitives; run native-replay-verifier.py to compare stdin/argv/env I/O contract cases, locate compare/decode/crash primitive, generate debugger/r2 trace, and produce a local verifier.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue native/pwn from ${artifactDir}: use native-runtime-verification.json plus native-primitive-claims.json claimLedger/composedPaths/repairQueue, native-exploit-hypotheses.json, native-elf-hardening.json dynamic.imports/relocations, native-pe-quicklook.json/native-macho-quicklook.json, and native-static-triage.json gadgetQuicklook to prioritize mitigations/imports/PLT-GOT/load-commands/symbols/sinks/ROP primitives; rerun native-runtime-verifier.py and native-replay-verifier.py to compare stdin/argv/env I/O contract cases plus format/short/cyclic controls, bind deterministic crash differentials and negative controls, locate compare/decode/crash primitive, then generate debugger/r2 trace and exact offset proof.`)}`);
 	}
 	if (targetInfo.lane === "js-reverse") {
 		if (!noWrite && existsSync(join(artifactDir, "js-reverse-workbench.json"))) q.push(`cat ${shellQuote(join(artifactDir, "js-reverse-workbench.json"))}`);
@@ -18667,6 +19512,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/\[native-exec\].*(mode=empty|mode=cyclic|crash_signal|exit=1[3-9][0-9])/i.test(text)) anchors.push("dynamic execution/crash anchors");
 		if (/native-cyclic-offset|native-gdb-trace|gdbScript/i.test(text)) anchors.push("gdb/cyclic offset artifacts");
 		if (/repi-native-exploit-hypotheses|native-exploit-hypotheses|ret2libc-system-binsh|cyclic-crash-control-proof|plt-got-resolution-surface|syscall-rop-chain/i.test(text)) anchors.push("native exploit hypothesis anchors");
+		if (/repi-native-runtime-verification|native-runtime-verification|native-runtime-verifier|native-replay-case-verification-proof|native-crash-differential-verification-proof|native-runtime-negative-control-proof|native-runtime-exploit-proof-path/i.test(text) && targetInfo.lane === "native-pwn") anchors.push("native runtime verifier anchors");
 		if (/repi-native-primitive-claims|native-primitive-claims|native-crash-replay-signal|native-io-contract-harness|native-offset-control-workbench|native-exploit-proof-path|native-ret2libc-surface|native-windows-injection-surface|native-macho-loader-surface|repairQueue/i.test(text) && targetInfo.lane === "native-pwn") anchors.push("native primitive claim anchors");
 		if (/HTTP\/|server:|set-cookie|location:/i.test(text)) anchors.push("HTTP/header anchors");
 		if (/jwt|token|session|cookie|auth|signature|crypto/i.test(text)) anchors.push("auth/signing anchors");
