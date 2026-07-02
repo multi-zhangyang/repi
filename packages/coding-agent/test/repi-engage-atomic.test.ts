@@ -1525,17 +1525,37 @@ export async function runAgent(req) {
 		expect(report.target.representativePath).toContain("src/agent.ts");
 		expect(report.commands.map((row) => row.id)).toContain("agent-boundary-map");
 		expect(report.commands.map((row) => row.id)).toContain("agent-boundary-payload-harness");
+		expect(report.commands.map((row) => row.id)).toContain("agent-boundary-replay-self-test");
+		expect(report.commands.map((row) => row.id)).toContain("proof-harness-self-test");
 		expect(report.summary.anchors).toContain("agent boundary anchors");
 		expect(report.summary.anchors).toContain("agent boundary flow anchors");
+		expect(report.summary.anchors).toContain("agent boundary replay anchors");
 		expect(report.nextQueue.some((command) => command.includes("agent-boundary-map.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("agent-boundary-claim-promotion.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("agent-boundary-repair-queue.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("boundaryFlows"))).toBe(true);
-		expect(report.nextQueue.some((command) => command.includes("agent-boundary-payloads.py"))).toBe(true);
+		expect(
+			report.nextQueue.some(
+				(command) => command.includes("agent-boundary-payloads.py") && command.includes("--execute"),
+			),
+		).toBe(true);
 		const mapPath = join(report.artifactDir, "agent-boundary-map.json");
 		const harnessPath = join(report.artifactDir, "agent-boundary-payloads.py");
+		const replayPath = join(report.artifactDir, "agent-boundary-replay-results.json");
+		const claimPromotionPath = join(report.artifactDir, "agent-boundary-claim-promotion.json");
+		const repairQueuePath = join(report.artifactDir, "agent-boundary-repair-queue.json");
+		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
 		expect(existsSync(mapPath)).toBe(true);
 		expect(existsSync(harnessPath)).toBe(true);
+		expect(existsSync(replayPath)).toBe(true);
+		expect(existsSync(claimPromotionPath)).toBe(true);
+		expect(existsSync(repairQueuePath)).toBe(true);
+		expect(existsSync(proofMatrixPath)).toBe(true);
 		expect(statSync(mapPath).mode & 0o777).toBe(0o600);
 		expect(statSync(harnessPath).mode & 0o777).toBe(0o700);
+		expect(statSync(replayPath).mode & 0o777).toBe(0o600);
+		expect(statSync(claimPromotionPath).mode & 0o777).toBe(0o600);
+		expect(statSync(repairQueuePath).mode & 0o777).toBe(0o600);
 		const map = JSON.parse(readFileSync(mapPath, "utf8")) as {
 			risks: string[];
 			categories: Record<string, number>;
@@ -1578,12 +1598,46 @@ export async function runAgent(req) {
 			),
 		).toBe(true);
 		expect(map.findings.some((finding) => finding.category === "tool-execution")).toBe(true);
-		const harness = spawnSync("python3", [harnessPath, "http://127.0.0.1/agent"], {
+		const replay = JSON.parse(readFileSync(replayPath, "utf8")) as {
+			proofReady: boolean;
+			rows: Array<{ payloadId: string; status: number; responseSha256: string; signals: string[] }>;
+			promotionReport: {
+				promotedClaims: Array<{ verdict: string; evidenceBinding: { responseSha256: string; signals: string[] } }>;
+			};
+			claimLedger: Array<{ verdict: string; sourceBinding: { boundaryFlows: unknown[] } }>;
+			repairQueue: Array<{ blocker: string }>;
+		};
+		const claimPromotion = JSON.parse(readFileSync(claimPromotionPath, "utf8")) as {
+			proofReady: boolean;
+			claimLedger: Array<{ verdict: string; payloadId: string }>;
+		};
+		const repairQueue = JSON.parse(readFileSync(repairQueuePath, "utf8")) as {
+			queue: Array<{ blocker: string; rerunCommand: string }>;
+		};
+		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
+			artifacts: Array<{ relPath: string }>;
+			liveChecks: Array<{ id: string }>;
+		};
+		expect(replay.proofReady).toBe(true);
+		expect(replay.rows.map((row) => row.payloadId)).toContain("secret-exfiltration-policy");
+		expect(replay.promotionReport.promotedClaims.some((claim) => claim.verdict === "unsafe-promoted")).toBe(true);
+		expect(replay.promotionReport.promotedClaims[0].evidenceBinding.responseSha256).toMatch(/^[a-f0-9]{64}$/);
+		expect(replay.claimLedger.some((claim) => claim.sourceBinding.boundaryFlows.length > 0)).toBe(true);
+		expect(replay.repairQueue.map((row) => row.blocker)).toContain("no-boundary-differential");
+		expect(claimPromotion.proofReady).toBe(true);
+		expect(claimPromotion.claimLedger.some((claim) => claim.verdict === "control-promoted")).toBe(true);
+		expect(repairQueue.queue[0].rerunCommand).toContain("agent-boundary-payloads.py");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("agent-boundary-replay-results.json");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("agent-boundary-claim-promotion.json");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("agent-boundary-repair-queue.json");
+		expect(proofMatrix.liveChecks.map((row) => row.id)).toContain("agent-boundary-payloads-self-test");
+		const harness = spawnSync("python3", [harnessPath, "--self-test"], {
 			encoding: "utf8",
 			timeout: 15_000,
 		});
 		expect(harness.status, `${harness.stderr}\n${harness.stdout}`).toBe(0);
-		expect(harness.stdout).toContain("repi-agent-boundary-payloads");
+		expect(harness.stdout).toContain("repi-agent-boundary-replay-results");
+		expect(harness.stdout).toContain("unsafe-promoted");
 		expect(harness.stdout).toContain("ssrf-url-tool");
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
