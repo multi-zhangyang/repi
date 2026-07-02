@@ -7011,6 +7011,53 @@ function parseJsonSafe(text) {
 	}
 }
 
+function extractJsonObjectFromText(text) {
+	const input = String(text ?? "");
+	const direct = parseJsonSafe(input.trim());
+	if (direct && typeof direct === "object") return direct;
+	let best;
+	let bestScore = -1;
+	for (let start = input.indexOf("{"); start >= 0; start = input.indexOf("{", start + 1)) {
+		let depth = 0;
+		let inString = false;
+		let escape = false;
+		for (let index = start; index < input.length; index++) {
+			const char = input[index];
+			if (inString) {
+				if (escape) escape = false;
+				else if (char === "\\") escape = true;
+				else if (char === "\"") inString = false;
+				continue;
+			}
+			if (char === "\"") {
+				inString = true;
+				continue;
+			}
+			if (char === "{") depth++;
+			else if (char === "}") {
+				depth--;
+				if (depth === 0) {
+					const parsed = parseJsonSafe(input.slice(start, index + 1));
+					if (parsed && typeof parsed === "object") {
+						const score = (parsed.merge ? 1000 : 0)
+							+ (parsed.runId ? 200 : 0)
+							+ (parsed.evidenceRoot ? 100 : 0)
+							+ (typeof parsed.kind === "string" && /swarm|worker-pool|run-report/i.test(parsed.kind) ? 100 : 0)
+							+ (parsed.merge?.runId ? 50 : 0)
+							+ Math.min(49, Math.floor((index - start) / 10000));
+						if (score > bestScore) {
+							best = parsed;
+							bestScore = score;
+						}
+					}
+					break;
+				}
+			}
+		}
+	}
+	return best;
+}
+
 function hostLooksPrivateOrLocal(hostname) {
 	const host = String(hostname ?? "").toLowerCase().replace(/^\[|\]$/g, "");
 	if (!host) return false;
@@ -10204,6 +10251,20 @@ function renderMarkdown(report) {
 	lines.push("", "## Verification", "");
 	lines.push(`- command ledger: ${join(report.artifactDir, "commands.jsonl")}`);
 	lines.push(`- stdout/stderr snapshots: ${join(report.artifactDir, "stdout")} / ${join(report.artifactDir, "stderr")}`);
+	if (report.swarm) {
+		lines.push("", "## Swarm", "");
+		if (report.swarm.skipped) lines.push(`- skipped: ${report.swarm.reason}`);
+		else {
+			lines.push(`- provider/model: ${report.swarm.provider}/${report.swarm.model}`);
+			lines.push(`- exit: ${report.swarm.exit}; parsed=${report.swarm.parsed}`);
+			if (report.swarm.summary) {
+				lines.push(`- runId: ${report.swarm.summary.runId ?? "<unknown>"}`);
+				lines.push(`- finalPromotionReady: ${report.swarm.summary.finalPromotionReady}`);
+				lines.push(`- routeProofReady: ${report.swarm.summary.routeProofReady}; missingProofRoutes=${report.swarm.summary.missingProofRoutes.join(",") || "<none>"}`);
+				if (report.swarm.summary.mergeFailureReason) lines.push(`- mergeFailureReason: ${report.swarm.summary.mergeFailureReason}`);
+			}
+		}
+	}
 	lines.push("", "## Next Step", "");
 	for (const command of report.nextQueue) lines.push(`- \`${command}\``);
 	lines.push("");
@@ -10224,6 +10285,48 @@ function createMission(targetInfo) {
 	}
 }
 
+function summarizeSwarmJson(parsed) {
+	if (!parsed || typeof parsed !== "object") return undefined;
+	const isMergeReport = parsed.kind === "repi-swarm-merge-report" || parsed.StructuredSubagentMergeV1 === true;
+	const merge = isMergeReport ? parsed : parsed.merge && typeof parsed.merge === "object" ? parsed.merge : {};
+	const routeCoverage = merge.routeCoverage && typeof merge.routeCoverage === "object" ? merge.routeCoverage : undefined;
+	const routeReadinessRows = Array.isArray(merge.routeReadinessRows)
+		? merge.routeReadinessRows.map((row) => ({
+				routeId: row.routeId ?? row.route?.id ?? null,
+				proofReady: Boolean(row.proofReady),
+				promotedClaims: Array.isArray(row.promotedClaimIds) ? row.promotedClaimIds.length : 0,
+				proofReadyPromotedClaims: Array.isArray(row.proofReadyPromotedClaimIds) ? row.proofReadyPromotedClaimIds.length : 0,
+				missing: Array.isArray(row.missing) ? row.missing.map((item) => redact(String(item))).slice(0, 8) : [],
+			}))
+		: [];
+	const missingProofRoutes = Array.isArray(merge.missingProofRoutes)
+		? merge.missingProofRoutes.map((route) => route?.id ?? route?.routeId ?? route?.domain).filter(Boolean).map((item) => redact(String(item))).slice(0, 16)
+		: [];
+	return {
+		ok: Boolean(parsed.ok),
+		runId: parsed.runId ?? merge.runId ?? null,
+		evidenceRoot: parsed.evidenceRoot ?? merge.evidenceRoot ?? null,
+		mergeFailureReason: parsed.mergeFailureReason ? redact(String(parsed.mergeFailureReason)) : undefined,
+		finalPromotionReady: Boolean(merge.finalPromotionReady),
+		proofPromotionReady: Boolean(merge.proofPromotionReady),
+		routeProofReady: Boolean(merge.routeProofReady),
+		routeCoverage: routeCoverage
+			? {
+					complete: routeCoverage.complete !== false,
+					coveredCount: Number(routeCoverage.coveredCount ?? 0),
+					routeCount: Number(routeCoverage.routeCount ?? 0),
+					uncoveredCount: Number(routeCoverage.uncoveredCount ?? 0),
+				}
+			: undefined,
+		proofReadyRouteIds: Array.isArray(merge.proofReadyRouteIds) ? merge.proofReadyRouteIds.map((item) => redact(String(item))).slice(0, 16) : [],
+		missingProofRoutes,
+		routeReadinessRows,
+		promotedClaims: Array.isArray(merge.promotedClaims) ? merge.promotedClaims.length : 0,
+		proofReadyPromotedClaims: Array.isArray(merge.proofReadyPromotedClaims) ? merge.proofReadyPromotedClaims.length : 0,
+		nextCommands: Array.isArray(merge.nextCommands) ? merge.nextCommands.map((command) => redact(String(command))).slice(0, 12) : [],
+	};
+}
+
 function maybeRunSwarm(targetInfo) {
 	if (!swarm) return undefined;
 	if (noWrite) return { skipped: true, reason: "--no-write disables persistent swarm dispatch" };
@@ -10234,8 +10337,39 @@ function maybeRunSwarm(targetInfo) {
 	const result = run(process.execPath, [resolveScript("repi-swarm-llm-run.mjs"), root, "run", targetInfo.target, "--workers", workers, ...swarmRouteArgs(targetInfo), "--provider", provider, "--model", model, "--prompt", prompt, "--json"], {
 		id: "swarm-run",
 		timeout: deep ? 300_000 : 180_000,
+		includeRaw: true,
 	});
-	return { exit: result.exit, provider, model, stdoutTail: result.stdout.slice(-4000), stderrTail: result.stderr.slice(-2000) };
+	let parsed = extractJsonObjectFromText(result.rawStdout ?? result.stdout);
+	let summary = summarizeSwarmJson(parsed);
+	let summarySource = "stdout";
+	if (!summary?.runId) {
+		const fallback = run(process.execPath, [resolveScript("repi-swarm-llm-run.mjs"), root, "merge", "latest", "--json"], {
+			id: "swarm-merge-latest",
+			timeout: 45_000,
+			includeRaw: true,
+		});
+		const fallbackParsed = extractJsonObjectFromText(fallback.rawStdout ?? fallback.stdout);
+		const fallbackSummary = summarizeSwarmJson(fallbackParsed);
+		if (fallbackSummary?.runId) {
+			parsed = parsed ?? fallbackParsed;
+			summary = {
+				...(summary ?? {}),
+				...fallbackSummary,
+				mergeFailureReason: summary?.mergeFailureReason,
+			};
+			summarySource = "merge-latest";
+		}
+	}
+	return {
+		exit: result.exit,
+		provider,
+		model,
+		parsed: Boolean(parsed),
+		summarySource,
+		summary,
+		stdoutTail: result.stdout.slice(-4000),
+		stderrTail: result.stderr.slice(-2000),
+	};
 }
 
 const target = positionalTarget() || process.cwd();

@@ -3891,6 +3891,81 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 		expect(report.nextQueue.some((command) => command.includes("--model 'kimi-k2.7'"))).toBe(true);
 	});
 
+	it("extracts structured swarm merge summaries and repair commands from noisy JSON output", () => {
+		const scriptDir = join(workspace, "scripts", "reverse-agent");
+		mkdirSync(scriptDir, { recursive: true });
+		writeFileSync(
+			join(scriptDir, "repi-swarm-llm-run.mjs"),
+			`#!/usr/bin/env node\nconsole.log("swarm prelude {not json}");\nconsole.log(JSON.stringify({noise:true}));\nconsole.log(JSON.stringify({ok:false,runId:"swarm-run-1",evidenceRoot:"/tmp/repi-swarm-evidence",mergeFailureReason:"route proof incomplete; missing proof-ready route(s): js-reverse",merge:{finalPromotionReady:false,proofPromotionReady:false,routeProofReady:false,routeCoverage:{complete:true,coveredCount:2,routeCount:2,uncoveredCount:0},proofReadyRouteIds:["web-api"],missingProofRoutes:[{id:"js-reverse",domain:"Frontend / JS reverse"}],routeReadinessRows:[{routeId:"web-api",proofReady:true,promotedClaimIds:["web-proof"],proofReadyPromotedClaimIds:["web-proof"],missing:[]},{routeId:"js-reverse",proofReady:false,promotedClaimIds:["js-weak"],proofReadyPromotedClaimIds:[],missing:["proof-ready promoted claim"]}],promotedClaims:[{claimId:"web-proof"},{claimId:"js-weak"}],proofReadyPromotedClaims:[{claimId:"web-proof"}],nextCommands:["repi swarm run target --route 'js-reverse' --provider 'kimchi' --model 'kimi-k2.7' --prompt 'check secret token handling'"]}}));\nprocess.exit(1);\n`,
+		);
+
+		const result = spawnSync(
+			process.execPath,
+			[
+				ENGAGE,
+				workspace,
+				"full-spectrum all-routes reverse/pentest audit",
+				"--no-mission",
+				"--swarm",
+				"--workers",
+				"2",
+				"--json",
+				"--timeout-ms=5000",
+			],
+			{
+				encoding: "utf8",
+				env: {
+					...process.env,
+					REPI_CODING_AGENT_DIR: agentDir,
+				},
+				timeout: 15_000,
+			},
+		);
+
+		expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+		const report = JSON.parse(result.stdout) as {
+			swarm: {
+				exit: number;
+				provider: string;
+				model: string;
+				parsed: boolean;
+				summary: {
+					ok: boolean;
+					runId: string;
+					evidenceRoot: string;
+					mergeFailureReason: string;
+					finalPromotionReady: boolean;
+					routeProofReady: boolean;
+					proofReadyRouteIds: string[];
+					missingProofRoutes: string[];
+					promotedClaims: number;
+					proofReadyPromotedClaims: number;
+					nextCommands: string[];
+					routeReadinessRows: Array<{ routeId: string; proofReady: boolean; missing: string[] }>;
+				};
+			};
+		};
+		expect(report.swarm.exit).toBe(1);
+		expect(report.swarm).toMatchObject({ provider: "kimchi", model: "kimi-k2.7", parsed: true });
+		expect(report.swarm.summary).toMatchObject({
+			ok: false,
+			runId: "swarm-run-1",
+			evidenceRoot: "/tmp/repi-swarm-evidence",
+			finalPromotionReady: false,
+			routeProofReady: false,
+			proofReadyRouteIds: ["web-api"],
+			missingProofRoutes: ["js-reverse"],
+			promotedClaims: 2,
+			proofReadyPromotedClaims: 1,
+		});
+		expect(report.swarm.summary.mergeFailureReason).toContain("route proof incomplete");
+		expect(report.swarm.summary.routeReadinessRows.find((row) => row.routeId === "js-reverse")).toMatchObject({
+			proofReady: false,
+			missing: ["proof-ready promoted claim"],
+		});
+		expect(report.swarm.summary.nextCommands[0]).toContain("--route 'js-reverse'");
+	});
+
 	it("probes GraphQL and OpenAPI schemas into bounded evidence artifacts", async () => {
 		const schemaSecret = "schemaSecretToken123456789";
 		const server = spawn(
