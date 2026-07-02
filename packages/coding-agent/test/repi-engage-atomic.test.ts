@@ -491,7 +491,8 @@ function minimalPngWithStegoText(secret: string): Buffer {
 	ihdr.writeUInt32BE(1, 4);
 	ihdr[8] = 8;
 	ihdr[9] = 6;
-	const text = Buffer.from(`Comment\0flag{demo} cipher nonce base64 secret=${secret}`, "utf8");
+	const encodedChain = Buffer.from("flag{chain_demo}", "utf8").toString("base64");
+	const text = Buffer.from(`Comment\0flag{demo} cipher nonce base64 encoded=${encodedChain} secret=${secret}`, "utf8");
 	return Buffer.concat([
 		Buffer.from("89504e470d0a1a0a", "hex"),
 		pngChunk("IHDR", ihdr),
@@ -1073,16 +1074,22 @@ describe("repi-engage artifact writes", () => {
 		const harnessPath = join(report.artifactDir, "workspace-source-runtime-harness.mjs");
 		const routeReplayHarnessPath = join(report.artifactDir, "workspace-route-replay-harness.mjs");
 		const routeReplayPlanPath = join(report.artifactDir, "workspace-route-replay-plan.json");
+		const routeClaimPromotionPath = join(report.artifactDir, "workspace-route-claim-promotion.json");
+		const routeRepairQueuePath = join(report.artifactDir, "workspace-route-repair-queue.json");
 		const proofMatrixPath = join(report.artifactDir, "proof-matrix.json");
 		expect(existsSync(mapPath)).toBe(true);
 		expect(existsSync(harnessPath)).toBe(true);
 		expect(existsSync(routeReplayHarnessPath)).toBe(true);
 		expect(existsSync(routeReplayPlanPath)).toBe(true);
+		expect(existsSync(routeClaimPromotionPath)).toBe(true);
+		expect(existsSync(routeRepairQueuePath)).toBe(true);
 		expect(existsSync(proofMatrixPath)).toBe(true);
 		expect(statSync(mapPath).mode & 0o777).toBe(0o600);
 		expect(statSync(harnessPath).mode & 0o777).toBe(0o700);
 		expect(statSync(routeReplayHarnessPath).mode & 0o777).toBe(0o700);
 		expect(statSync(routeReplayPlanPath).mode & 0o777).toBe(0o600);
+		expect(statSync(routeClaimPromotionPath).mode & 0o777).toBe(0o600);
+		expect(statSync(routeRepairQueuePath).mode & 0o777).toBe(0o600);
 		const sourceMap = JSON.parse(readFileSync(mapPath, "utf8")) as {
 			counts: { routes: number; sinks: number; proofTargets: number };
 			risks: string[];
@@ -1107,15 +1114,44 @@ describe("repi-engage artifact writes", () => {
 		const routeReplayPlan = JSON.parse(readFileSync(routeReplayPlanPath, "utf8")) as {
 			controls: string[];
 			proofExitRule: string;
+			claimPromotionPath: string;
+			repairQueuePath: string;
 		};
 		expect(routeReplayPlan.controls).toContain("tampered-object");
 		expect(routeReplayPlan.proofExitRule).toContain("anonymous/session");
+		expect(routeReplayPlan.claimPromotionPath).toBe(routeClaimPromotionPath);
+		expect(routeReplayPlan.repairQueuePath).toBe(routeRepairQueuePath);
+		const routeClaimPromotion = JSON.parse(readFileSync(routeClaimPromotionPath, "utf8")) as {
+			baseUrlRequired: boolean;
+			proofReady: boolean;
+			claimLedger: Array<{
+				verdict: string;
+				blockers: string[];
+				sourceBinding: { file: string; line: number; route: string; method: string; proofTargetId: string };
+				evidenceBinding: { negativeControls: Record<string, boolean> };
+				rerunCommand: string;
+			}>;
+		};
+		const routeRepairQueue = JSON.parse(readFileSync(routeRepairQueuePath, "utf8")) as {
+			queue: Array<{ blocker: string; sourceBinding: { route: string }; rerunCommand: string }>;
+		};
+		expect(routeClaimPromotion.baseUrlRequired).toBe(true);
+		expect(routeClaimPromotion.proofReady).toBe(false);
+		expect(routeClaimPromotion.claimLedger.length).toBeGreaterThan(0);
+		expect(routeClaimPromotion.claimLedger[0].verdict).toBe("blocked");
+		expect(routeClaimPromotion.claimLedger[0].blockers).toContain("missing-base-url");
+		expect(routeClaimPromotion.claimLedger[0].sourceBinding.file).toBe("src/server.js");
+		expect(routeClaimPromotion.claimLedger[0].evidenceBinding.negativeControls.anonymous).toBe(false);
+		expect(routeClaimPromotion.claimLedger[0].rerunCommand).toContain("REPI_WORKSPACE_BASE_URL");
+		expect(routeRepairQueue.queue.map((row) => row.blocker)).toContain("missing-base-url");
 		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
 			artifacts: Array<{ relPath: string }>;
 			liveChecks: Array<{ id: string }>;
 		};
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("workspace-source-runtime-map.json");
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("workspace-route-replay-harness.mjs");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("workspace-route-claim-promotion.json");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("workspace-route-repair-queue.json");
 		expect(proofMatrix.liveChecks.map((row) => row.id)).toContain("workspace-source-runtime-harness-self-test");
 		expect(proofMatrix.liveChecks.map((row) => row.id)).toContain("workspace-route-replay-harness-self-test");
 		expect(
@@ -1128,6 +1164,8 @@ describe("repi-engage artifact writes", () => {
 				(command) => command.includes("workspace-route-replay-harness.mjs") && command.includes("--live"),
 			),
 		).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("workspace-route-claim-promotion.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("workspace-route-repair-queue.json"))).toBe(true);
 		const routeReplaySelfTest = spawnSync(process.execPath, [routeReplayHarnessPath, "--self-test"], {
 			encoding: "utf8",
 			timeout: 15_000,
@@ -1135,11 +1173,31 @@ describe("repi-engage artifact writes", () => {
 		expect(routeReplaySelfTest.status, `${routeReplaySelfTest.stderr}\n${routeReplaySelfTest.stdout}`).toBe(0);
 		const selfTestReport = JSON.parse(routeReplaySelfTest.stdout) as {
 			proofReady: boolean;
-			promotionReport: { promotedClaims: unknown[] };
+			promotionReport: {
+				promotedClaims: Array<{
+					sourceBinding: { file: string };
+					evidenceBinding: { negativeControls: Record<string, boolean> };
+				}>;
+			};
+			claimLedger: Array<{
+				verdict: string;
+				blockers: string[];
+				sourceBinding: { file: string };
+				evidenceBinding: { variants: Array<{ control: string; responseSha256: string }> };
+			}>;
+			repairQueue: unknown[];
 			rows: Array<{ variants: Array<{ control: string }> }>;
 		};
 		expect(selfTestReport.proofReady).toBe(true);
 		expect(selfTestReport.promotionReport.promotedClaims.length).toBeGreaterThan(0);
+		expect(selfTestReport.claimLedger.some((claim) => claim.verdict === "promoted")).toBe(true);
+		expect(selfTestReport.claimLedger[0].sourceBinding.file).toBe("src/server.js");
+		expect(selfTestReport.claimLedger[0].evidenceBinding.variants.map((row) => row.control)).toContain("anonymous");
+		expect(selfTestReport.claimLedger[0].evidenceBinding.variants.map((row) => row.control)).toContain("session");
+		expect(selfTestReport.claimLedger[0].evidenceBinding.variants[0].responseSha256).toMatch(/^[a-f0-9]{64}$/);
+		expect(selfTestReport.promotionReport.promotedClaims[0].evidenceBinding.negativeControls.anonymous).toBe(true);
+		expect(selfTestReport.promotionReport.promotedClaims[0].evidenceBinding.negativeControls.session).toBe(true);
+		expect(selfTestReport.repairQueue.length).toBe(0);
 		expect(selfTestReport.rows[0].variants.map((row) => row.control)).toContain("anonymous");
 		expect(selfTestReport.rows[0].variants.map((row) => row.control)).toContain("session");
 	});
@@ -1954,7 +2012,10 @@ jobs:
 			timeout: 15_000,
 		});
 		expect(solver.status, `${solver.stderr}\n${solver.stdout}`).toBe(0);
+		expect(solver.stdout).not.toContain(secret);
 		expect(solver.stdout).toContain('"label": "signal-string"');
+		expect(solver.stdout).toContain('"label": "transform-chain"');
+		expect(solver.stdout).toContain('"chain": ["base64"]');
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
 
@@ -3771,6 +3832,7 @@ echo "ready"
 			]),
 		);
 		expect(report.nextQueue.some((command) => command.includes("native-replay-verifier.py"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("stdin/argv/env I/O contract"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-cyclic-offset.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("native-exploit-hypotheses.json"))).toBe(true);
 		expect(
@@ -3801,6 +3863,8 @@ echo "ready"
 		});
 		expect(verifier.status, `${verifier.stderr}\n${verifier.stdout}`).toBe(0);
 		expect(verifier.stdout).toContain('"case": "cyclic-1"');
+		expect(verifier.stdout).toContain('"case": "argv-cyclic"');
+		expect(verifier.stdout).toContain('"ioContract"');
 		expect(verifier.stdout).toContain('"exit": 139');
 		const hypotheses = JSON.parse(readFileSync(hypothesesPath, "utf8")) as {
 			hypotheses: Array<{ id: string; verify: string[] }>;

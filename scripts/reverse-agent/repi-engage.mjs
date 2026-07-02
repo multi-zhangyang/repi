@@ -547,6 +547,8 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 		add("workspace-source-runtime-harness.mjs", "workspace source-to-runtime extraction harness", 0o700);
 		add("workspace-route-replay-plan.json", "workspace route replay/authz matrix plan");
 		add("workspace-route-replay-results.json", "workspace route replay/authz matrix output");
+		add("workspace-route-claim-promotion.json", "workspace route replay claim-promotion ledger");
+		add("workspace-route-repair-queue.json", "workspace route replay repair queue");
 		add("workspace-route-replay-harness.mjs", "workspace route replay/authz matrix harness", 0o700);
 	}
 	if (targetInfo.lane === "native-pwn") {
@@ -3973,6 +3975,7 @@ TIMEOUT = float(os.getenv("REPI_NATIVE_TIMEOUT", "${nativeRunTimeoutSeconds()}")
 RUNS = int(os.getenv("REPI_NATIVE_RUNS", "3"))
 CYCLIC_LEN = int(os.getenv("REPI_NATIVE_CYCLIC_LEN", "768"))
 ALPHABET = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+FORMAT_PROBE = b"%p.%p.%p.%n\\n"
 
 def cyclic(length):
     out = bytearray()
@@ -3984,20 +3987,34 @@ def cyclic(length):
                     return bytes(out[:length])
     return bytes(out[:length])
 
-def run_case(name, payload):
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def crash_like(exit_code):
+    return isinstance(exit_code, int) and (exit_code < 0 or exit_code in (134, 139))
+
+def run_case(name, payload, argv=None, extra_env=None):
+    argv = list(argv or [])
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
     started = time.time()
     try:
-        proc = subprocess.run([BIN], input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT)
+        proc = subprocess.run([BIN, *argv], input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT, env=env)
         duration_ms = int((time.time() - started) * 1000)
         row = {
             "case": name,
             "exit": proc.returncode,
+            "crashLike": crash_like(proc.returncode),
             "timeout": False,
             "durationMs": duration_ms,
+            "argvCount": len(argv),
+            "argvSha256": sha("\\x00".join(argv).encode("utf-8", "replace")) if argv else None,
+            "envKeys": sorted((extra_env or {}).keys()),
             "payloadLen": len(payload),
-            "payloadSha256": hashlib.sha256(payload).hexdigest(),
-            "stdoutSha256": hashlib.sha256(proc.stdout).hexdigest(),
-            "stderrSha256": hashlib.sha256(proc.stderr).hexdigest(),
+            "payloadSha256": sha(payload),
+            "stdoutSha256": sha(proc.stdout),
+            "stderrSha256": sha(proc.stderr),
             "stdoutSample": proc.stdout[:160].decode("utf-8", "replace"),
             "stderrSample": proc.stderr[:160].decode("utf-8", "replace"),
         }
@@ -4006,12 +4023,16 @@ def run_case(name, payload):
         row = {
             "case": name,
             "exit": "timeout",
+            "crashLike": False,
             "timeout": True,
             "durationMs": duration_ms,
+            "argvCount": len(argv),
+            "argvSha256": sha("\\x00".join(argv).encode("utf-8", "replace")) if argv else None,
+            "envKeys": sorted((extra_env or {}).keys()),
             "payloadLen": len(payload),
-            "payloadSha256": hashlib.sha256(payload).hexdigest(),
-            "stdoutSha256": hashlib.sha256(exc.stdout or b"").hexdigest(),
-            "stderrSha256": hashlib.sha256(exc.stderr or b"").hexdigest(),
+            "payloadSha256": sha(payload),
+            "stdoutSha256": sha(exc.stdout or b""),
+            "stderrSha256": sha(exc.stderr or b""),
         }
     print("[native-replay]", json.dumps(row, sort_keys=True))
     return row
@@ -4021,13 +4042,31 @@ def main():
         print("[native-replay]", json.dumps({"error": "target_missing", "target": BIN}, sort_keys=True))
         return 2
     print("[native-replay]", json.dumps({"target": BIN, "runs": RUNS, "timeout": TIMEOUT, "cyclicLen": CYCLIC_LEN}, sort_keys=True))
-    rows = [run_case("empty", b"")]
     payload = cyclic(CYCLIC_LEN) + b"\\n"
+    argv_payload = cyclic(min(CYCLIC_LEN, 256)).decode("ascii", "ignore")
+    rows = [
+        run_case("empty-stdin", b""),
+        run_case("argv-help", b"", ["--help"]),
+        run_case("argv-cyclic", b"", [argv_payload]),
+        run_case("format-stdin", FORMAT_PROBE),
+        run_case("env-marker", b"", [], {"REPI_NATIVE_MARKER": "repi-native-env-control"}),
+    ]
     for index in range(max(1, RUNS)):
         rows.append(run_case(f"cyclic-{index + 1}", payload))
     unstable = len({json.dumps({"exit": row["exit"], "stdout": row["stdoutSha256"], "stderr": row["stderrSha256"]}, sort_keys=True) for row in rows[1:]}) > 1
-    crashes = [row for row in rows if isinstance(row["exit"], int) and row["exit"] < 0 or row["exit"] in (134, 139)]
-    print("[native-replay]", json.dumps({"unstable": unstable, "crashLike": len(crashes), "next": "If cyclic crashes, rerun under gdb/pwndbg and map register bytes back into this cyclic payload."}, sort_keys=True))
+    crashes = [row for row in rows if crash_like(row["exit"])]
+    print("[native-replay]", json.dumps({
+        "ioContract": {
+            "cases": [row["case"] for row in rows],
+            "stdinCases": [row["case"] for row in rows if row["payloadLen"]],
+            "argvCases": [row["case"] for row in rows if row["argvCount"]],
+            "envCases": [row["case"] for row in rows if row["envKeys"]],
+        },
+        "unstable": unstable,
+        "crashLike": len(crashes),
+        "crashCases": [row["case"] for row in crashes],
+        "next": "If cyclic crashes, rerun under gdb/pwndbg and map register bytes back into this cyclic payload; if argv/env cases diverge, add them to the exploit harness input contract.",
+    }, sort_keys=True))
     return 0
 
 if __name__ == "__main__":
@@ -4280,12 +4319,14 @@ function cryptoStegoSolverSource(target) {
 	return `#!/usr/bin/env python3
 import base64
 import binascii
+import gzip
 import hashlib
 import json
 import os
 import re
 import string
 import sys
+import zlib
 
 TARGET = sys.argv[1] if len(sys.argv) > 1 else ${JSON.stringify(target)}
 MAX_STRINGS = int(os.getenv("REPI_CRYPTO_STEGO_MAX_STRINGS", "120"))
@@ -4294,8 +4335,14 @@ PRINTABLE = set(bytes(string.printable, "ascii"))
 def is_printable(blob):
     return bool(blob) and sum(ch in PRINTABLE for ch in blob) / max(1, len(blob)) >= 0.85
 
+def redact_text(text):
+    text = re.sub(r"(?i)(secret|token|password|passwd|api[_-]?key|client[_-]?secret)=([^\\s&;,'\\\"]+)", r"\\1=<redacted>", text)
+    text = re.sub(r"(?i)Bearer\\s+[A-Za-z0-9._~+/=-]{8,}", "Bearer <redacted>", text)
+    text = re.sub(r"sk-[A-Za-z0-9._-]{8,}", "<redacted:api-key>", text)
+    return text
+
 def safe_text(blob, limit=240):
-    return blob[:limit].decode("utf-8", "replace")
+    return redact_text(blob[:limit].decode("utf-8", "replace"))
 
 def rows(label, values):
     for value in values:
@@ -4319,6 +4366,93 @@ def try_base64(strings):
             out.append({"source": safe_text(item, 120), "decodedSha256": hashlib.sha256(decoded).hexdigest(), "decoded": safe_text(decoded)})
             if len(out) >= 20:
                 break
+    return out
+
+def try_base64_blob(blob):
+    if len(blob) < 8 or len(blob) > 2_000_000:
+        return None
+    compact = re.sub(rb"\\s+", b"", blob.strip())
+    if len(compact) < 8 or not re.fullmatch(rb"[A-Za-z0-9+/=_-]+", compact):
+        return None
+    normalized = compact.replace(b"-", b"+").replace(b"_", b"/")
+    normalized += b"=" * ((4 - len(normalized) % 4) % 4)
+    try:
+        decoded = base64.b64decode(normalized, validate=False)
+    except (binascii.Error, ValueError):
+        return None
+    return decoded if decoded and decoded != blob else None
+
+def try_hex_blob(blob):
+    compact = re.sub(rb"\\s+", b"", blob.strip())
+    if len(compact) < 8 or len(compact) % 2 or not re.fullmatch(rb"[0-9A-Fa-f]+", compact):
+        return None
+    try:
+        decoded = binascii.unhexlify(compact)
+    except (binascii.Error, ValueError):
+        return None
+    return decoded if decoded and decoded != blob else None
+
+def try_compression_blob(blob):
+    if blob.startswith(b"\\x1f\\x8b\\x08"):
+        try:
+            return ("gzip", gzip.decompress(blob[:2_000_000]))
+        except (OSError, EOFError, zlib.error):
+            return None
+    if len(blob) >= 2 and blob[0] == 0x78 and blob[1] in (0x01, 0x5e, 0x9c, 0xda):
+        try:
+            return ("zlib", zlib.decompress(blob[:2_000_000]))
+        except zlib.error:
+            return None
+    return None
+
+def interesting(blob):
+    return bool(blob) and (is_printable(blob[:4096]) or re.search(rb"flag\\{|ctf\\{|key|password|secret|token|PK\\x03\\x04|BEGIN [A-Z ]+KEY", blob[:4096], re.I))
+
+def transform_candidates(blob):
+    out = []
+    decoded = try_base64_blob(blob)
+    if decoded:
+        out.append(("base64", decoded))
+    decoded = try_hex_blob(blob)
+    if decoded:
+        out.append(("hex", decoded))
+    compressed = try_compression_blob(blob)
+    if compressed:
+        out.append(compressed)
+    if 4 <= len(blob) <= 512 * 1024:
+        for key in range(1, 256):
+            xored = bytes(ch ^ key for ch in blob)
+            if interesting(xored):
+                out.append((f"xor-single-byte:{key}", xored))
+                break
+    return out
+
+def transform_chain(seed_rows, max_depth=3, limit=24):
+    queue = [(label, blob, []) for label, blob in seed_rows if blob]
+    seen = {hashlib.sha256(blob).hexdigest() for _, blob, _ in queue}
+    out = []
+    while queue and len(out) < limit:
+        label, blob, chain = queue.pop(0)
+        if len(chain) >= max_depth:
+            continue
+        for transform, decoded in transform_candidates(blob):
+            if not decoded or len(decoded) > 2_000_000:
+                continue
+            digest = hashlib.sha256(decoded).hexdigest()
+            if digest in seen:
+                continue
+            seen.add(digest)
+            next_chain = chain + [transform]
+            row = {
+                "source": label,
+                "chain": next_chain,
+                "decodedSha256": digest,
+                "decodedLength": len(decoded),
+                "interesting": interesting(decoded),
+                "sample": safe_text(decoded) if interesting(decoded) else "",
+            }
+            out.append(row)
+            queue.append((label, decoded, next_chain))
     return out
 
 def try_single_byte_xor(data):
@@ -4346,6 +4480,16 @@ def main():
     rows("signal-string", [{"text": safe_text(value)} for value in signal_strings[:40]])
     rows("base64-decode", try_base64(strings_found))
     rows("single-byte-xor", try_single_byte_xor(data))
+    token_rows = []
+    for index, value in enumerate(strings_found[:80]):
+        for token_index, token in enumerate(re.findall(rb"[A-Za-z0-9+/=_-]{8,}", value)):
+            token_rows.append((f"string-{index}-token-{token_index}", token))
+            if len(token_rows) >= 120:
+                break
+        if len(token_rows) >= 120:
+            break
+    seed_rows = [("file", data[:2_000_000]), *[(f"string-{index}", value) for index, value in enumerate(strings_found[:80])], *token_rows]
+    rows("transform-chain", transform_chain(seed_rows))
     print("[crypto-stego]", json.dumps({"label": "next", "message": "If no direct hit, inspect metadata/binwalk/zsteg output, then model the transform chain with this script as the verifier harness."}, sort_keys=True))
     return 0
 
@@ -7586,7 +7730,7 @@ const selfTest = process.argv.includes("--self-test");
 const live = process.argv.includes("--live") || process.argv.includes("--execute");
 const baseUrlArgIndex = process.argv.findIndex((arg) => arg === "--base-url");
 const explicitBaseUrl = baseUrlArgIndex >= 0 ? process.argv[baseUrlArgIndex + 1] : undefined;
-const baseUrl = explicitBaseUrl || process.env.REPI_WORKSPACE_BASE_URL || process.env.BASE_URL || "";
+const baseUrl = explicitBaseUrl || process.env.REPI_WORKSPACE_BASE_URL || "";
 const output = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : plan.output;
 const maxRoutes = Number(process.env.REPI_WORKSPACE_REPLAY_MAX_ROUTES || "24");
 const timeoutMs = Number(process.env.REPI_WORKSPACE_REPLAY_TIMEOUT_MS || "6000");
@@ -7786,7 +7930,7 @@ async function replayRow(row, base) {
 	const authDifferential = Boolean(anonymous && session && anonymous.status !== session.status);
 	const objectDifferential = Boolean(tampered && session && (tampered.status !== session.status || tampered.responseSha256 !== session.responseSha256));
 	const statusCoverage = variants.some((variant) => typeof variant.status === "number");
-	const proofReady = statusCoverage && (authDifferential || objectDifferential || variants.some((variant) => variant.status >= 400));
+	const proofReady = statusCoverage && (authDifferential || objectDifferential);
 	return {
 		route: row.route,
 		method: row.method,
@@ -7800,25 +7944,199 @@ async function replayRow(row, base) {
 	};
 }
 
-function promotionRows(rows) {
-	return rows.map((row) => {
-		const evidence = row.variants.map((variant) => variant.control + ": status=" + variant.status + " sha256=" + String(variant.responseSha256 || "").slice(0, 16));
-		const blockers = [];
-		if (!row.variants.some((variant) => typeof variant.status === "number")) blockers.push("no HTTP response status captured");
-		if (!row.authDifferential && !row.objectDifferential) blockers.push("no auth/object differential captured yet");
-		return {
-			id: "workspace-route-replay-" + sha256(JSON.stringify([row.method, row.route, row.proofTargetId])).slice(0, 12),
-			route: row.route,
-			method: row.method,
-			statement: row.proofReady
-				? "Runtime route replay produced status/hash evidence with auth/object negative-control differential."
-				: "Runtime route replay evidence is incomplete for claim promotion.",
-			verdict: row.proofReady ? "promoted" : "observation",
-			confidence: row.proofReady ? 0.82 : 0.3,
-			evidence,
-			blockers,
-		};
-	});
+function sourceBinding(row) {
+	const source = row.source || {};
+	return {
+		proofTargetId: row.proofTargetId || null,
+		file: source.file || null,
+		line: typeof source.line === "number" ? source.line : null,
+		route: row.route,
+		method: row.method,
+		risks: Array.isArray(row.risks) ? row.risks : [],
+	};
+}
+
+function variantEvidence(variant) {
+	return {
+		control: variant.control,
+		method: variant.method,
+		url: variant.url,
+		status: typeof variant.status === "number" ? variant.status : null,
+		ok: Boolean(variant.ok),
+		bytes: typeof variant.bytes === "number" ? variant.bytes : null,
+		responseSha256: variant.responseSha256 || null,
+		appCode: variant.appCode ?? null,
+		error: variant.error || null,
+		paramBindings: variant.paramBindings || {},
+		headerNames: Array.isArray(variant.headerNames) ? variant.headerNames : [],
+		requestBodySha256: variant.requestBodySha256 || null,
+	};
+}
+
+function hasSessionCredential(row) {
+	return row.variants.some((variant) => variant.control === "session" && Array.isArray(variant.headerNames) && variant.headerNames.some((name) => /^(cookie|authorization)$/i.test(name)));
+}
+
+function hasObjectMutation(row) {
+	return row.variants.some((variant) => variant.control === "tampered-object");
+}
+
+function rowBlockers(row, options = {}) {
+	const blockers = [];
+	const statusCoverage = row.variants.some((variant) => typeof variant.status === "number");
+	if (options.baseUrlRequired) blockers.push("missing-base-url");
+	if (!statusCoverage) blockers.push("no-status");
+	if (statusCoverage && !row.authDifferential && !row.objectDifferential) blockers.push("no-differential");
+	if (!selfTest && !options.baseUrlRequired && !hasSessionCredential(row)) blockers.push("missing-session-credentials");
+	if (hasObjectMutation(row) && !row.objectDifferential) blockers.push("object-mutation-inconclusive");
+	return blockers;
+}
+
+function claimId(row) {
+	return "workspace-route-replay-" + sha256(JSON.stringify([row.method, row.route, row.proofTargetId || null])).slice(0, 12);
+}
+
+function rerunCommand(row) {
+	const routeParamHints = pathParamNames(row.route)
+		.map((name) => "REPI_ROUTE_PARAM_" + String(name).toUpperCase().replace(/[^A-Z0-9]+/g, "_") + "=<value>")
+		.join(" ");
+	const prefix = [routeParamHints, "REPI_REPLAY_COOKIE=<cookie>", "REPI_REPLAY_AUTHORIZATION=<bearer-or-basic>", "REPI_WORKSPACE_BASE_URL=http://127.0.0.1:PORT"]
+		.filter(Boolean)
+		.join(" ");
+	return prefix + " node " + plan.harnessPath + " " + (plan.outputPath || plan.output || "workspace-route-replay-results.json") + " --live";
+}
+
+function claimForReplayRow(row, options = {}) {
+	const blockers = rowBlockers(row, options);
+	const promoted = row.proofReady && blockers.length === 0;
+	const blocked = options.baseUrlRequired || blockers.includes("no-status");
+	const evidenceVariants = row.variants.map(variantEvidence);
+	const controls = {
+		anonymous: evidenceVariants.some((variant) => variant.control === "anonymous"),
+		session: evidenceVariants.some((variant) => variant.control === "session"),
+		tamperedObject: evidenceVariants.some((variant) => variant.control === "tampered-object"),
+		authDifferential: Boolean(row.authDifferential),
+		objectDifferential: Boolean(row.objectDifferential),
+		statusCoverage: evidenceVariants.some((variant) => typeof variant.status === "number"),
+	};
+	return {
+		id: claimId(row),
+		claimId: claimId(row),
+		sourceBinding: sourceBinding(row),
+		evidenceBinding: {
+			baseUrl: options.baseUrlRequired ? null : redact(options.baseUrl || ""),
+			proofTargetId: row.proofTargetId || null,
+			variants: evidenceVariants,
+			negativeControls: controls,
+			headerNames: Array.from(new Set(evidenceVariants.flatMap((variant) => variant.headerNames))).sort(),
+			paramBindings: evidenceVariants.reduce((acc, variant) => {
+				for (const [name, binding] of Object.entries(variant.paramBindings || {})) acc[name] = binding;
+				return acc;
+			}, {}),
+		},
+		statement: promoted
+			? "Runtime route replay promoted a source-bound auth/object-control claim with status/hash evidence."
+			: blocked
+				? "Runtime route replay is blocked before claim promotion."
+				: "Runtime route replay captured observations but needs stronger negative-control differential before promotion.",
+		verdict: promoted ? "promoted" : blocked ? "blocked" : "observation",
+		confidence: promoted ? 0.86 : blocked ? 0.12 : 0.38,
+		blockers,
+		rerunCommand: rerunCommand(row),
+	};
+}
+
+function planOnlyRows(map) {
+	return routeTemplateRows(map).map((row) => ({
+		route: row.route,
+		method: row.method,
+		proofTargetId: row.proofTargetId,
+		risks: row.risks || [],
+		source: row.source || {},
+		variants: [],
+		authDifferential: false,
+		objectDifferential: false,
+		proofReady: false,
+	}));
+}
+
+function promotionRows(rows, options = {}) {
+	return rows.map((row) => claimForReplayRow(row, options));
+}
+
+function repairAction(blocker) {
+	const actions = {
+		"missing-base-url": "Start the workspace service and provide REPI_WORKSPACE_BASE_URL or --base-url.",
+		"no-status": "Fix service reachability, route params, host binding, or timeout until at least one HTTP status is captured.",
+		"no-differential": "Replay with valid session credentials and mutated object identifiers until anonymous/session or object controls diverge.",
+		"missing-session-credentials": "Provide REPI_REPLAY_COOKIE or REPI_REPLAY_AUTHORIZATION for the session control.",
+		"object-mutation-inconclusive": "Set concrete REPI_ROUTE_PARAM_<NAME> values for an owned object and verify the tampered-object control.",
+	};
+	return actions[blocker] || "Re-run the route replay harness after resolving this blocker.";
+}
+
+function repairQueueRows(claims) {
+	const queue = [];
+	for (const claim of claims) {
+		for (const blocker of claim.blockers || []) {
+			queue.push({
+				id: claim.id + "-" + blocker,
+				claimId: claim.id,
+				route: claim.sourceBinding.route,
+				method: claim.sourceBinding.method,
+				proofTargetId: claim.sourceBinding.proofTargetId,
+				blocker,
+				action: repairAction(blocker),
+				sourceBinding: claim.sourceBinding,
+				rerunCommand: claim.rerunCommand,
+			});
+		}
+	}
+	return queue;
+}
+
+function promotionReportFor(claims) {
+	return {
+		proofReady: claims.some((claim) => claim.verdict === "promoted"),
+		promotedClaims: claims.filter((claim) => claim.verdict === "promoted"),
+		observations: claims.filter((claim) => claim.verdict === "observation"),
+		blockedClaims: claims.filter((claim) => claim.verdict === "blocked"),
+	};
+}
+
+function resultSidecars(result) {
+	const claims = Array.isArray(result.claimLedger) ? result.claimLedger : [];
+	const repairQueue = Array.isArray(result.repairQueue) ? result.repairQueue : repairQueueRows(claims);
+	return {
+		claimPromotion: {
+			kind: "repi-workspace-route-claim-promotion",
+			schemaVersion: 1,
+			generatedAt: result.generatedAt || new Date().toISOString(),
+			baseUrl: result.baseUrl || null,
+			baseUrlRequired: Boolean(result.baseUrlRequired),
+			live: Boolean(result.live),
+			selfTest: Boolean(result.selfTest),
+			proofReady: Boolean(result.proofReady),
+			routeCount: result.routeCount || claims.length,
+			promotionReport: result.promotionReport || promotionReportFor(claims),
+			claimLedger: claims,
+		},
+		repairQueue: {
+			kind: "repi-workspace-route-repair-queue",
+			schemaVersion: 1,
+			generatedAt: result.generatedAt || new Date().toISOString(),
+			baseUrlRequired: Boolean(result.baseUrlRequired),
+			proofReady: Boolean(result.proofReady),
+			queue: repairQueue,
+		},
+	};
+}
+
+function writeSidecarOutputs(result) {
+	if (selfTest) return;
+	const sidecars = resultSidecars(result);
+	if (plan.claimPromotionPath) writeFileSync(plan.claimPromotionPath, JSON.stringify(sidecars.claimPromotion, null, 2) + "\n", { mode: 0o600 });
+	if (plan.repairQueuePath) writeFileSync(plan.repairQueuePath, JSON.stringify(sidecars.repairQueue, null, 2) + "\n", { mode: 0o600 });
 }
 
 async function withSelfTestServer(callback) {
@@ -7855,7 +8173,9 @@ async function withSelfTestServer(callback) {
 async function runAgainst(base, map) {
 	const rows = [];
 	for (const row of routeTemplateRows(map)) rows.push(await replayRow(row, base));
-	const claims = promotionRows(rows);
+	const claims = promotionRows(rows, { baseUrl: base });
+	const promotionReport = promotionReportFor(claims);
+	const repairQueue = repairQueueRows(claims);
 	return {
 		kind: "repi-workspace-route-replay-results",
 		schemaVersion: 1,
@@ -7865,14 +8185,14 @@ async function runAgainst(base, map) {
 		selfTest,
 		mapKind: map.kind,
 		routeCount: rows.length,
-		proofReady: claims.some((claim) => claim.verdict === "promoted"),
+		proofReady: promotionReport.proofReady,
 		rows,
-		promotionReport: {
-			proofReady: claims.some((claim) => claim.verdict === "promoted"),
-			promotedClaims: claims.filter((claim) => claim.verdict === "promoted"),
-			observations: claims.filter((claim) => claim.verdict !== "promoted"),
-		},
-		next: "Bind promoted replay rows back to source file/line and keep anonymous/session/tampered controls with status/body hashes.",
+		claimLedger: claims,
+		promotionReport,
+		repairQueue,
+		next: repairQueue.length
+			? "Drain repairQueue until each target has live status/hash evidence plus anonymous/session or object-control differential."
+			: "Bind promoted replay rows back to source file/line and keep anonymous/session/tampered controls with status/body hashes.",
 	};
 }
 
@@ -7882,16 +8202,28 @@ async function main() {
 		? await withSelfTestServer((serverBase) => runAgainst(serverBase, map))
 		: baseUrl
 			? await runAgainst(baseUrl, map)
-			: {
-					kind: "repi-workspace-route-replay-plan",
-					schemaVersion: 1,
-					baseUrlRequired: true,
-					mapPath: plan.mapPath,
-					routeCount: routeTemplateRows(map).length,
-					routes: routeTemplateRows(map).map((row) => ({ route: row.route, method: row.method, proofTargetId: row.proofTargetId, risks: row.risks })),
-					run: "REPI_WORKSPACE_BASE_URL=http://127.0.0.1:PORT node " + plan.harnessPath + " --live",
-					controls: ["anonymous", "session", "tampered-object"],
-				};
+			: (() => {
+					const rows = planOnlyRows(map);
+					const claims = promotionRows(rows, { baseUrlRequired: true });
+					const promotionReport = promotionReportFor(claims);
+					const repairQueue = repairQueueRows(claims);
+					return {
+						kind: "repi-workspace-route-replay-plan",
+						schemaVersion: 1,
+						generatedAt: new Date().toISOString(),
+						baseUrlRequired: true,
+						proofReady: false,
+						mapPath: plan.mapPath,
+						routeCount: rows.length,
+						routes: rows.map((row) => ({ route: row.route, method: row.method, proofTargetId: row.proofTargetId, risks: row.risks, sourceBinding: sourceBinding(row) })),
+						run: "REPI_WORKSPACE_BASE_URL=http://127.0.0.1:PORT node " + plan.harnessPath + " " + (plan.outputPath || plan.output || "workspace-route-replay-results.json") + " --live",
+						controls: ["anonymous", "session", "tampered-object"],
+						claimLedger: claims,
+						promotionReport,
+						repairQueue,
+					};
+				})();
+	writeSidecarOutputs(result);
 	if (!selfTest && output && output !== "-") writeFileSync(output, JSON.stringify(result, null, 2) + "\n", { mode: 0o600 });
 	console.log(JSON.stringify(result, null, 2));
 	process.exit(result.proofReady || result.baseUrlRequired ? 0 : 1);
@@ -7909,6 +8241,8 @@ function writeWorkspaceRouteReplayHarness(artifactDir) {
 	const harnessPath = join(artifactDir, "workspace-route-replay-harness.mjs");
 	const planPath = join(artifactDir, "workspace-route-replay-plan.json");
 	const outputPath = join(artifactDir, "workspace-route-replay-results.json");
+	const claimPromotionPath = join(artifactDir, "workspace-route-claim-promotion.json");
+	const repairQueuePath = join(artifactDir, "workspace-route-repair-queue.json");
 	const plan = {
 		kind: "repi-workspace-route-replay-plan",
 		schemaVersion: 1,
@@ -7916,6 +8250,8 @@ function writeWorkspaceRouteReplayHarness(artifactDir) {
 		harnessPath,
 		outputPath,
 		output: outputPath,
+		claimPromotionPath,
+		repairQueuePath,
 		controls: ["anonymous", "session", "tampered-object"],
 		env: {
 			baseUrl: "REPI_WORKSPACE_BASE_URL or --base-url",
@@ -7928,7 +8264,7 @@ function writeWorkspaceRouteReplayHarness(artifactDir) {
 	};
 	writePrivate(planPath, `${JSON.stringify(plan, null, 2)}\n`, 0o600);
 	writePrivate(harnessPath, workspaceRouteReplayHarnessSource(plan), 0o700);
-	return { harnessPath, planPath, outputPath };
+	return { harnessPath, planPath, outputPath, claimPromotionPath, repairQueuePath };
 }
 
 function engageFile(targetInfo, artifactDir) {
@@ -8112,7 +8448,7 @@ function engageDirectory(targetInfo, artifactDir) {
 			exit: 0,
 			signal: null,
 			durationMs: 0,
-			stdout: `plan=${redact(routeReplayArtifacts.planPath)}\nharness=${redact(routeReplayArtifacts.harnessPath)}\nrun=REPI_WORKSPACE_BASE_URL=http://127.0.0.1:PORT node ${redact(routeReplayArtifacts.harnessPath)} ${redact(routeReplayArtifacts.outputPath)} --live\n`,
+			stdout: `plan=${redact(routeReplayArtifacts.planPath)}\nharness=${redact(routeReplayArtifacts.harnessPath)}\nclaims=${redact(routeReplayArtifacts.claimPromotionPath)}\nrepairQueue=${redact(routeReplayArtifacts.repairQueuePath)}\nrun=REPI_WORKSPACE_BASE_URL=http://127.0.0.1:PORT node ${redact(routeReplayArtifacts.harnessPath)} ${redact(routeReplayArtifacts.outputPath)} --live\n`,
 			stderr: "",
 			error: undefined,
 		});
@@ -11382,7 +11718,7 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 		if (!noWrite) q.push(`python3 ${shellQuote(join(artifactDir, "native-replay-verifier.py"))} ${quotedTarget}`);
 		if (!noWrite && toolState.some((row) => row.tool === "gdb" && row.available)) q.push(`gdb -q -x ${shellQuote(join(artifactDir, "native-gdb-trace.gdb"))} ${quotedTarget}`);
 		if (!noWrite) q.push(`python3 ${shellQuote(join(artifactDir, "native-cyclic-offset.py"))} hex:<register-or-stack-bytes>`);
-		q.push(`repi -p ${shellQuote(`Continue native/pwn from ${artifactDir}: use native-exploit-hypotheses.json plus native-elf-hardening.json dynamic.imports/relocations, native-pe-quicklook.json/native-macho-quicklook.json and native-static-triage.json gadgetQuicklook to prioritize mitigations/imports/PLT-GOT/load-commands/symbols/sinks/ROP primitives, locate compare/decode/crash primitive, generate debugger/r2 trace, and produce a local verifier.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue native/pwn from ${artifactDir}: use native-exploit-hypotheses.json plus native-elf-hardening.json dynamic.imports/relocations, native-pe-quicklook.json/native-macho-quicklook.json and native-static-triage.json gadgetQuicklook to prioritize mitigations/imports/PLT-GOT/load-commands/symbols/sinks/ROP primitives; run native-replay-verifier.py to compare stdin/argv/env I/O contract cases, locate compare/decode/crash primitive, generate debugger/r2 trace, and produce a local verifier.`)}`);
 	}
 	if (targetInfo.lane === "js-reverse") {
 		if (!noWrite && existsSync(join(artifactDir, "js-reverse-workbench.json"))) q.push(`cat ${shellQuote(join(artifactDir, "js-reverse-workbench.json"))}`);
@@ -11437,8 +11773,10 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 		const quotedDirectoryTarget = shellQuote(target);
 		if (!noWrite && existsSync(join(artifactDir, "workspace-source-runtime-map.json"))) q.push(`cat ${shellQuote(join(artifactDir, "workspace-source-runtime-map.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "workspace-source-runtime-harness.mjs"))) q.push(`node ${shellQuote(join(artifactDir, "workspace-source-runtime-harness.mjs"))} ${quotedDirectoryTarget} ${shellQuote(join(artifactDir, "workspace-source-runtime-map.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "workspace-route-claim-promotion.json"))) q.push(`cat ${shellQuote(join(artifactDir, "workspace-route-claim-promotion.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "workspace-route-repair-queue.json"))) q.push(`cat ${shellQuote(join(artifactDir, "workspace-route-repair-queue.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "workspace-route-replay-harness.mjs"))) q.push(`REPI_WORKSPACE_BASE_URL=http://127.0.0.1:PORT node ${shellQuote(join(artifactDir, "workspace-route-replay-harness.mjs"))} ${shellQuote(join(artifactDir, "workspace-route-replay-results.json"))} --live`);
-		q.push(`repi -p ${shellQuote(`Use ${artifactDir}/commands.jsonl to continue workspace exploitation: bind routes/sinks to runtime proof and create replay matrix.`)}`);
+		q.push(`repi -p ${shellQuote(`Use ${artifactDir}/commands.jsonl plus workspace-route-claim-promotion.json and workspace-route-repair-queue.json to continue workspace exploitation: drain blockers, bind routes/sinks to runtime proof, and promote only source-bound replay differentials.`)}`);
 	}
 	if (swarm) {
 		const provider = argValue("--provider") || DEFAULT_SWARM_PROVIDER;
@@ -11500,7 +11838,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/TLS-candidate|client-hello|recordVersion|clientVersion|sni|alpn|ja3/i.test(text) && targetInfo.lane === "pcap-dfir") anchors.push("TLS/SNI anchors");
 		if (/endpoint|graphql|oauth|api\/|\/api|form|fetch|axios/i.test(text) && targetInfo.kind === "url") anchors.push("route/API anchors");
 		if (/repi-workspace-source-runtime-map|workspace-source-runtime-map|sourceToRuntimeEdges|route-sensitive-no-nearby-auth-anchor|route-to-dangerous-sink-candidate|routeReplayTemplates/i.test(text) && targetInfo.kind === "directory") anchors.push("workspace source-to-runtime anchors");
-		if (/repi-workspace-route-replay|workspace-route-replay|tampered-object|authDifferential|objectDifferential|promotionReport/i.test(text) && targetInfo.kind === "directory") anchors.push("workspace route replay/authz anchors");
+		if (/repi-workspace-route-replay|workspace-route-replay|workspace-route-claim-promotion|workspace-route-repair-queue|tampered-object|authDifferential|objectDifferential|promotionReport|claimLedger|repairQueue/i.test(text) && targetInfo.kind === "directory") anchors.push("workspace route replay/authz anchors");
 		if (/repi-web-discovery-matrix|web-discovery|robots\.txt|sitemap\.xml|openapi|swagger|graphql/i.test(text) && targetInfo.kind === "url") anchors.push("web discovery anchors");
 		if (/repi-web-api-schema-probes|web-api-schema-probes|__typename|__schema|graphql-introspection|graphql-mutation-surface|openapi-unauthenticated|openapi-upload-surface|securitySchemes|openapi|swagger|GraphQL/i.test(text) && targetInfo.kind === "url") anchors.push("API schema anchors");
 		if (/repi-web-ssrf-matrix|web-ssrf-matrix|ssrf-|169\.254\.169\.254|repi-ssrf-canary/i.test(text) && targetInfo.kind === "url") anchors.push("SSRF parameter anchors");
