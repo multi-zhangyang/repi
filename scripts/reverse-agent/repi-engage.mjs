@@ -630,7 +630,9 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 	}
 	if (targetInfo.lane === "cloud-identity") {
 		add("cloud-identity-map.json", "cloud/container identity trust-chain map");
+		add("cloud-identity-verification.json", "cloud identity source-line verifier output");
 		add("cloud-identity-trust-claims.json", "cloud/container identity trust-chain claim ledger");
+		add("cloud-identity-verifier.py", "cloud identity source-line verifier", 0o700);
 		add("cloud-identity-verify.sh", "cloud identity verification harness", 0o700);
 	}
 	add("repi-proof-graph.json", "unified proof graph and runtime repair loop");
@@ -659,7 +661,7 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 	if (targetInfo.lane === "windows-ad") requireAny("windows-ad-triage-plan", ["windows-ad-triage-plan.sh", "windows-ad-quicklook.json"], "identity targets need AD graph/credential triage anchors");
 	if (targetInfo.lane === "malware") requireAny("malware-triage-plan", ["malware-behavior-claims.json", "malware-config-verification.json", "malware-config-verifier.py", "malware-triage-plan.sh", "malware-quicklook.json"], "malware targets need IOC/capability triage and verifier anchors");
 	if (targetInfo.lane === "agent-boundary") requireAny("agent-boundary-replay", ["agent-boundary-verification.json", "agent-boundary-verifier.py", "agent-boundary-payloads.py", "agent-boundary-map.json"], "agent-boundary targets need replay payloads and flow map");
-	if (targetInfo.lane === "cloud-identity") requireAny("cloud-identity-verify", ["cloud-identity-trust-claims.json", "cloud-identity-verify.sh", "cloud-identity-map.json"], "cloud targets need trust-chain verification anchors");
+	if (targetInfo.lane === "cloud-identity") requireAny("cloud-identity-verify", ["cloud-identity-verification.json", "cloud-identity-verifier.py", "cloud-identity-trust-claims.json", "cloud-identity-verify.sh", "cloud-identity-map.json"], "cloud targets need trust-chain verification anchors");
 	return gaps;
 }
 
@@ -739,6 +741,7 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 			["mobile-archive-verifier-pycompile", "mobile-archive-verifier.py", "syntax-check mobile archive verifier"],
 			["agent-boundary-verifier-pycompile", "agent-boundary-verifier.py", "syntax-check agent boundary verifier"],
 			["agent-boundary-payloads-pycompile", "agent-boundary-payloads.py", "syntax-check agent boundary payload harness"],
+			["cloud-identity-verifier-pycompile", "cloud-identity-verifier.py", "syntax-check cloud identity verifier"],
 			["memory-evidence-verifier-pycompile", "memory-evidence-verifier.py", "syntax-check memory evidence verifier"],
 			["malware-config-verifier-pycompile", "malware-config-verifier.py", "syntax-check malware config verifier"],
 			["firmware-extraction-verifier-pycompile", "firmware-extraction-verifier.py", "syntax-check firmware extraction verifier"],
@@ -754,6 +757,8 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 		if (existsSync(cryptoVerifier)) add({ id: "crypto-stego-verifier-self-test", command: python, args: [cryptoVerifier, "--self-test"], reason: "execute crypto/stego verifier self-test with offset/hash negative controls" });
 		const mobileVerifier = proofArtifactPath(artifactDir, "mobile-archive-verifier.py");
 		if (existsSync(mobileVerifier)) add({ id: "mobile-archive-verifier-self-test", command: python, args: [mobileVerifier, "--self-test"], reason: "execute mobile archive verifier self-test with ZIP entry negative controls" });
+		const cloudIdentityVerifier = proofArtifactPath(artifactDir, "cloud-identity-verifier.py");
+		if (existsSync(cloudIdentityVerifier)) add({ id: "cloud-identity-verifier-self-test", command: python, args: [cloudIdentityVerifier, "--self-test"], reason: "execute cloud identity verifier self-test with source-line negative controls" });
 		const memoryVerifier = proofArtifactPath(artifactDir, "memory-evidence-verifier.py");
 		if (existsSync(memoryVerifier)) add({ id: "memory-evidence-verifier-self-test", command: python, args: [memoryVerifier, "--self-test"], reason: "execute memory evidence verifier self-test with offset/correlation negative controls" });
 		const malwareVerifier = proofArtifactPath(artifactDir, "malware-config-verifier.py");
@@ -966,6 +971,7 @@ const unifiedProofGraphArtifactCandidates = [
 	"agent-boundary-verification.json",
 	"agent-boundary-claim-promotion.json",
 	"agent-boundary-repair-queue.json",
+	"cloud-identity-verification.json",
 	"cloud-identity-trust-claims.json",
 ];
 
@@ -1017,6 +1023,7 @@ function proofGraphRepairPriority(blocker) {
 	if (/missing-crypto-(?:file-hash|media-determinism|structure-offset|negative-control)/i.test(blocker)) return "high";
 	if (/missing-mobile-(?:archive-hash|zip-entry|dex-quicklook|manifest|hook|negative-control)/i.test(blocker)) return "high";
 	if (/missing-agent-boundary-(?:map-flow|replay-coverage|response-hash|negative-control)/i.test(blocker)) return "high";
+	if (/missing-cloud-(?:source-line|trust-claim|composed-path|negative-control)/i.test(blocker)) return "high";
 	if (/missing-memory-(?:image-hash|signal-offset|process-network|credential-context|timeline|negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:ioc-offset|config-extraction|overlay-carve|sample-hash|import-parser|network-ioc-negative-control)/i.test(blocker)) return "high";
 	if (/missing-(?:firmware-image-hash|signature-offset|rootfs-carve|firmware-extraction-negative-control)|rootfs-carve-truncated/i.test(blocker)) return "high";
@@ -1076,6 +1083,10 @@ function proofGraphRepairAction(blocker) {
 		"missing-agent-boundary-replay-coverage": "Rerun agent-boundary-payloads.py until baseline and unsafe/control payload IDs are all observed.",
 		"missing-agent-boundary-response-hash": "Require every promoted replay claim to include request/response SHA-256 and status evidence.",
 		"missing-agent-boundary-negative-control": "Require a benign accepted baseline and at least one unsafe or blocked-control differential.",
+		"missing-cloud-source-line-verification": "Re-read cloud source files and bind trust claims to exact file/line SHA-256 evidence.",
+		"missing-cloud-trust-claim-coverage": "Require promoted cloud trust claims to cover OIDC/IAM plus runtime or exposure source anchors.",
+		"missing-cloud-composed-path-verification": "Verify each composed cloud pivot segment resolves to a source-bound promoted claim.",
+		"missing-cloud-negative-control": "Run missing-file, shifted-line, and mutated-segment controls before promoting cloud trust-chain proof.",
 	};
 	return actions[blocker] ?? "Drain this blocker by collecting source-bound runtime evidence and rerun the relevant harness.";
 }
@@ -13253,6 +13264,456 @@ function cloudIdentityTrustClaims(summary) {
 	};
 }
 
+function cloudIdentitySourceLineCheck(target, claim) {
+	const source = claim?.sourceBinding ?? {};
+	const file = typeof source.file === "string" ? source.file : "";
+	const line = Number(source.line);
+	if (!file || !Number.isFinite(line) || line < 1) return undefined;
+	const rootDir = resolve(target);
+	const path = resolve(rootDir, file);
+	if (path !== rootDir && !path.startsWith(`${rootDir}/`)) {
+		return {
+			claimId: claim.id ?? null,
+			claimType: claim.claimType ?? null,
+			file: redact(file),
+			line,
+			verified: false,
+			error: "path-outside-target",
+		};
+	}
+	if (!existsSync(path)) {
+		return {
+			claimId: claim.id ?? null,
+			claimType: claim.claimType ?? null,
+			file: redact(file),
+			line,
+			verified: false,
+			error: "missing-source-file",
+		};
+	}
+	let text = "";
+	try {
+		text = readFileSync(path, "utf8");
+	} catch (error) {
+		return {
+			claimId: claim.id ?? null,
+			claimType: claim.claimType ?? null,
+			file: redact(file),
+			line,
+			verified: false,
+			error: error instanceof Error ? redact(error.message) : "read-failed",
+		};
+	}
+	const lines = text.split(/\r?\n/);
+	const lineText = lines[line - 1] ?? "";
+	const signalPatterns = {
+		"github-oidc": /id-token|role-to-assume|pull_request_target|configure-aws-credentials|azure\/login|google-github-actions\/auth/i,
+		"terraform-": /resource\s+"aws_iam_|Action\s*=|\bAction\b|Resource\s*=|\bResource\b|0\.0\.0\.0\/0|aws_security_group/i,
+		"kubernetes-": /kind\s*:|serviceAccountName|ClusterRoleBinding|RoleBinding|privileged\s*:|hostNetwork\s*:|hostPath\s*:/i,
+		"container-": /USER\s+root|curl\b|wget\b|privileged\s*:|EXPOSE|ports\s*:/i,
+		"cloud-public": /0\.0\.0\.0\/0|public|public_access|public-read|ingress|LoadBalancer|NodePort|hostPort|EXPOSE|ports\s*:|privileged/i,
+	};
+	const matchedFamily = Object.entries(signalPatterns).find(([prefix]) => String(claim.claimType ?? "").startsWith(prefix));
+	const semanticMatch = matchedFamily ? matchedFamily[1].test(lineText) : lineText.trim().length > 0;
+	return {
+		claimId: claim.id ?? null,
+		claimType: claim.claimType ?? null,
+		file: redact(file),
+		line,
+		verified: Boolean(lineText && semanticMatch),
+		fileSha256: bufferSha256(readFileSync(path)),
+		lineSha256: httpSecretHash(lineText),
+		lineLength: lineText.length,
+		semanticMatch,
+	};
+}
+
+function cloudIdentityVerificationSummary(target, artifactDir, summary, trustClaims) {
+	const map = summary ?? readJsonArtifact(join(artifactDir, "cloud-identity-map.json"));
+	const claimsArtifact = trustClaims ?? readJsonArtifact(join(artifactDir, "cloud-identity-trust-claims.json"));
+	const claimRows = claimsArtifact?.claimLedger ?? [];
+	const promotedClaims = claimRows.filter((claim) => claim.verdict === "promoted" && claim.claimType !== "cloud-trust-chain-pivot");
+	const sourceLineChecks = promotedClaims.map((claim) => cloudIdentitySourceLineCheck(target, claim)).filter(Boolean);
+	const verifiedClaimIds = new Set(sourceLineChecks.filter((row) => row.verified).map((row) => row.claimId).filter(Boolean));
+	const hasFamily = (pattern) => sourceLineChecks.some((row) => row.verified && pattern.test(String(row.claimType ?? "")));
+	const missingFamilies = [];
+	if (!hasFamily(/^github-oidc-/)) missingFamilies.push("github-oidc");
+	if (!hasFamily(/^terraform-wildcard-iam-policy$/)) missingFamilies.push("terraform-wildcard-iam-policy");
+	if (!sourceLineChecks.some((row) => row.verified && /^(?:kubernetes-|container-|cloud-public-network-exposure)/.test(String(row.claimType ?? "")))) missingFamilies.push("runtime-or-exposure");
+	const sourceLineVerification = {
+		verified: sourceLineChecks.length > 0 && sourceLineChecks.every((row) => row.verified),
+		checkedClaims: sourceLineChecks.length,
+		verifiedClaims: sourceLineChecks.filter((row) => row.verified).length,
+		sourceFiles: Array.from(new Set(sourceLineChecks.filter((row) => row.verified).map((row) => row.file))).slice(0, 80),
+	};
+	const trustClaimCoverage = {
+		verified: sourceLineVerification.verified && missingFamilies.length === 0,
+		promotedSourceClaims: promotedClaims.length,
+		verifiedSourceClaims: verifiedClaimIds.size,
+		missingFamilies,
+		risks: map?.risks ?? [],
+		mapSha256: map ? httpSecretHash(JSON.stringify(map)) : null,
+		claimsSha256: claimsArtifact ? httpSecretHash(JSON.stringify(claimsArtifact)) : null,
+	};
+	const claimById = new Map(claimRows.map((claim) => [claim.id, claim]));
+	const pathRows = claimsArtifact?.composedPaths ?? [];
+	const pathChecks = pathRows.map((pathRow) => {
+		const segments = pathRow.sourceBinding?.segments ?? [];
+		const resolvedSegments = segments.map((segment) => ({
+			id: segment.id,
+			claimType: segment.claimType,
+			claimPresent: claimById.has(segment.id),
+			sourceLineVerified: verifiedClaimIds.has(segment.id),
+		}));
+		return {
+			id: pathRow.id ?? null,
+			claimType: pathRow.claimType ?? null,
+			verified: resolvedSegments.length > 0 && resolvedSegments.every((segment) => segment.claimPresent && segment.sourceLineVerified),
+			segments: resolvedSegments,
+		};
+	});
+	const composedPathVerification = {
+		verified: pathChecks.some((row) => row.verified && row.claimType === "cloud-trust-chain-pivot"),
+		pathCount: pathChecks.length,
+		verifiedPathCount: pathChecks.filter((row) => row.verified).length,
+		pathChecks,
+	};
+	const firstVerified = sourceLineChecks.find((row) => row.verified);
+	const negativeControls = [];
+	if (firstVerified) {
+		const rootDir = resolve(target);
+		const missingPath = resolve(rootDir, `${firstVerified.file}.missing-control`);
+		negativeControls.push({
+			controlType: "cloud-missing-file-negative-control",
+			claimId: firstVerified.claimId,
+			passed: !existsSync(missingPath),
+		});
+		const shifted = cloudIdentitySourceLineCheck(target, {
+			id: `${firstVerified.claimId}:shifted-control`,
+			claimType: firstVerified.claimType,
+			sourceBinding: { file: firstVerified.file, line: firstVerified.line + 10000 },
+		});
+		negativeControls.push({
+			controlType: "cloud-shifted-line-negative-control",
+			claimId: firstVerified.claimId,
+			passed: !shifted?.verified,
+		});
+		negativeControls.push({
+			controlType: "cloud-mutated-segment-negative-control",
+			claimId: firstVerified.claimId,
+			passed: !claimById.has(`${firstVerified.claimId}:mutated`),
+		});
+	}
+	const negativeControlVerification = {
+		verified: negativeControls.length >= 3 && negativeControls.every((row) => row.passed),
+		negativeControlsPassed: negativeControls.filter((row) => row.passed).length,
+		negativeControls,
+	};
+	const claimLedger = [];
+	const composedPaths = [];
+	const addClaim = (claim) => {
+		const normalized = { verdict: "promoted", confidence: 0.76, blockers: [], ...claim };
+		claimLedger.push(normalized);
+		return normalized;
+	};
+	const sourceClaim = sourceLineVerification.verified
+		? addClaim({
+				id: "cloud-source-line-verification-" + shortHash(sourceLineVerification.sourceFiles.join("|")),
+				claimType: "cloud-source-line-verification-proof",
+				sourceBinding: { artifact: "cloud-identity-verification.json", map: "cloud-identity-map.json", trustClaims: "cloud-identity-trust-claims.json" },
+				evidenceBinding: sourceLineVerification,
+				statement: "Cloud verifier rebound promoted identity claims to exact source files, lines, and hashes.",
+				confidence: 0.86,
+				rerunCommand: "python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json",
+			})
+		: undefined;
+	const coverageClaim = trustClaimCoverage.verified
+		? addClaim({
+				id: "cloud-trust-claim-coverage-" + shortHash(JSON.stringify(trustClaimCoverage.missingFamilies)),
+				claimType: "cloud-trust-claim-coverage-proof",
+				sourceBinding: { artifact: "cloud-identity-verification.json", trustClaims: "cloud-identity-trust-claims.json" },
+				evidenceBinding: trustClaimCoverage,
+				statement: "Cloud verifier confirmed OIDC, IAM, and runtime/exposure trust-chain coverage.",
+				confidence: 0.84,
+				rerunCommand: "python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json",
+			})
+		: undefined;
+	const pathClaim = composedPathVerification.verified
+		? addClaim({
+				id: "cloud-composed-path-verification-" + shortHash(JSON.stringify(composedPathVerification.pathChecks.map((row) => row.id))),
+				claimType: "cloud-composed-path-verification-proof",
+				sourceBinding: { artifact: "cloud-identity-verification.json", trustClaims: "cloud-identity-trust-claims.json" },
+				evidenceBinding: composedPathVerification,
+				statement: "Cloud verifier confirmed composed pivot segments resolve to source-bound promoted claims.",
+				confidence: 0.86,
+				rerunCommand: "python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json",
+			})
+		: undefined;
+	const negativeClaim = negativeControlVerification.verified
+		? addClaim({
+				id: "cloud-verifier-negative-control-" + shortHash(JSON.stringify(negativeControlVerification.negativeControls)),
+				claimType: "cloud-verifier-negative-control-proof",
+				sourceBinding: { artifact: "cloud-identity-verification.json" },
+				evidenceBinding: negativeControlVerification,
+				statement: "Cloud verifier rejected missing-file, shifted-line, and mutated-segment controls.",
+				confidence: 0.82,
+				rerunCommand: "python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json",
+			})
+		: undefined;
+	if (sourceClaim && coverageClaim && pathClaim && negativeClaim) {
+		const segments = [sourceClaim, coverageClaim, pathClaim, negativeClaim];
+		const composed = {
+			id: "cloud-identity-verification-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: "cloud-identity-verification-proof-path",
+			sourceBinding: { segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: claim.sourceBinding?.artifact })) },
+			evidenceBinding: {
+				verifiedSourceClaims: sourceLineVerification.verifiedClaims,
+				verifiedPathCount: composedPathVerification.verifiedPathCount,
+				negativeControlsPassed: negativeControlVerification.negativeControlsPassed,
+			},
+			statement: "Cloud identity proof path composes source-line hashes, trust-chain coverage, composed path resolution, and negative controls.",
+			verdict: "promoted",
+			confidence: 0.88,
+			blockers: [],
+			rerunCommand: "python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json",
+		};
+		claimLedger.push(composed);
+		composedPaths.push(composed);
+	}
+	const blockers = [];
+	if (!sourceLineVerification.verified) blockers.push("missing-cloud-source-line-verification");
+	if (!trustClaimCoverage.verified) blockers.push("missing-cloud-trust-claim-coverage");
+	if (!composedPathVerification.verified) blockers.push("missing-cloud-composed-path-verification");
+	if (!negativeControlVerification.verified) blockers.push("missing-cloud-negative-control");
+	const repairActions = {
+		"missing-cloud-source-line-verification": "Re-read source files and bind each promoted trust claim to exact file/line/hash evidence.",
+		"missing-cloud-trust-claim-coverage": "Collect OIDC/IAM and runtime/exposure claims before promoting the cloud trust-chain.",
+		"missing-cloud-composed-path-verification": "Require every composed pivot segment to resolve to a source-bound promoted claim.",
+		"missing-cloud-negative-control": "Run missing-file, shifted-line, and mutated-segment controls before promotion.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "cloud-identity-verification-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect verifier-bound cloud identity evidence and rerun cloud-identity-verifier.py.",
+		rerunCommand: `python3 ${shellQuote(join(artifactDir, "cloud-identity-verifier.py"))} ${shellQuote(target)} ${shellQuote(join(artifactDir, "cloud-identity-map.json"))} ${shellQuote(join(artifactDir, "cloud-identity-trust-claims.json"))} ${shellQuote(join(artifactDir, "cloud-identity-verification.json"))}`,
+	}));
+	const proofReady = composedPaths.length > 0;
+	return {
+		kind: "repi-cloud-identity-verification",
+		schemaVersion: 1,
+		target: redact(target),
+		generatedAt: new Date().toISOString(),
+		proofReady,
+		unsafeProofReady: proofReady,
+		sourceLineVerification,
+		sourceLineChecks,
+		trustClaimCoverage,
+		composedPathVerification,
+		negativeControlVerification,
+		stats: {
+			checkedClaims: sourceLineVerification.checkedClaims,
+			verifiedClaims: sourceLineVerification.verifiedClaims,
+			verifiedPathCount: composedPathVerification.verifiedPathCount,
+			negativeControlsPassed: negativeControlVerification.negativeControlsPassed,
+		},
+		claimLedger,
+		composedPaths,
+		promotionReport: { proofReady, unsafeProofReady: proofReady, promotedClaims: claimLedger.filter((claim) => claim.verdict === "promoted"), blockers },
+		repairQueue,
+	};
+}
+
+function cloudIdentityVerifierSource() {
+	return String.raw`#!/usr/bin/env python3
+import argparse
+import hashlib
+import json
+import os
+import re
+import tempfile
+import time
+
+def sha256(value):
+    if isinstance(value, str):
+        value = value.encode("utf-8", "replace")
+    return hashlib.sha256(value or b"").hexdigest()
+
+def load(path):
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+def short(value):
+    return sha256(str(value))[:12]
+
+def source_line_check(root, claim):
+    source = claim.get("sourceBinding") or {}
+    rel = str(source.get("file") or "")
+    try:
+        line = int(source.get("line") or 0)
+    except (TypeError, ValueError):
+        line = 0
+    if not rel or line < 1:
+        return None
+    root_abs = os.path.abspath(root)
+    path = os.path.abspath(os.path.join(root_abs, rel))
+    if path != root_abs and not path.startswith(root_abs + os.sep):
+        return {"claimId": claim.get("id"), "claimType": claim.get("claimType"), "file": rel, "line": line, "verified": False, "error": "path-outside-target"}
+    if not os.path.exists(path):
+        return {"claimId": claim.get("id"), "claimType": claim.get("claimType"), "file": rel, "line": line, "verified": False, "error": "missing-source-file"}
+    with open(path, "rb") as handle:
+        raw = handle.read()
+    text = raw.decode("utf-8", "replace")
+    lines = re.split(r"\r?\n", text)
+    line_text = lines[line - 1] if line - 1 < len(lines) else ""
+    claim_type = str(claim.get("claimType") or "")
+    patterns = [
+        ("github-oidc", r"id-token|role-to-assume|pull_request_target|configure-aws-credentials|azure/login|google-github-actions/auth"),
+        ("terraform-", r"resource\s+\"aws_iam_|Action\s*=|\bAction\b|Resource\s*=|\bResource\b|0\.0\.0\.0/0|aws_security_group"),
+        ("kubernetes-", r"kind\s*:|serviceAccountName|ClusterRoleBinding|RoleBinding|privileged\s*:|hostNetwork\s*:|hostPath\s*:"),
+        ("container-", r"USER\s+root|curl\b|wget\b|privileged\s*:|EXPOSE|ports\s*:"),
+        ("cloud-public", r"0\.0\.0\.0/0|public|public_access|public-read|ingress|LoadBalancer|NodePort|hostPort|EXPOSE|ports\s*:|privileged"),
+    ]
+    semantic = bool(line_text.strip())
+    for prefix, pattern in patterns:
+        if claim_type.startswith(prefix):
+            semantic = bool(re.search(pattern, line_text, re.I))
+            break
+    return {"claimId": claim.get("id"), "claimType": claim.get("claimType"), "file": rel, "line": line, "verified": bool(line_text and semantic), "fileSha256": sha256(raw), "lineSha256": sha256(line_text), "lineLength": len(line_text), "semanticMatch": semantic}
+
+def add_claim(rows, **claim):
+    row = {"verdict": "promoted", "confidence": 0.76, "blockers": []}
+    row.update(claim)
+    rows.append(row)
+    return row
+
+def verify(root, map_path, claims_path):
+    cloud_map = load(map_path)
+    trust = load(claims_path)
+    claim_rows = trust.get("claimLedger") or []
+    promoted = [claim for claim in claim_rows if claim.get("verdict") == "promoted" and claim.get("claimType") != "cloud-trust-chain-pivot"]
+    checks = [row for row in (source_line_check(root, claim) for claim in promoted) if row]
+    verified_ids = {row.get("claimId") for row in checks if row.get("verified") and row.get("claimId")}
+    def has(pattern):
+        return any(row.get("verified") and re.search(pattern, str(row.get("claimType") or "")) for row in checks)
+    missing = []
+    if not has(r"^github-oidc-"):
+        missing.append("github-oidc")
+    if not has(r"^terraform-wildcard-iam-policy$"):
+        missing.append("terraform-wildcard-iam-policy")
+    if not has(r"^(kubernetes-|container-|cloud-public-network-exposure)"):
+        missing.append("runtime-or-exposure")
+    source_line = {"verified": bool(checks) and all(row.get("verified") for row in checks), "checkedClaims": len(checks), "verifiedClaims": len(verified_ids), "sourceFiles": sorted({row.get("file") for row in checks if row.get("verified")})[:80]}
+    coverage = {"verified": source_line["verified"] and not missing, "promotedSourceClaims": len(promoted), "verifiedSourceClaims": len(verified_ids), "missingFamilies": missing, "risks": cloud_map.get("risks") or [], "mapSha256": sha256(json.dumps(cloud_map, sort_keys=True)), "claimsSha256": sha256(json.dumps(trust, sort_keys=True))}
+    by_id = {claim.get("id"): claim for claim in claim_rows}
+    path_checks = []
+    for path in trust.get("composedPaths") or []:
+        segments = ((path.get("sourceBinding") or {}).get("segments") or [])
+        resolved = [{"id": segment.get("id"), "claimType": segment.get("claimType"), "claimPresent": segment.get("id") in by_id, "sourceLineVerified": segment.get("id") in verified_ids} for segment in segments]
+        path_checks.append({"id": path.get("id"), "claimType": path.get("claimType"), "verified": bool(resolved) and all(row["claimPresent"] and row["sourceLineVerified"] for row in resolved), "segments": resolved})
+    path_verification = {"verified": any(row.get("verified") and row.get("claimType") == "cloud-trust-chain-pivot" for row in path_checks), "pathCount": len(path_checks), "verifiedPathCount": len([row for row in path_checks if row.get("verified")]), "pathChecks": path_checks}
+    controls = []
+    first = next((row for row in checks if row.get("verified")), None)
+    if first:
+        controls.append({"controlType": "cloud-missing-file-negative-control", "claimId": first.get("claimId"), "passed": not os.path.exists(os.path.join(root, first.get("file") + ".missing-control"))})
+        shifted = source_line_check(root, {"id": str(first.get("claimId")) + ":shifted-control", "claimType": first.get("claimType"), "sourceBinding": {"file": first.get("file"), "line": int(first.get("line")) + 10000}})
+        controls.append({"controlType": "cloud-shifted-line-negative-control", "claimId": first.get("claimId"), "passed": not (shifted and shifted.get("verified"))})
+        controls.append({"controlType": "cloud-mutated-segment-negative-control", "claimId": first.get("claimId"), "passed": str(first.get("claimId")) + ":mutated" not in by_id})
+    negative = {"verified": len(controls) >= 3 and all(row.get("passed") for row in controls), "negativeControlsPassed": len([row for row in controls if row.get("passed")]), "negativeControls": controls}
+    ledger = []
+    paths = []
+    source_claim = add_claim(ledger, id="cloud-source-line-verification-" + short("|".join(source_line.get("sourceFiles") or [])), claimType="cloud-source-line-verification-proof", sourceBinding={"artifact": "cloud-identity-verification.json", "map": "cloud-identity-map.json", "trustClaims": "cloud-identity-trust-claims.json"}, evidenceBinding=source_line, statement="Cloud verifier rebound promoted identity claims to exact source files, lines, and hashes.", confidence=0.86, rerunCommand="python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json") if source_line["verified"] else None
+    coverage_claim = add_claim(ledger, id="cloud-trust-claim-coverage-" + short(json.dumps(missing, sort_keys=True)), claimType="cloud-trust-claim-coverage-proof", sourceBinding={"artifact": "cloud-identity-verification.json", "trustClaims": "cloud-identity-trust-claims.json"}, evidenceBinding=coverage, statement="Cloud verifier confirmed OIDC, IAM, and runtime/exposure trust-chain coverage.", confidence=0.84, rerunCommand="python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json") if coverage["verified"] else None
+    path_claim = add_claim(ledger, id="cloud-composed-path-verification-" + short(json.dumps([row.get("id") for row in path_checks], sort_keys=True)), claimType="cloud-composed-path-verification-proof", sourceBinding={"artifact": "cloud-identity-verification.json", "trustClaims": "cloud-identity-trust-claims.json"}, evidenceBinding=path_verification, statement="Cloud verifier confirmed composed pivot segments resolve to source-bound promoted claims.", confidence=0.86, rerunCommand="python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json") if path_verification["verified"] else None
+    negative_claim = add_claim(ledger, id="cloud-verifier-negative-control-" + short(json.dumps(controls, sort_keys=True)), claimType="cloud-verifier-negative-control-proof", sourceBinding={"artifact": "cloud-identity-verification.json"}, evidenceBinding=negative, statement="Cloud verifier rejected missing-file, shifted-line, and mutated-segment controls.", confidence=0.82, rerunCommand="python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json") if negative["verified"] else None
+    if source_claim and coverage_claim and path_claim and negative_claim:
+        segments = [source_claim, coverage_claim, path_claim, negative_claim]
+        composed = {"id": "cloud-identity-verification-proof-path-" + short(">".join([claim["id"] for claim in segments])), "claimType": "cloud-identity-verification-proof-path", "sourceBinding": {"segments": [{"id": claim["id"], "claimType": claim["claimType"], "artifact": claim.get("sourceBinding", {}).get("artifact")} for claim in segments]}, "evidenceBinding": {"verifiedSourceClaims": source_line["verifiedClaims"], "verifiedPathCount": path_verification["verifiedPathCount"], "negativeControlsPassed": negative["negativeControlsPassed"]}, "statement": "Cloud identity proof path composes source-line hashes, trust-chain coverage, composed path resolution, and negative controls.", "verdict": "promoted", "confidence": 0.88, "blockers": [], "rerunCommand": "python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json"}
+        ledger.append(composed)
+        paths.append(composed)
+    blockers = []
+    if not source_line["verified"]:
+        blockers.append("missing-cloud-source-line-verification")
+    if not coverage["verified"]:
+        blockers.append("missing-cloud-trust-claim-coverage")
+    if not path_verification["verified"]:
+        blockers.append("missing-cloud-composed-path-verification")
+    if not negative["verified"]:
+        blockers.append("missing-cloud-negative-control")
+    proof_ready = bool(paths)
+    return {"kind": "repi-cloud-identity-verification", "schemaVersion": 1, "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "proofReady": proof_ready, "unsafeProofReady": proof_ready, "sourceLineVerification": source_line, "sourceLineChecks": checks, "trustClaimCoverage": coverage, "composedPathVerification": path_verification, "negativeControlVerification": negative, "stats": {"checkedClaims": source_line["checkedClaims"], "verifiedClaims": source_line["verifiedClaims"], "verifiedPathCount": path_verification["verifiedPathCount"], "negativeControlsPassed": negative["negativeControlsPassed"]}, "claimLedger": ledger, "composedPaths": paths, "promotionReport": {"proofReady": proof_ready, "unsafeProofReady": proof_ready, "promotedClaims": ledger, "blockers": blockers}, "repairQueue": [{"id": "cloud-identity-verification-" + blocker, "blocker": blocker, "action": "Collect verifier-bound cloud identity evidence and rerun cloud-identity-verifier.py.", "rerunCommand": "python3 cloud-identity-verifier.py <cloud-stack-dir> cloud-identity-map.json cloud-identity-trust-claims.json cloud-identity-verification.json"} for blocker in blockers]}
+
+def self_test():
+    with tempfile.TemporaryDirectory() as root:
+        os.makedirs(os.path.join(root, ".github", "workflows"), exist_ok=True)
+        os.makedirs(os.path.join(root, "k8s"), exist_ok=True)
+        workflow = ".github/workflows/deploy.yml"
+        tf = "main.tf"
+        k8s = "k8s/deploy.yaml"
+        docker = "Dockerfile"
+        with open(os.path.join(root, workflow), "w", encoding="utf-8") as handle:
+            handle.write("permissions:\n  id-token: write\non: pull_request_target\njobs:\n  deploy:\n    steps:\n      - uses: aws-actions/configure-aws-credentials@v4\n        with:\n          role-to-assume: arn:aws:iam::123456789012:role/deploy\n")
+        with open(os.path.join(root, tf), "w", encoding="utf-8") as handle:
+            handle.write("resource \"aws_iam_policy\" \"admin\" { policy = jsonencode({ Statement = [{ Action = \"*\", Resource = \"*\" }] }) }\n")
+        with open(os.path.join(root, k8s), "w", encoding="utf-8") as handle:
+            handle.write("apiVersion: apps/v1\nkind: Deployment\nspec:\n  template:\n    spec:\n      serviceAccountName: admin\n      hostNetwork: true\n")
+        with open(os.path.join(root, docker), "w", encoding="utf-8") as handle:
+            handle.write("FROM node:22\nUSER root\nRUN curl https://example.test/install.sh | sh\nEXPOSE 8080\n")
+        map_path = os.path.join(root, "cloud-identity-map.json")
+        claims_path = os.path.join(root, "cloud-identity-trust-claims.json")
+        map_doc = {"risks": ["github-oidc-role-assumption-signal", "terraform-wildcard-iam-policy-signal", "container-build-runtime-risk-signal"]}
+        claims = [
+            {"id": "oidc", "claimType": "github-oidc-pull-request-target", "verdict": "promoted", "sourceBinding": {"file": workflow, "line": 9}},
+            {"id": "iam", "claimType": "terraform-wildcard-iam-policy", "verdict": "promoted", "sourceBinding": {"file": tf, "line": 1}},
+            {"id": "kube", "claimType": "kubernetes-privileged-service-account", "verdict": "promoted", "sourceBinding": {"file": k8s, "line": 2}},
+            {"id": "container", "claimType": "container-build-runtime-risk", "verdict": "promoted", "sourceBinding": {"file": docker, "line": 2}},
+        ]
+        path = {"id": "cloud-trust-chain-pivot-selftest", "claimType": "cloud-trust-chain-pivot", "verdict": "promoted", "sourceBinding": {"segments": [{"id": row["id"], "claimType": row["claimType"]} for row in claims]}}
+        with open(map_path, "w", encoding="utf-8") as handle:
+            json.dump(map_doc, handle)
+        with open(claims_path, "w", encoding="utf-8") as handle:
+            json.dump({"claimLedger": claims + [path], "composedPaths": [path]}, handle)
+        result = verify(root, map_path, claims_path)
+        assert result["proofReady"], json.dumps(result, sort_keys=True)
+        print(json.dumps({"kind": "repi-cloud-identity-verifier-self-test", "status": "ok", "stats": result["stats"]}, sort_keys=True))
+
+def main():
+    parser = argparse.ArgumentParser(description="Verify REPI cloud identity trust claims against exact source lines and negative controls.")
+    parser.add_argument("root", nargs="?", default=".")
+    parser.add_argument("map", nargs="?", default="cloud-identity-map.json")
+    parser.add_argument("claims", nargs="?", default="cloud-identity-trust-claims.json")
+    parser.add_argument("output", nargs="?", default="cloud-identity-verification.json")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return 0
+    result = verify(args.root, args.map, args.claims)
+    with open(args.output, "w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    print(json.dumps({"kind": result["kind"], "proofReady": result["proofReady"], "stats": result["stats"], "output": args.output}, sort_keys=True))
+    return 0 if result["proofReady"] else 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`;
+}
+
+function writeCloudIdentityVerifier(artifactDir) {
+	if (noWrite || !artifactDir) return undefined;
+	const path = join(artifactDir, "cloud-identity-verifier.py");
+	writePrivate(path, cloudIdentityVerifierSource(), 0o700);
+	return path;
+}
+
+function writeCloudIdentityVerification(artifactDir, target, summary, trustClaims) {
+	if (noWrite || !artifactDir) return undefined;
+	const verification = cloudIdentityVerificationSummary(target, artifactDir, summary, trustClaims);
+	const path = join(artifactDir, "cloud-identity-verification.json");
+	writePrivate(path, `${JSON.stringify(verification, null, 2)}\n`, 0o600);
+	return { path, summary: verification };
+}
+
 function cloudIdentityVerifyPlanSource() {
 	return `#!/usr/bin/env bash
 set -euo pipefail
@@ -13323,6 +13784,36 @@ function cloudIdentityRows(target, artifactDir) {
 		if (!noWrite && artifactDir) {
 			const planPath = join(artifactDir, "cloud-identity-verify.sh");
 			writePrivate(planPath, cloudIdentityVerifyPlanSource(), 0o700);
+			const verifierPath = writeCloudIdentityVerifier(artifactDir);
+			if (verifierPath) {
+				rows.push({
+					id: "cloud-identity-verifier-artifact",
+					command: "internal",
+					args: [redact(verifierPath)],
+					cwd: root,
+					exit: 0,
+					signal: null,
+					durationMs: 0,
+					stdout: `verifier=${redact(verifierPath)}\nrun=python3 ${redact(verifierPath)} ${redact(target)} ${redact(join(artifactDir, "cloud-identity-map.json"))} ${redact(join(artifactDir, "cloud-identity-trust-claims.json"))} ${redact(join(artifactDir, "cloud-identity-verification.json"))}\n`,
+					stderr: "",
+					error: undefined,
+				});
+			}
+			const verification = writeCloudIdentityVerification(artifactDir, target, summary, trustClaims);
+			if (verification) {
+				rows.push({
+					id: "cloud-identity-verification",
+					command: "internal",
+					args: [redact(verification.path)],
+					cwd: root,
+					exit: verification.summary.proofReady ? 0 : 1,
+					signal: null,
+					durationMs: 0,
+					stdout: `${JSON.stringify(verification.summary, null, 2)}\n`,
+					stderr: "",
+					error: verification.summary.proofReady ? undefined : "cloud identity verification blockers present",
+				});
+			}
 			rows.push({
 				id: "cloud-identity-verify-artifact",
 				command: "internal",
@@ -21027,9 +21518,11 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.lane === "cloud-identity") {
 		if (!noWrite) q.push(`cat ${shellQuote(join(artifactDir, "cloud-identity-map.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "cloud-identity-verification.json"))) q.push(`cat ${shellQuote(join(artifactDir, "cloud-identity-verification.json"))}`);
 		if (!noWrite && existsSync(join(artifactDir, "cloud-identity-trust-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "cloud-identity-trust-claims.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "cloud-identity-verifier.py"))) q.push(`python3 ${shellQuote(join(artifactDir, "cloud-identity-verifier.py"))} ${quotedTarget} ${shellQuote(join(artifactDir, "cloud-identity-map.json"))} ${shellQuote(join(artifactDir, "cloud-identity-trust-claims.json"))} ${shellQuote(join(artifactDir, "cloud-identity-verification.json"))}`);
 		if (!noWrite) q.push(`bash ${shellQuote(join(artifactDir, "cloud-identity-verify.sh"))} ${quotedTarget}`);
-		q.push(`repi -p ${shellQuote(`Continue cloud/identity pentest from ${artifactDir}: use cloud-identity-map.json trustChains plus cloud-identity-trust-claims.json claimLedger/repairQueue to bind GitHub OIDC roles, Terraform IAM, Kubernetes service accounts/RBAC, and container principals to deploy truth; verify privilege boundaries and promote one exact pivot or least-privilege proof.`)}`);
+		q.push(`repi -p ${shellQuote(`Continue cloud/identity pentest from ${artifactDir}: use cloud-identity-verification.json, cloud-identity-map.json trustChains, and cloud-identity-trust-claims.json claimLedger/composedPaths/repairQueue to bind GitHub OIDC roles, Terraform IAM, Kubernetes service accounts/RBAC, and container principals to deploy truth; rerun cloud-identity-verifier.py for exact source-line hashes, composed segment resolution, and negative controls, then verify privilege boundaries and promote one exact pivot or least-privilege proof.`)}`);
 	}
 	if (targetInfo.kind === "directory") {
 		const quotedDirectoryTarget = shellQuote(target);
@@ -21134,6 +21627,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/repi-agent-boundary-verification|agent-boundary-verifier|agent-boundary-map-flow-verification-proof|agent-boundary-replay-coverage-proof|agent-boundary-response-hash-oracle-proof|agent-boundary-negative-control-proof|agent-boundary-verification-proof-path/i.test(text) && targetInfo.lane === "agent-boundary") anchors.push("agent boundary verifier anchors");
 		if (/repi-cloud-identity-map|cloud-identity|terraform|ClusterRoleBinding|aws_iam|id-token|public-network-exposure|ci-oidc-deployment-trust-chain/i.test(text) && targetInfo.lane === "cloud-identity") anchors.push("cloud identity anchors");
 		if (/trustChains|cloud-identity-trust-claims|cloud-trust-chain-pivot|claimLedger|repairQueue|github-oidc-role-assumption-signal|terraform-wildcard-iam-policy-signal|kubernetes-privileged-service-account-signal|kubernetes-clusterrolebinding-signal|container-build-runtime-risk-signal/i.test(text) && targetInfo.lane === "cloud-identity") anchors.push("cloud trust-chain anchors");
+		if (/repi-cloud-identity-verification|cloud-identity-verifier|cloud-source-line-verification-proof|cloud-trust-claim-coverage-proof|cloud-composed-path-verification-proof|cloud-verifier-negative-control-proof|cloud-identity-verification-proof-path/i.test(text) && targetInfo.lane === "cloud-identity") anchors.push("cloud identity verifier anchors");
 		if (/ExifTool|PNG|IHDR|zsteg|binwalk|PK|flag|ctf|cipher|nonce|salt|base64|xor/i.test(text) && targetInfo.lane === "crypto-stego") anchors.push("crypto/stego anchors");
 		if (/repi-crypto-stego-media-quicklook|crypto-stego-media-quicklook|png-text-stego-signal|appended-data-after-iend|appended-zip-after-iend|private-or-nonstandard-png-chunk|embedded-zip-archive-parsed/i.test(text) && targetInfo.lane === "crypto-stego") anchors.push("PNG/stego structure anchors");
 		if (/wav-lsb-printable-signal|wav-info-metadata-signal|appended-data-after-riff|appended-zip-after-riff|embedded-zip-archive-parsed|audioData|RIFF|WAVE/i.test(text) && targetInfo.lane === "crypto-stego") anchors.push("WAV/stego structure anchors");

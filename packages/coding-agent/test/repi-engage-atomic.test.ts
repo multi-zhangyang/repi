@@ -2072,23 +2072,36 @@ jobs:
 		expect(report.target.lane).toBe("cloud-identity");
 		expect(report.commands.map((row) => row.id)).toContain("cloud-identity-map");
 		expect(report.commands.map((row) => row.id)).toContain("cloud-identity-trust-claims");
+		expect(report.commands.map((row) => row.id)).toContain("cloud-identity-verifier-artifact");
+		expect(report.commands.map((row) => row.id)).toContain("cloud-identity-verification");
 		expect(report.commands.map((row) => row.id)).toContain("cloud-identity-verify-artifact");
 		expect(report.summary.anchors).toContain("cloud identity anchors");
 		expect(report.summary.anchors).toContain("cloud trust-chain anchors");
+		expect(report.summary.anchors).toContain("cloud identity verifier anchors");
 		expect(report.summary.missingCritical).not.toContain("terraform");
 		expect(report.nextQueue.some((command) => command.includes("cloud-identity-map.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("cloud-identity-verification.json"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("cloud-identity-trust-claims.json"))).toBe(true);
+		expect(report.nextQueue.some((command) => command.includes("cloud-identity-verifier.py"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("cloud-identity-verify.sh"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("claimLedger"))).toBe(true);
 		expect(report.nextQueue.some((command) => command.includes("trustChains"))).toBe(true);
 		const mapPath = join(report.artifactDir, "cloud-identity-map.json");
+		const verificationPath = join(report.artifactDir, "cloud-identity-verification.json");
 		const trustClaimsPath = join(report.artifactDir, "cloud-identity-trust-claims.json");
+		const verifierPath = join(report.artifactDir, "cloud-identity-verifier.py");
 		const verifyPath = join(report.artifactDir, "cloud-identity-verify.sh");
+		const proofGraphPath = join(report.artifactDir, "repi-proof-graph.json");
 		expect(existsSync(mapPath)).toBe(true);
+		expect(existsSync(verificationPath)).toBe(true);
 		expect(existsSync(trustClaimsPath)).toBe(true);
+		expect(existsSync(verifierPath)).toBe(true);
 		expect(existsSync(verifyPath)).toBe(true);
+		expect(existsSync(proofGraphPath)).toBe(true);
 		expect(statSync(mapPath).mode & 0o777).toBe(0o600);
+		expect(statSync(verificationPath).mode & 0o777).toBe(0o600);
 		expect(statSync(trustClaimsPath).mode & 0o777).toBe(0o600);
+		expect(statSync(verifierPath).mode & 0o777).toBe(0o700);
 		expect(statSync(verifyPath).mode & 0o777).toBe(0o700);
 		const map = JSON.parse(readFileSync(mapPath, "utf8")) as {
 			risks: string[];
@@ -2125,6 +2138,29 @@ jobs:
 		};
 		expect(JSON.stringify(trustClaims)).not.toContain(secret);
 		expect(JSON.stringify(trustClaims)).not.toContain("AKIAIOSFODNN7EXAMPLE");
+		const verification = JSON.parse(readFileSync(verificationPath, "utf8")) as {
+			proofReady: boolean;
+			unsafeProofReady: boolean;
+			sourceLineVerification: { verified: boolean };
+			trustClaimCoverage: { verified: boolean };
+			composedPathVerification: { verified: boolean };
+			negativeControlVerification: { verified: boolean };
+			stats: {
+				checkedClaims: number;
+				verifiedClaims: number;
+				verifiedPathCount: number;
+				negativeControlsPassed: number;
+			};
+			claimLedger: Array<{ claimType: string }>;
+			composedPaths: Array<{ claimType: string }>;
+			repairQueue: Array<{ blocker: string }>;
+		};
+		const proofGraph = JSON.parse(readFileSync(proofGraphPath, "utf8")) as {
+			claimLedger: Array<{ claimType: string }>;
+			composedPaths: Array<{ claimType: string }>;
+		};
+		expect(JSON.stringify(verification)).not.toContain(secret);
+		expect(JSON.stringify(verification)).not.toContain("AKIAIOSFODNN7EXAMPLE");
 		expect(trustClaims.proofReady).toBe(true);
 		expect(
 			trustClaims.claimLedger.some(
@@ -2154,6 +2190,32 @@ jobs:
 			trustClaims.promotionReport.promotedClaims.some((claim) => claim.claimType === "cloud-trust-chain-pivot"),
 		).toBe(true);
 		expect(trustClaims.repairQueue.some((row) => row.blocker === "missing-oidc-role")).toBe(false);
+		expect(verification.proofReady).toBe(true);
+		expect(verification.unsafeProofReady).toBe(true);
+		expect(verification.sourceLineVerification.verified).toBe(true);
+		expect(verification.trustClaimCoverage.verified).toBe(true);
+		expect(verification.composedPathVerification.verified).toBe(true);
+		expect(verification.negativeControlVerification.verified).toBe(true);
+		expect(verification.stats.checkedClaims).toBeGreaterThan(0);
+		expect(verification.stats.verifiedClaims).toBeGreaterThan(0);
+		expect(verification.stats.verifiedPathCount).toBeGreaterThan(0);
+		expect(verification.stats.negativeControlsPassed).toBeGreaterThanOrEqual(3);
+		expect(verification.claimLedger.map((claim) => claim.claimType)).toEqual(
+			expect.arrayContaining([
+				"cloud-source-line-verification-proof",
+				"cloud-trust-claim-coverage-proof",
+				"cloud-composed-path-verification-proof",
+				"cloud-verifier-negative-control-proof",
+			]),
+		);
+		expect(verification.composedPaths.map((path) => path.claimType)).toContain(
+			"cloud-identity-verification-proof-path",
+		);
+		expect(verification.repairQueue).toEqual([]);
+		expect(proofGraph.claimLedger.map((claim) => claim.claimType)).toContain("cloud-source-line-verification-proof");
+		expect(proofGraph.composedPaths.map((path) => path.claimType)).toContain(
+			"cloud-identity-verification-proof-path",
+		);
 		expect(map.risks).toEqual(
 			expect.arrayContaining([
 				"secret-or-credential-surface",
@@ -2197,8 +2259,18 @@ jobs:
 		expect(existsSync(proofMatrixPath)).toBe(true);
 		const proofMatrix = JSON.parse(readFileSync(proofMatrixPath, "utf8")) as {
 			artifacts: Array<{ relPath: string }>;
+			liveChecks: Array<{ id: string }>;
 		};
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("cloud-identity-verification.json");
+		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("cloud-identity-verifier.py");
 		expect(proofMatrix.artifacts.map((row) => row.relPath)).toContain("cloud-identity-trust-claims.json");
+		expect(proofMatrix.liveChecks.map((row) => row.id)).toContain("cloud-identity-verifier-self-test");
+		const verifier = spawnSync("python3", [verifierPath, "--self-test"], {
+			encoding: "utf8",
+			timeout: 15_000,
+		});
+		expect(verifier.status, `${verifier.stderr}\n${verifier.stdout}`).toBe(0);
+		expect(verifier.stdout).toContain("repi-cloud-identity-verifier-self-test");
 		expect(collectTmp(agentDir)).toEqual([]);
 	});
 
