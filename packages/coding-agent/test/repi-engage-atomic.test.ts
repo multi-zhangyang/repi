@@ -5967,18 +5967,29 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 			expect(JSON.stringify(report)).not.toContain(schemaSecret);
 			expect(report.commands.map((row) => row.id)).toContain("web-api-schema-probes");
 			expect(report.commands.map((row) => row.id)).toContain("web-exploit-claims");
+			expect(report.commands.map((row) => row.id)).toContain("web-exploit-verifier-artifact");
+			expect(report.commands.map((row) => row.id)).toContain("web-exploit-verification");
 			expect(report.commands.some((row) => row.id.startsWith("web-graphql-"))).toBe(true);
 			expect(report.commands.some((row) => row.id.startsWith("web-openapi-"))).toBe(true);
 			expect(report.summary.anchors).toContain("API schema anchors");
 			expect(report.summary.anchors).toContain("web exploit claim anchors");
+			expect(report.summary.anchors).toContain("web exploit verifier anchors");
 			expect(report.nextQueue.some((command) => command.includes("web-api-schema-probes.json"))).toBe(true);
 			expect(report.nextQueue.some((command) => command.includes("web-exploit-claims.json"))).toBe(true);
+			expect(report.nextQueue.some((command) => command.includes("web-exploit-verification.json"))).toBe(true);
+			expect(report.nextQueue.some((command) => command.includes("web-exploit-verifier.mjs"))).toBe(true);
 			const schemaPath = join(report.artifactDir, "web-api-schema-probes.json");
 			const claimsPath = join(report.artifactDir, "web-exploit-claims.json");
+			const verificationPath = join(report.artifactDir, "web-exploit-verification.json");
+			const verifierPath = join(report.artifactDir, "web-exploit-verifier.mjs");
 			expect(existsSync(schemaPath)).toBe(true);
 			expect(existsSync(claimsPath)).toBe(true);
+			expect(existsSync(verificationPath)).toBe(true);
+			expect(existsSync(verifierPath)).toBe(true);
 			expect(statSync(schemaPath).mode & 0o777).toBe(0o600);
 			expect(statSync(claimsPath).mode & 0o777).toBe(0o600);
+			expect(statSync(verificationPath).mode & 0o777).toBe(0o600);
+			expect(statSync(verifierPath).mode & 0o777).toBe(0o700);
 			const schema = JSON.parse(readFileSync(schemaPath, "utf8")) as {
 				rows: Array<{
 					kind: string;
@@ -6113,6 +6124,39 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 					(claim) => claim.claimType === "openapi-unauthenticated-upload-surface" && claim.verdict === "promoted",
 				),
 			).toBe(true);
+			const verification = JSON.parse(readFileSync(verificationPath, "utf8")) as {
+				proofReady: boolean;
+				runtimeProofReady: boolean;
+				claimLedger: Array<{ claimType: string; verdict: string }>;
+				composedPaths: Array<{ claimType: string; verdict: string }>;
+				negativeControlVerification: { negativeControlsPassed: number };
+				repairQueue: Array<{ blocker: string }>;
+			};
+			expect(JSON.stringify(verification)).not.toContain(schemaSecret);
+			expect(verification.proofReady).toBe(true);
+			expect(verification.runtimeProofReady).toBe(false);
+			expect(
+				verification.claimLedger.some((claim) => claim.claimType === "web-artifact-hash-verification-proof"),
+			).toBe(true);
+			expect(
+				verification.claimLedger.some((claim) => claim.claimType === "web-replay-hash-verification-proof"),
+			).toBe(true);
+			expect(
+				verification.claimLedger.some((claim) => claim.claimType === "web-runtime-negative-control-proof"),
+			).toBe(true);
+			expect(
+				verification.composedPaths.some((path) => path.claimType === "web-exploit-verification-blocked-path"),
+			).toBe(true);
+			expect(verification.negativeControlVerification.negativeControlsPassed).toBeGreaterThanOrEqual(4);
+			expect(verification.repairQueue.some((row) => row.blocker === "missing-web-live-runtime-replay-proof")).toBe(
+				true,
+			);
+			const verifierSelfTest = spawnSync(process.execPath, [verifierPath, "--self-test"], {
+				encoding: "utf8",
+				timeout: 5000,
+			});
+			expect(verifierSelfTest.status, `${verifierSelfTest.stderr}\n${verifierSelfTest.stdout}`).toBe(0);
+			expect(verifierSelfTest.stdout).toContain("repi-web-exploit-verifier-self-test");
 			expect(collectTmp(agentDir)).toEqual([]);
 		} finally {
 			server.kill("SIGTERM");

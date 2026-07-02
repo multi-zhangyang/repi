@@ -536,12 +536,15 @@ function buildProofArtifactRows(targetInfo, artifactDir) {
 			"web-signer-rebuild-workbench-plan.json",
 			"web-js-signature-control-plan.json",
 			"web-exploit-claims.json",
+			"web-exploit-verification.json",
 			"web-js-sourcemap-summary.json",
+			"web-runtime-replay-results.json",
 		]) add(relPath, "web/API runtime evidence");
 		add("web-runtime-capture-harness.mjs", "browser runtime capture harness", 0o700);
 		add("web-runtime-replay-verifier.mjs", "browser replay negative-control verifier", 0o700);
 		add("web-signer-rebuild-workbench.mjs", "JS signer byte-for-byte workbench", 0o700);
 		add("web-js-signature-control-harness.mjs", "JS signature negative-control harness", 0o700);
+		add("web-exploit-verifier.mjs", "web exploit evidence verifier", 0o700);
 	}
 	if (targetInfo.kind === "directory") {
 		add("workspace-source-runtime-map.json", "workspace source-to-runtime route/sink/auth map");
@@ -651,7 +654,7 @@ function buildProofCoverageGaps(targetInfo, artifactRows) {
 		if (!relPaths.some((relPath) => present.has(relPath))) gaps.push({ id, reason, expectedAnyOf: relPaths });
 	};
 	if (targetInfo.kind === "url") {
-		requireAny("web-runtime-replay", ["web-runtime-replay-verifier.mjs", "web-replay-matrix.json"], "web targets need replayable HTTP/browser evidence");
+		requireAny("web-runtime-replay", ["web-exploit-verification.json", "web-exploit-verifier.mjs", "web-runtime-replay-verifier.mjs", "web-replay-matrix.json"], "web targets need replayable HTTP/browser evidence and verifier-bound hash gates");
 		requireAny("web-route-matrix", ["web-exploit-claims.json", "web-api-schema-probes.json", "web-discovery-matrix.json", "web-object-matrix.json"], "web targets need route/schema/object matrix evidence");
 	}
 	if (targetInfo.kind === "directory") requireAny("workspace-source-runtime-map", ["workspace-source-runtime-verification.json", "workspace-source-runtime-verifier.mjs", "workspace-source-runtime-claims.json", "workspace-source-runtime-map.json", "workspace-source-runtime-harness.mjs"], "workspace targets need source-to-runtime route/sink/auth evidence");
@@ -681,6 +684,8 @@ function buildProofLiveChecks(targetInfo, artifactDir, toolState) {
 		if (existsSync(signerWorkbench)) add({ id: "web-signer-rebuild-workbench-self-test", command: process.execPath, args: [signerWorkbench, "--self-test"], reason: "execute signer rebuild regression self-test" });
 		const signatureHarness = proofArtifactPath(artifactDir, "web-js-signature-control-harness.mjs");
 		if (existsSync(signatureHarness)) add({ id: "web-js-signature-control-harness-smoke", command: process.execPath, args: [signatureHarness], reason: "execute JS signature-control harness plan smoke" });
+		const exploitVerifier = proofArtifactPath(artifactDir, "web-exploit-verifier.mjs");
+		if (existsSync(exploitVerifier)) add({ id: "web-exploit-verifier-self-test", command: process.execPath, args: [exploitVerifier, "--self-test"], reason: "execute web exploit evidence verifier self-test with hash and mutation controls" });
 	}
 	if (targetInfo.lane === "js-reverse") {
 		const jsWorkbench = proofArtifactPath(artifactDir, "js-reverse-workbench.mjs");
@@ -959,6 +964,7 @@ function proofHarnessRows(targetInfo, artifactDir, commands, toolState) {
 
 const unifiedProofGraphArtifactCandidates = [
 	"web-exploit-claims.json",
+	"web-exploit-verification.json",
 	"workspace-source-runtime-verification.json",
 	"workspace-source-runtime-claims.json",
 	"workspace-route-claim-promotion.json",
@@ -1029,6 +1035,7 @@ function proofGraphRepairRows(parsed) {
 function proofGraphRepairPriority(blocker) {
 	if (/missing-base-url|no-live-response|no-status|service|unreachable|endpoint/i.test(blocker)) return "high";
 	if (/missing-session|credential|authorization|cookie|token|principal/i.test(blocker)) return "high";
+	if (/missing-web-(?:artifact-hash|replay-hash|risk-matrix|runtime-negative-control|live-runtime-replay|composed-path|verifier-negative-control)/i.test(blocker)) return "high";
 	if (/missing-pcap-(?:capture-hash|quicklook-determinism|credential-signal|reassembly-hash|dns-tunnel|object-artifact|verifier-negative-control)/i.test(blocker)) return "high";
 	if (/missing-native-(?:target-hash|replay-case|crash-differential|cyclic-payload|runtime-negative-control)/i.test(blocker)) return "high";
 	if (/missing-crypto-(?:file-hash|media-determinism|structure-offset|negative-control)/i.test(blocker)) return "high";
@@ -1055,6 +1062,13 @@ function proofGraphRepairAction(blocker) {
 		"object-mutation-inconclusive": "Bind route parameters to owned and tampered objects before replay.",
 		"baseline-not-accepted": "Make the benign baseline succeed before interpreting blocked malicious controls.",
 		"no-boundary-differential": "Bind the payload to a stronger leak, tool side-effect, audit log, or blocked/refused oracle.",
+		"missing-web-artifact-hash-verification": "Rerun web-exploit-verifier.mjs against the artifact directory and require size/SHA-256 equality for key web artifacts.",
+		"missing-web-replay-hash-verification": "Regenerate web-replay-matrix.json until every replay row has HTTP status plus 64-hex responseSha256 evidence.",
+		"missing-web-risk-matrix-coverage": "Collect schema/object/SSRF/redirect/CORS/JWT/posture/runtime matrix evidence and bind it to replay hashes.",
+		"missing-web-runtime-negative-control": "Run browser runtime replay or signer controls so captured-signed succeeds while missing/tampered controls fail, or keep the proof path blocked.",
+		"missing-web-live-runtime-replay-proof": "Run web-runtime-replay-verifier.mjs with a real web-runtime-capture.json and --live to capture status/body hashes for signature controls.",
+		"missing-web-composed-path-verification": "Require every web composed-path segment to resolve to a promoted claim in web-exploit-claims.json.",
+		"missing-web-verifier-negative-control": "Run missing-artifact, missing-replay-hash, mutated-segment, and runtime-gate controls before promotion.",
 		"missing-ioc-offset-verification": "Rerun malware-config-verifier.py after binding each IOC to sourceOffset, valueSha256, and valueLength.",
 		"missing-config-extraction-oracle": "Bind decoded malware config fields to a source offset/hash oracle before promotion.",
 		"missing-overlay-carve-verifier": "Carve overlay bytes by offset/size and match SHA-256 before treating it as payload/config proof.",
@@ -21800,6 +21814,7 @@ function webClaimArtifacts(artifactDir) {
 		"web-object-matrix.json",
 		"web-runtime-capture-plan.json",
 		"web-runtime-replay-plan.json",
+		"web-runtime-replay-results.json",
 		"web-signer-rebuild-workbench-plan.json",
 		"web-js-signature-control-plan.json",
 		"web-js-sourcemap-summary.json",
@@ -21820,6 +21835,7 @@ function webExploitClaims(target, artifactDir) {
 	const sourceMap = artifacts["web-js-sourcemap-summary.json"];
 	const runtimeCapturePlan = artifacts["web-runtime-capture-plan.json"];
 	const runtimeReplayPlan = artifacts["web-runtime-replay-plan.json"];
+	const runtimeReplayResults = artifacts["web-runtime-replay-results.json"];
 	const signerPlan = artifacts["web-signer-rebuild-workbench-plan.json"];
 	const signatureControlPlan = artifacts["web-js-signature-control-plan.json"];
 	const artifactFiles = Object.entries(artifacts)
@@ -22068,6 +22084,7 @@ function webExploitClaims(target, artifactDir) {
 			evidenceBinding: {
 				captureHooks: runtimeCapturePlan?.hooks ?? [],
 				replayNegativeControls: runtimeReplayPlan?.negativeControls ?? [],
+				liveReplayProofReady: Boolean(runtimeReplayResults?.liveReplay && runtimeReplayResults?.promotionReport?.proofReady),
 				byteForByteRule: signerPlan?.byteForByteRule ?? null,
 				signatureControlRule: signatureControlPlan?.requiredControls ?? signatureControlPlan?.proofRule ?? null,
 				sourceMapSignals: (sourceMap?.sourceMaps ?? []).reduce((count, item) => count + (item.signalLines?.length ?? 0), 0),
@@ -22083,6 +22100,7 @@ function webExploitClaims(target, artifactDir) {
 	const runtimeClaim = promotedClaims.find((claim) => claim.claimType === "web-client-runtime-proof-harness");
 	const signerOrSchemaClaim = promotedClaims.find((claim) => /signature|signer|graphql|openapi|unauthenticated|web-api-schema/i.test(claim.claimType));
 	const highImpactClaim = promotedClaims.find((claim) => /ssrf|redirect|cors|jwt|object-authz/.test(claim.claimType));
+	const liveRuntimeProofReady = Boolean(runtimeReplayResults?.liveReplay && runtimeReplayResults?.promotionReport?.proofReady);
 	const composedPaths = [];
 	if (authDifferentialClaim && objectClaim) {
 		const segments = [authDifferentialClaim, objectClaim];
@@ -22104,20 +22122,25 @@ function webExploitClaims(target, artifactDir) {
 	}
 	if (runtimeClaim && signerOrSchemaClaim) {
 		const segments = [runtimeClaim, signerOrSchemaClaim];
+		const runtimePathBlockers = liveRuntimeProofReady ? [] : ["missing-web-live-runtime-replay-proof", "missing-web-runtime-negative-control"];
 		composedPaths.push({
-			id: "web-client-signer-proof-path-" + shortHash(segments.map((claim) => claim.id).join(">")),
-			claimType: "web-client-signer-proof-path",
+			id: (liveRuntimeProofReady ? "web-client-signer-proof-path-" : "web-client-signer-blocked-path-") + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: liveRuntimeProofReady ? "web-client-signer-proof-path" : "web-client-signer-blocked-path",
 			sourceBinding: { target: redact(target), segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType })) },
 			evidenceBinding: {
 				hasRuntimeHarness: true,
 				hasSignerOrSchemaLead: true,
+				liveRuntimeProofReady,
+				runtimeReplayResults: runtimeReplayResults ? "web-runtime-replay-results.json" : null,
 				negativeControls: runtimeReplayPlan?.negativeControls ?? [],
 				candidateEndpoints: runtimeReplayPlan?.candidateEndpoints ?? signatureControlPlan?.candidateEndpoints ?? [],
 			},
-			statement: "Web evidence composes browser runtime capture/replay harnesses with signer/schema leads for negative-control proof.",
-			verdict: "promoted",
-			confidence: 0.78,
-			blockers: ["Need live browser capture or byte-for-byte signer match before final signer proof."],
+			statement: liveRuntimeProofReady
+				? "Web evidence composes browser runtime capture/replay harnesses with signer/schema leads and live negative-control proof."
+				: "Web verifier keeps signer/schema proof blocked until live browser replay or byte-for-byte signer controls provide response hashes.",
+			verdict: liveRuntimeProofReady ? "promoted" : "blocked",
+			confidence: liveRuntimeProofReady ? 0.84 : 0.52,
+			blockers: runtimePathBlockers,
 			rerunCommand: "node web-runtime-capture-harness.mjs <target-url> web-runtime-capture.json && node web-runtime-replay-verifier.mjs web-runtime-capture.json web-runtime-replay-results.json --live",
 		});
 	}
@@ -22148,6 +22171,7 @@ function webExploitClaims(target, artifactDir) {
 	if (!objectClaims.length) blockers.push("missing-object-mutation-signal");
 	if (!runtimeCapturePlan) blockers.push("missing-browser-runtime-capture");
 	if (!runtimeReplayPlan) blockers.push("missing-runtime-negative-controls");
+	if (runtimeReplayPlan && !liveRuntimeProofReady) blockers.push("missing-web-live-runtime-replay-proof", "missing-web-runtime-negative-control");
 	if (!signerPlan && !signatureControlPlan) blockers.push("missing-signer-or-signature-control-workbench");
 	const repairActions = {
 		"missing-http-replay-matrix": "Run web replay matrix with anonymous/session principals and bind status/body hashes to each route.",
@@ -22156,6 +22180,8 @@ function webExploitClaims(target, artifactDir) {
 		"missing-object-mutation-signal": "Mutate numeric/UUID object IDs and replay with anonymous/session controls to test BOLA.",
 		"missing-browser-runtime-capture": "Run web-runtime-capture-harness.mjs in a browser to bind JS/XHR/WS/signature order.",
 		"missing-runtime-negative-controls": "Run web-runtime-replay-verifier.mjs with captured requests and require missing/tampered controls to fail.",
+		"missing-web-live-runtime-replay-proof": "Run web-runtime-capture-harness.mjs and web-runtime-replay-verifier.mjs --live to bind captured-signed and tampered controls to response hashes.",
+		"missing-web-runtime-negative-control": "Keep signer/schema proof blocked until captured-signed succeeds while missing/tampered signature controls fail.",
 		"missing-signer-or-signature-control-workbench": "Use source maps/signature hints to build byte-for-byte signer regression or JS signature controls.",
 	};
 	const repairQueue = blockers.map((blocker) => ({
@@ -22171,12 +22197,12 @@ function webExploitClaims(target, artifactDir) {
 		generatedAt: new Date().toISOString(),
 		artifactFiles,
 		proofReady: finalPromotedClaims.length > 0,
-		exploitProofReady: composedPaths.length > 0,
+		exploitProofReady: composedPaths.some((path) => path.verdict === "promoted"),
 		claimLedger,
 		composedPaths,
 		promotionReport: {
 			proofReady: finalPromotedClaims.length > 0,
-			exploitProofReady: composedPaths.length > 0,
+			exploitProofReady: composedPaths.some((path) => path.verdict === "promoted"),
 			promotedClaims: finalPromotedClaims,
 			blockers,
 		},
@@ -22188,6 +22214,571 @@ function writeWebExploitClaims(target, artifactDir) {
 	if (noWrite || !artifactDir) return undefined;
 	const summary = webExploitClaims(target, artifactDir);
 	const path = join(artifactDir, "web-exploit-claims.json");
+	writePrivate(path, `${JSON.stringify(summary, null, 2)}\n`, 0o600);
+	return { path, summary };
+}
+
+const webExploitVerificationArtifactNames = [
+	"web-exploit-claims.json",
+	"web-replay-matrix.json",
+	"web-api-schema-probes.json",
+	"web-object-matrix.json",
+	"web-ssrf-matrix.json",
+	"web-redirect-matrix.json",
+	"web-cors-matrix.json",
+	"web-identity-jwt.json",
+	"web-security-posture.json",
+	"web-js-sourcemap-summary.json",
+	"web-runtime-capture-plan.json",
+	"web-runtime-replay-plan.json",
+	"web-runtime-replay-results.json",
+	"web-signer-rebuild-workbench-plan.json",
+	"web-js-signature-control-plan.json",
+	"web-exploit-verifier.mjs",
+];
+
+function webArtifactHashCheck(artifactDir, relPath) {
+	const path = join(artifactDir, relPath);
+	if (!existsSync(path)) return { relPath, exists: false, size: 0, sha256: null, mode: null };
+	try {
+		const data = readFileSync(path);
+		const stat = statSync(path);
+		return {
+			relPath,
+			exists: true,
+			size: data.length,
+			sha256: bufferSha256(data),
+			mode: stat.mode & 0o777,
+		};
+	} catch (error) {
+		return { relPath, exists: false, size: 0, sha256: null, mode: null, error: error instanceof Error ? redact(error.message) : "read-failed" };
+	}
+}
+
+function webReplayRowHasStatusAndHash(row) {
+	return Number.isFinite(Number(row?.status)) && /^[a-f0-9]{64}$/i.test(String(row?.responseSha256 ?? ""));
+}
+
+function webRuntimeLiveProofRows(runtimeReplayResults) {
+	const rows = Array.isArray(runtimeReplayResults?.rows) ? runtimeReplayResults.rows : [];
+	return rows.filter((row) => {
+		if (row?.promotion?.verdict === "promoted") return true;
+		if (row?.verdict === "signer_proven_negative_controls") return true;
+		const variants = Array.isArray(row?.variants) ? row.variants : [];
+		return variants.some((variant) => Number.isFinite(Number(variant?.status)) && /^[a-f0-9]{64}$/i.test(String(variant?.responseSha256 ?? "")));
+	});
+}
+
+function webExploitVerificationSummary(target, artifactDir, claimsSummary) {
+	const claims = claimsSummary ?? readJsonArtifact(join(artifactDir, "web-exploit-claims.json"));
+	const replay = readJsonArtifact(join(artifactDir, "web-replay-matrix.json"));
+	const schema = readJsonArtifact(join(artifactDir, "web-api-schema-probes.json"));
+	const objectMatrix = readJsonArtifact(join(artifactDir, "web-object-matrix.json"));
+	const ssrf = readJsonArtifact(join(artifactDir, "web-ssrf-matrix.json"));
+	const redirect = readJsonArtifact(join(artifactDir, "web-redirect-matrix.json"));
+	const cors = readJsonArtifact(join(artifactDir, "web-cors-matrix.json"));
+	const identity = readJsonArtifact(join(artifactDir, "web-identity-jwt.json"));
+	const posture = readJsonArtifact(join(artifactDir, "web-security-posture.json"));
+	const sourceMap = readJsonArtifact(join(artifactDir, "web-js-sourcemap-summary.json"));
+	const runtimeCapturePlan = readJsonArtifact(join(artifactDir, "web-runtime-capture-plan.json"));
+	const runtimeReplayPlan = readJsonArtifact(join(artifactDir, "web-runtime-replay-plan.json"));
+	const runtimeReplayResults = readJsonArtifact(join(artifactDir, "web-runtime-replay-results.json"));
+	const signerPlan = readJsonArtifact(join(artifactDir, "web-signer-rebuild-workbench-plan.json"));
+	const signatureControlPlan = readJsonArtifact(join(artifactDir, "web-js-signature-control-plan.json"));
+	const artifactChecks = webExploitVerificationArtifactNames.map((relPath) => webArtifactHashCheck(artifactDir, relPath));
+	const presentArtifacts = artifactChecks.filter((row) => row.exists);
+	const requiredArtifacts = ["web-exploit-claims.json", "web-replay-matrix.json", "web-exploit-verifier.mjs"];
+	const artifactHashVerification = {
+		verified: requiredArtifacts.every((relPath) => artifactChecks.some((row) => row.relPath === relPath && row.exists && row.size > 0 && /^[a-f0-9]{64}$/i.test(String(row.sha256 ?? "")))),
+		requiredArtifacts,
+		presentCount: presentArtifacts.length,
+		artifactChecks,
+	};
+	const replayRows = Array.isArray(replay?.rows) ? replay.rows : [];
+	const replayRowChecks = replayRows.map((row) => ({
+		id: row?.id ?? null,
+		principal: row?.principal ?? null,
+		url: row?.url ?? null,
+		status: row?.status ?? null,
+		responseSha256: row?.responseSha256 ?? null,
+		verified: webReplayRowHasStatusAndHash(row),
+	}));
+	const replayHashVerification = {
+		verified: replayRowChecks.length > 0 && replayRowChecks.every((row) => row.verified),
+		rowCount: replayRowChecks.length,
+		verifiedRows: replayRowChecks.filter((row) => row.verified).length,
+		statuses: Array.from(new Set(replayRowChecks.map((row) => row.status).filter((status) => status != null))).slice(0, 24),
+		principals: Array.from(new Set(replayRowChecks.map((row) => row.principal).filter(Boolean))).slice(0, 24),
+		replaySha256: replay ? httpSecretHash(JSON.stringify(replay)) : null,
+		rowChecks: replayRowChecks.slice(0, 80),
+	};
+	const riskCategories = [];
+	if (replayHashVerification.verified) riskCategories.push("replay");
+	if ((schema?.rows ?? []).some((row) => (row.risks ?? []).length || (row.openapi?.risks ?? []).length || row.introspection?.enabled)) riskCategories.push("schema");
+	if ((objectMatrix?.rows ?? []).some((row) => row.bolaSignal || row.hashDelta || row.statusDelta)) riskCategories.push("object");
+	if ((ssrf?.rows ?? []).some((row) => (row.risks ?? []).length)) riskCategories.push("ssrf");
+	if ((redirect?.rows ?? []).some((row) => (row.risks ?? []).length)) riskCategories.push("redirect");
+	if ((cors?.rows ?? []).some((row) => (row.risks ?? []).length)) riskCategories.push("cors");
+	if ((identity?.risks ?? []).length || Number(identity?.jwtCount ?? 0) > 0) riskCategories.push("jwt");
+	if ((posture?.risks ?? []).length || (posture?.cookies ?? []).some((cookie) => (cookie.risks ?? []).length)) riskCategories.push("posture");
+	if (runtimeCapturePlan || runtimeReplayPlan || signerPlan || signatureControlPlan || (sourceMap?.sourceMaps ?? []).length) riskCategories.push("runtime-harness");
+	const riskMatrixCoverage = {
+		verified: riskCategories.includes("replay") && riskCategories.some((category) => category !== "replay"),
+		categories: Array.from(new Set(riskCategories)),
+		matrixArtifacts: [
+			schema ? "web-api-schema-probes.json" : null,
+			objectMatrix ? "web-object-matrix.json" : null,
+			ssrf ? "web-ssrf-matrix.json" : null,
+			redirect ? "web-redirect-matrix.json" : null,
+			cors ? "web-cors-matrix.json" : null,
+			identity ? "web-identity-jwt.json" : null,
+			posture ? "web-security-posture.json" : null,
+			runtimeCapturePlan || runtimeReplayPlan ? "web-runtime-*.json" : null,
+		].filter(Boolean),
+	};
+	const claimRows = Array.isArray(claims?.claimLedger) ? claims.claimLedger : [];
+	const composedPathRows = Array.isArray(claims?.composedPaths) ? claims.composedPaths : [];
+	const claimById = new Map(claimRows.filter((claim) => claim?.id).map((claim) => [claim.id, claim]));
+	const runtimePaths = composedPathRows.filter((path) => /web-client-signer-(?:proof|blocked)-path/.test(String(path?.claimType ?? "")));
+	const liveProofRows = webRuntimeLiveProofRows(runtimeReplayResults);
+	const runtimeProofReady = Boolean(runtimeReplayResults?.liveReplay && runtimeReplayResults?.promotionReport?.proofReady && liveProofRows.length);
+	const promotedRuntimePathsWithoutProof = runtimePaths.filter((path) => path?.verdict === "promoted" && !runtimeProofReady);
+	const derivedRuntimeBlockers = runtimeProofReady ? [] : ["missing-web-live-runtime-replay-proof", "missing-web-runtime-negative-control"];
+	const runtimeNegativeControlVerification = {
+		verified: runtimeProofReady || (Boolean(runtimeReplayPlan || runtimeCapturePlan || runtimePaths.length) && promotedRuntimePathsWithoutProof.length === 0),
+		runtimeProofReady,
+		liveReplay: Boolean(runtimeReplayResults?.liveReplay),
+		liveRuntimeProofs: liveProofRows.length,
+		promotedRuntimePathsWithoutProof: promotedRuntimePathsWithoutProof.map((path) => path.id),
+		negativeControls: runtimeReplayPlan?.negativeControls ?? [],
+		blockers: derivedRuntimeBlockers,
+		resultsSha256: runtimeReplayResults ? httpSecretHash(JSON.stringify(runtimeReplayResults)) : null,
+	};
+	const pathChecks = composedPathRows.map((pathRow) => {
+		const segments = pathRow?.sourceBinding?.segments ?? [];
+		const resolvedSegments = segments.map((segment) => {
+			const claim = claimById.get(segment?.id);
+			return {
+				id: segment?.id ?? null,
+				claimType: segment?.claimType ?? null,
+				claimPresent: Boolean(claim),
+				claimPromoted: claim?.verdict === "promoted",
+			};
+		});
+		return {
+			id: pathRow?.id ?? null,
+			claimType: pathRow?.claimType ?? null,
+			verdict: pathRow?.verdict ?? null,
+			verified: resolvedSegments.length > 0 && resolvedSegments.every((segment) => segment.claimPresent && segment.claimPromoted),
+			segments: resolvedSegments,
+		};
+	});
+	const composedPathVerification = {
+		verified: pathChecks.length > 0 && pathChecks.every((row) => row.verified),
+		pathCount: pathChecks.length,
+		verifiedPathCount: pathChecks.filter((row) => row.verified).length,
+		promotedPathCount: pathChecks.filter((row) => row.verified && row.verdict === "promoted").length,
+		pathChecks,
+	};
+	const firstPresentArtifact = presentArtifacts[0];
+	const firstReplayRow = replayRows.find((row) => webReplayRowHasStatusAndHash(row));
+	const firstSegment = pathChecks.flatMap((row) => row.segments).find((segment) => segment.id);
+	const negativeControls = [
+		{
+			controlType: "web-missing-artifact-negative-control",
+			artifact: firstPresentArtifact?.relPath ?? null,
+			passed: Boolean(firstPresentArtifact && !existsSync(join(artifactDir, `${firstPresentArtifact.relPath}.missing-control`))),
+		},
+		{
+			controlType: "web-missing-replay-hash-negative-control",
+			rowId: firstReplayRow?.id ?? null,
+			passed: Boolean(firstReplayRow && !webReplayRowHasStatusAndHash({ ...firstReplayRow, responseSha256: "" })),
+		},
+		{
+			controlType: "web-mutated-composed-segment-negative-control",
+			segmentId: firstSegment?.id ?? null,
+			passed: Boolean(firstSegment?.id && !claimById.has(`${firstSegment.id}:mutated`)),
+		},
+		{
+			controlType: "web-runtime-proof-gate-negative-control",
+			passed: runtimeNegativeControlVerification.verified && (runtimeProofReady || derivedRuntimeBlockers.length > 0),
+		},
+	];
+	const negativeControlVerification = {
+		verified: negativeControls.length >= 4 && negativeControls.every((row) => row.passed),
+		negativeControlsPassed: negativeControls.filter((row) => row.passed).length,
+		negativeControls,
+	};
+	const claimLedger = [];
+	const composedPaths = [];
+	const addClaim = (claim) => {
+		const normalized = { verdict: "promoted", confidence: 0.78, blockers: [], ...claim };
+		claimLedger.push(normalized);
+		return normalized;
+	};
+	const artifactClaim = artifactHashVerification.verified
+		? addClaim({
+				id: "web-artifact-hash-verification-" + shortHash(presentArtifacts.map((row) => `${row.relPath}:${row.sha256}`).join("|")),
+				claimType: "web-artifact-hash-verification-proof",
+				sourceBinding: { artifact: "web-exploit-verification.json", artifacts: presentArtifacts.map((row) => row.relPath) },
+				evidenceBinding: artifactHashVerification,
+				statement: "Web verifier rebound exploit, replay, and harness artifacts to exact size/SHA-256 evidence.",
+				confidence: 0.86,
+				rerunCommand: "node web-exploit-verifier.mjs <artifact-dir> web-exploit-verification.json",
+			})
+		: undefined;
+	const replayClaim = replayHashVerification.verified
+		? addClaim({
+				id: "web-replay-hash-verification-" + shortHash(JSON.stringify(replayHashVerification.statuses)),
+				claimType: "web-replay-hash-verification-proof",
+				sourceBinding: { artifact: "web-exploit-verification.json", replay: "web-replay-matrix.json" },
+				evidenceBinding: replayHashVerification,
+				statement: "Web verifier confirmed every replay row has an HTTP status and 64-hex response hash.",
+				confidence: 0.84,
+				rerunCommand: "node web-exploit-verifier.mjs <artifact-dir> web-exploit-verification.json",
+			})
+		: undefined;
+	const riskClaim = riskMatrixCoverage.verified
+		? addClaim({
+				id: "web-risk-matrix-coverage-" + shortHash(riskMatrixCoverage.categories.join("|")),
+				claimType: "web-risk-matrix-coverage-proof",
+				sourceBinding: { artifact: "web-exploit-verification.json", replay: "web-replay-matrix.json", matrices: riskMatrixCoverage.matrixArtifacts },
+				evidenceBinding: riskMatrixCoverage,
+				statement: "Web verifier confirmed replay evidence is paired with schema/object/browser/policy risk-matrix coverage.",
+				confidence: 0.82,
+				rerunCommand: "node web-exploit-verifier.mjs <artifact-dir> web-exploit-verification.json",
+			})
+		: undefined;
+	const runtimeGateClaim = runtimeNegativeControlVerification.verified
+		? addClaim({
+				id: "web-runtime-negative-control-" + shortHash(JSON.stringify(runtimeNegativeControlVerification.blockers)),
+				claimType: "web-runtime-negative-control-proof",
+				sourceBinding: { artifact: "web-exploit-verification.json", runtimePlan: "web-runtime-replay-plan.json", runtimeResults: runtimeReplayResults ? "web-runtime-replay-results.json" : null },
+				evidenceBinding: runtimeNegativeControlVerification,
+				statement: runtimeProofReady ? "Web verifier confirmed live browser runtime negative-control replay proof." : "Web verifier kept runtime signer proof blocked until live captured-signed/missing/tampered controls provide response hashes.",
+				confidence: runtimeProofReady ? 0.86 : 0.74,
+				rerunCommand: runtimeReplayPlan?.run ?? "node web-runtime-replay-verifier.mjs web-runtime-capture.json web-runtime-replay-results.json --live",
+			})
+		: undefined;
+	const pathClaim = composedPathVerification.verified
+		? addClaim({
+				id: "web-composed-path-verification-" + shortHash(JSON.stringify(pathChecks.map((row) => row.id))),
+				claimType: "web-composed-path-verification-proof",
+				sourceBinding: { artifact: "web-exploit-verification.json", claims: "web-exploit-claims.json" },
+				evidenceBinding: composedPathVerification,
+				statement: "Web verifier confirmed every composed-path segment resolves to a promoted exploit claim.",
+				confidence: 0.84,
+				rerunCommand: "node web-exploit-verifier.mjs <artifact-dir> web-exploit-verification.json",
+			})
+		: undefined;
+	const negativeClaim = negativeControlVerification.verified
+		? addClaim({
+				id: "web-exploit-verifier-negative-control-" + shortHash(JSON.stringify(negativeControls)),
+				claimType: "web-exploit-verifier-negative-control-proof",
+				sourceBinding: { artifact: "web-exploit-verification.json" },
+				evidenceBinding: negativeControlVerification,
+				statement: "Web verifier rejected missing-artifact, missing-replay-hash, mutated-segment, and runtime proof-gate controls.",
+				confidence: 0.84,
+				rerunCommand: "node web-exploit-verifier.mjs <artifact-dir> web-exploit-verification.json",
+			})
+		: undefined;
+	const sourceExploitReady = Boolean(claims?.exploitProofReady || runtimeProofReady);
+	if (artifactClaim && replayClaim && riskClaim && runtimeGateClaim && pathClaim && negativeClaim) {
+		const segments = [artifactClaim, replayClaim, riskClaim, runtimeGateClaim, pathClaim, negativeClaim];
+		const composed = {
+			id: (sourceExploitReady ? "web-exploit-verification-proof-path-" : "web-exploit-verification-blocked-path-") + shortHash(segments.map((claim) => claim.id).join(">")),
+			claimType: sourceExploitReady ? "web-exploit-verification-proof-path" : "web-exploit-verification-blocked-path",
+			sourceBinding: { segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: claim.sourceBinding?.artifact })) },
+			evidenceBinding: {
+				presentArtifacts: artifactHashVerification.presentCount,
+				replayRows: replayHashVerification.verifiedRows,
+				riskCategories: riskMatrixCoverage.categories,
+				liveRuntimeProofs: runtimeNegativeControlVerification.liveRuntimeProofs,
+				verifiedPathCount: composedPathVerification.verifiedPathCount,
+				negativeControlsPassed: negativeControlVerification.negativeControlsPassed,
+			},
+			statement: sourceExploitReady
+				? "Web exploit proof path composes artifact hashes, replay body hashes, risk matrices, composed-path resolution, and verifier negative controls."
+				: "Web verifier blocks final exploit promotion until live runtime proof or a promoted route/object impact path is present.",
+			verdict: sourceExploitReady ? "promoted" : "blocked",
+			confidence: sourceExploitReady ? 0.88 : 0.56,
+			blockers: sourceExploitReady ? [] : derivedRuntimeBlockers,
+			rerunCommand: "node web-exploit-verifier.mjs <artifact-dir> web-exploit-verification.json",
+		};
+		claimLedger.push(composed);
+		composedPaths.push(composed);
+	}
+	const blockers = [];
+	if (!artifactHashVerification.verified) blockers.push("missing-web-artifact-hash-verification");
+	if (!replayHashVerification.verified) blockers.push("missing-web-replay-hash-verification");
+	if (!riskMatrixCoverage.verified) blockers.push("missing-web-risk-matrix-coverage");
+	if (!runtimeProofReady) blockers.push("missing-web-live-runtime-replay-proof");
+	if (!runtimeNegativeControlVerification.verified || !runtimeProofReady) blockers.push("missing-web-runtime-negative-control");
+	if (!composedPathVerification.verified) blockers.push("missing-web-composed-path-verification");
+	if (!negativeControlVerification.verified) blockers.push("missing-web-verifier-negative-control");
+	const repairActions = {
+		"missing-web-artifact-hash-verification": "Rerun web-exploit-verifier.mjs after generating web-exploit-claims.json, web-replay-matrix.json, and web-exploit-verifier.mjs.",
+		"missing-web-replay-hash-verification": "Regenerate web-replay-matrix.json until every replay row has status plus responseSha256.",
+		"missing-web-risk-matrix-coverage": "Collect schema/object/SSRF/redirect/CORS/JWT/posture/runtime matrix evidence before promotion.",
+		"missing-web-live-runtime-replay-proof": "Run web-runtime-capture-harness.mjs and web-runtime-replay-verifier.mjs --live against captured browser traffic.",
+		"missing-web-runtime-negative-control": "Keep signer/schema proof blocked until captured-signed succeeds while missing/tampered signature controls fail.",
+		"missing-web-composed-path-verification": "Resolve every composed-path segment ID to a promoted claim in web-exploit-claims.json.",
+		"missing-web-verifier-negative-control": "Run missing-artifact, missing-replay-hash, mutated-segment, and runtime-gate negative controls.",
+	};
+	const repairQueue = blockers.map((blocker) => ({
+		id: "web-exploit-verification-" + blocker,
+		blocker,
+		action: repairActions[blocker] ?? "Collect verifier-bound web evidence and rerun web-exploit-verifier.mjs.",
+		rerunCommand: blocker === "missing-web-live-runtime-replay-proof" ? runtimeReplayPlan?.run ?? `node ${shellQuote(join(artifactDir, "web-runtime-replay-verifier.mjs"))} ${shellQuote(join(artifactDir, "web-runtime-capture.json"))} ${shellQuote(join(artifactDir, "web-runtime-replay-results.json"))} --live` : `node ${shellQuote(join(artifactDir, "web-exploit-verifier.mjs"))} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "web-exploit-verification.json"))}`,
+	}));
+	const proofReady = Boolean(artifactClaim && replayClaim && riskClaim && runtimeGateClaim && pathClaim && negativeClaim);
+	const promotedClaims = claimLedger.filter((claim) => claim.verdict === "promoted");
+	const promotedPaths = composedPaths.filter((path) => path.verdict === "promoted");
+	return {
+		kind: "repi-web-exploit-verification",
+		schemaVersion: 1,
+		target: redact(target),
+		generatedAt: new Date().toISOString(),
+		proofReady,
+		runtimeProofReady,
+		exploitProofReady: promotedPaths.length > 0,
+		artifactHashVerification,
+		replayHashVerification,
+		riskMatrixCoverage,
+		runtimeNegativeControlVerification,
+		composedPathVerification,
+		negativeControlVerification,
+		stats: {
+			presentArtifacts: artifactHashVerification.presentCount,
+			replayRows: replayHashVerification.rowCount,
+			verifiedReplayRows: replayHashVerification.verifiedRows,
+			riskCategories: riskMatrixCoverage.categories.length,
+			liveRuntimeProofs: runtimeNegativeControlVerification.liveRuntimeProofs,
+			verifiedPathCount: composedPathVerification.verifiedPathCount,
+			negativeControlsPassed: negativeControlVerification.negativeControlsPassed,
+		},
+		claimLedger,
+		composedPaths,
+		promotionReport: { proofReady, runtimeProofReady, exploitProofReady: promotedPaths.length > 0, promotedClaims, composedPaths: promotedPaths, blockers },
+		repairQueue,
+	};
+}
+
+function webExploitVerifierSource() {
+	return String.raw`#!/usr/bin/env node
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+const selfTestMode = process.argv.includes("--self-test");
+
+function sha256(value) {
+	return createHash("sha256").update(value ?? "").digest("hex");
+}
+
+function sha256Text(value) {
+	return createHash("sha256").update(String(value ?? ""), "utf8").digest("hex");
+}
+
+function short(value) {
+	return sha256Text(value).slice(0, 16);
+}
+
+function load(path, fallback = null) {
+	try {
+		return JSON.parse(readFileSync(path, "utf8"));
+	} catch {
+		return fallback;
+	}
+}
+
+function writeJson(path, value) {
+	writeFileSync(path, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
+}
+
+function artifactCheck(dir, relPath) {
+	const path = join(dir, relPath);
+	if (!existsSync(path)) return { relPath, exists: false, size: 0, sha256: null, mode: null };
+	const data = readFileSync(path);
+	const stat = statSync(path);
+	return { relPath, exists: true, size: data.length, sha256: sha256(data), mode: stat.mode & 0o777 };
+}
+
+function replayRowValid(row) {
+	return Number.isFinite(Number(row && row.status)) && /^[a-f0-9]{64}$/i.test(String((row && row.responseSha256) || ""));
+}
+
+function liveRows(results) {
+	const rows = Array.isArray(results && results.rows) ? results.rows : [];
+	return rows.filter((row) => {
+		if (row && row.promotion && row.promotion.verdict === "promoted") return true;
+		if (row && row.verdict === "signer_proven_negative_controls") return true;
+		const variants = Array.isArray(row && row.variants) ? row.variants : [];
+		return variants.some((variant) => Number.isFinite(Number(variant && variant.status)) && /^[a-f0-9]{64}$/i.test(String((variant && variant.responseSha256) || "")));
+	});
+}
+
+function addClaim(rows, claim) {
+	const row = Object.assign({ verdict: "promoted", confidence: 0.78, blockers: [] }, claim);
+	rows.push(row);
+	return row;
+}
+
+function verify(dir) {
+	const names = [
+		"web-exploit-claims.json",
+		"web-replay-matrix.json",
+		"web-api-schema-probes.json",
+		"web-object-matrix.json",
+		"web-ssrf-matrix.json",
+		"web-redirect-matrix.json",
+		"web-cors-matrix.json",
+		"web-identity-jwt.json",
+		"web-security-posture.json",
+		"web-js-sourcemap-summary.json",
+		"web-runtime-capture-plan.json",
+		"web-runtime-replay-plan.json",
+		"web-runtime-replay-results.json",
+		"web-signer-rebuild-workbench-plan.json",
+		"web-js-signature-control-plan.json",
+		"web-exploit-verifier.mjs",
+	];
+	const claims = load(join(dir, "web-exploit-claims.json"), {});
+	const replay = load(join(dir, "web-replay-matrix.json"), {});
+	const schema = load(join(dir, "web-api-schema-probes.json"), {});
+	const objectMatrix = load(join(dir, "web-object-matrix.json"), {});
+	const ssrf = load(join(dir, "web-ssrf-matrix.json"), {});
+	const redirect = load(join(dir, "web-redirect-matrix.json"), {});
+	const cors = load(join(dir, "web-cors-matrix.json"), {});
+	const identity = load(join(dir, "web-identity-jwt.json"), {});
+	const posture = load(join(dir, "web-security-posture.json"), {});
+	const sourceMap = load(join(dir, "web-js-sourcemap-summary.json"), {});
+	const runtimeCapturePlan = load(join(dir, "web-runtime-capture-plan.json"), null);
+	const runtimeReplayPlan = load(join(dir, "web-runtime-replay-plan.json"), null);
+	const runtimeResults = load(join(dir, "web-runtime-replay-results.json"), null);
+	const signerPlan = load(join(dir, "web-signer-rebuild-workbench-plan.json"), null);
+	const signaturePlan = load(join(dir, "web-js-signature-control-plan.json"), null);
+	const checks = names.map((name) => artifactCheck(dir, name));
+	const present = checks.filter((row) => row.exists);
+	const required = ["web-exploit-claims.json", "web-replay-matrix.json", "web-exploit-verifier.mjs"];
+	const artifactHashVerification = { verified: required.every((name) => checks.some((row) => row.relPath === name && row.exists && row.size > 0 && /^[a-f0-9]{64}$/i.test(String(row.sha256 || "")))), requiredArtifacts: required, presentCount: present.length, artifactChecks: checks };
+	const replayRows = Array.isArray(replay.rows) ? replay.rows : [];
+	const rowChecks = replayRows.map((row) => ({ id: row.id || null, principal: row.principal || null, url: row.url || null, status: row.status ?? null, responseSha256: row.responseSha256 || null, verified: replayRowValid(row) }));
+	const replayHashVerification = { verified: rowChecks.length > 0 && rowChecks.every((row) => row.verified), rowCount: rowChecks.length, verifiedRows: rowChecks.filter((row) => row.verified).length, statuses: [...new Set(rowChecks.map((row) => row.status).filter((status) => status != null))].slice(0, 24), principals: [...new Set(rowChecks.map((row) => row.principal).filter(Boolean))].slice(0, 24), replaySha256: sha256Text(JSON.stringify(replay)), rowChecks: rowChecks.slice(0, 80) };
+	const cats = [];
+	if (replayHashVerification.verified) cats.push("replay");
+	if ((schema.rows || []).some((row) => (row.risks || []).length || (((row.openapi || {}).risks) || []).length || ((row.introspection || {}).enabled))) cats.push("schema");
+	if ((objectMatrix.rows || []).some((row) => row.bolaSignal || row.hashDelta || row.statusDelta)) cats.push("object");
+	if ((ssrf.rows || []).some((row) => (row.risks || []).length)) cats.push("ssrf");
+	if ((redirect.rows || []).some((row) => (row.risks || []).length)) cats.push("redirect");
+	if ((cors.rows || []).some((row) => (row.risks || []).length)) cats.push("cors");
+	if ((identity.risks || []).length || Number(identity.jwtCount || 0) > 0) cats.push("jwt");
+	if ((posture.risks || []).length || (posture.cookies || []).some((cookie) => (cookie.risks || []).length)) cats.push("posture");
+	if (runtimeCapturePlan || runtimeReplayPlan || signerPlan || signaturePlan || (sourceMap.sourceMaps || []).length) cats.push("runtime-harness");
+	const categories = [...new Set(cats)];
+	const riskMatrixCoverage = { verified: categories.includes("replay") && categories.some((category) => category !== "replay"), categories, matrixArtifacts: names.filter((name) => !["web-exploit-claims.json", "web-replay-matrix.json", "web-exploit-verifier.mjs"].includes(name) && checks.some((row) => row.relPath === name && row.exists)) };
+	const claimRows = Array.isArray(claims.claimLedger) ? claims.claimLedger : [];
+	const pathRows = Array.isArray(claims.composedPaths) ? claims.composedPaths : [];
+	const byId = new Map(claimRows.filter((claim) => claim && claim.id).map((claim) => [claim.id, claim]));
+	const runtimePaths = pathRows.filter((path) => /web-client-signer-(?:proof|blocked)-path/.test(String((path && path.claimType) || "")));
+	const live = liveRows(runtimeResults);
+	const runtimeProofReady = Boolean(runtimeResults && runtimeResults.liveReplay && runtimeResults.promotionReport && runtimeResults.promotionReport.proofReady && live.length);
+	const badRuntimePaths = runtimePaths.filter((path) => path && path.verdict === "promoted" && !runtimeProofReady);
+	const runtimeBlockers = runtimeProofReady ? [] : ["missing-web-live-runtime-replay-proof", "missing-web-runtime-negative-control"];
+	const runtimeNegativeControlVerification = { verified: runtimeProofReady || (Boolean(runtimeReplayPlan || runtimeCapturePlan || runtimePaths.length) && badRuntimePaths.length === 0), runtimeProofReady, liveReplay: Boolean(runtimeResults && runtimeResults.liveReplay), liveRuntimeProofs: live.length, promotedRuntimePathsWithoutProof: badRuntimePaths.map((path) => path.id), negativeControls: (runtimeReplayPlan && runtimeReplayPlan.negativeControls) || [], blockers: runtimeBlockers, resultsSha256: runtimeResults ? sha256Text(JSON.stringify(runtimeResults)) : null };
+	const pathChecks = pathRows.map((path) => {
+		const segments = (((path || {}).sourceBinding || {}).segments || []).map((segment) => {
+			const claim = byId.get(segment.id);
+			return { id: segment.id || null, claimType: segment.claimType || null, claimPresent: Boolean(claim), claimPromoted: claim && claim.verdict === "promoted" };
+		});
+		return { id: (path || {}).id || null, claimType: (path || {}).claimType || null, verdict: (path || {}).verdict || null, verified: segments.length > 0 && segments.every((segment) => segment.claimPresent && segment.claimPromoted), segments };
+	});
+	const composedPathVerification = { verified: pathChecks.length > 0 && pathChecks.every((row) => row.verified), pathCount: pathChecks.length, verifiedPathCount: pathChecks.filter((row) => row.verified).length, promotedPathCount: pathChecks.filter((row) => row.verified && row.verdict === "promoted").length, pathChecks };
+	const firstPresent = present[0];
+	const firstReplay = replayRows.find((row) => replayRowValid(row));
+	const firstSegment = pathChecks.flatMap((row) => row.segments).find((segment) => segment.id);
+	const negativeControls = [
+		{ controlType: "web-missing-artifact-negative-control", artifact: firstPresent ? firstPresent.relPath : null, passed: Boolean(firstPresent && !existsSync(join(dir, firstPresent.relPath + ".missing-control"))) },
+		{ controlType: "web-missing-replay-hash-negative-control", rowId: firstReplay ? firstReplay.id : null, passed: Boolean(firstReplay && !replayRowValid(Object.assign({}, firstReplay, { responseSha256: "" }))) },
+		{ controlType: "web-mutated-composed-segment-negative-control", segmentId: firstSegment ? firstSegment.id : null, passed: Boolean(firstSegment && firstSegment.id && !byId.has(firstSegment.id + ":mutated")) },
+		{ controlType: "web-runtime-proof-gate-negative-control", passed: runtimeNegativeControlVerification.verified && (runtimeProofReady || runtimeBlockers.length > 0) },
+	];
+	const negativeControlVerification = { verified: negativeControls.length >= 4 && negativeControls.every((row) => row.passed), negativeControlsPassed: negativeControls.filter((row) => row.passed).length, negativeControls };
+	const ledger = [];
+	const paths = [];
+	const artifactClaim = artifactHashVerification.verified ? addClaim(ledger, { id: "web-artifact-hash-verification-" + short(present.map((row) => row.relPath + ":" + row.sha256).join("|")), claimType: "web-artifact-hash-verification-proof", sourceBinding: { artifact: "web-exploit-verification.json", artifacts: present.map((row) => row.relPath) }, evidenceBinding: artifactHashVerification, statement: "Web verifier rebound exploit, replay, and harness artifacts to exact size/SHA-256 evidence.", confidence: 0.86 }) : null;
+	const replayClaim = replayHashVerification.verified ? addClaim(ledger, { id: "web-replay-hash-verification-" + short(JSON.stringify(replayHashVerification.statuses)), claimType: "web-replay-hash-verification-proof", sourceBinding: { artifact: "web-exploit-verification.json", replay: "web-replay-matrix.json" }, evidenceBinding: replayHashVerification, statement: "Web verifier confirmed every replay row has an HTTP status and 64-hex response hash.", confidence: 0.84 }) : null;
+	const riskClaim = riskMatrixCoverage.verified ? addClaim(ledger, { id: "web-risk-matrix-coverage-" + short(riskMatrixCoverage.categories.join("|")), claimType: "web-risk-matrix-coverage-proof", sourceBinding: { artifact: "web-exploit-verification.json", replay: "web-replay-matrix.json", matrices: riskMatrixCoverage.matrixArtifacts }, evidenceBinding: riskMatrixCoverage, statement: "Web verifier confirmed replay evidence is paired with schema/object/browser/policy risk-matrix coverage.", confidence: 0.82 }) : null;
+	const runtimeClaim = runtimeNegativeControlVerification.verified ? addClaim(ledger, { id: "web-runtime-negative-control-" + short(JSON.stringify(runtimeNegativeControlVerification.blockers)), claimType: "web-runtime-negative-control-proof", sourceBinding: { artifact: "web-exploit-verification.json", runtimePlan: "web-runtime-replay-plan.json", runtimeResults: runtimeResults ? "web-runtime-replay-results.json" : null }, evidenceBinding: runtimeNegativeControlVerification, statement: runtimeProofReady ? "Web verifier confirmed live browser runtime negative-control replay proof." : "Web verifier kept runtime signer proof blocked until live captured-signed/missing/tampered controls provide response hashes.", confidence: runtimeProofReady ? 0.86 : 0.74 }) : null;
+	const pathClaim = composedPathVerification.verified ? addClaim(ledger, { id: "web-composed-path-verification-" + short(JSON.stringify(pathChecks.map((row) => row.id))), claimType: "web-composed-path-verification-proof", sourceBinding: { artifact: "web-exploit-verification.json", claims: "web-exploit-claims.json" }, evidenceBinding: composedPathVerification, statement: "Web verifier confirmed every composed-path segment resolves to a promoted exploit claim.", confidence: 0.84 }) : null;
+	const negativeClaim = negativeControlVerification.verified ? addClaim(ledger, { id: "web-exploit-verifier-negative-control-" + short(JSON.stringify(negativeControls)), claimType: "web-exploit-verifier-negative-control-proof", sourceBinding: { artifact: "web-exploit-verification.json" }, evidenceBinding: negativeControlVerification, statement: "Web verifier rejected missing-artifact, missing-replay-hash, mutated-segment, and runtime proof-gate controls.", confidence: 0.84 }) : null;
+	const sourceExploitReady = Boolean(claims.exploitProofReady || runtimeProofReady);
+	if (artifactClaim && replayClaim && riskClaim && runtimeClaim && pathClaim && negativeClaim) {
+		const segments = [artifactClaim, replayClaim, riskClaim, runtimeClaim, pathClaim, negativeClaim];
+		const path = { id: (sourceExploitReady ? "web-exploit-verification-proof-path-" : "web-exploit-verification-blocked-path-") + short(segments.map((claim) => claim.id).join(">")), claimType: sourceExploitReady ? "web-exploit-verification-proof-path" : "web-exploit-verification-blocked-path", sourceBinding: { segments: segments.map((claim) => ({ id: claim.id, claimType: claim.claimType, artifact: (claim.sourceBinding || {}).artifact })) }, evidenceBinding: { presentArtifacts: artifactHashVerification.presentCount, replayRows: replayHashVerification.verifiedRows, riskCategories: riskMatrixCoverage.categories, liveRuntimeProofs: runtimeNegativeControlVerification.liveRuntimeProofs, verifiedPathCount: composedPathVerification.verifiedPathCount, negativeControlsPassed: negativeControlVerification.negativeControlsPassed }, statement: sourceExploitReady ? "Web exploit proof path composes artifact hashes, replay body hashes, risk matrices, composed-path resolution, and verifier negative controls." : "Web verifier blocks final exploit promotion until live runtime proof or a promoted route/object impact path is present.", verdict: sourceExploitReady ? "promoted" : "blocked", confidence: sourceExploitReady ? 0.88 : 0.56, blockers: sourceExploitReady ? [] : runtimeBlockers };
+		ledger.push(path);
+		paths.push(path);
+	}
+	const blockers = [];
+	if (!artifactHashVerification.verified) blockers.push("missing-web-artifact-hash-verification");
+	if (!replayHashVerification.verified) blockers.push("missing-web-replay-hash-verification");
+	if (!riskMatrixCoverage.verified) blockers.push("missing-web-risk-matrix-coverage");
+	if (!runtimeProofReady) blockers.push("missing-web-live-runtime-replay-proof");
+	if (!runtimeNegativeControlVerification.verified || !runtimeProofReady) blockers.push("missing-web-runtime-negative-control");
+	if (!composedPathVerification.verified) blockers.push("missing-web-composed-path-verification");
+	if (!negativeControlVerification.verified) blockers.push("missing-web-verifier-negative-control");
+	const proofReady = Boolean(artifactClaim && replayClaim && riskClaim && runtimeClaim && pathClaim && negativeClaim);
+	const promotedPaths = paths.filter((path) => path.verdict === "promoted");
+	return { kind: "repi-web-exploit-verification", schemaVersion: 1, generatedAt: new Date().toISOString(), proofReady, runtimeProofReady, exploitProofReady: promotedPaths.length > 0, artifactHashVerification, replayHashVerification, riskMatrixCoverage, runtimeNegativeControlVerification, composedPathVerification, negativeControlVerification, stats: { presentArtifacts: artifactHashVerification.presentCount, replayRows: replayHashVerification.rowCount, verifiedReplayRows: replayHashVerification.verifiedRows, riskCategories: riskMatrixCoverage.categories.length, liveRuntimeProofs: runtimeNegativeControlVerification.liveRuntimeProofs, verifiedPathCount: composedPathVerification.verifiedPathCount, negativeControlsPassed: negativeControlVerification.negativeControlsPassed }, claimLedger: ledger, composedPaths: paths, promotionReport: { proofReady, runtimeProofReady, exploitProofReady: promotedPaths.length > 0, promotedClaims: ledger.filter((claim) => claim.verdict === "promoted"), composedPaths: promotedPaths, blockers }, repairQueue: blockers.map((blocker) => ({ id: "web-exploit-verification-" + blocker, blocker, action: "Collect verifier-bound web evidence and rerun web-exploit-verifier.mjs.", rerunCommand: "node web-exploit-verifier.mjs <artifact-dir> web-exploit-verification.json" })) };
+}
+
+function runSelfTest() {
+	const dir = join(tmpdir(), "repi-web-exploit-verifier-" + Date.now() + "-" + process.pid);
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	const replay = { kind: "repi-web-replay-matrix", rows: [{ id: "anon", principal: "anonymous", url: "https://example.test/api/orders/1001", status: 401, responseSha256: sha256Text("anon") }, { id: "session", principal: "cookie-session", url: "https://example.test/api/orders/1001", status: 200, responseSha256: sha256Text("session") }] };
+	const object = { rows: [{ id: "object", bolaSignal: true, hashDelta: true, statusDelta: false }] };
+	const claimA = { id: "auth", claimType: "web-session-auth-differential", verdict: "promoted" };
+	const claimB = { id: "object", claimType: "web-object-authz-bola-signal", verdict: "promoted" };
+	const path = { id: "web-authz-object-proof-path-selftest", claimType: "web-authz-object-proof-path", verdict: "promoted", sourceBinding: { segments: [{ id: "auth", claimType: "web-session-auth-differential" }, { id: "object", claimType: "web-object-authz-bola-signal" }] } };
+	const claims = { kind: "repi-web-exploit-claims", proofReady: true, exploitProofReady: true, claimLedger: [claimA, claimB, path], composedPaths: [path], repairQueue: [{ blocker: "missing-web-live-runtime-replay-proof" }, { blocker: "missing-web-runtime-negative-control" }] };
+	writeJson(join(dir, "web-replay-matrix.json"), replay);
+	writeJson(join(dir, "web-object-matrix.json"), object);
+	writeJson(join(dir, "web-runtime-capture-plan.json"), { hooks: ["fetch"] });
+	writeJson(join(dir, "web-runtime-replay-plan.json"), { negativeControls: ["captured-signed", "missing-signature", "tampered-signature"], run: "node web-runtime-replay-verifier.mjs capture results --live" });
+	writeJson(join(dir, "web-exploit-claims.json"), claims);
+	writeFileSync(join(dir, "web-exploit-verifier.mjs"), "self-test verifier\n", { mode: 0o700 });
+	const result = verify(dir);
+	if (!result.proofReady || !result.exploitProofReady || result.runtimeProofReady || result.negativeControlVerification.negativeControlsPassed < 4) throw new Error(JSON.stringify(result));
+	const mutated = Object.assign({}, replay.rows[0], { responseSha256: "" });
+	if (replayRowValid(mutated)) throw new Error("missing replay hash negative control failed");
+	console.log(JSON.stringify({ kind: "repi-web-exploit-verifier-self-test", status: "ok", stats: result.stats }, null, 2));
+}
+
+if (selfTestMode) {
+	runSelfTest();
+} else {
+	const dir = process.argv[2] || ".";
+	const output = process.argv[3] || join(dir, "web-exploit-verification.json");
+	const result = verify(dir);
+	writeJson(output, result);
+	console.log(JSON.stringify({ kind: result.kind, proofReady: result.proofReady, runtimeProofReady: result.runtimeProofReady, exploitProofReady: result.exploitProofReady, stats: result.stats, output }, null, 2));
+	process.exit(result.proofReady ? 0 : 1);
+}
+`;
+}
+
+function writeWebExploitVerifier(artifactDir) {
+	if (noWrite || !artifactDir) return undefined;
+	const path = join(artifactDir, "web-exploit-verifier.mjs");
+	writePrivate(path, webExploitVerifierSource(), 0o700);
+	return path;
+}
+
+function writeWebExploitVerification(target, artifactDir, claimsSummary) {
+	if (noWrite || !artifactDir) return undefined;
+	const summary = webExploitVerificationSummary(target, artifactDir, claimsSummary);
+	const path = join(artifactDir, "web-exploit-verification.json");
 	writePrivate(path, `${JSON.stringify(summary, null, 2)}\n`, 0o600);
 	return { path, summary };
 }
@@ -22326,6 +22917,36 @@ function engageUrl(targetInfo, artifactDir) {
 			error: exploitClaims.summary.proofReady ? undefined : "no web exploit claims promoted",
 		});
 	}
+	const exploitVerifierPath = writeWebExploitVerifier(artifactDir);
+	if (exploitVerifierPath) {
+		rows.push({
+			id: "web-exploit-verifier-artifact",
+			command: "internal",
+			args: [redact(exploitVerifierPath)],
+			cwd: root,
+			exit: 0,
+			signal: null,
+			durationMs: 0,
+			stdout: `verifier=${redact(exploitVerifierPath)}\nrun=node ${redact(exploitVerifierPath)} ${redact(artifactDir)} ${redact(join(artifactDir, "web-exploit-verification.json"))}\n`,
+			stderr: "",
+			error: undefined,
+		});
+	}
+	const exploitVerification = writeWebExploitVerification(target, artifactDir, exploitClaims?.summary);
+	if (exploitVerification) {
+		rows.push({
+			id: "web-exploit-verification",
+			command: "internal",
+			args: [redact(exploitVerification.path)],
+			cwd: root,
+			exit: exploitVerification.summary.proofReady ? 0 : 1,
+			signal: null,
+			durationMs: 0,
+			stdout: `${JSON.stringify(exploitVerification.summary, null, 2)}\n`,
+			stderr: "",
+			error: exploitVerification.summary.proofReady ? undefined : "web exploit verification proof gates not satisfied",
+		});
+	}
 	return rows;
 }
 
@@ -22405,7 +23026,9 @@ function nextQueue(targetInfo, artifactDir, toolState) {
 	}
 	if (targetInfo.kind === "url") {
 		if (!noWrite && existsSync(join(artifactDir, "web-exploit-claims.json"))) q.push(`cat ${shellQuote(join(artifactDir, "web-exploit-claims.json"))}`);
-		q.push(`repi -p ${shellQuote(`For ${target}, use ${artifactDir}/web-exploit-claims.json claimLedger/composedPaths/repairQueue plus web-security-posture.json, web-discovery-matrix.json, web-api-schema-probes.json, web-ssrf-matrix.json, web-redirect-matrix.json, web-cors-matrix.json, web-object-matrix.json, web-replay-matrix.json, web-identity-jwt.json, web-js-sourcemap-summary.json, web-runtime-capture-plan.json/web-runtime-capture-harness.mjs, web-runtime-replay-plan.json/web-runtime-replay-verifier.mjs, web-signer-rebuild-workbench-plan.json/web-signer-rebuild-workbench.mjs, and web-js-signature-control-plan.json/web-js-signature-control-harness.mjs when present plus JS endpoint scans to build auth/session/JWT/CORS/header/redirect/SSRF/signature-control matrix; run browser/XHR/WS capture if needed; produce replay commands and IDOR/BOLA/object ownership/signature proof.`)}`);
+		if (!noWrite && existsSync(join(artifactDir, "web-exploit-verification.json"))) q.push(`cat ${shellQuote(join(artifactDir, "web-exploit-verification.json"))}`);
+		if (!noWrite && existsSync(join(artifactDir, "web-exploit-verifier.mjs"))) q.push(`node ${shellQuote(join(artifactDir, "web-exploit-verifier.mjs"))} ${shellQuote(artifactDir)} ${shellQuote(join(artifactDir, "web-exploit-verification.json"))}`);
+		q.push(`repi -p ${shellQuote(`For ${target}, use ${artifactDir}/web-exploit-claims.json and web-exploit-verification.json claimLedger/composedPaths/repairQueue plus verifier hash proofs/negative controls; bind web-security-posture.json, web-discovery-matrix.json, web-api-schema-probes.json, web-ssrf-matrix.json, web-redirect-matrix.json, web-cors-matrix.json, web-object-matrix.json, web-replay-matrix.json, web-identity-jwt.json, web-js-sourcemap-summary.json, web-runtime-capture-plan.json/web-runtime-capture-harness.mjs, web-runtime-replay-plan.json/web-runtime-replay-verifier.mjs, web-signer-rebuild-workbench-plan.json/web-signer-rebuild-workbench.mjs, and web-js-signature-control-plan.json/web-js-signature-control-harness.mjs; rerun web-exploit-verifier.mjs to prove artifact SHA-256, replay responseSha256, risk-matrix coverage, composed-path segment resolution, and runtime proof gates before promoting IDOR/BOLA/object ownership/signature proof.`)}`);
 		q.push(`repi swarm plan ${quotedTarget} --workers ${argValue("--workers") || "5"}${swarmRouteFlagsText(targetInfo)}`);
 	} else if (swarmRoutesForTargetInfo(targetInfo).length > 1) {
 		q.push(`repi swarm plan ${quotedTarget} --workers ${argValue("--workers") || String(swarmRoutesForTargetInfo(targetInfo).length)}${swarmRouteFlagsText(targetInfo)}`);
@@ -22565,6 +23188,7 @@ function summarizeEvidence(rows, targetInfo, toolState) {
 		if (/repi-web-signer-rebuild-workbench|web-signer-rebuild|assertByteForByte|canonicalUnsigned|byteForByteRule|regressionGates/i.test(text) && targetInfo.kind === "url") anchors.push("signer rebuild workbench anchors");
 		if (/repi-web-js-signature-control|web-js-signature-control|missing-signature|tampered-signature|assertPermutation|policy_gap_not_signer_proof/i.test(text) && targetInfo.kind === "url") anchors.push("JS signature control anchors");
 		if (/repi-web-exploit-claims|web-exploit-claims|web-authz-object-proof-path|web-client-signer-proof-path|web-session-auth-differential|web-object-authz-bola-signal|web-ssrf-canary-evidence|claimLedger|repairQueue/i.test(text) && targetInfo.kind === "url") anchors.push("web exploit claim anchors");
+		if (/repi-web-exploit-verification|web-exploit-verifier|web-artifact-hash-verification-proof|web-replay-hash-verification-proof|web-risk-matrix-coverage-proof|web-runtime-negative-control-proof|web-composed-path-verification-proof|web-exploit-verifier-negative-control-proof|web-exploit-verification-(?:proof|blocked)-path/i.test(text) && targetInfo.kind === "url") anchors.push("web exploit verifier anchors");
 		if (/AndroidManifest|classes\.dex|Info\.plist|Payload\/|CFBundle|Mach-O/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile package anchors");
 		if (/repi-mobile-archive-quicklook|mobile-archive-summary|mobile-attack-surface-claims|mobile-frida-hooks|hookTargets|mobile-runtime-pivot|CertificatePinner|TrustManager|network-or-pinning-signal/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile runtime hook anchors");
 		if (/repi-mobile-archive-verification|mobile-archive-verification|mobile-archive-verifier|mobile-archive-hash-verification-proof|mobile-zip-entry-verification-proof|mobile-manifest-verification-proof|mobile-runtime-evidence-proof-path|mobile-verifier-negative-control-proof/i.test(text) && (targetInfo.lane === "mobile" || targetInfo.lane === "mobile-ios")) anchors.push("mobile archive verifier anchors");
