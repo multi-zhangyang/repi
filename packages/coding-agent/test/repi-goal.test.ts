@@ -222,6 +222,22 @@ describe("REPI built-in goal mode", () => {
 		});
 	});
 
+	it("queues goal prompts as follow-up when print/RPC contexts are already busy", async () => {
+		for (const mode of ["print", "rpc", "json"] as const) {
+			const harness = createHarness();
+			harness.ctx.hasUI = false;
+			harness.ctx.mode = mode;
+			harness.ctx.isIdle = () => false;
+
+			await harness.commands.get("goal").handler(`${mode} busy objective`, harness.ctx);
+
+			expect(harness.sent).toHaveLength(1);
+			expect(harness.sent[0].content).toContain(`${mode} busy objective`);
+			expect(harness.sent[0].options).toEqual({ deliverAs: "followUp" });
+			expect(harness.statuses.get("goal")).toBe("🎯 active 0s");
+		}
+	});
+
 	it("replaces an existing goal without waiting for RPC/non-TUI confirmation dialogs", async () => {
 		for (const mode of ["rpc", "json"] as const) {
 			const harness = createHarness();
@@ -240,6 +256,23 @@ describe("REPI built-in goal mode", () => {
 				customType: REPI_GOAL_STATE_ENTRY_TYPE,
 				data: { version: 1, goal: { text: `${mode} replacement objective`, status: "active" } },
 			});
+		}
+	});
+
+	it("keeps a fresh profile without legacy goal state quiet in non-TUI startup/shutdown", () => {
+		for (const mode of ["print", "rpc", "json"] as const) {
+			const harness = createHarness();
+			harness.ctx.hasUI = false;
+			harness.ctx.mode = mode;
+
+			harness.handlers.get("session_start")![0]({ type: "session_start", reason: "fresh" }, harness.ctx);
+			expect(harness.sent).toHaveLength(0);
+			expect(harness.statuses.get("goal")).toBeUndefined();
+			expect(harness.entries.some((entry) => entry.customType === REPI_GOAL_STATE_ENTRY_TYPE)).toBe(false);
+
+			harness.handlers.get("session_shutdown")![0]({ type: "session_shutdown" }, harness.ctx);
+			expect(harness.statuses.get("goal")).toBeUndefined();
+			expect(harness.entries.some((entry) => entry.customType === REPI_GOAL_STATE_ENTRY_TYPE)).toBe(false);
 		}
 	});
 

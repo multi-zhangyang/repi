@@ -79,6 +79,9 @@ const requiredFiles = [
 	"packages/coding-agent/src/core/repi/target.ts",
 	"packages/coding-agent/src/core/repi/text.ts",
 	"packages/coding-agent/src/core/repi/toolchain.ts",
+	"packages/coding-agent/src/core/repi/worker-runtime.ts",
+	"packages/coding-agent/test/repi-goal-rpc-mode.test.ts",
+	"packages/coding-agent/test/repi-goal.test.ts",
 	"scripts/reverse-agent/repi-smoke.mjs",
 	"scripts/reverse-agent/repi-release-tarball-smoke.mjs",
 	"scripts/reverse-agent/repi-extension-compat-smoke.mjs",
@@ -1119,9 +1122,36 @@ rows.push(
 			"./repi/text.ts",
 			"./repi/toolchain.ts",
 			"./repi/runtime-adapter.ts",
+			"./repi/worker-runtime.ts",
 		]),
 		"recon-profile imports REPI modules",
 		"New REPI domains should land in core/repi/* modules first; recon-profile.ts should assemble and register.",
+	),
+);
+
+const workerRuntime = read("packages/coding-agent/src/core/repi/worker-runtime.ts");
+rows.push(
+	check(
+		"profile:worker-runtime-split-contract",
+		includesAll(workerRuntime, [
+			"WorkerRuntimePoolV1",
+			"verifyWorkerRuntimePool",
+			"workerLeaseSchedulerEventHash",
+			"verifyWorkerLeaseSchedulerV1",
+			"workerChildSessionLaunchPolicy",
+			"workerChildSessionToWorkerRuntimePoolBridge",
+			"verifyWorkerChildSessionRuntimeBatch",
+			"runtime:worker-runtime-pool-validation",
+			"runtime:claim-aware-worker-merge",
+		]) &&
+			includesAll(reconProfile, [
+				"./repi/worker-runtime.ts",
+				"verifyWorkerRuntimePool",
+				"workerChildSessionToWorkerRuntimePoolBridge",
+				"verifyWorkerLeaseSchedulerV1",
+			]),
+		"worker/subagent runtime pool, lease scheduler, and child-session validation live in a split pure module",
+		"Keep heavy runtime validation outside recon-profile.ts; profile should assemble live artifacts and call pure contracts.",
 	),
 );
 
@@ -1143,6 +1173,28 @@ rows.push(
 			includesAll(resourceSource, ["createReconResourceLoaderOptions", "isExternalGoalModeExtension"]),
 		"/goal command, goal_complete tool, footer status, continuation, and legacy conflict suppression are built in",
 		"Keep REPI goal mode built into the inline profile and suppress external @narumitw/pi-goal conflicts.",
+	),
+);
+const goalUnitTests = read("packages/coding-agent/test/repi-goal.test.ts");
+const goalRpcTests = read("packages/coding-agent/test/repi-goal-rpc-mode.test.ts");
+rows.push(
+	check(
+		"goal:non-tui-rpc-test-contract",
+		includesAll(goalUnitTests, [
+			"queues goal prompts as follow-up when print/RPC contexts are already busy",
+			"keeps a fresh profile without legacy goal state quiet in non-TUI startup/shutdown",
+			"replaces an existing goal without waiting for RPC/non-TUI confirmation dialogs",
+		]) &&
+			includesAll(goalRpcTests, [
+				"REPI goal mode over RPC",
+				"get_commands",
+				"get_tools",
+				"goal_complete",
+				"🎯 active 0/1k",
+				"🎯 complete",
+			]),
+		"/goal has explicit print/json/RPC/fresh-profile coverage plus an RPC wire test for status/footer events",
+		"Keep /goal usable outside TUI: no blocking confirm dialogs, follow-up queuing when busy, fresh profile silence, and RPC-visible status events.",
 	),
 );
 rows.push(
@@ -1306,6 +1358,7 @@ const scanFiles = [
 	"packages/coding-agent/src/core/repi/target.ts",
 	"packages/coding-agent/src/core/repi/text.ts",
 	"packages/coding-agent/src/core/repi/toolchain.ts",
+	"packages/coding-agent/src/core/repi/worker-runtime.ts",
 	"scripts/reverse-agent/repi-smoke.mjs",
 	"scripts/reverse-agent/repi-release-tarball-smoke.mjs",
 	"scripts/reverse-agent/memory-inspect.mjs",
