@@ -224,7 +224,36 @@ min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)
 - 因此 footer 显示超过 `auto@85%` 时，若模型正在持续吐 token，不会强行中断当前 stream；一旦当前 turn 结束，REPI 会自动写 context pack、执行 compact/resume，再继续后续 autonomous loop。
 
 
-## 7. 非交互长任务稳定性
+## 7. upstream pi 扩展兼容
+
+REPI 可以安装使用 upstream pi 生态里采用 `package.json` `pi` manifest 的 npm/git 包，同时保持运行目录隔离。常用示例：
+
+```bash
+repi install npm:@narumitw/pi-goal
+repi install npm:pi-web-access
+repi list
+```
+
+兼容层已覆盖常见 upstream 包名：
+
+```text
+@earendil-works/pi-coding-agent
+@earendil-works/pi-ai
+@earendil-works/pi-ai/compat
+@earendil-works/pi-ai/oauth
+@earendil-works/pi-tui
+@earendil-works/pi-agent-core
+```
+
+启动器会把 `PI_CODING_AGENT_DIR` / `PI_CODING_AGENT_SESSION_DIR` 映射到 `REPI_CODING_AGENT_DIR` / `REPI_CODING_AGENT_SESSION_DIR`。因此旧扩展读取 `PI_*` 路径时仍落在 `~/.repi/agent`，不会默认写入 `~/.pi`。需要浏览器 cookie 的搜索类扩展可设置：
+
+```bash
+export REPI_ALLOW_BROWSER_COOKIES=1
+```
+
+REPI 会在启动时把它转成兼容扩展识别的 `PI_ALLOW_BROWSER_COOKIES=1`。
+
+## 8. 非交互长任务稳定性
 
 `repi -p` / `repi --mode text` 默认启用长任务 guardrails，避免模型工具循环、慢 provider、stdin 未关闭或 bash 无超时导致“看起来卡死”。这些输出走 stderr，不污染最终 stdout。
 
@@ -247,7 +276,7 @@ REPI_BASH_DEFAULT_TIMEOUT_SECONDS=30 repi --tools bash -p "跑一个有边界的
 
 Provider stream idle timeout 使用同一套 provider timeout：`settings.retry.provider.timeoutMs` 或 HTTP idle timeout 设置；OpenAI Codex Responses SSE fallback 和 Anthropic-compatible SSE body read 都会在 idle 超时后取消 reader。
 
-## 8. 常见故障
+## 9. 常见故障
 
 | 现象 | 处理 |
 |---|---|
@@ -257,5 +286,6 @@ Provider stream idle timeout 使用同一套 provider timeout：`settings.retry.
 | 上游不认识 `reasoning_effort` | 设置 `"supportsReasoningEffort": false`。 |
 | 上游不认识 `store` 或 tools strict | 设置 `"supportsStore": false`、`"supportsStrictMode": false`。 |
 | 本地模型无 usage | 设置 `"supportsUsageInStreaming": false`，并确认 `contextWindow` 手动填对。 |
+| 安装后 `repi: command not found` | 重新运行最新 `bash install.sh`。默认会优先安装到 PATH 里的 `/usr/local/bin`/`/usr/local/sbin`；若回退到 `~/.local/bin`，安装器会写入 shell rc，新终端自动生效。当前终端可先执行 `export PATH="$HOME/.local/bin:$PATH"`。 |
 
 不要把真实 API key、GitHub token 或私有 endpoint 写入 README、示例或提交历史。

@@ -14,8 +14,10 @@ Options:
   --system          Install launcher into /usr/local/bin.
   -h, --help        Show this help.
 
-If no bin directory is provided, the installer uses /usr/local/bin when it is
-writable; otherwise it falls back to ~/.local/bin and prints a PATH hint.
+If no bin directory is provided, the installer prefers a launcher directory that
+is already on PATH (/usr/local/bin when writable or sudo-able). If it must fall
+back to ~/.local/bin, it creates the shell startup file and adds the PATH export
+idempotently so future shells can run `repi` directly.
 MSG
 }
 
@@ -58,19 +60,121 @@ if [ -z "$BIN_DIR" ] && [ "${#POSITIONAL[@]}" -ge 2 ]; then BIN_DIR="${POSITIONA
 ROOT="${ROOT:-$(pwd)}"
 ROOT="$(cd "$ROOT" && pwd)"
 
-if [ -z "$BIN_DIR" ]; then
-  if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
-    BIN_DIR="/usr/local/bin"
-  else
-    BIN_DIR="$HOME/.local/bin"
-  fi
-fi
-
 if [ ! -x "$ROOT/repi" ]; then
   echo "missing executable $ROOT/repi" >&2
   exit 1
 fi
-mkdir -p "$BIN_DIR"
+
+path_contains_dir() {
+  local dir="$1"
+  case ":${PATH:-}:" in
+    *":$dir:"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+shell_name() {
+  basename "${SHELL:-}" 2>/dev/null || true
+}
+
+CAN_SUDO="unknown"
+can_sudo() {
+  case "$CAN_SUDO" in
+    yes) return 0 ;;
+    no) return 1 ;;
+  esac
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    CAN_SUDO="no"
+    return 1
+  fi
+  if sudo -n true >/dev/null 2>&1; then
+    CAN_SUDO="yes"
+    return 0
+  fi
+  # curl|bash usually has stdin connected to the script pipe. sudo can still
+  # prompt on /dev/tty; never let sudo read from the script stream.
+  if [ -r /dev/tty ]; then
+    echo "sudo is needed to install the repi launcher into /usr/local/bin" >&2
+    if sudo -v </dev/tty; then
+      CAN_SUDO="yes"
+      return 0
+    fi
+  fi
+
+  CAN_SUDO="no"
+  return 1
+}
+
+can_prepare_dir_direct() {
+  local dir="$1"
+  { [ -d "$dir" ] || mkdir -p "$dir" 2>/dev/null; } && [ -w "$dir" ]
+}
+
+can_prepare_dir() {
+  local dir="$1"
+  can_prepare_dir_direct "$dir" || can_sudo
+}
+
+first_writable_path_dir() {
+  local path_value="${PATH:-}"
+  local old_ifs="$IFS"
+  local dir
+  IFS=':'
+  for dir in $path_value; do
+    IFS="$old_ifs"
+    case "$dir" in
+      ""|/bin|/usr/bin|/sbin|/usr/sbin) ;;
+      *)
+        if [ -d "$dir" ] && [ -w "$dir" ]; then
+          printf '%s' "$dir"
+          return 0
+        fi
+        ;;
+    esac
+    IFS=':'
+  done
+  IFS="$old_ifs"
+  return 1
+}
+
+if [ -z "$BIN_DIR" ]; then
+  if path_contains_dir /usr/local/bin && can_prepare_dir /usr/local/bin; then
+    BIN_DIR="/usr/local/bin"
+  elif path_contains_dir /usr/local/sbin && can_prepare_dir /usr/local/sbin; then
+    BIN_DIR="/usr/local/sbin"
+  else
+    BIN_DIR="$(first_writable_path_dir || true)"
+    BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
+  fi
+fi
+
+USE_SUDO=0
+if ! mkdir -p "$BIN_DIR" 2>/dev/null; then
+  can_sudo || { echo "cannot create launcher directory: $BIN_DIR" >&2; exit 1; }
+  sudo mkdir -p "$BIN_DIR"
+  USE_SUDO=1
+fi
+if [ ! -w "$BIN_DIR" ]; then
+  can_sudo || { echo "launcher directory is not writable: $BIN_DIR" >&2; exit 1; }
+  USE_SUDO=1
+fi
+
+remove_path() {
+  if [ "$USE_SUDO" -eq 1 ]; then
+    sudo rm -f "$1"
+  else
+    rm -f "$1"
+  fi
+}
+
+link_path() {
+  if [ "$USE_SUDO" -eq 1 ]; then
+    sudo ln -sfn "$1" "$2"
+  else
+    ln -sfn "$1" "$2"
+  fi
+}
 
 absolute_path() {
   local path="$1"
@@ -91,7 +195,7 @@ cleanup_stale_recon_pi() {
   resolved_candidate="$(readlink -f "$candidate" 2>/dev/null || printf '%s' "$candidate")"
   resolved_recon="$(readlink -f "$ROOT/pi" 2>/dev/null || printf '%s' "$ROOT/pi")"
   if [ "$resolved_candidate" = "$resolved_recon" ]; then
-    rm -f "$candidate"
+    remove_path "$candidate"
     echo "removed stale REPI pi shim: $candidate"
   fi
 }
@@ -106,7 +210,7 @@ fi
 
 REPI_LINK="$BIN_DIR/repi"
 if [ "$(absolute_path "$REPI_LINK")" != "$ROOT/repi" ]; then
-  ln -sfn "$ROOT/repi" "$REPI_LINK"
+  link_path "$ROOT/repi" "$REPI_LINK"
 fi
 node "$ROOT/scripts/reverse-agent/init-repi-profile.mjs" "$ROOT"
 REPI_INIT_VERBOSE=1 "$ROOT/repi" --offline --help >/dev/null 2>&1
@@ -117,22 +221,27 @@ REPI_INIT_VERBOSE=1 "$ROOT/repi" --offline --help >/dev/null 2>&1
 # system dir like /usr/local/bin (already on PATH) and never touch rc when
 # running with sudo (the rc would be root's, not the invoking user's).
 BIN_ON_PATH=0
-case ":$PATH:" in
-  *":$BIN_DIR:"*) BIN_ON_PATH=1 ;;
-esac
+if path_contains_dir "$BIN_DIR"; then
+  BIN_ON_PATH=1
+fi
 
 RC_LINE="export PATH=\"$BIN_DIR:\$PATH\""
 RC_UPDATED=""
 if [ "$BIN_ON_PATH" -ne 1 ] && [ "${SUDO_USER:-}" = "" ] && [ -n "$HOME" ]; then
   case "$BIN_DIR" in
     "$HOME"|"$HOME"/*)
-      for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-        # Only edit a rc that already exists (don't create new shell configs);
-        # skip .zshrc unless the user actually uses zsh.
-        [ -f "$rc" ] || continue
-        case "$rc" in
-          *.zshrc) [ -n "${ZSH_VERSION:-}" ] || grep -q 'repi' "$rc" 2>/dev/null || continue ;;
-        esac
+      RC_FILES=("$HOME/.profile")
+      current_shell="$(shell_name)"
+      if [ -n "${BASH_VERSION:-}" ] || [ "$current_shell" = "bash" ]; then
+        RC_FILES=("$HOME/.bashrc" "$HOME/.profile")
+      elif [ -n "${ZSH_VERSION:-}" ] || [ "$current_shell" = "zsh" ]; then
+        RC_FILES=("$HOME/.zshrc" "$HOME/.profile")
+      fi
+      for rc in "${RC_FILES[@]}"; do
+        # Create the targeted rc files when missing. The previous installer only
+        # edited existing files, which left minimal shells with a working
+        # ~/.local/bin/repi symlink but no future-shell PATH entry.
+        [ -f "$rc" ] || : > "$rc"
         if ! grep -qF "$RC_LINE" "$rc" 2>/dev/null; then
           printf '\n# Added by repi install\n%s\n' "$RC_LINE" >> "$rc"
           RC_UPDATED="${RC_UPDATED}${rc##*/} "
@@ -145,7 +254,8 @@ fi
 PATH_HINT=""
 if [ "$BIN_ON_PATH" -ne 1 ]; then
   if [ -n "$RC_UPDATED" ]; then
-    PATH_HINT="  Added PATH export to: ${RC_UPDATED% }\n  Open a new shell, or for this shell run: export PATH=\"$BIN_DIR:\$PATH\""
+    PATH_HINT="  Added PATH export to: ${RC_UPDATED% }
+  Open a new shell, or for this shell run: export PATH=\"$BIN_DIR:\$PATH\""
   else
     PATH_HINT="  PATH hint (run in this shell): export PATH=\"$BIN_DIR:\$PATH\""
   fi
@@ -155,7 +265,7 @@ Installed REPI:
   launcher: $BIN_DIR/repi -> $ROOT/repi
   runtime : ${REPI_CODING_AGENT_DIR:-${REPI_AGENT_DIR:-$HOME/.repi/agent}}
   profile : built-in reverse/pentest kernel initialized
-$(printf "${PATH_HINT}")
+$PATH_HINT
 
 Next commands:
   repi commands

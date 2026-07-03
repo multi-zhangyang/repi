@@ -58,6 +58,8 @@ npm install --ignore-scripts
 npm run install:repi
 ```
 
+The source installer writes a `repi` launcher into an existing PATH directory when possible (`/usr/local/bin` / `/usr/local/sbin`, with sudo if available). If it falls back to `~/.local/bin`, it now creates/updates `.bashrc`/`.profile` (or `.zshrc`/`.profile`) and prints the one-line `export PATH="$HOME/.local/bin:$PATH"` needed for the current shell.
+
 Configure a model with REPI's Claude Code-style env-only path:
 
 ```bash
@@ -74,6 +76,13 @@ Persistent multi-provider setups can be stored in `~/.repi/agent/models.json` wi
 ```bash
 repi model add --provider gateway --api openai-completions --base-url https://gateway.example/v1 --model vendor/model-id
 repi model login --provider gateway --api-key-stdin
+```
+
+Install upstream pi ecosystem packages when needed:
+
+```bash
+repi install npm:@narumitw/pi-goal
+repi install npm:pi-web-access
 ```
 
 Then start with `/re-profile-check quick`, `/re-kernel build <target>`, `/re-map <target> 2`, `/re-operator plan <target>`, `/re-verifier matrix`, and `/re-complete audit`. REPI still exposes the standard `read`, `write`, `edit`, and `bash` tools, but its default system prompt and commands are the REPI reverse/pentest control plane.
@@ -347,11 +356,16 @@ Place in `~/.repi/agent/themes/`, `.repi/themes/`, or a [repi package](#repi-pac
 
 ### REPI Packages
 
-Bundle and share extensions, skills, prompts, and themes via npm or git. Find packages on [npmjs.com](https://www.npmjs.com/search?q=keywords%3Api-package) or [Discord](https://discord.com/channels/1456806362351669492/1457744485428629628).
+Bundle and share extensions, skills, prompts, and themes via npm or git. REPI also loads upstream pi packages that publish a `package.json` `pi` manifest and import `@earendil-works/pi-*` APIs. Find packages on [npmjs.com](https://www.npmjs.com/search?q=keywords%3Api-package).
 
 > **Security:** REPI packages run with full system access. Extensions execute arbitrary code, and skills can instruct the model to perform any action including running executables. Review source code before installing third-party packages.
 
 ```bash
+# Verified upstream pi packages
+repi install npm:@narumitw/pi-goal
+repi install npm:pi-web-access
+
+# Generic npm/git packages
 repi install npm:@foo/repi-tools
 repi install npm:@foo/repi-tools@1.2.3      # pinned version
 repi install git:github.com/user/repo
@@ -373,15 +387,15 @@ repi config                                   # enable/disable extensions, skill
 ```
 
 Packages install to `~/.repi/agent/git/` (git) or `~/.repi/agent/npm/` (npm). Use `-l` for project-local installs (`.repi/git/`, `.repi/npm/`). Git `@ref` values are pinned tags or commits; pinned packages are skipped by `repi update`, so use `repi install git:host/user/repo@new-ref` to move an existing package to a new ref. Git packages install dependencies with `npm install --omit=dev` by default, so runtime deps must be listed under `dependencies`; when `npmCommand` is configured, git packages use plain `install` for compatibility with wrappers. If you use a Node version manager and want package installs to reuse a stable npm context, set `npmCommand` in `settings.json`, for example `["mise", "exec", "node@20", "--", "npm"]`.
-REPI does not manage the upstream `pi` command: `repi update pi` is rejected, and `repi update` only updates REPI packages.
+REPI does not manage the upstream `pi` command: `repi update pi` is rejected, and `repi update` only updates REPI packages. For compatibility, legacy `PI_CODING_AGENT_DIR` is pointed at the isolated REPI profile so upstream extensions do not silently write to `~/.pi` when launched by `repi`.
 
-Create a package by adding a `repi` key to `package.json`:
+Create a package by adding an upstream-compatible `pi` key to `package.json`:
 
 ```json
 {
   "name": "my-repi-package",
-  "keywords": ["repi-package"],
-  "repi": {
+  "keywords": ["pi-package", "repi-package"],
+  "pi": {
     "extensions": ["./extensions"],
     "skills": ["./skills"],
     "prompts": ["./prompts"],
@@ -434,21 +448,12 @@ See [docs/rpc.md](docs/rpc.md) for the protocol.
 
 ## Philosophy
 
-REPI is aggressively extensible so it doesn't have to dictate your workflow. Features that other tools bake in can be built with [extensions](#extensions), [skills](#skills), or installed from third-party [repi packages](#repi-packages). This keeps the core minimal while letting you shape repi to fit how you work.
+REPI keeps the mature pi harness surfaces—extensions, skills, prompts, themes, RPC, SDK, MCP, and subagent-capable execution—but the product default is reverse/pentest execution rather than a generic coding assistant.
 
-**No MCP.** Build CLI tools with READMEs (see [Skills](#skills)), or build an extension that adds MCP support. [Why?](https://mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/)
-
-**No sub-agents.** There's many ways to do this. Spawn repi instances via tmux, or build your own with [extensions](#extensions), or install a package that does it your way.
-
-**No permission popups.** Run in a container, or build your own confirmation flow with [extensions](#extensions) inline with your environment and security requirements.
-
-**No plan mode.** Write plans to files, or build it with [extensions](#extensions), or install a package.
-
-**No built-in to-dos.** They confuse models. Use a TODO.md file, or build your own with [extensions](#extensions).
-
-**No background bash.** Use tmux. Full observability, direct interaction.
-
-Read the [blog post](https://mariozechner.at/posts/2025-11-30-repi-coding-agent/) for the full rationale.
+- **Execution over theater:** routes, tools, subagents, swarm lanes, evidence ledgers, replay/proof loops, and verifier matrices should produce artifacts that can be rerun.
+- **Env-first models:** use `REPI_AUTH_TOKEN`, `REPI_BASE_URL`, `REPI_MODEL`, and `REPI_MODEL_API` for Claude Code-style model switching; use `models.json` only when persistent multi-provider detail is needed.
+- **Extension-compatible, profile-isolated:** upstream pi packages can load, but state stays under `~/.repi/agent` and REPI never manages the user's upstream `pi` install or `~/.pi` profile.
+- **No fake fallbacks:** if a capability is missing, report the evidence gap or use a real generic fallback path; do not present simulated exploit/reverse results as proof.
 
 ---
 
@@ -603,9 +608,17 @@ repi --exclude-tools ask_question
 | `REPI_CODING_AGENT_DIR` | Override config directory (default: `~/.repi/agent`) |
 | `REPI_CODING_AGENT_SESSION_DIR` | Override session storage directory (overridden by `--session-dir`) |
 | `REPI_PACKAGE_DIR` | Override package directory (useful for Nix/Guix where store paths tokenize poorly; `PI_PACKAGE_DIR` remains a compatibility fallback) |
-| `PI_OFFLINE` | Disable startup network operations, including update checks, package update checks, and install/update telemetry |
-| `PI_SKIP_VERSION_CHECK` | Compatibility flag; REPI launcher sets it by default to suppress upstream Pi version checks |
-| `PI_TELEMETRY` | Override install/update telemetry and provider attribution headers. Use `1`/`true`/`yes` to enable or `0`/`false`/`no` to disable. This does not disable update checks |
+| `REPI_AUTH_TOKEN` | Env-only provider API key/token |
+| `REPI_BASE_URL` | Env-only provider base URL |
+| `REPI_MODEL` | Env-only model id |
+| `REPI_MODEL_API` | `openai-compatible`, `openai-responses`, or `anthropic` |
+| `REPI_CONTEXT_WINDOW` / `REPI_AUTO_COMPACT_WINDOW` | Env-only model context window; the latter mirrors Claude Code naming |
+| `REPI_MAX_TOKENS` | Env-only model output cap |
+| `REPI_SUBAGENT_MODEL` | Optional worker/subagent model id |
+| `REPI_LOAD_BUILTIN_MODELS` | Set `1` to expose upstream pi's built-in model catalog; default is `0` |
+| `REPI_OFFLINE` | Disable startup network operations, including update checks, package update checks, and install/update telemetry |
+| `REPI_ALLOW_BROWSER_COOKIES` | Maps to `PI_ALLOW_BROWSER_COOKIES` for compatible browser/search extensions |
+| `PI_CODING_AGENT_DIR` | Compatibility alias automatically pointed at `REPI_CODING_AGENT_DIR` by the launcher |
 | `PI_CACHE_RETENTION` | Set to `long` for extended prompt cache (Anthropic: 1h, OpenAI: 24h) |
 | `VISUAL`, `EDITOR` | External editor for Ctrl+G |
 

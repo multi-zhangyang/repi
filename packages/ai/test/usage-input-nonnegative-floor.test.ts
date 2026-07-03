@@ -108,7 +108,6 @@ vi.mock("@google/genai", () => {
 				};
 			},
 		};
-		constructor() {}
 	}
 	return {
 		GoogleGenAI,

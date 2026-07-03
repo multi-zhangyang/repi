@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `@pi-recon/repi-ai/compat` as an upstream-compatible subpath for pi ecosystem extensions loaded by REPI.
+
 ### Fixed
 
 - Fixed OpenAI Responses custom providers to honor `compat.supportsDeveloperRole: false` for reasoning models ([#5456](https://github.com/earendil-works/pi/issues/5456)).

@@ -5,6 +5,29 @@ the [pi coding agent](https://github.com/earendil-works/pi) runtime. This
 changelog covers REPI-specific releases. The upstream pi changelog is preserved
 in `CHANGELOG.upstream.md` for reference.
 
+## [0.1.2] - 2026-07-03
+
+Release focused on install reliability, env-first model selection, and upstream pi extension compatibility.
+
+### Added
+
+- **Env-only model switching**: `REPI_AUTH_TOKEN`, `REPI_BASE_URL`, `REPI_MODEL`, `REPI_MODEL_API`, `REPI_CONTEXT_WINDOW` / `REPI_AUTO_COMPACT_WINDOW`, `REPI_MAX_TOKENS`, and `REPI_SUBAGENT_MODEL` provide a Claude Code-style setup while keeping OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages wire formats.
+- **Upstream pi package compatibility**: loader aliases for `@earendil-works/pi-*` imports and `@earendil-works/pi-ai/compat` let REPI install/use packages such as `@narumitw/pi-goal` and `pi-web-access` while keeping state in `~/.repi/agent`.
+
+### Changed
+
+- REPI defaults to `REPI_LOAD_BUILTIN_MODELS=0`, so the runtime surface is environment providers, explicit `models.json` providers, and dynamic extension providers rather than the large upstream built-in catalog.
+- Documentation now leads with env-only model configuration and verified upstream pi extension installation examples.
+
+### Fixed
+
+- **Installer PATH reliability**: source installs now prefer a PATH-visible launcher directory, use sudo for `/usr/local/bin` when available, and create/update shell startup files when falling back to `~/.local/bin`, preventing post-install `repi: command not found` in new shells.
+- Hardened runtime reliability/evidence flows from real-run self-checks, including route/memory noise reduction and realistic smoke/doctor probe budgets.
+
+### Tests
+
+- Added installer regression coverage for `~/.local/bin/repi` symlink creation, idempotent PATH rc updates, and no-op rc behavior when the launcher directory is already on PATH.
+
 ## [0.1.1] - 2026-06-28
 
 Patch release: bug fixes from real-run verification and a full

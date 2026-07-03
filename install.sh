@@ -11,7 +11,7 @@
 #
 # Options:
 #   --prefix <dir>   Clone/install location for curl|bash mode (default ~/.repi-src).
-#   --user           Launcher into ~/.local/bin (default).
+#   --user           Force launcher into ~/.local/bin.
 #   --system         Launcher into /usr/local/bin (needs sudo).
 #   --bin-dir <dir>  Launcher into a custom directory.
 #   --branch <name>  Branch/commit to clone (default main).
@@ -110,25 +110,41 @@ else
 fi
 
 # --- launcher + runtime profile ------------------------------------------
-# No bin flag given: pick a launcher dir that is ALREADY on $PATH and writable
-# so `repi` works in the current shell immediately (a child script cannot
-# modify the parent shell's PATH, so installing off-PATH always requires a
-# manual export or a new shell). Preference order:
-#   1. /usr/local/bin, /usr/local/sbin — standard, on PATH for root. If the
-#      dir is on PATH but missing (common on minimal containers), create it.
-#   2. the first writable entry on $PATH that is not a system-critical dir
-#   3. ~/.local/bin  (install-repi.sh auto-adds it to shell rc for new shells)
+# No bin flag given: pick a launcher dir that is ALREADY on $PATH so `repi`
+# works immediately when possible. Preference order:
+#   1. /usr/local/bin, /usr/local/sbin — standard PATH dirs; use sudo when the
+#      user has it so a fresh install does not leave `repi` off PATH.
+#   2. the first writable entry on $PATH that is not a system-critical dir.
+#   3. ~/.local/bin — install-repi.sh creates shell rc files and adds PATH for
+#      future shells, while printing the one-line export for the current shell.
 # Explicit --user/--system/--bin-dir are passed through untouched.
+path_contains_dir() {
+  case ":${PATH:-}:" in *":$1:"*) return 0 ;; *) return 1 ;; esac
+}
+
+can_sudo_install() {
+  command -v sudo >/dev/null 2>&1 || return 1
+  sudo -n true >/dev/null 2>&1 && return 0
+  [ -r /dev/tty ] || return 1
+  echo "sudo is needed to install the repi launcher into /usr/local/bin" >&2
+  sudo -v </dev/tty
+}
+
 if [ "${#BIN_ARGS[@]}" -eq 0 ]; then
   chosen=""
   for d in /usr/local/bin /usr/local/sbin; do
-    case ":$PATH:" in *":$d:"*) : ;; *) continue ;; esac   # only if on PATH
-    if { [ -d "$d" ] && [ -w "$d" ]; } || { mkdir -p "$d" 2>/dev/null && [ -w "$d" ]; }; then
-      chosen="$d"; break
+    path_contains_dir "$d" || continue
+    if { [ -d "$d" ] || mkdir -p "$d" 2>/dev/null; } && [ -w "$d" ]; then
+      chosen="$d"
+      break
+    fi
+    if can_sudo_install; then
+      chosen="$d"
+      break
     fi
   done
   if [ -z "$chosen" ]; then
-    IFS=':' read -ra _path_dirs <<<"$PATH"
+    IFS=':' read -ra _path_dirs <<<"${PATH:-}"
     for d in "${_path_dirs[@]}"; do
       case "$d" in ""|/bin|/usr/bin|/sbin|/usr/sbin) continue ;; esac
       [ -d "$d" ] && [ -w "$d" ] && chosen="$d" && break
@@ -158,7 +174,7 @@ esac
 PATH_HINT=""
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;
-  *) PATH_HINT="  export PATH=\"$BIN_DIR:\$PATH\"   # add to your shell profile" ;;
+  *) PATH_HINT="  export PATH=\"$BIN_DIR:\$PATH\"   # for this shell; new shells are updated when possible" ;;
 esac
 
 cat <<MSG
