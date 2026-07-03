@@ -15,7 +15,7 @@ export const REPI_TASK_PATTERNS = [
 	/firmware|固件|iot|binwalk|squashfs|uboot|uart|jtag|mips|arm/i,
 	/pcap|流量|取证|dfir|forensic|stego|隐写|wireshark|tshark|memory dump|memdump|vmem|volatility|内存取证|内存镜像/i,
 	/cloud|aws|azure|gcp|metadata|k8s|kubernetes|docker|container|容器|云/i,
-	/ad\b|active directory|kerberos|ntlm|ldap|windows|lsass|mimikatz|bloodhound|certipy|域控|内网|横向|提权|凭据/i,
+	/\bad\b|active directory|kerberos|ntlm|ldap|windows|lsass|mimikatz|bloodhound|certipy|域控|内网|横向|提权|凭据/i,
 	/malware|恶意|样本|yara|sigma|ioc|c2|沙箱|反调试|反沙箱/i,
 	/prompt injection|agent\s*安全|llm\s*安全|越狱|记忆投毒|工具滥用/i,
 ] as const;
@@ -45,7 +45,7 @@ export function routeRepiTask(text: string): RoutePlan {
 				lower,
 			));
 	const agentBoundarySpecific =
-		/prompt injection|system prompt|developer message|tool injection|tool-call|tool call|function call|mcp|model context protocol|agent\s*安全|llm\s*安全|rag|retrieval|memory poisoning|记忆投毒|工具滥用|越狱|jailbreak|indirect prompt|untrusted content/.test(
+		/prompt injection|system prompt|developer message|tool injection|tool-call|tool call|function call|mcp|model context protocol|agent\s*安全|llm\s*安全|rag|retrieval|memory poisoning|记忆投毒|工具滥用|越狱|jailbreak|indirect prompt|untrusted content|repi\s*(?:自身|self|harness|qa)|harness\s*qa|agent[-_ ]?thread|sub[-_ ]?agent|agent\s*(?:harness|runtime|orchestration|boundary)|env[-_ ]?only|model provider|print mode/.test(
 			lower,
 		);
 	const exploitReliabilitySpecific =
@@ -248,7 +248,7 @@ export function routeRepiTask(text: string): RoutePlan {
 			["identity map", "runtime config", "metadata path", "privilege edge", "pivot proof"],
 		);
 	}
-	if (/ad\b|kerberos|ntlm|ldap|lsass|mimikatz|bloodhound|certipy|域控|内网|横向|凭据|提权/.test(lower)) {
+	if (/\bad\b|kerberos|ntlm|ldap|lsass|mimikatz|bloodhound|certipy|域控|内网|横向|凭据|提权/.test(lower)) {
 		return plan(
 			"Identity / Windows / AD",
 			"validate credential or privilege path",

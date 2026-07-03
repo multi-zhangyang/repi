@@ -29452,8 +29452,11 @@ function getToolResultCommand(event: ToolResultEvent): string | undefined {
 
 export function buildPerTurnMemoryRecall(event: ToolResultEvent, stats: ReconStats): string | undefined {
 	// Default ON (route-aware real-path defaults). Opt out with
-	// REPI_PER_TURN_MEMORY=0. Returns undefined on an empty/unmatched store, so
-	// default-on adds no noise when there is nothing to recall.
+	// REPI_PER_TURN_MEMORY=0. Keep this path deliberately terse: it is appended to
+	// every tool result, so repeating the full memory_runtime packet on each grep/read
+	// turn creates context bloat and can make print-mode hit guard limits before the
+	// agent reports findings. Startup/context memory still carries the full runtime
+	// contract; per-turn recall only injects actual matching cards.
 	if (envBoolean("REPI_PER_TURN_MEMORY") === false) return undefined;
 	if (!stats.active || (!stats.noSession ? false : !allowNoSessionReconWriteback())) return undefined;
 	if (event.toolName === "re_memory") return undefined;
@@ -29463,12 +29466,15 @@ export function buildPerTurnMemoryRecall(event: ToolResultEvent, stats: ReconSta
 	const route = stats.lastRoute?.domain ?? mission?.route.domain;
 	const target = mission?.task;
 	const query = uniqueNonEmpty([command, event.toolName, truncateMiddle(text, 400), mission?.task], 4).join(" ") || "REPI per-turn recall";
-	const packet = formatScopedMemoryRecallPacket({ route, target, query, maxItems: 3, budgetTokens: 220 });
-	if (!packet.trim() || /cards=0/.test(packet)) return undefined;
+	const maxItems = Math.max(1, Math.min(3, Number.parseInt(process.env.REPI_PER_TURN_MEMORY_MAX_ITEMS ?? "1", 10) || 1));
+	const hits = scopedMemoryRecallHits({ route, target, query, maxItems });
+	if (hits.length === 0) return undefined;
+	const cards = hits.flatMap(memoryRecallCardLines).join("\n");
 	return [
 		"--- per-turn scoped memory recall (REPI_PER_TURN_MEMORY) ---",
 		"recall_contract: treat as hypotheses only; verify against current workspace/runtime before acting.",
-		truncateMiddle(packet, 900),
+		`cards=${hits.length} route=${route ?? "unknown"} target=${target ? truncateMiddle(target, 180) : "workspace"}`,
+		truncateMiddle(cards, 700),
 		"--- end per-turn recall ---",
 	].join("\n");
 }

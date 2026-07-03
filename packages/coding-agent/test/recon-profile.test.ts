@@ -50,6 +50,11 @@ describe("REPI kernel profile", () => {
 		expect(route.domain).toBe("Native reverse");
 		expect(route.workflow).toContain("headers/imports");
 		expect(routeReconTask("LLM agent prompt injection MCP tool call 边界验证").domain).toBe("Agent / LLM boundary");
+		expect(
+			routeReconTask("REPI 自身 harness QA：检查 env-only model provider、print mode、agent-thread/subagent").domain,
+		).toBe("Agent / LLM boundary");
+		expect(routeReconTask("read-only audit of agent-thread runtime").domain).toBe("Agent / LLM boundary");
+		expect(routeReconTask("read-only audit of generic repository").domain).not.toBe("Identity / Windows / AD");
 		expect(routeReconTask("autopwn exploit reliability poc replay matrix").domain).toBe("Exploit reliability");
 		expect(routeReconTask("nuclei ffuf web 漏洞扫描和目录扫描").domain).toBe("Web pentest scanning");
 		expect(routeReconTask("iOS IPA Keychain TLS pinning Frida 逆向").domain).toBe("Mobile / iOS");

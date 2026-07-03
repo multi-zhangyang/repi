@@ -478,6 +478,10 @@ describe("per-turn scoped memory recall (gap #7)", () => {
 		expect(recall).toBeDefined();
 		expect(recall).toContain("per-turn scoped memory recall");
 		expect(recall).toContain("nmap");
+		expect(recall).toContain("cards=1");
+		expect(recall).not.toContain("memory_runtime:");
+		expect(recall).not.toContain("startup_budget_tokens=");
+		expect(recall!.length).toBeLessThan(1100);
 	});
 
 	it("returns undefined when no matching memory exists (no noise on empty store)", () => {
