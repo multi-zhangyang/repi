@@ -1051,6 +1051,7 @@ rows.push(
 			"./repi/target.ts",
 			"./repi/text.ts",
 			"./repi/toolchain.ts",
+			"./repi/runtime-adapter.ts",
 		]),
 		"recon-profile imports REPI modules",
 		"New REPI domains should land in core/repi/* modules first; recon-profile.ts should assemble and register.",
@@ -1075,10 +1076,11 @@ rows.push(
 	),
 );
 
+const runtimeAdapterSource = read("packages/coding-agent/src/core/repi/runtime-adapter.ts");
 rows.push(
 	check(
 		"runtime:adapter-auto-detect-contract",
-		includesAll(reconProfile, [
+		includesAll(runtimeAdapterSource, [
 			"detectRuntimeAdapterIds",
 			"target_auto_detection_contract",
 			"gdb-native-trace-adapter",
@@ -1087,8 +1089,9 @@ rows.push(
 			"web-cdp-network-adapter",
 			"tshark-pcap-flow-adapter",
 			"binwalk-firmware-extract-adapter",
-		]),
-		"runtime adapter matrix covers GDB/r2/Frida/CDP/PCAP/firmware and target auto-detection",
+			"firmware-rootfs-service-map-adapter",
+		]) && includesAll(reconProfile, ["./repi/runtime-adapter.ts", "runRuntimeAdapterExecution"]),
+		"runtime adapter matrix covers GDB/r2/Frida/CDP/PCAP/firmware/rootfs and target auto-detection",
 		"Keep re_runtime_adapter able to infer the runner from URL, PCAP, APK/IPA/package, firmware/rootfs, pwn/crash, and native target shapes.",
 	),
 );

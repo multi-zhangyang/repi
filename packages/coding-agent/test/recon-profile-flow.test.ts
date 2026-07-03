@@ -54,6 +54,15 @@ describe("REPI kernel profile runtime/proof/swarm flows", () => {
 			sendMessage() {},
 			exec: async (command: string, args: string[]) => {
 				execCalls.push({ command, args });
+				if (args.join("\n").includes("parser-rootfs-marker")) {
+					return {
+						code: 0,
+						stdout:
+							"[parser-rootfs-marker] target=/tmp/rootfs\n/etc/passwd\n/etc/init.d/httpd\nroot:x:0:0:root:/root:/bin/sh\nconfig password=admin\n",
+						stderr: "",
+						killed: false,
+					};
+				}
 				return {
 					code: 0,
 					stdout: "TCP Conversations <-> frames bytes\nGET /login HTTP/1.1\npassword=demo\n",
@@ -86,6 +95,18 @@ describe("REPI kernel profile runtime/proof/swarm flows", () => {
 		});
 		expect(firmwarePlan.content[0]?.text).toContain("adapter:binwalk-firmware-extract-adapter");
 
+		const rootfsDir = join(agentDir, "rootfs");
+		mkdirSync(join(rootfsDir, "etc", "init.d"), { recursive: true });
+		mkdirSync(join(rootfsDir, "bin"), { recursive: true });
+		writeFileSync(join(rootfsDir, "etc", "passwd"), "root:x:0:0:root:/root:/bin/sh\n", "utf-8");
+		writeFileSync(join(rootfsDir, "etc", "init.d", "httpd"), "#!/bin/sh\nhttpd -p 80\n", "utf-8");
+		writeFileSync(join(rootfsDir, "bin", "busybox"), "busybox\n", "utf-8");
+		const rootfsPlan = await runtimeAdapterTool.execute("tool-call-id", {
+			action: "plan",
+			target: rootfsDir,
+		});
+		expect(rootfsPlan.content[0]?.text).toContain("adapter:firmware-rootfs-service-map-adapter");
+
 		const gdbPlan = await runtimeAdapterTool.execute("tool-call-id", {
 			action: "plan",
 			target: "SIGSEGV crash in ./vuln",
@@ -97,6 +118,13 @@ describe("REPI kernel profile runtime/proof/swarm flows", () => {
 		expect(execCalls[0]?.args.join("\n")).toContain("strings -a 'capture.pcap'");
 		expect(pcapRun.content[0]?.text).toContain("adapter: tshark-pcap-flow-adapter");
 		expect(pcapRun.content[0]?.text).toContain("parser-tshark-conversation");
+
+		const rootfsRun = await runtimeAdapterTool.execute("tool-call-id", { action: "run", target: rootfsDir });
+		expect(execCalls[1]?.args.join("\n")).toContain("parser-rootfs-marker");
+		expect(execCalls[1]?.args.join("\n")).toContain("find");
+		expect(rootfsRun.content[0]?.text).toContain("adapter: firmware-rootfs-service-map-adapter");
+		expect(rootfsRun.content[0]?.text).toContain("parser-rootfs-passwd");
+		expect(rootfsRun.content[0]?.text).toContain("rootfs service map");
 	});
 
 	it("builds an evidence task tree linking commands, artifacts, hypotheses, and counter-evidence", async () => {
