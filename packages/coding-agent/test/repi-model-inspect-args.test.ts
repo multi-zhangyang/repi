@@ -21,6 +21,8 @@ const REPI_MODEL_ENV_NAMES = [
 	"REPI_PROVIDER_ID",
 	"REPI_CONTEXT_WINDOW",
 	"REPI_MODEL_CONTEXT_WINDOW",
+	"REPI_AUTO_COMPACT_WINDOW",
+	"REPI_MODEL_AUTO_COMPACT_WINDOW",
 	"REPI_MAX_TOKENS",
 	"REPI_MODEL_MAX_TOKENS",
 	"REPI_MAX_OUTPUT_TOKENS",
@@ -131,6 +133,45 @@ describe("repi model argument parsing", () => {
 		const envRow = rows.find((row) => row.provider === "repi-env" && row.model === "env-main-model");
 		expect(envRow?.baseUrl).toMatch(/^<redacted:url:/);
 		expect(envRow?.baseUrl).not.toContain("env-gateway");
+	});
+
+	it("reports the effective REPI env-only model status without leaking the base URL", () => {
+		const { result, json } = run(["status"], {
+			REPI_AUTH_TOKEN: "env-only-key",
+			REPI_BASE_URL: "https://status-gateway.example.invalid/v1",
+			REPI_PROVIDER: "status-env",
+			REPI_MODEL: "status-main-model",
+			REPI_MODEL_API: "openai-responses",
+			REPI_AUTO_COMPACT_WINDOW: "131072",
+			REPI_MAX_TOKENS: "12000",
+			REPI_SUBAGENT_MODEL: "status-worker-model",
+		});
+		expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+		expect(json).toMatchObject({
+			ok: true,
+			env: {
+				enabled: true,
+				provider: "status-env",
+				model: "status-main-model",
+				api: "openai-responses",
+				authEnv: "REPI_AUTH_TOKEN",
+				authPresent: true,
+				contextWindow: 131072,
+				autoCompactWindow: 131072,
+				maxTokens: 12000,
+				subagentModel: "status-worker-model",
+			},
+			effective: {
+				source: "REPI_* environment",
+				provider: "status-env",
+				model: "status-main-model",
+				api: "openai-responses",
+				contextWindow: 131072,
+				maxTokens: 12000,
+			},
+		});
+		expect((json.env as Record<string, unknown>).baseUrl).toMatch(/^<redacted:url:/);
+		expect((json.env as Record<string, unknown>).baseUrl).not.toContain("status-gateway");
 	});
 
 	it("adds the Baseten Kimi K2.7 Code preset without leaking the key or URL by default", () => {

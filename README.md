@@ -16,6 +16,7 @@ export REPI_CONTEXT_WINDOW=262144
 export REPI_AUTO_COMPACT_WINDOW=262144
 export REPI_MAX_TOKENS=16384
 
+repi model status
 repi -p "先对当前目标做被动 mapping,找入口、状态机和可验证路径"
 ```
 
@@ -23,7 +24,8 @@ REPI 的默认目标很直接:
 
 - **逆向 / pwn / 固件 / 流量 / 取证 / Web/API 渗透**:围绕真实 artifact 和可复现验证推进。
 - **专家子代理**:explorer、planner、operator、verifier、reverser 按任务 lane 分工执行。
-- **证据优先**:命令、输出、PoC、复现矩阵、handoff 文件和失败原因都落盘可追踪。
+- **证据优先**:命令、输出、PoC、复现矩阵、handoff 文件和失败原因都落盘可追踪,`re_graph build` 会把命令→事实→artifact→假设/反证串成任务树。
+- **闭环证明**:`re_proof_loop` 会把 verifier/compiler/replayer/autofix 缺口分类成 quick path,优先补最短可验证链路。
 - **模型环境变量优先**:像 Claude Code 一样 export 即用,但同时支持 OpenAI-compatible、OpenAI Responses、Anthropic Messages。
 - **独立运行面**:`repi` 命令 + `~/.repi/agent`;不覆盖上游 `pi`,不写 `~/.pi`。
 
@@ -160,7 +162,7 @@ REPI 内置 5 个进程隔离的专家子代理,host agent 可通过 `re_subagen
 ### 路由 / 工具面
 
 - **18 个 reverse/pentest domain 路由**(CTF/sandbox、Native reverse、Pwn、Firmware/IoT、Malware、Memory forensics、Web/API、Cloud、Identity、Mobile/iOS、Mobile/Android、Crypto/stego、DFIR、PCAP、agentsec、Web scanning 等),`routeRepiTask` 为每个 domain 给出具体 workflow。
-- **40+ `re_*` 工具**:re_subagent / re_reason(PTT 快照 + planner 子代理)/ re_challenge(对抗式验证)/ re_supervisor(LLM critique)/ re_autopilot / re_swarm / re_mission / re_map / re_evidence / re_graph / re_exploit_chain / re_proof_loop / re_tool_index / re_toolchain_domain 等,组成 route→map→lane→run→evidence→verify 执行链。
+- **40+ `re_*` 工具**:re_subagent / re_reason(PTT 快照 + planner 子代理)/ re_challenge(对抗式验证)/ re_supervisor(LLM critique)/ re_autopilot / re_swarm / re_mission / re_map / re_evidence / re_graph / re_exploit_chain / re_proof_loop / re_tool_index / re_toolchain_domain 等,组成 route→map→lane→run→evidence→verify 执行链。`re_runtime_adapter plan/run <target>` 会按 URL、PCAP、APK/IPA/package、firmware/rootfs、pwn/crash、native binary 自动选择 CDP/tshark/Frida/binwalk/GDB/r2/pwntools runner。
 - **内置 Goal Mode**:`/goal [--tokens 100k] <目标>` 会把 REPI 切到持续执行模式;footer 显示 `🎯 active/paused/budget/complete`,模型必须完成并验证后调用 `goal_complete` 才会停止。
 
 ### 其他特性

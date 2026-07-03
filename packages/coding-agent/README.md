@@ -69,6 +69,7 @@ export REPI_PROVIDER=gateway                  # optional; footer/provider id, de
 export REPI_MODEL=vendor/model-id
 export REPI_MODEL_API=openai-compatible   # also: openai-responses, anthropic
 export REPI_AUTO_COMPACT_WINDOW=262144    # optional alias of REPI_CONTEXT_WINDOW
+repi model status                         # offline effective-config check
 repi
 ```
 
@@ -449,9 +450,13 @@ See [docs/rpc.md](docs/rpc.md) for the protocol.
 
 REPI keeps the mature pi harness surfaces—extensions, skills, prompts, themes, RPC, SDK, MCP, and subagent-capable execution—but the product default is reverse/pentest execution rather than a generic coding assistant.
 
-- **Execution over theater:** routes, tools, subagents, swarm lanes, evidence ledgers, replay/proof loops, and verifier matrices should produce artifacts that can be rerun.
+- **Execution over theater:** routes, tools, subagents, swarm lanes, runtime adapters, evidence ledgers, replay/proof loops, and verifier matrices should produce artifacts that can be rerun.
 - **Env-first models:** use `REPI_AUTH_TOKEN`, `REPI_BASE_URL`, `REPI_MODEL`, and `REPI_MODEL_API` for Claude Code-style model switching; use `models.json` only when persistent multi-provider detail is needed.
 - **Goal to completion:** `/goal` is built in, visible in TUI/RPC, survives compaction/session restore, and requires `goal_complete` after real verification.
+- **Runtime adapters:** `re_runtime_adapter` infers CDP/tshark/Frida/binwalk/GDB/r2/pwntools runners from target shape and writes parsed artifacts into evidence/knowledge/memory.
+- **Evidence graph:** `re_graph build` links commands, facts, artifacts, hypotheses, verification, and counter-evidence into a traceable task tree.
+- **Proof loop:** `re_proof_loop` classifies proof gaps and emits a short verifier/compiler/replayer/autofix quick path before escalating to delegate/swarm/supervisor.
+- **Bounded subagents:** swarm worker manifests preserve timeout/cancel/retry metadata so handoff merges remain auditable under long runs.
 - **Extension-compatible, profile-isolated:** upstream pi packages can load, but state stays under `~/.repi/agent` and REPI never manages the user's upstream `pi` install or `~/.pi` profile.
 - **No fake fallbacks:** if a capability is missing, report the evidence gap or use a real generic fallback path; do not present simulated exploit/reverse results as proof.
 

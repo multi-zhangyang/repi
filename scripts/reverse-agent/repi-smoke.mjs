@@ -45,6 +45,14 @@ const steps = [
 	{ id: "doctor", cmd: "node", args: [script("repi-doctor.mjs"), root], timeout: 90_000 },
 	{ id: "memory-status", cmd: "node", args: [script("memory-inspect.mjs"), root, "status", "--json"] },
 	{ id: "model-doctor", cmd: "node", args: [script("model-inspect.mjs"), root, "doctor", "--json"] },
+	{
+		id: "model-status-env",
+		cmd: "node",
+		args: [script("model-inspect.mjs"), root, "status", "--json"],
+		env: envModelProbe,
+		expectOutput: ['"source": "REPI_* environment"', '"provider": "repi-env"', '"model": "repi-smoke-env-model"'],
+		rejectOutput: ["https://repi-smoke.invalid"],
+	},
 	{ id: "launcher-help", cmd: repiPath, args: ["--offline", "--help"] },
 	{ id: "launcher-list-models", cmd: repiPath, args: ["--offline", "--list-models"] },
 	{

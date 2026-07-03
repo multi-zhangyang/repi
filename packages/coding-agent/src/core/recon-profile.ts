@@ -38,6 +38,7 @@ import {
 	type AttackGraphArtifact,
 	type AttackGraphEdge,
 	type AttackGraphNode,
+	type AttackGraphTaskTreeNode,
 	type ExploitChainArtifact,
 	type ExploitChainEdge,
 } from "./repi/graph.ts";
@@ -941,6 +942,10 @@ type SwarmWorkerExecution = {
 	parentPid?: number | null;
 	exitCode?: number | null;
 	signal?: string | null;
+	timeoutMs?: number;
+	timedOut?: boolean;
+	cancelledAt?: string;
+	retryAttempt?: number;
 	sourceArtifacts: string[];
 };
 
@@ -1783,7 +1788,7 @@ function workerChildSessionLaunchPolicy(options?: {
 		cwd: options?.cwd ?? process.cwd(),
 		isolatedHome,
 		profileDir: isolatedHome,
-		timeoutMs: Math.max(1000, Math.min(120000, Math.floor(options?.timeoutMs ?? 30000))),
+		timeoutMs: Math.max(1000, Math.min(30 * 60 * 1000, Math.floor(options?.timeoutMs ?? 30000))),
 		cancelSignal: "SIGTERM",
 		killAfterMs: 3000,
 		importPiAuth: false,
@@ -2946,6 +2951,17 @@ type ProofLoopGapItem = {
 	sourceArtifacts: string[];
 };
 
+type ProofLoopGapClass =
+	| "missing_artifact"
+	| "contradiction"
+	| "replay_failure"
+	| "tool_or_dependency"
+	| "target_or_state"
+	| "weak_evidence"
+	| "timeout_or_flake"
+	| "compact_resume"
+	| "unknown";
+
 type ProofLoopArtifact = {
 	timestamp: string;
 	missionId?: string;
@@ -2959,6 +2975,8 @@ type ProofLoopArtifact = {
 	verdict: ProofLoopVerdict;
 	checkStatus: string[];
 	evidenceSummary: string[];
+	gapClassifier: string[];
+	quickPath: string[];
 	caseMemoryLanePlan?: CaseMemoryLanePlan;
 	caseMemoryBridge: string[];
 	failureSignaturePriority: string[];
@@ -14017,6 +14035,73 @@ function summarizeLatestLaneRun(mission: MissionState | undefined): string {
 	].join("\n");
 }
 
+type EvidenceLedgerTaskRecord = {
+	index: number;
+	evidenceId: string;
+	timestamp: string;
+	priority: number;
+	kind: string;
+	title: string;
+	fact?: string;
+	command?: string;
+	path?: string;
+	hash?: string;
+	verify?: string;
+	confidence?: string;
+};
+
+function evidenceLedgerBullet(block: string, key: string): string | undefined {
+	const match = new RegExp(`^- ${key}: (.+)$`, "m").exec(block);
+	return match?.[1]?.trim();
+}
+
+function evidenceLedgerCommand(block: string): string | undefined {
+	const match = /^- command: `((?:\\`|[^`])*)`$/m.exec(block);
+	return match?.[1]?.replace(/\\`/g, "`").trim();
+}
+
+function evidenceRecordHasCounterSignal(record: EvidenceLedgerTaskRecord): boolean {
+	return /counter[_ -]?evidence|contradict|refut|negative|no[-_ ]?match|not reproduced|failed|blocked|error|反证|矛盾|失败|未复现/i.test(
+		[record.title, record.fact, record.confidence, record.verify].filter(Boolean).join("\n"),
+	);
+}
+
+function evidenceRecordHasHypothesisSignal(record: EvidenceLedgerTaskRecord): boolean {
+	return /hypothesis|claim|candidate|suspect|assumption|assertion|proof|finding|假设|候选|断言|发现/i.test(
+		[record.title, record.fact, record.confidence].filter(Boolean).join("\n"),
+	);
+}
+
+function parseEvidenceLedgerTaskRecords(limit = 14): EvidenceLedgerTaskRecord[] {
+	const text = readText(evidenceLedgerPath());
+	const blocks = text
+		.split(/^##\s+/m)
+		.filter((block) => block.trim())
+		.map((block) => `## ${block}`);
+	const tail = blocks.slice(-limit);
+	return tail.flatMap((block, index) => {
+		const header = /^##\s+(.+?)\s+—\s+P(\d+)\s+—\s+(.+?)\s+—\s+(.+)$/m.exec(block);
+		if (!header) return [];
+		const title = header[4]?.trim() ?? "evidence";
+		return [
+			{
+				index,
+				evidenceId: `evidence:${index}:${slug(title)}`,
+				timestamp: header[1]?.trim() ?? "",
+				priority: Number.parseInt(header[2] ?? "7", 10),
+				kind: header[3]?.trim() ?? "note",
+				title,
+				fact: evidenceLedgerBullet(block, "fact"),
+				command: evidenceLedgerCommand(block),
+				path: evidenceLedgerBullet(block, "path"),
+				hash: evidenceLedgerBullet(block, "hash"),
+				verify: evidenceLedgerBullet(block, "verify"),
+				confidence: evidenceLedgerBullet(block, "confidence"),
+			} satisfies EvidenceLedgerTaskRecord,
+		];
+	});
+}
+
 interface PentestingTaskTreeSnapshot {
 	text: string;
 	gapsCount: number;
@@ -14198,12 +14283,16 @@ function buildAttackGraph(): AttackGraphArtifact {
 	const map = latestPassiveMapContext();
 	const nodes = new Map<string, AttackGraphNode>();
 	const edges: AttackGraphEdge[] = [];
+	const taskTree: AttackGraphTaskTreeNode[] = [];
 	const addNode = (node: AttackGraphNode) => {
 		if (!nodes.has(node.id)) nodes.set(node.id, node);
 	};
 	const addEdge = (edge: AttackGraphEdge) => {
 		if (!edges.some((item) => item.from === edge.from && item.to === edge.to && item.kind === edge.kind))
 			edges.push(edge);
+	};
+	const addTask = (node: AttackGraphTaskTreeNode) => {
+		if (!taskTree.some((item) => item.id === node.id)) taskTree.push(node);
 	};
 	const sourceArtifacts: string[] = [];
 	const gaps: string[] = [];
@@ -14212,7 +14301,9 @@ function buildAttackGraph(): AttackGraphArtifact {
 	if (!mission) {
 		gaps.push("no active mission");
 	} else {
-		addNode({ id: `mission:${mission.id}`, kind: "mission", label: mission.task, status: "active" });
+		const missionId = `mission:${mission.id}`;
+		addNode({ id: missionId, kind: "mission", label: mission.task, status: "active" });
+		addTask({ id: missionId, kind: "mission", label: mission.task, status: "active", note: mission.route.domain });
 		addNode({
 			id: `route:${slug(mission.route.domain)}`,
 			kind: "route",
@@ -14236,6 +14327,15 @@ function buildAttackGraph(): AttackGraphArtifact {
 				status: lane.status ?? "pending",
 				note: lane.objective,
 			});
+			addTask({
+				id: laneId,
+				parentId: missionId,
+				kind: "lane",
+				label: lane.name,
+				status: lane.status ?? "pending",
+				evidence: lane.next.slice(0, 4),
+				note: lane.objective,
+			});
 			addEdge({ from: `mission:${mission.id}`, to: laneId, kind: "owns", label: "lane" });
 			if (previousLane) addEdge({ from: previousLane, to: laneId, kind: "orders" });
 			previousLane = laneId;
@@ -14247,6 +14347,14 @@ function buildAttackGraph(): AttackGraphArtifact {
 		for (const checkpoint of mission.checkpoints) {
 			const checkId = `check:${slug(checkpoint.name)}`;
 			addNode({ id: checkId, kind: "checkpoint", label: checkpoint.name, status: checkpoint.status, note: checkpoint.note });
+			addTask({
+				id: checkId,
+				parentId: missionId,
+				kind: "checkpoint",
+				label: checkpoint.name,
+				status: checkpoint.status,
+				note: checkpoint.note,
+			});
 			addEdge({ from: `mission:${mission.id}`, to: checkId, kind: checkpoint.status === "blocked" ? "blocks" : "updates" });
 			if (checkpoint.status !== "done")
 				gaps.push(`${checkpoint.status} check: ${checkpoint.name}${checkpoint.note ? ` — ${checkpoint.note}` : ""}`);
@@ -14262,6 +14370,15 @@ function buildAttackGraph(): AttackGraphArtifact {
 			status: `${map.signals.length} signals`,
 			path: map.path,
 			note: map.signals.slice(0, 5).join(" | "),
+		});
+		addTask({
+			id: `map:${slug(artifactBasename(map.path))}`,
+			parentId: mission ? `mission:${mission.id}` : undefined,
+			kind: "map",
+			label: map.target ?? "workspace map",
+			status: `${map.signals.length} signals`,
+			path: map.path,
+			evidence: map.signals.slice(0, 5),
 		});
 		if (mission)
 			addEdge({ from: `mission:${mission.id}`, to: `map:${slug(artifactBasename(map.path))}`, kind: "evidences" });
@@ -14285,6 +14402,15 @@ function buildAttackGraph(): AttackGraphArtifact {
 			note: score ? `score=${score}` : undefined,
 		});
 		const laneId = `lane:${slug(lane)}`;
+		addTask({
+			id: runId,
+			parentId: nodes.has(laneId) ? laneId : mission ? `mission:${mission.id}` : undefined,
+			kind: "run",
+			label: lane,
+			status: verdict ?? "unknown",
+			path,
+			note: score ? `score=${score}` : undefined,
+		});
 		if (nodes.has(laneId)) addEdge({ from: laneId, to: runId, kind: "evidences", label: "lane-run" });
 		if (verdict === "weak") gaps.push(`weak evidence run: ${path}`);
 	}
@@ -14293,6 +14419,120 @@ function buildAttackGraph(): AttackGraphArtifact {
 		addNode(node);
 		if (mission)
 			addEdge({ from: `mission:${mission.id}`, to: node.id, kind: "evidences", label: `P${node.priority}` });
+	}
+	for (const record of parseEvidenceLedgerTaskRecords()) {
+		const parentId = mission ? `mission:${mission.id}` : undefined;
+		addTask({
+			id: record.evidenceId,
+			parentId,
+			kind: "evidence",
+			label: record.title,
+			status: `${record.kind}/P${record.priority}`,
+			path: record.path,
+			evidence: [record.fact, record.confidence].filter((item): item is string => Boolean(item)).slice(0, 3),
+			note: record.timestamp,
+		});
+		if (record.command) {
+			const commandId = `command:${record.index}:${slug(record.command)}`;
+			addNode({
+				id: commandId,
+				kind: "command",
+				label: truncateMiddle(record.command, 160),
+				status: "recorded",
+				note: record.title,
+			});
+			addTask({
+				id: commandId,
+				parentId: record.evidenceId,
+				kind: "command",
+				label: truncateMiddle(record.command, 180),
+				status: "recorded",
+				command: record.command,
+			});
+			addEdge({ from: commandId, to: record.evidenceId, kind: "produces", label: "stdout/fact" });
+		}
+		if (record.path) {
+			const artifactId = `artifact:${record.index}:${slug(artifactBasename(record.path))}`;
+			addNode({
+				id: artifactId,
+				kind: "artifact",
+				label: artifactBasename(record.path),
+				status: record.hash ? "hashed" : "referenced",
+				path: record.path,
+				note: record.hash,
+			});
+			addTask({
+				id: artifactId,
+				parentId: record.evidenceId,
+				kind: "artifact",
+				label: artifactBasename(record.path),
+				status: record.hash ? "hashed" : "referenced",
+				path: record.path,
+				note: record.hash,
+			});
+			addEdge({ from: record.evidenceId, to: artifactId, kind: "produces", label: "artifact" });
+			sourceArtifacts.push(record.path);
+		}
+		const shouldAddHypothesis =
+			record.fact && (evidenceRecordHasHypothesisSignal(record) || evidenceRecordHasCounterSignal(record) || record.command || record.path);
+		if (shouldAddHypothesis) {
+			const hypothesisId = `hypothesis:${record.index}:${slug(record.title)}`;
+			addNode({
+				id: hypothesisId,
+				kind: "hypothesis",
+				label: truncateMiddle(record.fact ?? record.title, 160),
+				status: record.confidence ?? "claim",
+				note: record.title,
+			});
+			addTask({
+				id: hypothesisId,
+				parentId: record.evidenceId,
+				kind: "hypothesis",
+				label: truncateMiddle(record.fact ?? record.title, 180),
+				status: record.confidence ?? "claim",
+				evidence: [record.title],
+			});
+			addEdge({ from: record.evidenceId, to: hypothesisId, kind: "supports", label: `P${record.priority}` });
+			if (record.verify) {
+				const verifyId = `verify:${record.index}:${slug(record.verify)}`;
+				addNode({
+					id: verifyId,
+					kind: "verification",
+					label: truncateMiddle(record.verify, 160),
+					status: "required",
+					note: record.title,
+				});
+				addTask({
+					id: verifyId,
+					parentId: hypothesisId,
+					kind: "verification",
+					label: truncateMiddle(record.verify, 180),
+					status: "required",
+					command: record.verify,
+				});
+				addEdge({ from: verifyId, to: hypothesisId, kind: "verifies", label: "verify command" });
+			}
+		}
+		if (evidenceRecordHasCounterSignal(record)) {
+			const counterId = `counter:${record.index}:${slug(record.title)}`;
+			addNode({
+				id: counterId,
+				kind: "counter_evidence",
+				label: truncateMiddle(record.fact ?? record.title, 160),
+				status: "present",
+				note: record.confidence,
+			});
+			addTask({
+				id: counterId,
+				parentId: record.evidenceId,
+				kind: "counter_evidence",
+				label: truncateMiddle(record.fact ?? record.title, 180),
+				status: "present",
+				evidence: [record.title, record.verify].filter((item): item is string => Boolean(item)),
+			});
+			const hypothesisId = `hypothesis:${record.index}:${slug(record.title)}`;
+			addEdge({ from: counterId, to: hypothesisId, kind: "refutes", label: "counter-evidence" });
+		}
 	}
 
 	if (mission) {
@@ -14315,6 +14555,14 @@ function buildAttackGraph(): AttackGraphArtifact {
 	for (const [index, action] of nextActions.entries()) {
 		const id = `next:${index + 1}`;
 		addNode({ id, kind: "next", label: action, status: "queued" });
+		addTask({
+			id,
+			parentId: mission ? `mission:${mission.id}` : undefined,
+			kind: "next",
+			label: action,
+			status: "queued",
+			command: action,
+		});
 		if (mission) addEdge({ from: `mission:${mission.id}`, to: id, kind: "suggests" });
 	}
 
@@ -14325,6 +14573,7 @@ function buildAttackGraph(): AttackGraphArtifact {
 		target: map?.target,
 		nodes: [...nodes.values()],
 		edges,
+		taskTree: taskTree.slice(0, 160),
 		criticalPath: criticalPath.length ? criticalPath : ["no mission route selected"],
 		gaps: Array.from(new Set(gaps)).slice(0, 24),
 		nextActions,
@@ -17509,10 +17758,32 @@ export function swarmWorkerSpec(workerName: string): "explorer" | "reverser" | "
 	return "operator";
 }
 
+function envBoundedInteger(name: string, fallback: number, min: number, max: number): number {
+	const parsed = Number.parseInt(process.env[name] ?? "", 10);
+	if (!Number.isFinite(parsed)) return fallback;
+	return Math.max(min, Math.min(max, parsed));
+}
+
+function swarmWorkerTimeoutMs(worker: SwarmWorkerRuntime, execution: "simulated" | "real"): number {
+	const global = envBoundedInteger(
+		execution === "real" ? "REPI_SWARM_SUBAGENT_TIMEOUT_MS" : "REPI_SWARM_WORKER_TIMEOUT_MS",
+		0,
+		0,
+		30 * 60 * 1000,
+	);
+	if (global > 0) return global;
+	if (execution !== "real") return 60000;
+	const spec = swarmWorkerSpec(worker.worker);
+	if (spec === "reverser") return 360000;
+	if (spec === "explorer") return 180000;
+	return 240000;
+}
+
 async function executeSwarmWorkerSubagent(
 	worker: SwarmWorkerRuntime,
 	swarm: SwarmArtifact,
 	cwd: string,
+	timeoutMs: number,
 ): Promise<SwarmWorkerExecution[]> {
 	const spec = swarmWorkerSpec(worker.worker);
 	const task = [
@@ -17531,11 +17802,14 @@ async function executeSwarmWorkerSubagent(
 	const startedAt = new Date().toISOString();
 	const startMs = Date.now();
 	try {
-		const started = await mgr.spawnThread({ specName: spec, task, timeoutMs: 240000, inheritMcp: true });
+		const started = await mgr.spawnThread({ specName: spec, task, timeoutMs, inheritMcp: true });
 		const final = await mgr.awaitRun(started.runId);
 		const merge = mgr.mergeRun(started.runId);
 		const mergeText = merge?.text ?? "(no merge output)";
 		const endedMs = Date.now();
+		const elapsedMs = Math.max(0, endedMs - startMs);
+		const timedOut =
+			elapsedMs > timeoutMs || /timeout|timed out/i.test(final.error ?? "") || final.signal === "SIGTERM";
 		const status: OperationStepStatus = final.status === "complete" ? "done" : "blocked";
 		const execution: SwarmWorkerExecution = {
 			workerId: worker.id,
@@ -17546,6 +17820,7 @@ async function executeSwarmWorkerSubagent(
 				"parallel_mode=real_subagent",
 				"isolation=process-agent-home",
 				`spec=${spec}`,
+				`timeout_ms=${timeoutMs} timed_out=${timedOut}`,
 				`run_id=${final.runId}`,
 				mergeText,
 			].join("\n"),
@@ -17555,11 +17830,15 @@ async function executeSwarmWorkerSubagent(
 			stderrSha256: swarmExecutionDigest(final.error ?? ""),
 			startedAt,
 			endedAt: new Date(endedMs).toISOString(),
-			elapsedMs: Math.max(0, endedMs - startMs),
+			elapsedMs,
 			pid: final.pid ?? null,
 			parentPid: null,
 			exitCode: final.exitCode ?? (status === "done" ? 0 : 1),
-			signal: final.signal ?? null,
+			signal: timedOut ? "SIGTERM" : (final.signal ?? null),
+			timeoutMs,
+			timedOut,
+			cancelledAt: timedOut ? new Date(endedMs).toISOString() : undefined,
+			retryAttempt: 1,
 			sourceArtifacts: Array.from(
 				new Set([final.runRoot, final.manifestPath, final.mergePath].filter((item): item is string => Boolean(item))),
 			),
@@ -17568,24 +17847,30 @@ async function executeSwarmWorkerSubagent(
 	} catch (error) {
 		const endedMs = Date.now();
 		const message = String((error as Error).message ?? error);
+		const elapsedMs = Math.max(0, endedMs - startMs);
+		const timedOut = elapsedMs > timeoutMs || /timeout|timed out/i.test(message);
 		return [
 			{
 				workerId: worker.id,
 				worker: worker.worker,
 				command: `re_subagent spec=${spec} (blocked)`,
 				status: "blocked",
-				output: `parallel_mode=real_subagent\nisolation=process-agent-home\nblocked: ${truncateMiddle(message, 400)}`,
+				output: `parallel_mode=real_subagent\nisolation=process-agent-home\ntimeout_ms=${timeoutMs} timed_out=${timedOut}\nblocked: ${truncateMiddle(message, 400)}`,
 				stdout: "",
 				stderr: message,
 				stdoutSha256: swarmExecutionDigest(""),
 				stderrSha256: swarmExecutionDigest(message),
 				startedAt,
 				endedAt: new Date(endedMs).toISOString(),
-				elapsedMs: Math.max(0, endedMs - startMs),
+				elapsedMs,
 				pid: null,
 				parentPid: null,
 				exitCode: 1,
-				signal: null,
+				signal: timedOut ? "SIGTERM" : null,
+				timeoutMs,
+				timedOut,
+				cancelledAt: timedOut ? new Date(endedMs).toISOString() : undefined,
+				retryAttempt: 1,
 				sourceArtifacts: worker.sourceArtifacts,
 			},
 		];
@@ -17597,6 +17882,7 @@ async function executeSwarmWorkerCommand(
 	worker: SwarmWorkerRuntime,
 	rawCommand: string,
 	target?: string,
+	timeoutMs = 60000,
 ): Promise<SwarmWorkerExecution> {
 	const command = sanitizeSwarmCommand(rawCommand);
 	const startedMs = Date.now();
@@ -17616,6 +17902,10 @@ async function executeSwarmWorkerCommand(
 			elapsedMs: Math.max(0, endedMs - startedMs),
 			exitCode: execution.exitCode ?? (execution.status === "done" ? 0 : 1),
 			signal: execution.signal ?? null,
+			timeoutMs: execution.timeoutMs ?? timeoutMs,
+			timedOut: execution.timedOut ?? false,
+			cancelledAt: execution.cancelledAt,
+			retryAttempt: execution.retryAttempt ?? 1,
 		};
 	};
 	const blocked = (output: string): SwarmWorkerExecution =>
@@ -17631,6 +17921,9 @@ async function executeSwarmWorkerCommand(
 			parentPid: process.ppid,
 			exitCode: 1,
 			signal: null,
+			timeoutMs,
+			timedOut: false,
+			retryAttempt: 1,
 			sourceArtifacts: worker.sourceArtifacts,
 		});
 	if (!command) return blocked("empty swarm worker command");
@@ -17655,12 +17948,14 @@ async function executeSwarmWorkerCommand(
 			output: [
 				"parallel_mode=simulated_sequential",
 				"isolation=shared-process-internal-dispatch",
+				`timeout_ms=${timeoutMs} timed_out=false`,
 				"note=internal REPI command executed through in-process operator dispatcher; shell workers still capture child pid",
 				result.output,
 			].join("\n"),
 			stdout: [
 				"parallel_mode=simulated_sequential",
 				"isolation=shared-process-internal-dispatch",
+				`timeout_ms=${timeoutMs} timed_out=false`,
 				result.output,
 			].join("\n"),
 			stderr: "",
@@ -17668,19 +17963,25 @@ async function executeSwarmWorkerCommand(
 			parentPid: process.ppid,
 			exitCode: result.status === "done" ? 0 : 1,
 			signal: null,
+			timeoutMs,
+			timedOut: false,
+			retryAttempt: 1,
 			sourceArtifacts: worker.sourceArtifacts,
 		});
 	}
 	const result = await pi.exec(
 		"bash",
 		["-lc", `printf '__repi_swarm_pid=%s ppid=%s\\n' "$$" "$PPID" >&2\nset -o pipefail\n${command}`],
-		{ timeout: 60000 },
+		{ timeout: timeoutMs },
 	);
 	const marker = stripSwarmPidMarker(result.stderr);
 	const stdout = result.stdout;
 	const stderr = marker.stderr;
+	const timedOut = Boolean(result.killed);
+	const endedAt = new Date().toISOString();
 	const output = [
 		`exit=${result.code}${result.killed ? " killed=true" : ""}`,
+		`timeout_ms=${timeoutMs} timed_out=${timedOut}${timedOut ? ` cancelled_at=${endedAt}` : ""}`,
 		`pid=${marker.pid ?? "unknown"} parent_pid=${marker.parentPid ?? "unknown"}`,
 		`stdout_sha256=${swarmExecutionDigest(stdout)}`,
 		`stderr_sha256=${swarmExecutionDigest(stderr)}`,
@@ -17700,7 +18001,11 @@ async function executeSwarmWorkerCommand(
 		pid: marker.pid,
 		parentPid: marker.parentPid,
 		exitCode: result.code,
-		signal: result.killed ? "SIGTERM" : null,
+		signal: timedOut ? "SIGTERM" : null,
+		timeoutMs,
+		timedOut,
+		cancelledAt: timedOut ? endedAt : undefined,
+		retryAttempt: 1,
 		sourceArtifacts: worker.sourceArtifacts,
 	});
 }
@@ -17927,6 +18232,7 @@ function refreshSwarmRunDerivedFields(swarm: SwarmArtifact): SwarmArtifact {
 
 function swarmRuntimeStatus(executions: SwarmWorkerExecution[]): SwarmRuntimeState {
 	if (executions.length === 0) return "queued";
+	if (executions.some((execution) => execution.timedOut)) return "cancelled";
 	if (executions.some((execution) => execution.status === "blocked")) return "blocked";
 	if (executions.some((execution) => execution.status === "skipped")) return "cancelled";
 	return "done";
@@ -17978,8 +18284,12 @@ function writeSwarmSubagentRuntimeManifest(params: {
 	executions: SwarmWorkerExecution[];
 	attempt: number;
 	maxCommands: number;
+	timeoutMs?: number;
 }): SwarmSubagentRuntimeManifestRow {
 	const { swarm, worker, executions, attempt, maxCommands } = params;
+	const timeoutMs =
+		params.timeoutMs ??
+		Math.max(1000, Math.min(30 * 60 * 1000, Math.max(...executions.map((execution) => execution.timeoutMs ?? 0), 60000)));
 	const sessionDir = join(swarmSubagentSessionRoot(swarm), slug(worker.id));
 	mkdirSync(sessionDir, { recursive: true });
 	const stdoutPath = join(sessionDir, "stdout.txt");
@@ -18067,7 +18377,7 @@ function writeSwarmSubagentRuntimeManifest(params: {
 		failureLedgerPath: runtimeFailureLedgerPath(),
 		repairQueuePath: runtimeRepairQueuePath(),
 		resourceLimits: {
-			timeoutMs: 60000,
+			timeoutMs,
 			maxCommands,
 			maxOutputBytes: Buffer.byteLength(stdout) + Buffer.byteLength(stderr),
 			cancelOnTimeout: true,
@@ -18195,7 +18505,10 @@ function buildWorkerChildSessionRuntimeBatchFromSwarm(swarm: SwarmArtifact): Wor
 	const launchPolicy = workerChildSessionLaunchPolicy({
 		cwd: process.cwd(),
 		isolatedHome: join(swarmSubagentSessionRoot(swarm), ".repi", "agent"),
-		timeoutMs: Math.max(1000, Math.min(120000, Math.max(...manifests.map((manifest) => manifest.resourceLimits.timeoutMs), 30000))),
+		timeoutMs: Math.max(
+			1000,
+			Math.min(30 * 60 * 1000, Math.max(...manifests.map((manifest) => manifest.resourceLimits.timeoutMs), 30000)),
+		),
 	});
 	const sessions = manifests.map((manifest): WorkerChildSessionRuntimeV1 => {
 		const claimRefs = swarmChildSessionClaimRefs(swarm, manifest.workerId);
@@ -18701,11 +19014,12 @@ async function runSwarm(
 		const groupRuns = await Promise.all(
 			group.map(async (worker) => {
 				const executions: SwarmWorkerExecution[] = [];
+				const timeoutMs = swarmWorkerTimeoutMs(worker, realMode ? "real" : "simulated");
 				if (realMode) {
-					executions.push(...(await executeSwarmWorkerSubagent(worker, swarm, options.cwd as string)));
+					executions.push(...(await executeSwarmWorkerSubagent(worker, swarm, options.cwd as string, timeoutMs)));
 				} else {
 					for (const command of worker.commands.slice(0, maxCommands))
-						executions.push(await executeSwarmWorkerCommand(pi, worker, command, swarm.target));
+						executions.push(await executeSwarmWorkerCommand(pi, worker, command, swarm.target, timeoutMs));
 				}
 				const manifest = writeSwarmSubagentRuntimeManifest({
 					swarm,
@@ -18713,6 +19027,7 @@ async function runSwarm(
 					executions,
 					attempt: 1,
 					maxCommands,
+					timeoutMs,
 				});
 				return { executions, manifest };
 			}),
@@ -18732,8 +19047,9 @@ async function runSwarm(
 				executions: [],
 				attempt: 1,
 				maxCommands,
+				timeoutMs: swarmWorkerTimeoutMs(worker, realMode ? "real" : "simulated"),
 			}),
-		);
+	);
 	if (queuedManifests.length) {
 		swarm.subagentRuntimeManifests.push(...queuedManifests);
 		swarm = refreshSwarmSubagentRuntimeManifestCapture(swarm);
@@ -18854,7 +19170,7 @@ function formatSwarm(swarm: SwarmArtifact, path?: string): string {
 					.slice(0, 12)
 					.map(
 						(manifest) =>
-							`- worker=${manifest.workerId} role=${manifest.roleId} status=${manifest.status} pid=${manifest.pid ?? "null"} sessionDir=${manifest.sessionDir} runtimeManifestFile=${manifest.runtimeManifestFile} stdoutSha256=${manifest.stdoutSha256.slice(0, 16)} stderrSha256=${manifest.stderrSha256.slice(0, 16)} toolCallDigest=${manifest.toolCallDigest.slice(0, 16)}`,
+							`- worker=${manifest.workerId} role=${manifest.roleId} status=${manifest.status} timeoutMs=${manifest.resourceLimits.timeoutMs} pid=${manifest.pid ?? "null"} sessionDir=${manifest.sessionDir} runtimeManifestFile=${manifest.runtimeManifestFile} stdoutSha256=${manifest.stdoutSha256.slice(0, 16)} stderrSha256=${manifest.stderrSha256.slice(0, 16)} toolCallDigest=${manifest.toolCallDigest.slice(0, 16)}`,
 					)
 			: ["- none"]),
 		"worker_child_session_runtime:",
@@ -24909,6 +25225,78 @@ function proofLoopGapItems(target?: string): ProofLoopGapItem[] {
 	}));
 }
 
+function classifyProofLoopGap(item: ProofLoopGapItem): {
+	klass: ProofLoopGapClass;
+	priority: number;
+	action: string;
+} {
+	const text = `${item.source} ${item.text}`;
+	if (/compact resume|resume command|proof loop has not been entered/i.test(text)) {
+		return { klass: "compact_resume", priority: 1, action: "re_context resume -> re_operator plan -> re_proof_loop run" };
+	}
+	if (/contradiction|counter[_ -]?evidence|refute|conflict/i.test(text)) {
+		return { klass: "contradiction", priority: 1, action: "re_supervisor repair -> re_verifier matrix" };
+	}
+	if (/command not found|not recognized|No such file|cannot stat|cannot access|ModuleNotFoundError|ImportError|Cannot find module|ERR_MODULE_NOT_FOUND|permission denied|EACCES|ENOENT|missing tool|dependency|bootstrap/i.test(text)) {
+		return { klass: "tool_or_dependency", priority: 1, action: "re_bootstrap plan -> re_operator dispatch" };
+	}
+	if (/timeout|timed out|flake|unstable/i.test(text)) {
+		return { klass: "timeout_or_flake", priority: 1, action: "re_autofix plan/apply with bounded timeout -> re_replayer run" };
+	}
+	if (/nonzero|exit=|failed:|blocked:|replay.*failed|stderr=/i.test(text)) {
+		return { klass: "replay_failure", priority: 2, action: "re_autofix plan/apply -> re_replayer run" };
+	}
+	if (/target mismatch|unresolved target|target placeholder|state|session|cookie|auth|nonce|csrf|token|login|credential/i.test(text)) {
+		return { klass: "target_or_state", priority: 2, action: "re_map -> re_live_browser/re_web_authz_state or re_lane plan" };
+	}
+	if (/artifact missing|missing: run|no replay execution|verifier artifact missing|compiler artifact missing|replayer artifact missing/i.test(text)) {
+		return { klass: "missing_artifact", priority: 2, action: "re_verifier matrix -> re_compiler draft -> re_replayer run" };
+	}
+	if (/weak|missing=|weak=|insufficient|low confidence|quality/i.test(text)) {
+		return { klass: "weak_evidence", priority: 3, action: "re_operator dispatch -> re_verifier matrix" };
+	}
+	return { klass: "unknown", priority: 4, action: "re_delegate plan -> re_swarm run -> re_supervisor review" };
+}
+
+function proofLoopGapClassifier(target?: string): string[] {
+	return proofLoopGapItems(target)
+		.map((item, index) => {
+			const classified = classifyProofLoopGap(item);
+			return `priority=${classified.priority} class=${classified.klass} worker=${item.worker} source=${item.source} gap=${index + 1} action="${classified.action}" evidence=${item.sourceArtifacts.slice(0, 3).join(" | ") || "none"} :: ${item.text}`;
+		})
+		.sort((left, right) => {
+			const leftPriority = Number(/priority=(\d+)/.exec(left)?.[1] ?? "9");
+			const rightPriority = Number(/priority=(\d+)/.exec(right)?.[1] ?? "9");
+			return leftPriority - rightPriority || left.localeCompare(right);
+		})
+		.slice(0, 24);
+}
+
+function proofLoopQuickPath(target?: string): string[] {
+	const targetRef = target?.trim() || "<target>";
+	const classes = new Set(
+		proofLoopGapItems(target).map((item) => classifyProofLoopGap(item).klass),
+	);
+	const commands: string[] = [];
+	if (classes.has("compact_resume")) {
+		commands.push("re_context resume", `re_operator plan ${targetRef}`);
+	}
+	if (classes.has("tool_or_dependency")) commands.push("re_bootstrap plan", `re_operator dispatch ${targetRef} 1`);
+	if (classes.has("target_or_state")) {
+		commands.push(`re_map ${targetRef}`, `re_live_browser plan ${targetRef}`, `re_web_authz_state plan ${targetRef}`);
+	}
+	if (classes.has("missing_artifact") || classes.has("weak_evidence") || classes.size === 0) {
+		commands.push(`re_verifier matrix ${targetRef}`, `re_compiler draft ${targetRef}`, `re_replayer run ${targetRef} 1`);
+	}
+	if (classes.has("replay_failure") || classes.has("timeout_or_flake")) {
+		commands.push(`re_autofix plan ${targetRef}`, `re_autofix apply ${targetRef}`, `re_replayer run ${targetRef} 1`);
+	}
+	if (classes.has("contradiction")) commands.push(`re_supervisor repair ${targetRef}`, `re_verifier matrix ${targetRef}`);
+	if (classes.has("unknown")) commands.push(`re_delegate plan ${targetRef}`, `re_swarm run ${targetRef} 2 1`, "re_swarm merge");
+	commands.push(`re_proof_loop run ${targetRef} 4 2`);
+	return Array.from(new Set(commands)).slice(0, 14);
+}
+
 function proofLoopSpecialistQueue(target?: string): string[] {
 	const suffix = proofLoopCommandTarget(target);
 	return proofLoopGapItems(target)
@@ -25024,6 +25412,7 @@ function proofLoopNextActions(proof: ProofLoopArtifact): string[] {
 	const swarmRetryCommands = latestSwarmRetryQueue(proof.target).commands;
 	const autonomousBudgetActions =
 		proof.autonomousBudget?.nextActions ?? autonomousExecutionBudget(proof.target).nextActions;
+	const quickPath = proof.quickPath?.length ? proof.quickPath : proofLoopQuickPath(proof.target);
 	const needsSpecialistBridge =
 		proof.verdict === "partial" || proof.verdict === "needs_repair" || proof.specialistQueue.length > 0;
 	const specialistBridge = needsSpecialistBridge
@@ -25045,6 +25434,7 @@ function proofLoopNextActions(proof: ProofLoopArtifact): string[] {
 			...(proof.compactResumeQueue ?? []),
 			...failureSignatureCommands,
 			...(proof.operatorFeedbackQueue ?? []),
+			...quickPath,
 			...autonomousBudgetActions,
 			...swarmRetryCommands,
 			...caseMemoryActions,
@@ -25107,12 +25497,16 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 	const caseMemoryLanePlan = currentCaseMemoryLanePlan(proof.target);
 	const caseMemoryBridge = caseMemoryProofBridge(caseMemoryLanePlan, proof.target);
 	const autonomousBudget = autonomousExecutionBudget(proof.target);
+	const gapClassifier = proofLoopGapClassifier(proof.target);
+	const quickPath = proofLoopQuickPath(proof.target);
 	return {
 		...proof,
 		steps,
 		verdict,
 		checkStatus: proofLoopCheckStatus(),
 		evidenceSummary: proofLoopEvidenceSummary(proof.target),
+		gapClassifier,
+		quickPath,
 		caseMemoryLanePlan,
 		caseMemoryBridge,
 		autonomousBudget,
@@ -25133,6 +25527,8 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 			...proof,
 			steps,
 			verdict,
+			gapClassifier,
+			quickPath,
 			caseMemoryLanePlan,
 			caseMemoryBridge,
 			autonomousBudget,
@@ -25186,6 +25582,8 @@ function buildProofLoop(
 		verdict: "partial",
 		checkStatus: [],
 		evidenceSummary: [],
+		gapClassifier: [],
+		quickPath: [],
 		caseMemoryLanePlan: undefined,
 		caseMemoryBridge: [],
 		autonomousBudget: autonomousExecutionBudget(options.target ?? mission?.task),
@@ -25223,6 +25621,10 @@ function formatProofLoop(proof: ProofLoopArtifact, path?: string): string {
 		...(proof.checkStatus.length ? proof.checkStatus.map((item) => `- ${item}`) : ["- none"]),
 		"evidence_summary:",
 		...(proof.evidenceSummary.length ? proof.evidenceSummary.map((item) => `- ${item}`) : ["- none"]),
+		"gap_classifier:",
+		...(proof.gapClassifier.length ? proof.gapClassifier.map((item) => `- ${item}`) : ["- none"]),
+		"quick_path:",
+		...(proof.quickPath.length ? proof.quickPath.map((item) => `- ${item}`) : ["- none"]),
 		"case_memory_lane_plan:",
 		...(proof.caseMemoryLanePlan
 			? caseMemoryLanePlanLines(proof.caseMemoryLanePlan).map((item) => `- ${item}`)
@@ -25316,7 +25718,7 @@ function writeProofLoopArtifact(proof: ProofLoopArtifact): string {
 	appendEvidence({
 		kind: proof.mode === "run" ? "runtime" : "artifact",
 		title: `proof-loop-${proof.mode} ${proof.missionId ?? "no-mission"}`,
-		fact: `Proof loop ${proof.mode}: verdict=${proof.verdict}, executed=${proof.executed.length}, replay_steps=${proof.replaySteps}, compact_resume_queue=${proof.compactResumeQueue.length}, compact_resume_telemetry=${proof.compactResumeTelemetry.length}, operator_feedback=${proof.operatorFeedback.length}, operator_feedback_queue=${proof.operatorFeedbackQueue.length}, swarm_retry_queue=${proof.swarmRetryQueue.length}, specialist_queue=${proof.specialistQueue.length}, swarm_bridge=${proof.swarmBridge.length}, autonomous_budget=${proof.autonomousBudget?.maxTurns ?? "none"}/${proof.autonomousBudget?.maxProofLoops ?? "none"}, score_decay=${(proof.dispatcherScoreDecay ?? []).length}, demotions=${(proof.repeatedFailureDemotions ?? []).length}, promotions=${(proof.highScorePromotions ?? []).length}, case_memory_lane_plan=${proof.caseMemoryLanePlan?.action ?? "none"}`,
+		fact: `Proof loop ${proof.mode}: verdict=${proof.verdict}, executed=${proof.executed.length}, replay_steps=${proof.replaySteps}, gaps=${proof.gapClassifier.length}, quick_path=${proof.quickPath.length}, compact_resume_queue=${proof.compactResumeQueue.length}, compact_resume_telemetry=${proof.compactResumeTelemetry.length}, operator_feedback=${proof.operatorFeedback.length}, operator_feedback_queue=${proof.operatorFeedbackQueue.length}, swarm_retry_queue=${proof.swarmRetryQueue.length}, specialist_queue=${proof.specialistQueue.length}, swarm_bridge=${proof.swarmBridge.length}, autonomous_budget=${proof.autonomousBudget?.maxTurns ?? "none"}/${proof.autonomousBudget?.maxProofLoops ?? "none"}, score_decay=${(proof.dispatcherScoreDecay ?? []).length}, demotions=${(proof.repeatedFailureDemotions ?? []).length}, promotions=${(proof.highScorePromotions ?? []).length}, case_memory_lane_plan=${proof.caseMemoryLanePlan?.action ?? "none"}`,
 		command: `re_proof_loop ${proof.mode}`,
 		path,
 		verify: `cat ${path}`,
@@ -27956,6 +28358,42 @@ const RUNTIME_ADAPTER_EXECUTION_MATRIX: RuntimeAdapterExecutionSpec[] = [
 		proofExitSignals: ["symbol/import map", "control-flow xref", "runtime adapter transcript"],
 	},
 	{
+		id: "gdb-native-trace-adapter",
+		bridgeId: "tool-bridge-runtime",
+		domainId: "rev-native",
+		tool: "gdb",
+		fallbackTool: "objdump",
+		runnerKind: "shell-command",
+		commandTemplate:
+			"adapter-gdb-native-trace-runner: gdb -q <target> -ex 'set pagination off' -ex 'set disassembly-flavor intel' -ex 'info files' -ex 'info functions' -ex 'break main' -ex 'run' -ex 'bt' -ex 'info registers' -ex 'quit'",
+		fallbackCommandTemplate:
+			"adapter-gdb-native-trace-runner-fallback: file <target>; readelf -h <target> 2>/dev/null; objdump -d <target> | head -260",
+		parserRules: [
+			{
+				id: "parser-gdb-entry-registers",
+				regex: "(Breakpoint|Program received signal|rip|eip|pc|info registers|backtrace|#0)",
+				evidenceRank: "runtime_artifact",
+				proofExitSignal: "debugger runtime trace",
+			},
+			{
+				id: "parser-gdb-function-map",
+				regex: "(All defined functions|main|sym\\.|Entry point|\\.text)",
+				evidenceRank: "runtime_artifact",
+				proofExitSignal: "function/runtime entry map",
+			},
+			{
+				id: "parser-native-crash-signal",
+				regex: "(SIGSEGV|SIGABRT|SIGILL|crash|stack|rsp|esp)",
+				evidenceRank: "runtime_artifact",
+				proofExitSignal: "crash/register proof",
+			},
+		],
+		artifactKinds: ["gdb-runtime-trace", "native-register-map", "runtime-adapter-transcript"],
+		ingestTargets: ["evidence-ledger", "knowledge-graph", "memory-event"],
+		envRefs: ["REPI_RUNTIME_ADAPTER_TIMEOUT_MS", "REPI_RUNTIME_ADAPTER_WORKDIR"],
+		proofExitSignals: ["debugger runtime trace", "function/runtime entry map", "crash/register proof"],
+	},
+	{
 		id: "ghidra-headless-summary-adapter",
 		bridgeId: "tool-bridge-runtime",
 		domainId: "rev-native",
@@ -28071,6 +28509,50 @@ const RUNTIME_ADAPTER_EXECUTION_MATRIX: RuntimeAdapterExecutionSpec[] = [
 	},
 ];
 
+function detectRuntimeAdapterIds(target?: string): string[] {
+	const text = target?.trim() ?? "";
+	if (!text) return [];
+	const lower = text.toLowerCase();
+	const picks: string[] = [];
+	const add = (id: string) => {
+		if (!picks.includes(id)) picks.push(id);
+	};
+	if (/^https?:\/\//i.test(text) || /\b(?:xhr|websocket|cookie|authorization|graphql|api)\b/i.test(text)) {
+		add("web-cdp-network-adapter");
+	}
+	if (/\.(?:pcapng?|cap)(?:$|[?#\s])/.test(lower) || /\b(?:pcap|tshark|wireshark|packet|flow)\b/.test(lower)) {
+		add("tshark-pcap-flow-adapter");
+	}
+	if (/\.(?:apk|ipa)(?:$|[?#\s])/.test(lower) || /\b(?:frida|android|ios|objc|swift|keychain|okhttp|trustmanager|certificatepinner)\b/.test(lower) || /^([a-z][a-z0-9_]*\.){2,}[a-z][a-z0-9_]*$/i.test(text)) {
+		add("frida-mobile-hook-adapter");
+	}
+	if (/\.(?:bin|img|trx|chk|ubi|ubifs|squashfs|sqsh|uimage)(?:$|[?#\s])/.test(lower) || /\b(?:firmware|rootfs|openwrt|busybox|u-boot|uboot|mtd|jffs2|cramfs)\b/.test(lower)) {
+		add("binwalk-firmware-extract-adapter");
+	}
+	if (/\b(?:pwn|exploit|rop|ret2|heap|tcache|format string|one_gadget|pwntools)\b/i.test(text)) {
+		add("pwntools-local-verifier-adapter");
+	}
+	if (/\b(?:gdb|breakpoint|register|core dump|coredump|sigsegv|crash)\b/i.test(text)) {
+		add("gdb-native-trace-adapter");
+	}
+	if (/\b(?:radare2|\br2\b|xref|symbol|import|decompile|elf|pe|dll|so|wasm|binary|native|license|strcmp|memcmp)\b/i.test(text) || /\.(?:elf|exe|dll|so|wasm|dylib)(?:$|[?#\s])/.test(lower)) {
+		add("r2-native-xref-adapter");
+	}
+	if (existsSync(text)) {
+		try {
+			const head = readFileSync(text).subarray(0, 64);
+			const ascii = head.toString("latin1");
+			if (ascii.startsWith("\x7fELF") || ascii.startsWith("MZ")) add("gdb-native-trace-adapter");
+			if (ascii.startsWith("\xd4\xc3\xb2\xa1") || ascii.startsWith("\xa1\xb2\xc3\xd4") || ascii.startsWith("\x0a\x0d\x0d\x0a")) add("tshark-pcap-flow-adapter");
+			if (/hsqs|sqsh|UBI#|uImage|OpenWrt|BusyBox/i.test(ascii)) add("binwalk-firmware-extract-adapter");
+			if (ascii.startsWith("PK\x03\x04") && /\.(?:apk|ipa)$/i.test(text)) add("frida-mobile-hook-adapter");
+		} catch {
+			// Best-effort target sniffing only; lexical detection above remains authoritative.
+		}
+	}
+	return picks;
+}
+
 function runtimeAdapterSecretLike(value: string): boolean {
 	return /(sk-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9_]{10,}|github_pat_[A-Za-z0-9_]{10,}|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]+PRIVATE KEY-----)/.test(value);
 }
@@ -28078,8 +28560,9 @@ function runtimeAdapterSecretLike(value: string): boolean {
 function buildRuntimeAdapterExecutionGate(adapterFilter?: string): RuntimeAdapterExecutionCheckV1 {
 	ensureReconStorage();
 	const index = parseToolIndex();
+	const detectedAdapterIds = detectRuntimeAdapterIds(adapterFilter);
 	const specs = adapterFilter
-		? RUNTIME_ADAPTER_EXECUTION_MATRIX.filter((adapter) => adapter.id === adapterFilter || adapter.id.includes(adapterFilter) || adapter.domainId.includes(adapterFilter))
+		? RUNTIME_ADAPTER_EXECUTION_MATRIX.filter((adapter) => adapter.id === adapterFilter || adapter.id.includes(adapterFilter) || adapter.domainId.includes(adapterFilter) || detectedAdapterIds.includes(adapter.id))
 		: RUNTIME_ADAPTER_EXECUTION_MATRIX;
 	const adapters = specs.map<RuntimeAdapterExecutionRowV1>((adapter) => {
 		const present = indexedToolPresent(index, adapter.tool) === true;
@@ -28105,7 +28588,18 @@ function buildRuntimeAdapterExecutionGate(adapterFilter?: string): RuntimeAdapte
 		RuntimeAdapterExecutionCheckV1: true,
 		runtime: "runtime:adapter-execution",
 		toolIndexPath: toolIndexPath(),
-		requiredChecks: ["runtime_adapter_execution_check", "adapter_runner_parser_ingest_contract", "r2_ghidra_native_adapter_contract", "frida_mobile_adapter_contract", "web_cdp_adapter_contract", "pwntools_exploit_verifier_adapter_contract", "tshark_pcap_adapter_contract", "binwalk_firmware_adapter_contract"],
+		requiredChecks: [
+			"runtime_adapter_execution_check",
+			"adapter_runner_parser_ingest_contract",
+			"gdb_native_trace_adapter_contract",
+			"r2_ghidra_native_adapter_contract",
+			"frida_mobile_adapter_contract",
+			"web_cdp_adapter_contract",
+			"pwntools_exploit_verifier_adapter_contract",
+			"tshark_pcap_adapter_contract",
+			"binwalk_firmware_adapter_contract",
+			"target_auto_detection_contract",
+		],
 		adapters,
 		closure: {
 			allAdapterSpecsPresent: adapters.length === RUNTIME_ADAPTER_EXECUTION_MATRIX.length || Boolean(adapterFilter),
@@ -28117,7 +28611,14 @@ function buildRuntimeAdapterExecutionGate(adapterFilter?: string): RuntimeAdapte
 			allHaveNativeOrFallbackTool: adapters.every((adapter) => adapter.present || adapter.fallbackPresent),
 			allEnvRefsSecretFree: adapters.every((adapter) => adapter.envRefOnly),
 		},
-		nextRuntimeCommands: ["re_runtime_adapter show", "re_runtime_adapter plan r2-native-xref-adapter <target>", "re_runtime_adapter run web-cdp-network-adapter <url>", "re_runtime_adapter run frida-mobile-hook-adapter <package>", "re_runtime_adapter show"],
+		nextRuntimeCommands: [
+			"re_runtime_adapter show",
+			"re_runtime_adapter plan <target-or-url-or-pcap>",
+			"re_runtime_adapter run <target>",
+			"re_runtime_adapter run web-cdp-network-adapter <url>",
+			"re_runtime_adapter run gdb-native-trace-adapter <binary>",
+			"re_runtime_adapter show",
+		],
 		invariants: ["runtime_adapter_execution_check", "adapter_runner_parser_ingest_contract", "runner_output_parser_must_write_artifact", "artifact_ingest_target_must_include_evidence_knowledge_memory", "adapter_run_secret_literals_rejected"],
 	};
 }
@@ -28197,8 +28698,9 @@ function formatRuntimeAdapterExecutionArtifact(artifact: RuntimeAdapterExecution
 }
 
 async function runRuntimeAdapterExecution(pi: ExtensionAPI, options: { adapter?: string; target?: string; timeoutMs?: number }): Promise<string> {
-	const report = buildRuntimeAdapterExecutionGate(options.adapter);
-	const adapter = report.adapters.find((row) => row.adapterId === options.adapter) ?? report.adapters[0];
+	const inferredAdapter = options.adapter ?? detectRuntimeAdapterIds(options.target)[0];
+	const report = buildRuntimeAdapterExecutionGate(inferredAdapter ?? options.target);
+	const adapter = report.adapters.find((row) => row.adapterId === inferredAdapter) ?? report.adapters[0];
 	if (!adapter) return "runtime_adapter_execution:\nstatus: missing\nnext: re_runtime_adapter show";
 	if (!options.target?.trim()) return `${formatRuntimeAdapterExecutionGate(report)}\n\nblocked: target_required\nnext: re_runtime_adapter run ${adapter.adapterId} <target>`;
 	const selectedRunner = adapter.present ? "native" : "fallback";
@@ -34737,7 +35239,7 @@ function installReconTools(pi: ExtensionAPI): void {
 		promptSnippet:
 			"Use re_runtime_adapter to execute a bounded local adapter and parse output into evidence before claiming a reverse/pentest tool result.",
 		promptGuidelines: [
-			"Call re_runtime_adapter show or plan to choose an adapter with native/fallback status.",
+			"Call re_runtime_adapter show or plan to choose an adapter with native/fallback status; if only a target is provided, REPI auto-detects URL/PCAP/APK/firmware/native/GDB-oriented adapters.",
 			"Call re_runtime_adapter run only with an explicit target and bounded timeout; then feed the artifact to re_verifier and re_domain_proof_exit.",
 			"Do not paste literal secrets; use env refs such as REPI_BROWSER_CDP_URL, REPI_FRIDA_DEVICE, or REPI_RUNTIME_ADAPTER_TIMEOUT_MS.",
 		],

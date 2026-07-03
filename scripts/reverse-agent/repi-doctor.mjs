@@ -351,6 +351,9 @@ const reconProfileSource = existsSync(join(root, "packages/coding-agent/src/core
 const modelRegistrySource = existsSync(join(root, "packages/coding-agent/src/core/model-registry.ts"))
 	? readFileSync(join(root, "packages/coding-agent/src/core/model-registry.ts"), "utf8")
 	: "";
+const modelInspectSource = existsSync(join(root, "scripts/reverse-agent/model-inspect.mjs"))
+	? readFileSync(join(root, "scripts/reverse-agent/model-inspect.mjs"), "utf8")
+	: "";
 
 const guardrailMarkers = [
 	"REPI_PRINT_PROGRESS",
@@ -382,7 +385,9 @@ const envModelContractOk =
 	bootstrapSource.includes('process.env.REPI_LOAD_BUILTIN_MODELS || "0"') &&
 	modelRegistrySource.includes("repiEnvProviderConfig") &&
 	modelRegistrySource.includes("REPI_AUTO_COMPACT_WINDOW") &&
-	modelRegistrySource.includes("openai-compatible");
+	modelRegistrySource.includes("openai-compatible") &&
+	modelInspectSource.includes("buildStatusReport") &&
+	modelInspectSource.includes("repi model status");
 const legacyExtensions = legacyExtensionLayout();
 const scopedMemoryDefaultsOk =
 	memory.schemaVersion === 2 &&
@@ -477,7 +482,7 @@ const checks = [
 	check(
 		"models:env-only-contract",
 		envModelContractOk,
-		`launcherEnvGuard=${launcherSource.includes("validate_repi_env_model_config")} bootstrapBuiltinDefault0=${bootstrapSource.includes('process.env.REPI_LOAD_BUILTIN_MODELS || "0"')} registryEnv=${modelRegistrySource.includes("repiEnvProviderConfig")}`,
+		`launcherEnvGuard=${launcherSource.includes("validate_repi_env_model_config")} bootstrapBuiltinDefault0=${bootstrapSource.includes('process.env.REPI_LOAD_BUILTIN_MODELS || "0"')} registryEnv=${modelRegistrySource.includes("repiEnvProviderConfig")} modelStatus=${modelInspectSource.includes("buildStatusReport")}`,
 		"keep Claude-Code-style REPI_* env model config as the default path and built-in provider catalog disabled",
 	),
 	check("network:update-suppressed", /--offline/.test(helpText) && /REPI_SKIP_VERSION_CHECK/.test(helpText), "offline/version-check controls available"),

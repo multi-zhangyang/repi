@@ -1,6 +1,20 @@
 export type AttackGraphNode = {
 	id: string;
-	kind: "mission" | "route" | "lane" | "checkpoint" | "map" | "run" | "evidence" | "tool" | "next";
+	kind:
+		| "mission"
+		| "route"
+		| "lane"
+		| "checkpoint"
+		| "map"
+		| "run"
+		| "evidence"
+		| "command"
+		| "artifact"
+		| "hypothesis"
+		| "counter_evidence"
+		| "verification"
+		| "tool"
+		| "next";
 	label: string;
 	status?: string;
 	priority?: number;
@@ -11,8 +25,31 @@ export type AttackGraphNode = {
 export type AttackGraphEdge = {
 	from: string;
 	to: string;
-	kind: "owns" | "orders" | "blocks" | "evidences" | "requires" | "suggests" | "updates";
+	kind:
+		| "owns"
+		| "orders"
+		| "blocks"
+		| "evidences"
+		| "requires"
+		| "suggests"
+		| "updates"
+		| "supports"
+		| "refutes"
+		| "produces"
+		| "verifies";
 	label?: string;
+};
+
+export type AttackGraphTaskTreeNode = {
+	id: string;
+	parentId?: string;
+	kind: AttackGraphNode["kind"];
+	label: string;
+	status?: string;
+	command?: string;
+	path?: string;
+	evidence?: string[];
+	note?: string;
 };
 
 export type AttackGraphArtifact = {
@@ -22,6 +59,7 @@ export type AttackGraphArtifact = {
 	target?: string;
 	nodes: AttackGraphNode[];
 	edges: AttackGraphEdge[];
+	taskTree: AttackGraphTaskTreeNode[];
 	criticalPath: string[];
 	gaps: string[];
 	nextActions: string[];
@@ -115,6 +153,7 @@ export function formatAttackGraph(graph: AttackGraphArtifact, path?: string): st
 		`target: ${graph.target ?? "<none>"}`,
 		`nodes: ${graph.nodes.length}`,
 		`edges: ${graph.edges.length}`,
+		`task_tree_nodes: ${graph.taskTree.length}`,
 		"critical_path:",
 		...graph.criticalPath.map((item) => `- ${item}`),
 		"gaps:",
@@ -148,6 +187,13 @@ export function formatAttackGraphArtifactMarkdown(
 		"## Edges",
 		"",
 		...graph.edges.map((edge) => `- ${edge.from} --${edge.kind}${edge.label ? `:${edge.label}` : ""}--> ${edge.to}`),
+		"",
+		"## Task Tree",
+		"",
+		...graph.taskTree.map(
+			(node) =>
+				`- ${node.parentId ? `${node.parentId} -> ` : ""}${node.id} [${node.kind}] ${node.label}${node.status ? ` status=${node.status}` : ""}${node.command ? ` command=${truncate(node.command, 180)}` : ""}${node.path ? ` path=${node.path}` : ""}${node.note ? ` note=${truncate(node.note, 220)}` : ""}`,
+		),
 		"",
 		"## JSON",
 		"",

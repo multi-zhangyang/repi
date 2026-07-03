@@ -13,11 +13,16 @@ Release focused on install reliability, env-first model selection, and upstream 
 
 - **Env-only model switching**: `REPI_AUTH_TOKEN`, `REPI_BASE_URL`, `REPI_MODEL`, `REPI_MODEL_API`, `REPI_CONTEXT_WINDOW` / `REPI_AUTO_COMPACT_WINDOW`, `REPI_MAX_TOKENS`, and `REPI_SUBAGENT_MODEL` provide a Claude Code-style setup while keeping OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages wire formats.
 - **Built-in goal mode**: `/goal [--tokens 100k] <objective>` now ships with REPI, persists goal state, shows `🎯 active/paused/budget/complete` in the footer, auto-continues unfinished work, and terminates only through the verified `goal_complete` tool.
+- **Runtime adapter auto-detection**: `re_runtime_adapter plan/run <target>` now infers GDB/radare2, Frida mobile, CDP web, PCAP/tshark, firmware/rootfs/binwalk, and pwn verifier adapters from target shape when no adapter is specified.
+- **Evidence task tree graph**: `re_graph build` now links ledger commands, output facts, artifacts, hypotheses, verification commands, and counter-evidence into a traceable task tree.
+- **Proof-loop gap classifier**: `re_proof_loop` now labels missing artifacts, contradictions, replay failures, dependency gaps, target/state problems, weak evidence, and timeout/flake signals, then emits a short quick path for verifier → compiler → replayer → autofix closure.
+- **Model status check**: `repi model status` reports the effective `REPI_*` env provider/model/API/context/token settings offline, redacts base URLs, and warns about missing auth or shell-quote mistakes.
 - **Upstream pi package compatibility**: loader aliases for `@earendil-works/pi-*` imports and `@earendil-works/pi-ai/compat` let REPI install/use packages such as `pi-web-access` while keeping state in `~/.repi/agent`; an older external `@narumitw/pi-goal` is suppressed in favor of the built-in mode.
 
 ### Changed
 
 - REPI defaults to `REPI_LOAD_BUILTIN_MODELS=0`, so the runtime surface is environment providers, explicit `models.json` providers, and dynamic extension providers rather than the large upstream built-in catalog.
+- Swarm/subagent runtime manifests now carry explicit timeout, cancellation, and retry-attempt metadata into child-session and worker-pool validation.
 - Documentation now leads with env-only model configuration and verified upstream pi extension installation examples.
 
 ### Fixed

@@ -25,6 +25,7 @@ const allowedApis = new Set(["openai-completions", "openai-responses", "anthropi
 function usage() {
 	return `Usage:
   repi model doctor [--fix] [--json]
+  repi model status [--show-urls] [--json]
   repi model list [--provider <id>] [--model <id>] [--show-urls] [--json]
   repi model add --provider <id> --api <openai-completions|openai-responses|anthropic-messages> --base-url <url> --model <id> [--api-key-stdin] [--set-default] [options]
   repi model add --preset baseten-kimi-k2.7-code [--api-key-stdin] [--set-default] [options]
@@ -48,6 +49,7 @@ Environment-only model setup is the recommended default path (Claude Code style,
   export REPI_SUBAGENT_MODEL=vendor/subagent-model
   repi --approve -p "..."
 
+model status shows the effective REPI_* env-only provider, base URL redaction state, API style, model id, context window, max tokens, and shell-quote/config mistakes without making a network call.
 model doctor is offline: it parses ~/.repi/agent/models.json plus REPI_* env-only providers, checks provider/model metadata, local auth, context window and cost fields; --fix repairs safe local config issues but does not auto-pick a settings default provider/model.
 model list hides provider base URLs by default to avoid leaking private gateway endpoints into screenshots/logs; add --show-urls for local troubleshooting.
 model add writes ~/.repi/agent/models.json and can store a local credential immediately with --api-key-stdin; model login writes/updates ~/.repi/agent/auth.json locally.
@@ -629,6 +631,111 @@ function buildListReport() {
 		modelCount: rows.length,
 		rows,
 		error: loaded.parseError ?? (filterMissing ? `model list found no rows for provider=${providerFilter ?? "<any>"} model=${modelFilter ?? "<any>"}` : undefined),
+	};
+}
+
+function envStatusReport() {
+	const baseUrl = firstEnv(["REPI_BASE_URL", "REPI_MODEL_BASE_URL"]);
+	const model = firstEnv(["REPI_MODEL", "REPI_MODEL_ID"]);
+	const provider = firstEnv(["REPI_PROVIDER", "REPI_MODEL_PROVIDER", "REPI_PROVIDER_ID"]) || "repi-env";
+	const api = normalizeModelApi(firstEnv(["REPI_MODEL_API", "REPI_API"]));
+	const authEnv = firstEnv(["REPI_AUTH_TOKEN"])
+		? "REPI_AUTH_TOKEN"
+		: firstEnv(["REPI_API_KEY"])
+			? "REPI_API_KEY"
+			: firstEnv(["REPI_MODEL_API_KEY"])
+				? "REPI_MODEL_API_KEY"
+				: "REPI_AUTH_TOKEN";
+	const contextWindow = envInt(["REPI_CONTEXT_WINDOW", "REPI_MODEL_CONTEXT_WINDOW", "REPI_AUTO_COMPACT_WINDOW", "REPI_MODEL_AUTO_COMPACT_WINDOW"], 262144, 1024, 1048576);
+	const maxTokens = envInt(["REPI_MAX_TOKENS", "REPI_MODEL_MAX_TOKENS", "REPI_MAX_OUTPUT_TOKENS"], 16384, 64, 131072);
+	const subagentModel = firstEnv(["REPI_SUBAGENT_MODEL"]) || null;
+	const issues = [];
+	if (!baseUrl) issues.push("REPI_BASE_URL is missing");
+	if (!model) issues.push("REPI_MODEL is missing");
+	if (!process.env[authEnv]) issues.push(`${authEnv} is missing`);
+	for (const [name, value] of Object.entries({
+		REPI_BASE_URL: baseUrl,
+		REPI_MODEL: model,
+		REPI_PROVIDER: provider,
+		REPI_SUBAGENT_MODEL: subagentModel,
+	})) {
+		if (typeof value === "string" && /['"]/.test(value)) issues.push(`${name} contains a quote character; check shell export quoting`);
+	}
+	return {
+		enabled: Boolean(baseUrl && model),
+		provider,
+		model: model ?? null,
+		api,
+		baseUrl: baseUrl ? displayUrl(baseUrl) : null,
+		baseUrlHidden: !showUrls(),
+		authEnv,
+		authPresent: Boolean(process.env[authEnv]),
+		contextWindow,
+		autoCompactWindow: contextWindow,
+		maxTokens,
+		subagentModel,
+		issues,
+	};
+}
+
+function buildStatusReport() {
+	const loaded = loadProviders();
+	const settings = readJson(settingsPath);
+	const env = envStatusReport();
+	const defaultModel = defaultStatusFor(loaded.providers, settings, { stdoutPreview: "", stderrPreview: "", exit: 0 });
+	const effective = env.enabled
+		? {
+				source: "REPI_* environment",
+				provider: env.provider,
+				model: env.model,
+				api: env.api,
+				contextWindow: env.contextWindow,
+				maxTokens: env.maxTokens,
+			}
+		: defaultModel.configured
+			? {
+					source: "settings.json default",
+					provider: defaultModel.providerId,
+					model: defaultModel.modelId,
+					api: loaded.providers?.[defaultModel.providerId]?.api ?? "unknown",
+					contextWindow:
+						loaded.providers?.[defaultModel.providerId]?.models?.find((candidate) => candidate?.id === defaultModel.modelId)
+							?.contextWindow ?? null,
+					maxTokens:
+						loaded.providers?.[defaultModel.providerId]?.models?.find((candidate) => candidate?.id === defaultModel.modelId)
+							?.maxTokens ?? null,
+				}
+			: {
+					source: "unset",
+					provider: null,
+					model: null,
+					api: null,
+					contextWindow: null,
+					maxTokens: null,
+				};
+	const diagnostics = [];
+	if (loaded.parseError) diagnostics.push({ level: "fail", id: "models-json-parse", message: loaded.parseError });
+	for (const issue of env.issues) diagnostics.push({ level: env.enabled ? "warn" : "info", id: "env-model", message: issue });
+	if (!env.enabled && !defaultModel.configured)
+		diagnostics.push({
+			level: "info",
+			id: "env-model-example",
+			message: "set REPI_AUTH_TOKEN, REPI_BASE_URL, REPI_MODEL, and optional REPI_MODEL_API to choose a model without editing models.json",
+		});
+	return {
+		kind: "repi-model-status-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		root,
+		agentDir,
+		modelsPath,
+		settingsPath,
+		env,
+		defaultModel,
+		effective,
+		providerCount: Object.keys(loaded.providers).length,
+		diagnostics,
+		ok: !diagnostics.some((item) => item.level === "fail"),
 	};
 }
 
@@ -1391,6 +1498,18 @@ function printList(report) {
 	}
 }
 
+function printStatus(report) {
+	console.log("REPI Model Status");
+	console.log(`effective=${report.effective.source} provider=${report.effective.provider ?? "<unset>"} model=${report.effective.model ?? "<unset>"}`);
+	if (report.effective.api) console.log(`api=${report.effective.api}`);
+	if (report.effective.contextWindow) console.log(`contextWindow=${report.effective.contextWindow} maxTokens=${report.effective.maxTokens}`);
+	console.log(`env.enabled=${report.env.enabled} env.provider=${report.env.provider} env.model=${report.env.model ?? "<unset>"}`);
+	console.log(`env.baseUrl=${report.env.baseUrl ?? "<unset>"} auth=${report.env.authEnv}:${report.env.authPresent ? "set" : "missing"}`);
+	if (report.env.subagentModel) console.log(`env.subagentModel=${report.env.subagentModel}`);
+	for (const diagnostic of report.diagnostics ?? []) console.log(`${diagnostic.level.toUpperCase()} ${diagnostic.id}: ${diagnostic.message}`);
+	console.log(`verdict: ${report.ok ? "pass" : "fail"}`);
+}
+
 function printExport(report) {
 	if (!report.ok) {
 		console.error(report.error);
@@ -1455,7 +1574,9 @@ if (!["doctor", "status", "list", "cost", "add", "edit", "remove", "login", "tes
 }
 
 const report =
-	command === "list"
+	command === "status"
+		? buildStatusReport()
+		: command === "list"
 		? buildListReport()
 		: command === "cost"
 		? buildCostReport()
@@ -1477,6 +1598,7 @@ const report =
 										? buildImportReport()
 										: buildDoctorReport();
 if (json) console.log(JSON.stringify(report, null, 2));
+else if (command === "status") printStatus(report);
 else if (command === "list") printList(report);
 else if (command === "cost") printCost(report);
 else if (command === "add") printMutationReport("REPI Model Add", report);

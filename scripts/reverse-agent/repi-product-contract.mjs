@@ -1075,6 +1075,73 @@ rows.push(
 	),
 );
 
+rows.push(
+	check(
+		"runtime:adapter-auto-detect-contract",
+		includesAll(reconProfile, [
+			"detectRuntimeAdapterIds",
+			"target_auto_detection_contract",
+			"gdb-native-trace-adapter",
+			"r2-native-xref-adapter",
+			"frida-mobile-hook-adapter",
+			"web-cdp-network-adapter",
+			"tshark-pcap-flow-adapter",
+			"binwalk-firmware-extract-adapter",
+		]),
+		"runtime adapter matrix covers GDB/r2/Frida/CDP/PCAP/firmware and target auto-detection",
+		"Keep re_runtime_adapter able to infer the runner from URL, PCAP, APK/IPA/package, firmware/rootfs, pwn/crash, and native target shapes.",
+	),
+);
+
+const graphSource = read("packages/coding-agent/src/core/repi/graph.ts");
+rows.push(
+	check(
+		"evidence:task-tree-graph-contract",
+		includesAll(graphSource, ["AttackGraphTaskTreeNode", "taskTree", "counter_evidence", "hypothesis"]) &&
+			includesAll(reconProfile, [
+				"parseEvidenceLedgerTaskRecords",
+				"evidenceRecordHasCounterSignal",
+				"evidenceRecordHasHypothesisSignal",
+				"command",
+				"produces",
+				"refutes",
+			]),
+		"attack graph includes taskTree nodes linking commands, artifacts, hypotheses, verification, and counter-evidence",
+		"Keep re_graph build as a traceable task tree, not just a flat mission/lane summary.",
+	),
+);
+
+rows.push(
+	check(
+		"proof-loop:gap-classifier-contract",
+		includesAll(reconProfile, [
+			"ProofLoopGapClass",
+			"proofLoopGapClassifier",
+			"proofLoopQuickPath",
+			"gap_classifier",
+			"quick_path",
+		]),
+		"proof loop classifies gaps and emits a quick verifier/compiler/replayer/autofix path",
+		"Keep re_proof_loop focused on fast gap classification and bounded proof repair, not only static queue dumps.",
+	),
+);
+
+rows.push(
+	check(
+		"swarm:timeout-budget-contract",
+		includesAll(reconProfile, [
+			"swarmWorkerTimeoutMs",
+			"REPI_SWARM_SUBAGENT_TIMEOUT_MS",
+			"timeoutMs",
+			"timedOut",
+			"cancelledAt",
+			"WorkerRuntimePoolV1",
+		]),
+		"swarm workers carry explicit timeout/cancel metadata into manifests and pool bridge validation",
+		"Keep subagent scheduling bounded, cancellable, and retry-budget visible across handoff manifests.",
+	),
+);
+
 const scanFiles = [
 	"README.md",
 	"AGENTS.md",
@@ -1154,6 +1221,7 @@ rows.push(
 			"doctor",
 			"memory-status",
 			"model-doctor",
+			"model-status-env",
 			"launcher-help",
 			"launcher-list-models",
 			"fresh-install-envless-models",
