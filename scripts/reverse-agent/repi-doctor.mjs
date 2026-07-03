@@ -338,9 +338,20 @@ const helpText = `${help.stdout}\n${help.stderr}`;
 const globalRepi = pathEntry(installedRepi);
 const localRepi = pathEntry(repiBin);
 const globalRepiOk = packageBinMode || (globalRepi.exists && globalRepi.resolved === localRepi.resolved);
+const launcherSource = existsSync(join(root, "repi")) ? readFileSync(join(root, "repi"), "utf8") : "";
 const bootstrapSource = existsSync(join(root, "packages/coding-agent/src/cli/repi-bootstrap.ts"))
 	? readFileSync(join(root, "packages/coding-agent/src/cli/repi-bootstrap.ts"), "utf8")
 	: "";
+const goalSource = existsSync(join(root, "packages/coding-agent/src/core/repi/goal.ts"))
+	? readFileSync(join(root, "packages/coding-agent/src/core/repi/goal.ts"), "utf8")
+	: "";
+const reconProfileSource = existsSync(join(root, "packages/coding-agent/src/core/recon-profile.ts"))
+	? readFileSync(join(root, "packages/coding-agent/src/core/recon-profile.ts"), "utf8")
+	: "";
+const modelRegistrySource = existsSync(join(root, "packages/coding-agent/src/core/model-registry.ts"))
+	? readFileSync(join(root, "packages/coding-agent/src/core/model-registry.ts"), "utf8")
+	: "";
+
 const guardrailMarkers = [
 	"REPI_PRINT_PROGRESS",
 	"REPI_PRINT_TIMEOUT_MS",
@@ -353,6 +364,25 @@ const guardrailMarkers = [
 ];
 const missingHelpGuardrails = guardrailMarkers.filter((marker) => !helpText.includes(marker));
 const missingBootstrapGuardrails = guardrailMarkers.filter((marker) => !bootstrapSource.includes(marker));
+const goalModeBuiltInOk =
+	goalSource.includes("installRepiGoalMode") &&
+	goalSource.includes("goal_complete") &&
+	goalSource.includes("REPI_GOAL_STATE_ENTRY_TYPE") &&
+	goalSource.includes("formatGoalFooterStatus") &&
+	reconProfileSource.includes("installRepiGoalMode(pi)");
+const goalConflictSuppressionOk =
+	reconProfileSource.includes("hasGoalModeSignature") &&
+	reconProfileSource.includes("isExternalGoalModeExtension") &&
+	reconProfileSource.includes("suppressLegacyReconConflicts");
+const envModelContractOk =
+	launcherSource.includes("validate_repi_env_model_config") &&
+	launcherSource.includes("REPI_LOAD_BUILTIN_MODELS") &&
+	launcherSource.includes("REPI_MODEL_API=openai-compatible") &&
+	bootstrapSource.includes("REPI_LOAD_BUILTIN_MODELS") &&
+	bootstrapSource.includes('process.env.REPI_LOAD_BUILTIN_MODELS || "0"') &&
+	modelRegistrySource.includes("repiEnvProviderConfig") &&
+	modelRegistrySource.includes("REPI_AUTO_COMPACT_WINDOW") &&
+	modelRegistrySource.includes("openai-compatible");
 const legacyExtensions = legacyExtensionLayout();
 const scopedMemoryDefaultsOk =
 	memory.schemaVersion === 2 &&
@@ -431,6 +461,24 @@ const checks = [
 		missingBootstrapGuardrails.length === 0,
 		`missing=${missingBootstrapGuardrails.join(",") || "<none>"}`,
 		"run git pull && npm install",
+	),
+	check(
+		"goal:built-in-mode",
+		goalModeBuiltInOk,
+		`goalSource=${Boolean(goalSource)} profileInstall=${reconProfileSource.includes("installRepiGoalMode(pi)")}`,
+		"update REPI so /goal and goal_complete are built into the inline profile",
+	),
+	check(
+		"goal:extension-conflict-suppression",
+		goalConflictSuppressionOk,
+		`hasGoalSignature=${reconProfileSource.includes("hasGoalModeSignature")} externalGoalSuppression=${reconProfileSource.includes("isExternalGoalModeExtension")}`,
+		"suppress external @narumitw/pi-goal when built-in REPI goal mode is active",
+	),
+	check(
+		"models:env-only-contract",
+		envModelContractOk,
+		`launcherEnvGuard=${launcherSource.includes("validate_repi_env_model_config")} bootstrapBuiltinDefault0=${bootstrapSource.includes('process.env.REPI_LOAD_BUILTIN_MODELS || "0"')} registryEnv=${modelRegistrySource.includes("repiEnvProviderConfig")}`,
+		"keep Claude-Code-style REPI_* env model config as the default path and built-in provider catalog disabled",
 	),
 	check("network:update-suppressed", /--offline/.test(helpText) && /REPI_SKIP_VERSION_CHECK/.test(helpText), "offline/version-check controls available"),
 ];

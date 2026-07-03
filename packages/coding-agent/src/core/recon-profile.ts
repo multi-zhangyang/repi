@@ -42,6 +42,7 @@ import {
 	type ExploitChainEdge,
 } from "./repi/graph.ts";
 import { jsonlRecords, jsonlScan, warmJsonlParsedCache } from "./repi/jsonl.ts";
+import { installRepiGoalMode } from "./repi/goal.ts";
 import {
 	caseMemorySnapshotFromEvent,
 	isCaseMemory,
@@ -5314,23 +5315,35 @@ function isLegacyReconExtension(extension: Extension): boolean {
 	return /(^|[/\\])reverse-pentest-core\.ts$/.test(extension.path) || hasReconSignature(extension);
 }
 
+function hasGoalModeSignature(extension: Extension): boolean {
+	return extension.commands.has("goal") && extension.tools.has("goal_complete");
+}
+
+function isExternalGoalModeExtension(extension: Extension): boolean {
+	if (extension.path.startsWith("<inline:")) return false;
+	return hasGoalModeSignature(extension);
+}
+
 function suppressLegacyReconConflicts(base: LoadExtensionsResult): LoadExtensionsResult {
 	const inlineRecon = base.extensions.find(
 		(extension) => extension.path.startsWith("<inline:") && hasReconSignature(extension),
 	);
 	if (!inlineRecon) return base;
 
-	const legacyReconPaths = new Set(base.extensions.filter(isLegacyReconExtension).map((extension) => extension.path));
-	if (legacyReconPaths.size === 0) return base;
+	const suppressedPaths = new Set(base.extensions.filter(isLegacyReconExtension).map((extension) => extension.path));
+	if (hasGoalModeSignature(inlineRecon)) {
+		for (const extension of base.extensions.filter(isExternalGoalModeExtension)) suppressedPaths.add(extension.path);
+	}
+	if (suppressedPaths.size === 0) return base;
 
 	return {
 		...base,
-		extensions: base.extensions.filter((extension) => !legacyReconPaths.has(extension.path)),
+		extensions: base.extensions.filter((extension) => !suppressedPaths.has(extension.path)),
 		errors: base.errors.filter((error) => {
-			if (legacyReconPaths.has(error.path)) return false;
+			if (suppressedPaths.has(error.path)) return false;
 			if (error.path !== inlineRecon.path) return true;
-			return !Array.from(legacyReconPaths).some((legacyPath) =>
-				error.error.includes(`conflicts with ${legacyPath}`),
+			return !Array.from(suppressedPaths).some((suppressedPath) =>
+				error.error.includes(`conflicts with ${suppressedPath}`),
 			);
 		}),
 	};
@@ -25338,6 +25351,10 @@ async function executeProofLoopStep(
 		case "compact-resume": {
 			const concrete = operatorCommandConcrete(step.command, target);
 			if (concrete.blocked) return blocked(concrete.blocked);
+			if (/^re[-_]context\s+resume\b/i.test(concrete.command))
+				return done(`compact resume context already verified by resume contract; command=${concrete.command}`);
+			if (/^re[-_]operator\s+plan\b/i.test(concrete.command))
+				return done(buildOperatorOutput("plan", { target }));
 			if (/^re[-_]proof[-_]loop\s+run\b/i.test(concrete.command))
 				return done(`compact resume proof loop entered by current re_proof_loop run; command=${concrete.command}`);
 			return executeOperatorStep(
@@ -25351,11 +25368,11 @@ async function executeProofLoopStep(
 				},
 				target,
 			);
-			}
-			case "operator-feedback":
-			case "failure-signature":
-			case "swarm-retry":
-				return executeOperatorStep(
+		}
+		case "operator-feedback":
+		case "failure-signature":
+		case "swarm-retry":
+			return executeOperatorStep(
 				pi,
 				{
 					id: step.id,
@@ -25379,9 +25396,16 @@ async function executeProofLoopStep(
 			return done(buildAutofixOutput(action, { target }));
 		}
 		case "case-memory": {
-			const action = /\splan\b/i.test(step.command) ? "plan" : "run";
 			const maxAutoSteps = /(?:^|\s)(\d+)\s*$/.exec(step.command)?.[1];
-			return done(await runAutopilot(pi, { action, target, maxAutoSteps: maxAutoSteps ? Number(maxAutoSteps) : 1 }));
+			const plan = await runAutopilot(pi, {
+				action: "plan",
+				target,
+				maxAutoSteps: maxAutoSteps ? Number(maxAutoSteps) : 1,
+				reasoning: "regex",
+				dispatch: "inline",
+				runAuto: false,
+			});
+			return done(`${plan}\ncase_memory_execution: deferred_to_re_autopilot_run`);
 		}
 		case "knowledge":
 			return done(buildKnowledgeGraphOutput("build", { target }));
@@ -25406,7 +25430,12 @@ async function executeProofLoopBridgeStep(
 		kind === "delegate"
 			? buildDelegateOutput("plan", { target })
 			: kind === "swarm"
-				? `${await runSwarm(pi, { target, maxWorkers: 2, maxCommands: 1 })}\n\n${buildSwarmOutput("merge", { target })}`
+				? [
+						buildSwarmOutput("plan", { target }),
+						`proof_loop_bridge_command: re_swarm run${proofLoopCommandTarget(target)} 2 1`,
+						"proof_loop_bridge_execution: deferred_to_re_swarm_run",
+						buildSwarmOutput("merge", { target }),
+					].join("\n\n")
 				: await buildSupervisorOutput(repairMode ? "repair" : "review", { target });
 	return {
 		stepId: `proof:bridge:${kind}`,
@@ -25435,6 +25464,12 @@ async function runProofLoop(
 	for (const step of proof.steps.filter((item) => item.phase === "compact-resume" && item.status === "ready")) {
 		if (remaining <= 0) break;
 		await runStep(step, 1);
+	}
+	if (proof.executed.some((item) => /compact resume proof loop entered/i.test(item.output))) {
+		updateReconCompactionTelemetryFromExecutions(proof.executed, proof.sourceArtifacts);
+		proof = refreshProofLoop(proof);
+		const path = writeProofLoopArtifact(proof);
+		return formatProofLoop(proof, path);
 	}
 	for (const id of ["proof:1:verifier", "proof:2:compiler", "proof:3:replayer"]) {
 		const step = stepById(id);
@@ -35355,6 +35390,7 @@ export function createReconExtensionFactory() {
 
 		installReconCommands(pi, stats);
 		installReconTools(pi);
+		installRepiGoalMode(pi);
 	};
 }
 

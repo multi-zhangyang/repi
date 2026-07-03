@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,7 +16,26 @@ function script(name) {
 	return join(scriptDir, name);
 }
 
-const repiPath = existsSync(join(root, "repi")) ? join(root, "repi") : "repi";
+const repiPath = process.env.REPI_BIN_PATH || (existsSync(join(root, "repi")) ? join(root, "repi") : "repi");
+const tempAgentDirs = [];
+function tempAgentDir(label) {
+	const dir = mkdtempSync(join(tmpdir(), `repi-smoke-${label}-`));
+	tempAgentDirs.push(dir);
+	return dir;
+}
+const freshAgentDir = tempAgentDir("fresh");
+const envModelAgentDir = tempAgentDir("env-model");
+const rpcGoalAgentDir = tempAgentDir("rpc-goal");
+const envModelProbe = {
+	REPI_AUTH_TOKEN: "repi-smoke-token",
+	REPI_BASE_URL: "https://repi-smoke.invalid/v1",
+	REPI_PROVIDER: "repi-env",
+	REPI_MODEL: "repi-smoke-env-model",
+	REPI_MODEL_API: "openai-compatible",
+	REPI_CONTEXT_WINDOW: "262144",
+	REPI_AUTO_COMPACT_WINDOW: "262144",
+	REPI_LOAD_BUILTIN_MODELS: "0",
+};
 const steps = [
 	{ id: "product-contract", cmd: "node", args: [script("repi-product-contract.mjs"), root, "--json"] },
 	// `repi doctor` intentionally performs two cold launcher probes (`--help` and
@@ -27,6 +47,30 @@ const steps = [
 	{ id: "model-doctor", cmd: "node", args: [script("model-inspect.mjs"), root, "doctor", "--json"] },
 	{ id: "launcher-help", cmd: repiPath, args: ["--offline", "--help"] },
 	{ id: "launcher-list-models", cmd: repiPath, args: ["--offline", "--list-models"] },
+	{
+		id: "fresh-install-envless-models",
+		cmd: repiPath,
+		args: ["--offline", "--list-models"],
+		env: { REPI_CODING_AGENT_DIR: freshAgentDir, REPI_LOAD_BUILTIN_MODELS: "0" },
+		expectOutput: ["No models available", "REPI does not load upstream pi's large built-in model catalog by default"],
+		rejectOutput: ["kimchi", "aigateway"],
+	},
+	{
+		id: "env-model-provider",
+		cmd: repiPath,
+		args: ["--offline", "--list-models"],
+		env: { ...envModelProbe, REPI_CODING_AGENT_DIR: envModelAgentDir },
+		expectOutput: ["repi-env", "repi-smoke-env-model", "262.1K"],
+		rejectOutput: ["kimchi", "aigateway"],
+	},
+	{
+		id: "rpc-goal-command",
+		cmd: repiPath,
+		args: ["--offline", "--mode", "rpc", "--no-session"],
+		env: { ...envModelProbe, REPI_CODING_AGENT_DIR: rpcGoalAgentDir },
+		input: `${JSON.stringify({ id: "commands", type: "get_commands" })}\n`,
+		expectOutput: ['"name":"goal"'],
+	},
 ];
 if (full) steps.push({ id: "full-check", cmd: "npm", args: ["run", "check"], timeout: 180_000 });
 
@@ -40,18 +84,30 @@ function runStep(step) {
 			REPI_SKIP_VERSION_CHECK: "1",
 			REPI_SKIP_PACKAGE_UPDATE_CHECK: "1",
 			REPI_TELEMETRY: "0",
+			...(step.env ?? {}),
 		},
+		input: step.input,
 		encoding: "utf8",
 		timeout: step.timeout ?? (full ? 120_000 : 45_000),
 		maxBuffer: 4 * 1024 * 1024,
 	});
+	const stdout = result.stdout ?? "";
+	const stderr = result.stderr ?? "";
+	const combined = `${stdout}\n${stderr}`;
+	const missing = (step.expectOutput ?? []).filter((needle) => !combined.includes(needle));
+	const forbidden = (step.rejectOutput ?? []).filter((needle) => combined.includes(needle));
+	const processExit = result.status ?? 1;
+	const validationExit = missing.length === 0 && forbidden.length === 0 ? 0 : 1;
 	return {
 		id: step.id,
 		cmd: [step.cmd, ...step.args].join(" "),
-		exit: result.status ?? 1,
+		exit: processExit === 0 && validationExit === 0 ? 0 : processExit || validationExit,
+		processExit,
+		missing,
+		forbidden,
 		ms: Date.now() - startedAt,
-		stdoutTail: (result.stdout ?? "").slice(-1600),
-		stderrTail: (result.stderr ?? "").slice(-1600),
+		stdoutTail: stdout.slice(-1600),
+		stderrTail: stderr.slice(-1600),
 		error: result.error ? String(result.error.message || result.error) : undefined,
 	};
 }
@@ -66,6 +122,7 @@ for (const step of steps) {
 }
 
 const report = { kind: "repi-smoke-report", schemaVersion: 1, generatedAt: new Date().toISOString(), root, full, ok: rows.every((row) => row.exit === 0) && rows.length === steps.length, rows };
+for (const dir of tempAgentDirs) rmSync(dir, { recursive: true, force: true });
 if (json) console.log(JSON.stringify(report, null, 2));
 else console.log(`verdict: ${report.ok ? "pass" : "fail"}`);
 process.exit(report.ok ? 0 : 1);

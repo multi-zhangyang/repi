@@ -12,7 +12,8 @@ Release focused on install reliability, env-first model selection, and upstream 
 ### Added
 
 - **Env-only model switching**: `REPI_AUTH_TOKEN`, `REPI_BASE_URL`, `REPI_MODEL`, `REPI_MODEL_API`, `REPI_CONTEXT_WINDOW` / `REPI_AUTO_COMPACT_WINDOW`, `REPI_MAX_TOKENS`, and `REPI_SUBAGENT_MODEL` provide a Claude Code-style setup while keeping OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages wire formats.
-- **Upstream pi package compatibility**: loader aliases for `@earendil-works/pi-*` imports and `@earendil-works/pi-ai/compat` let REPI install/use packages such as `@narumitw/pi-goal` and `pi-web-access` while keeping state in `~/.repi/agent`.
+- **Built-in goal mode**: `/goal [--tokens 100k] <objective>` now ships with REPI, persists goal state, shows `🎯 active/paused/budget/complete` in the footer, auto-continues unfinished work, and terminates only through the verified `goal_complete` tool.
+- **Upstream pi package compatibility**: loader aliases for `@earendil-works/pi-*` imports and `@earendil-works/pi-ai/compat` let REPI install/use packages such as `pi-web-access` while keeping state in `~/.repi/agent`; an older external `@narumitw/pi-goal` is suppressed in favor of the built-in mode.
 
 ### Changed
 
@@ -23,10 +24,12 @@ Release focused on install reliability, env-first model selection, and upstream 
 
 - **Installer PATH reliability**: source installs now prefer a PATH-visible launcher directory, use sudo for `/usr/local/bin` when available, and create/update shell startup files when falling back to `~/.local/bin`, preventing post-install `repi: command not found` in new shells.
 - Hardened runtime reliability/evidence flows from real-run self-checks, including route/memory noise reduction and realistic smoke/doctor probe budgets.
+- `repi doctor` now checks goal mode, goal-extension conflict suppression, and the env-only model contract.
 
 ### Tests
 
 - Added installer regression coverage for `~/.local/bin/repi` symlink creation, idempotent PATH rc updates, and no-op rc behavior when the launcher directory is already on PATH.
+- Added `/goal` unit coverage for print/RPC/no-UI behavior plus a release tarball smoke that builds, packs, installs the four `.tgz` artifacts, and verifies `repi`, fresh envless models, `REPI_*` env models, and RPC `/goal`.
 
 ## [0.1.1] - 2026-06-28
 

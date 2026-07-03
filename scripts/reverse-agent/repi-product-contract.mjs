@@ -45,6 +45,7 @@ const requiredFiles = [
 	"packages/coding-agent/src/core/repi/case-memory.ts",
 	"packages/coding-agent/src/core/repi/evidence.ts",
 	"packages/coding-agent/src/core/repi/graph.ts",
+	"packages/coding-agent/src/core/repi/goal.ts",
 	"packages/coding-agent/src/core/repi/jsonl.ts",
 	"packages/coding-agent/src/core/repi/knowledge-scope.ts",
 	"packages/coding-agent/src/core/repi/memory-active.ts",
@@ -77,6 +78,7 @@ const requiredFiles = [
 	"packages/coding-agent/src/core/repi/text.ts",
 	"packages/coding-agent/src/core/repi/toolchain.ts",
 	"scripts/reverse-agent/repi-smoke.mjs",
+	"scripts/reverse-agent/repi-release-tarball-smoke.mjs",
 	"scripts/reverse-agent/memory-inspect.mjs",
 ];
 
@@ -101,6 +103,16 @@ rows.push(
 			(packageJson.keywords ?? []).includes("web-pentest"),
 		`name=${packageJson.name} description=${packageJson.description}`,
 		"Keep package metadata centered on REPI reverse/pentest, not generic security or upstream Pi.",
+	),
+);
+
+rows.push(
+	check(
+		"validation:release-tarball-smoke-script",
+		packageJson.scripts?.["smoke:release"] === "node scripts/reverse-agent/repi-release-tarball-smoke.mjs" &&
+			existsSync(join(root, "scripts/reverse-agent/repi-release-tarball-smoke.mjs")),
+		`smoke:release=${packageJson.scripts?.["smoke:release"] ?? "<missing>"}`,
+		"Keep a release tarball smoke that installs packed npm artifacts and validates repi + /goal + REPI_* env.",
 	),
 );
 
@@ -1007,6 +1019,7 @@ rows.push(
 			"./repi/artifact-scope.ts",
 			"./repi/case-memory.ts",
 			"./repi/graph.ts",
+			"./repi/goal.ts",
 			"./repi/jsonl.ts",
 			"./repi/knowledge-scope.ts",
 			"./repi/profile.ts",
@@ -1044,6 +1057,24 @@ rows.push(
 	),
 );
 
+const goalMode = read("packages/coding-agent/src/core/repi/goal.ts");
+rows.push(
+	check(
+		"goal:built-in-mode-contract",
+		includesAll(goalMode, [
+			"installRepiGoalMode",
+			"goal_complete",
+			"REPI_GOAL_STATE_ENTRY_TYPE",
+			"buildGoalSystemPrompt",
+			"formatGoalFooterStatus",
+			"repi-goal-continuation",
+		]) &&
+			includesAll(reconProfile, ["./repi/goal.ts", "installRepiGoalMode(pi)", "isExternalGoalModeExtension"]),
+		"/goal command, goal_complete tool, footer status, continuation, and legacy conflict suppression are built in",
+		"Keep REPI goal mode built into the inline profile and suppress external @narumitw/pi-goal conflicts.",
+	),
+);
+
 const scanFiles = [
 	"README.md",
 	"AGENTS.md",
@@ -1055,6 +1086,7 @@ const scanFiles = [
 	"packages/coding-agent/src/core/repi/case-memory.ts",
 	"packages/coding-agent/src/core/repi/evidence.ts",
 	"packages/coding-agent/src/core/repi/graph.ts",
+	"packages/coding-agent/src/core/repi/goal.ts",
 	"packages/coding-agent/src/core/repi/jsonl.ts",
 	"packages/coding-agent/src/core/repi/knowledge-scope.ts",
 	"packages/coding-agent/src/core/repi/profile.ts",
@@ -1087,6 +1119,7 @@ const scanFiles = [
 	"packages/coding-agent/src/core/repi/text.ts",
 	"packages/coding-agent/src/core/repi/toolchain.ts",
 	"scripts/reverse-agent/repi-smoke.mjs",
+	"scripts/reverse-agent/repi-release-tarball-smoke.mjs",
 	"scripts/reverse-agent/memory-inspect.mjs",
 ];
 const forbiddenPatterns = [
@@ -1123,8 +1156,11 @@ rows.push(
 			"model-doctor",
 			"launcher-help",
 			"launcher-list-models",
+			"fresh-install-envless-models",
+			"env-model-provider",
+			"rpc-goal-command",
 		]),
-		"smoke covers product contract, doctor, memory, model parse, launcher help/list",
+		"smoke covers product contract, doctor, memory, model parse, launcher help/list, fresh env-only models, and RPC /goal",
 		"Keep smoke focused on fast user-facing REPI usability checks.",
 	),
 );

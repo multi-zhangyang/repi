@@ -79,14 +79,13 @@ repi model add --provider gateway --api openai-completions --base-url https://ga
 repi model login --provider gateway --api-key-stdin
 ```
 
-Install upstream pi ecosystem packages when needed:
+Goal mode is built in: use `/goal [--tokens 100k] <objective>` and watch the footer `🎯 active/paused/budget/complete` status; `/goal help` shows controls, and the agent stops only after `goal_complete` verifies the goal. Install other upstream pi ecosystem packages when needed:
 
 ```bash
-repi install npm:@narumitw/pi-goal
 repi install npm:pi-web-access
 ```
 
-Then start with `/re-profile-check quick`, `/re-kernel build <target>`, `/re-map <target> 2`, `/re-operator plan <target>`, `/re-verifier matrix`, and `/re-complete audit`. REPI still exposes the standard `read`, `write`, `edit`, and `bash` tools, but its default system prompt and commands are the REPI reverse/pentest control plane.
+Then start with `/goal <objective>`, `/re-profile-check quick`, `/re-kernel build <target>`, `/re-map <target> 2`, `/re-operator plan <target>`, `/re-verifier matrix`, and `/re-complete audit`. REPI still exposes the standard `read`, `write`, `edit`, and `bash` tools, but its default system prompt and commands are the REPI reverse/pentest control plane.
 
 **Platform notes:** [Windows](docs/windows.md) | [Termux (Android)](docs/termux.md) | [tmux](docs/tmux.md) | [Terminal setup](docs/terminal-setup.md) | [Shell aliases](docs/shell-aliases.md)
 
@@ -362,8 +361,7 @@ Bundle and share extensions, skills, prompts, and themes via npm or git. REPI al
 > **Security:** REPI packages run with full system access. Extensions execute arbitrary code, and skills can instruct the model to perform any action including running executables. Review source code before installing third-party packages.
 
 ```bash
-# Verified upstream pi packages
-repi install npm:@narumitw/pi-goal
+# Verified upstream pi package (goal mode is built into REPI)
 repi install npm:pi-web-access
 
 # Generic npm/git packages
@@ -453,6 +451,7 @@ REPI keeps the mature pi harness surfaces—extensions, skills, prompts, themes,
 
 - **Execution over theater:** routes, tools, subagents, swarm lanes, evidence ledgers, replay/proof loops, and verifier matrices should produce artifacts that can be rerun.
 - **Env-first models:** use `REPI_AUTH_TOKEN`, `REPI_BASE_URL`, `REPI_MODEL`, and `REPI_MODEL_API` for Claude Code-style model switching; use `models.json` only when persistent multi-provider detail is needed.
+- **Goal to completion:** `/goal` is built in, visible in TUI/RPC, survives compaction/session restore, and requires `goal_complete` after real verification.
 - **Extension-compatible, profile-isolated:** upstream pi packages can load, but state stays under `~/.repi/agent` and REPI never manages the user's upstream `pi` install or `~/.pi` profile.
 - **No fake fallbacks:** if a capability is missing, report the evidence gap or use a real generic fallback path; do not present simulated exploit/reverse results as proof.
 
