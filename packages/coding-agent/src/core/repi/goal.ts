@@ -393,7 +393,7 @@ async function shouldReplaceExistingGoal(
 	existingGoal: RepiGoalState,
 	newObjective: string,
 ): Promise<boolean> {
-	if (!ctx.hasUI || ctx.mode === "print") return true;
+	if (!ctx.hasUI || ctx.mode !== "tui") return true;
 	return ctx.ui.confirm("Replace REPI goal?", `Current goal: ${existingGoal.text}\n\nNew goal: ${newObjective}`, {
 		timeout: 30_000,
 	});

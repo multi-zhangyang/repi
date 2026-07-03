@@ -222,6 +222,27 @@ describe("REPI built-in goal mode", () => {
 		});
 	});
 
+	it("replaces an existing goal without waiting for RPC/non-TUI confirmation dialogs", async () => {
+		for (const mode of ["rpc", "json"] as const) {
+			const harness = createHarness();
+			harness.ctx.hasUI = true;
+			harness.ctx.mode = mode;
+			harness.ctx.ui.confirm = vi.fn(async () => false);
+
+			await harness.commands.get("goal").handler(`${mode} first objective`, harness.ctx);
+			await harness.commands.get("goal").handler(`${mode} replacement objective`, harness.ctx);
+
+			expect(harness.ctx.ui.confirm).not.toHaveBeenCalled();
+			expect(harness.sent).toHaveLength(2);
+			expect(harness.sent[1].content).toContain(`${mode} replacement objective`);
+			expect(harness.entries.at(-1)).toMatchObject({
+				type: "custom",
+				customType: REPI_GOAL_STATE_ENTRY_TYPE,
+				data: { version: 1, goal: { text: `${mode} replacement objective`, status: "active" } },
+			});
+		}
+	});
+
 	it("surfaces goal command/status through an RPC-style extension context", async () => {
 		const harness = createHarness();
 		harness.ctx.hasUI = true;
