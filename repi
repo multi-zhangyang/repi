@@ -119,7 +119,7 @@ Health:
   repi attack|reverse|web <target>                   Aliases for repi engage
 
 Models:
-  export REPI_AUTH_TOKEN=sk-... REPI_BASE_URL=https://... REPI_MODEL=vendor/model
+  export REPI_AUTH_TOKEN=sk-... REPI_BASE_URL=https://... REPI_PROVIDER=gateway REPI_MODEL=vendor/model
   export REPI_MODEL_API=openai-compatible   # also: openai-responses, anthropic
   repi --list-models                        # REPI env-only model appears as repi-env by default
   repi model add --provider <id> --api openai-completions --base-url <url> --model <model>

@@ -439,7 +439,7 @@ function firstEnvValue(names: string[]): string | undefined {
 	return undefined;
 }
 
-function repiEnvPreferredModel(): { provider: string; modelId: string } | undefined {
+export function repiEnvPreferredModel(): { provider: string; modelId: string } | undefined {
 	const modelId = firstEnvValue(["REPI_MODEL", "REPI_MODEL_ID"]);
 	const baseUrl = firstEnvValue(["REPI_BASE_URL", "REPI_MODEL_BASE_URL"]);
 	if (!modelId || !baseUrl) return undefined;
@@ -449,13 +449,23 @@ function repiEnvPreferredModel(): { provider: string; modelId: string } | undefi
 	};
 }
 
+export function resolveRepiEnvPreferredModel(modelRegistry: ModelRegistry): Model<Api> | undefined {
+	const envPreferred = repiEnvPreferredModel();
+	if (!envPreferred) return undefined;
+	// REPI_* is an explicit operator choice. Return the model even if auth is
+	// currently missing so startup/call errors point at the requested provider
+	// instead of silently falling back to an old saved/default model.
+	return modelRegistry.find(envPreferred.provider, envPreferred.modelId);
+}
+
 /**
  * Find the initial model to use based on priority:
  * 1. CLI args (provider + model)
- * 2. First model from scoped models (if not continuing/resuming)
- * 3. Restored from session (if continuing/resuming)
- * 4. Saved default from settings
- * 5. First available model with valid API key
+ * 2. REPI_* env-only provider/model
+ * 3. First model from scoped models (if not continuing/resuming)
+ * 4. Restored from session (if continuing/resuming)
+ * 5. Saved default from settings
+ * 6. First available model with valid API key
  */
 export async function findInitialModel(options: {
 	cliProvider?: string;
@@ -497,7 +507,16 @@ export async function findInitialModel(options: {
 		}
 	}
 
-	// 2. Use first model from scoped models (skip if continuing/resuming)
+	const envPreferredModel = resolveRepiEnvPreferredModel(modelRegistry);
+	if (envPreferredModel) {
+		return {
+			model: envPreferredModel,
+			thinkingLevel: defaultThinkingLevel ?? DEFAULT_THINKING_LEVEL,
+			fallbackMessage: undefined,
+		};
+	}
+
+	// 3. Use first model from scoped models (skip if continuing/resuming)
 	if (scopedModels.length > 0 && !isContinuing) {
 		return {
 			model: scopedModels[0].model,
@@ -509,21 +528,7 @@ export async function findInitialModel(options: {
 	const availableModels = await modelRegistry.getAvailable();
 
 	if (availableModels.length > 0) {
-		const envPreferred = repiEnvPreferredModel();
-		if (envPreferred) {
-			const match = availableModels.find(
-				(m) => m.provider === envPreferred.provider && m.id === envPreferred.modelId,
-			);
-			if (match) {
-				return {
-					model: match,
-					thinkingLevel: defaultThinkingLevel ?? DEFAULT_THINKING_LEVEL,
-					fallbackMessage: undefined,
-				};
-			}
-		}
-
-		// 3. Try saved default from settings if auth is configured. REPI's own
+		// 5. Try saved default from settings if auth is configured. REPI's own
 		// default path is the REPI_* environment provider above; settings
 		// defaults are only honored for existing user configuration.
 		if (defaultProvider && defaultModelId) {
@@ -537,12 +542,12 @@ export async function findInitialModel(options: {
 			}
 		}
 
-		// 4. No REPI env/default match: use the registry's first authenticated
+		// 6. No REPI env/default match: use the registry's first authenticated
 		// model without hard-coding provider-specific defaults.
 		return { model: availableModels[0], thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
 	}
 
-	// 5. No model found
+	// 7. No model found
 	return { model: undefined, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
 }
 

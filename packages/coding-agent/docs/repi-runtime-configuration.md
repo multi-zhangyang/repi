@@ -28,6 +28,7 @@ REPI 启动器默认设置 `REPI_LOAD_BUILTIN_MODELS=0`，不会把 upstream pi 
 ```bash
 export REPI_AUTH_TOKEN=sk-xxxxx
 export REPI_BASE_URL=https://api.example.com/v1
+export REPI_PROVIDER=my-provider              # optional; footer/provider id, default: repi-env
 export REPI_MODEL=provider/model-id
 export REPI_MODEL_API=openai-compatible   # aliases: openai-completions, openai-responses, response, anthropic
 export REPI_CONTEXT_WINDOW=128000

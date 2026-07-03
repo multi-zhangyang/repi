@@ -40,6 +40,7 @@ function usage() {
 Environment-only model setup is the recommended default path (Claude Code style, REPI-specific names):
   export REPI_AUTH_TOKEN=sk-...
   export REPI_BASE_URL=https://gateway.example/v1
+  export REPI_PROVIDER=gateway                  # optional; footer/provider id
   export REPI_MODEL=vendor/model
   export REPI_MODEL_API=openai-compatible   # aliases: openai-completions, openai-responses, response, anthropic
   export REPI_CONTEXT_WINDOW=262144

@@ -65,6 +65,7 @@ Configure a model with REPI's Claude Code-style env-only path:
 ```bash
 export REPI_AUTH_TOKEN=sk-...
 export REPI_BASE_URL=https://gateway.example/v1
+export REPI_PROVIDER=gateway                  # optional; footer/provider id, default: repi-env
 export REPI_MODEL=vendor/model-id
 export REPI_MODEL_API=openai-compatible   # also: openai-responses, anthropic
 export REPI_AUTO_COMPACT_WINDOW=262144    # optional alias of REPI_CONTEXT_WINDOW
@@ -610,6 +611,7 @@ repi --exclude-tools ask_question
 | `REPI_PACKAGE_DIR` | Override package directory (useful for Nix/Guix where store paths tokenize poorly; `PI_PACKAGE_DIR` remains a compatibility fallback) |
 | `REPI_AUTH_TOKEN` | Env-only provider API key/token |
 | `REPI_BASE_URL` | Env-only provider base URL |
+| `REPI_PROVIDER` | Optional env-only provider id shown in footer; default `repi-env` |
 | `REPI_MODEL` | Env-only model id |
 | `REPI_MODEL_API` | `openai-compatible`, `openai-responses`, or `anthropic` |
 | `REPI_CONTEXT_WINDOW` / `REPI_AUTO_COMPACT_WINDOW` | Env-only model context window; the latter mirrors Claude Code naming |

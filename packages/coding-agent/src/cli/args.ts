@@ -379,6 +379,7 @@ ${chalk.bold("Examples:")}
 ${chalk.bold("Environment Variables:")}
   REPI_AUTH_TOKEN                  - Env-only model API key (preferred under REPI)
   REPI_BASE_URL                    - Env-only provider base URL, e.g. https://gateway.example/v1
+  REPI_PROVIDER                    - Optional env-only provider id shown in the footer (default: repi-env)
   REPI_MODEL                       - Env-only model id
   REPI_MODEL_API                   - openai-compatible|openai-responses|anthropic (default: openai-compatible)
   REPI_CONTEXT_WINDOW              - Env-only model context window

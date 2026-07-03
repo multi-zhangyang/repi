@@ -13,6 +13,7 @@ export function getProviderLoginHelp(): string {
 			"Quick env-only path:",
 			"  export REPI_AUTH_TOKEN=sk-...",
 			"  export REPI_BASE_URL=https://gateway.example/v1",
+			"  export REPI_PROVIDER=gateway  # optional; footer/provider id",
 			"  export REPI_MODEL=vendor/model-id",
 			"  export REPI_MODEL_API=openai-compatible",
 			"  export REPI_AUTO_COMPACT_WINDOW=262144  # optional alias of REPI_CONTEXT_WINDOW",

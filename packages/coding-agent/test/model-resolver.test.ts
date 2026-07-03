@@ -463,6 +463,9 @@ describe("default model selection", () => {
 			maxTokens: 8192,
 		};
 		const registry = {
+			find: (provider: string, id: string) =>
+				provider === envModel.provider && id === envModel.id ? envModel : undefined,
+			hasConfiguredAuth: (model: Model<any>) => model.provider === envModel.provider && model.id === envModel.id,
 			getAvailable: async () => [fallbackDefault, envModel],
 		} as unknown as Parameters<typeof findInitialModel>[0]["modelRegistry"];
 
@@ -480,6 +483,60 @@ describe("default model selection", () => {
 
 				expect(result.model?.provider).toBe("repi-env");
 				expect(result.model?.id).toBe("moonshotai/Kimi-K2.7-Code");
+			},
+		);
+	});
+
+	test("findInitialModel lets REPI env override scoped model lists", async () => {
+		const scopedModel: Model<"anthropic-messages"> = {
+			id: "kimi-k2.7",
+			name: "Saved Kimchi",
+			api: "anthropic-messages",
+			provider: "kimchi",
+			baseUrl: "https://kimchi.example.invalid",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 262144,
+			maxTokens: 16384,
+		};
+		const envModel: Model<"openai-completions"> = {
+			id: "morph-glm52-744b",
+			name: "Morph GLM 5.2",
+			api: "openai-completions",
+			provider: "repi-env",
+			baseUrl: "https://api.morphllm.com/v1",
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 262144,
+			maxTokens: 16384,
+		};
+		const registry = {
+			find: (provider: string, id: string) =>
+				provider === envModel.provider && id === envModel.id
+					? envModel
+					: provider === scopedModel.provider && id === scopedModel.id
+						? scopedModel
+						: undefined,
+			hasConfiguredAuth: () => true,
+			getAvailable: async () => [scopedModel, envModel],
+		} as unknown as Parameters<typeof findInitialModel>[0]["modelRegistry"];
+
+		await withRepiEnv(
+			{
+				REPI_BASE_URL: "https://api.morphllm.com/v1",
+				REPI_MODEL: "morph-glm52-744b",
+			},
+			async () => {
+				const result = await findInitialModel({
+					scopedModels: [{ model: scopedModel }],
+					isContinuing: false,
+					modelRegistry: registry,
+				});
+
+				expect(result.model?.provider).toBe("repi-env");
+				expect(result.model?.id).toBe("morph-glm52-744b");
 			},
 		);
 	});

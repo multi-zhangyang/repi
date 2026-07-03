@@ -10,7 +10,7 @@ import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { convertToLlm } from "./messages.ts";
 import { ModelRegistry } from "./model-registry.ts";
-import { findInitialModel } from "./model-resolver.ts";
+import { findInitialModel, resolveRepiEnvPreferredModel } from "./model-resolver.ts";
 import { mergeProviderAttributionHeaders } from "./provider-attribution.ts";
 import type { ResourceLoader } from "./resource-loader.ts";
 import { DefaultResourceLoader } from "./resource-loader.ts";
@@ -333,6 +333,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 	let model = options.model;
 	let modelFallbackMessage: string | undefined;
+
+	// REPI_* env-only model selection is an explicit runtime override. It must
+	// beat saved defaults and restored session models so provider switching works
+	// like Claude Code: change exports, start repi, get that model.
+	if (!model) {
+		model = resolveRepiEnvPreferredModel(modelRegistry);
+	}
 
 	// If session has data, try to restore model from it
 	if (!model && hasExistingSession && existingSession.model) {
