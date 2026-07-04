@@ -252,13 +252,36 @@ if [ "$BIN_ON_PATH" -ne 1 ] && [ "${SUDO_USER:-}" = "" ] && [ -n "$HOME" ]; then
 fi
 
 PATH_HINT=""
+PATH_STATUS=""
+SOURCE_COMMAND=""
 if [ "$BIN_ON_PATH" -ne 1 ]; then
   if [ -n "$RC_UPDATED" ]; then
     PATH_HINT="  Added PATH export to: ${RC_UPDATED% }
   Open a new shell, or for this shell run: export PATH=\"$BIN_DIR:\$PATH\""
+    PATH_STATUS="Successfully added repi to \$PATH in ${RC_UPDATED% }"
+    case " $RC_UPDATED " in
+      *" .bashrc "*) SOURCE_COMMAND="source ~/.bashrc  # Load new PATH (or open a new terminal)" ;;
+      *" .zshrc "*) SOURCE_COMMAND="source ~/.zshrc   # Load new PATH (or open a new terminal)" ;;
+      *" .profile "*) SOURCE_COMMAND="source ~/.profile # Load new PATH (or open a new terminal)" ;;
+    esac
   else
     PATH_HINT="  PATH hint (run in this shell): export PATH=\"$BIN_DIR:\$PATH\""
+    PATH_STATUS="Installed repi to $BIN_DIR; add it to \$PATH for direct command use"
+    SOURCE_COMMAND="export PATH=\"$BIN_DIR:\$PATH\"  # Load repi for this shell"
   fi
+else
+  PATH_STATUS="Successfully linked repi in $BIN_DIR (already on \$PATH)"
+fi
+REPI_VERSION="$(ROOT_PACKAGE_JSON="$ROOT/package.json" node -e 'try { console.log(require(process.env.ROOT_PACKAGE_JSON).version) } catch { console.log("unknown") }' 2>/dev/null || echo unknown)"
+if [ "${REPI_INSTALL_EMBEDDED:-0}" = "1" ]; then
+  cat <<MSG
+REPI launcher ready:
+  launcher: $BIN_DIR/repi -> $ROOT/repi
+  runtime : ${REPI_CODING_AGENT_DIR:-${REPI_AGENT_DIR:-$HOME/.repi/agent}}
+  profile : built-in reverse/pentest kernel initialized
+$PATH_HINT
+MSG
+  exit 0
 fi
 cat <<MSG
 Installed REPI:
@@ -267,9 +290,18 @@ Installed REPI:
   profile : built-in reverse/pentest kernel initialized
 $PATH_HINT
 
-Next commands:
-  repi commands
-  repi --offline --help
-  repi doctor
-  repi model doctor
+$PATH_STATUS
+
+REPI $REPI_VERSION installed successfully, to start:
+
+${SOURCE_COMMAND:+$SOURCE_COMMAND
+}cd <project>  # Open target/project directory
+repi          # Run command
+
+Useful first checks:
+
+repi doctor
+repi model status
+
+For more information visit https://github.com/multi-zhangyang/pi-recon-agent
 MSG

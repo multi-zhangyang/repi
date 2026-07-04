@@ -183,8 +183,18 @@ rows.push(
 				"assert:user-rc-path-export",
 				"path:user-rc-new-shell",
 				"install:explicit-bin-on-path",
+				"install:root-friendly-summary",
 				"path:explicit-bin-current-shell",
+				"installed successfully, to start:",
+				"For more information visit https://github.com/multi-zhangyang/pi-recon-agent",
 				"REPI_CODING_AGENT_DIR",
+			]) &&
+			includesAll(read("install.sh"), [
+				"INFO: Downloading REPI",
+				"REPI_INSTALL_EMBEDDED=1",
+				"installed successfully, to start:",
+				"source ~/.bashrc",
+				"repi          # Run command",
 			]),
 		`smoke:install-path=${packageJson.scripts?.["smoke:install-path"] ?? "<missing>"}`,
 		"Keep an installer smoke proving fresh install writes a repi launcher into PATH or an rc-backed user path.",

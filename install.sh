@@ -83,12 +83,12 @@ fi
 if [ "$LOCAL_MODE" -ne 1 ]; then
   PREFIX="${PREFIX:-$HOME/.repi-src}"
   if [ -d "$PREFIX/.git" ]; then
-    echo "==> Updating existing REPI checkout at $PREFIX"
+    echo "INFO: Updating existing REPI checkout at $PREFIX"
     git -C "$PREFIX" fetch --quiet origin
     git -C "$PREFIX" checkout "$BRANCH" -- 2>/dev/null || git -C "$PREFIX" checkout "$BRANCH"
     git -C "$PREFIX" pull --ff-only --quiet origin "$BRANCH" || git -C "$PREFIX" reset --hard "origin/$BRANCH"
   else
-    echo "==> Cloning REPI into $PREFIX"
+    echo "INFO: Downloading REPI into $PREFIX"
     mkdir -p "$(dirname "$PREFIX")"
     git clone --quiet --branch "$BRANCH" "$REPO" "$PREFIX"
   fi
@@ -98,15 +98,15 @@ if [ "$LOCAL_MODE" -ne 1 ]; then
     exit 1
   fi
 else
-  echo "==> Local refresh from $ROOT"
+  echo "INFO: Refreshing REPI from $ROOT"
 fi
 
 # --- deps -----------------------------------------------------------------
 if [ "$SKIP_NPM" -eq 0 ]; then
-  echo "==> Installing Node dependencies (this can take a few minutes)"
+  echo "INFO: Installing Node dependencies (this can take a few minutes)"
   (cd "$ROOT" && npm install --ignore-scripts --no-audit --no-fund)
 else
-  echo "==> Skipping npm install (--skip-npm)"
+  echo "INFO: Skipping npm install (--skip-npm)"
 fi
 
 # --- launcher + runtime profile ------------------------------------------
@@ -156,10 +156,10 @@ if [ "${#BIN_ARGS[@]}" -eq 0 ]; then
     BIN_ARGS=("--user")
   fi
 fi
-bash "$ROOT/scripts/reverse-agent/install-repi.sh" --root "$ROOT" "${BIN_ARGS[@]}"
+REPI_INSTALL_EMBEDDED=1 bash "$ROOT/scripts/reverse-agent/install-repi.sh" --root "$ROOT" "${BIN_ARGS[@]}"
 
 # --- verify ---------------------------------------------------------------
-echo "==> Verifying offline startup"
+echo "INFO: Verifying offline startup"
 "$ROOT/repi" --offline --help >/dev/null 2>&1
 "$ROOT/repi" --offline --list-models >/dev/null 2>&1
 
@@ -172,23 +172,43 @@ case " ${BIN_ARGS[*]} " in
   *) BIN_DIR="$HOME/.local/bin"; DISPLAY_DIR="~/.local/bin" ;;
 esac
 PATH_HINT=""
+SOURCE_COMMAND=""
+PATH_STATUS="Successfully linked repi in $DISPLAY_DIR (already on \$PATH)"
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;
-  *) PATH_HINT="  export PATH=\"$BIN_DIR:\$PATH\"   # for this shell; new shells are updated when possible" ;;
+  *)
+    PATH_STATUS="Successfully added repi to \$PATH in shell startup files"
+    if [ -n "${BASH_VERSION:-}" ] || [ "$(basename "${SHELL:-}" 2>/dev/null || true)" = "bash" ]; then
+      SOURCE_COMMAND="source ~/.bashrc  # Load new PATH (or open a new terminal)"
+    elif [ -n "${ZSH_VERSION:-}" ] || [ "$(basename "${SHELL:-}" 2>/dev/null || true)" = "zsh" ]; then
+      SOURCE_COMMAND="source ~/.zshrc   # Load new PATH (or open a new terminal)"
+    else
+      SOURCE_COMMAND="source ~/.profile # Load new PATH (or open a new terminal)"
+    fi
+    PATH_HINT="  export PATH=\"$BIN_DIR:\$PATH\"   # for this shell; new shells are updated when possible"
+    ;;
 esac
+REPI_VERSION="$(ROOT_PACKAGE_JSON="$ROOT/package.json" node -e 'try { console.log(require(process.env.ROOT_PACKAGE_JSON).version) } catch { console.log("unknown") }' 2>/dev/null || echo unknown)"
 
 cat <<MSG
 
-REPI install complete.
+$PATH_STATUS
+
+REPI $REPI_VERSION installed successfully, to start:
+
+${SOURCE_COMMAND:+$SOURCE_COMMAND
+}cd <project>  # Open target/project directory
+repi          # Run command
+
+Useful first checks:
+
+repi doctor
+repi model status
+
+For more information visit https://github.com/multi-zhangyang/pi-recon-agent
+
+Install details:
   source  : $ROOT
   launcher: $DISPLAY_DIR/repi
 ${PATH_HINT:+$PATH_HINT}
-
-Next:
-  repi --offline --help
-  repi doctor
-  repi model add --provider <id> --api openai-completions --base-url <url> --model <model>
-  repi model login --provider <id> --api-key-stdin
-  repi model test --provider <id> --model <model>
-  repi bootstrap    # (optional) install RE toolchain: gdb/binwalk/pwntools/...
 MSG

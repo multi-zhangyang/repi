@@ -87,7 +87,14 @@ try {
 			REPI_SKIP_PACKAGE_UPDATE_CHECK: "1",
 			REPI_TELEMETRY: "0",
 		},
-		expectOutput: ["Installed REPI", `launcher: ${directBin}/repi -> ${root}/repi`, "repi doctor"],
+		expectOutput: [
+			"Installed REPI",
+			`launcher: ${directBin}/repi -> ${root}/repi`,
+			"repi doctor",
+			"Successfully linked repi",
+			`REPI ${expectedVersion} installed successfully, to start:`,
+			"For more information visit https://github.com/multi-zhangyang/pi-recon-agent",
+		],
 		rejectOutput: ["launcher: /usr/local/bin/repi", "launcher: ~/.local/bin/repi"],
 		timeout: 180_000,
 	});
@@ -135,6 +142,9 @@ try {
 			"Installed REPI",
 			`launcher: ${userBin}/repi -> ${root}/repi`,
 			"Added PATH export to:",
+			"Successfully added repi to $PATH in",
+			`REPI ${expectedVersion} installed successfully, to start:`,
+			"source ~/.bashrc  # Load new PATH (or open a new terminal)",
 			`export PATH=\"${userBin}:$PATH\"`,
 		],
 		rejectOutput: ["launcher: /usr/local/bin/repi"],
@@ -165,6 +175,33 @@ try {
 			REPI_TELEMETRY: "0",
 		},
 		expectOutput: [`${userBin}/repi`, expectedVersion],
+	});
+
+	const rootInstallHome = join(outDir, "root-installer-home");
+	const rootInstallBin = join(outDir, "root-installer-bin");
+	const rootInstallAgent = join(outDir, "root-installer-agent");
+	run("install:root-friendly-summary", "bash", [join(root, "install.sh"), "--skip-npm", "--bin-dir", rootInstallBin], {
+		env: {
+			HOME: rootInstallHome,
+			PATH: `${rootInstallBin}:${process.env.PATH ?? ""}`,
+			REPI_CODING_AGENT_DIR: rootInstallAgent,
+			REPI_LOAD_BUILTIN_MODELS: "0",
+			REPI_SKIP_VERSION_CHECK: "1",
+			REPI_SKIP_PACKAGE_UPDATE_CHECK: "1",
+			REPI_TELEMETRY: "0",
+		},
+		expectOutput: [
+			"INFO: Refreshing REPI",
+			"REPI launcher ready:",
+			"INFO: Verifying offline startup",
+			"Successfully linked repi",
+			`REPI ${expectedVersion} installed successfully, to start:`,
+			"cd <project>  # Open target/project directory",
+			"repi          # Run command",
+			"For more information visit https://github.com/multi-zhangyang/pi-recon-agent",
+			"Install details:",
+		],
+		timeout: 180_000,
 	});
 
 	ok = rows.every((row) => row.exit === 0);
