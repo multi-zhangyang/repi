@@ -470,21 +470,41 @@ function repairLegacyExtensionLayout() {
 
 const fixActions = [];
 if (fix) {
-	const installerArgs = [join(root, "scripts/reverse-agent/install-repi.sh"), root];
-	if (
-		process.env.REPI_INSTALLED_BIN_PATH &&
-		!packageBinMode &&
-		resolve(process.env.REPI_INSTALLED_BIN_PATH) !== resolve(join(root, "repi"))
-	) {
-		installerArgs.push(dirname(process.env.REPI_INSTALLED_BIN_PATH));
+	const installerScript = join(root, "scripts/reverse-agent/install-repi.sh");
+	if (packageBinMode || !existsSync(installerScript)) {
+		fixActions.push({
+			id: "install-repi",
+			exit: 0,
+			stdoutTail: packageBinMode
+				? "skipped: package-bin mode; launcher install is managed outside this package"
+				: `skipped: source installer unavailable at ${installerScript}`,
+			stderrTail: "",
+		});
+	} else {
+		const installerArgs = [installerScript, root];
+		if (
+			process.env.REPI_INSTALLED_BIN_PATH &&
+			!packageBinMode &&
+			resolve(process.env.REPI_INSTALLED_BIN_PATH) !== resolve(join(root, "repi"))
+		) {
+			installerArgs.push(dirname(process.env.REPI_INSTALLED_BIN_PATH));
+		}
+		const installer = run("bash", installerArgs, { timeout: 45_000 });
+		fixActions.push({
+			id: "install-repi",
+			exit: installer.code,
+			stdoutTail: installer.stdout.slice(-1200),
+			stderrTail: installer.stderr.slice(-1200),
+			error: installer.error,
+		});
 	}
-	const installer = run("bash", installerArgs, { timeout: 45_000 });
+	const profileInit = run(process.execPath, [resolveScript("init-repi-profile.mjs"), root], { timeout: 30_000 });
 	fixActions.push({
-		id: "install-repi",
-		exit: installer.code,
-		stdoutTail: installer.stdout.slice(-1200),
-		stderrTail: installer.stderr.slice(-1200),
-		error: installer.error,
+		id: "profile-init",
+		exit: profileInit.code,
+		stdoutTail: profileInit.stdout.slice(-1200),
+		stderrTail: profileInit.stderr.slice(-1200),
+		error: profileInit.error,
 	});
 	const memoryRepair = run(process.execPath, [resolveScript("memory-inspect.mjs"), root, "repair", "--apply", "--yes", "--json"], { timeout: 60_000 });
 	fixActions.push({

@@ -133,6 +133,8 @@ rows.push(
 				"package-bin:goal-status-fresh-json",
 				"package-bin:env-incomplete-guard",
 				"package-bin:model-status-env",
+				"package-bin:doctor-fix-fresh-profile",
+				"profile-init",
 				"REPI_* environment",
 				"package-bin:rpc-fresh-env-footer",
 				"package-bin:rpc-goal-status-env",
@@ -146,7 +148,7 @@ rows.push(
 				"capture === false && !json",
 			]),
 		`smoke:release=${packageJson.scripts?.["smoke:release"] ?? "<missing>"}`,
-		"Keep a release tarball smoke that installs packed npm artifacts and validates repi + /goal + REPI_* env.",
+		"Keep a release tarball smoke that installs packed npm artifacts and validates repi + /goal + REPI_* env + doctor --fix fresh-profile repair.",
 	),
 );
 rows.push(
@@ -287,6 +289,8 @@ rows.push(
 			"envModelRpcMatchesExpected",
 			"rpcRuntime.goalCommandCount",
 			"rpcRuntime.goalToolCount",
+			"profile-init",
+			"init-repi-profile.mjs",
 			"fix REPI_* env exports",
 		]),
 		"doctor exposes one launch-readiness row covering goal mode, footer/non-TUI UI, extension conflict suppression, and env-model runtime",

@@ -38,13 +38,13 @@ Release focused on install reliability, env-first model selection, and upstream 
 
 - **Installer PATH reliability**: source installs now prefer a PATH-visible launcher directory, use sudo for `/usr/local/bin` when available, and create/update shell startup files when falling back to `~/.local/bin`, preventing post-install `repi: command not found` in new shells.
 - Hardened runtime reliability/evidence flows from real-run self-checks, including route/memory noise reduction and realistic smoke/doctor probe budgets.
-- `repi doctor` now checks goal mode, goal-extension conflict suppression, and the env-only model contract.
+- `repi doctor` now checks goal mode, goal-extension conflict suppression, and the env-only model contract. `repi doctor --fix` also initializes a fresh `REPI_CODING_AGENT_DIR` profile before re-running readiness checks, including from release tarball/package-bin installs.
 - Incomplete `REPI_*` env model configs now fail before falling back to saved/default models, with a concrete quoted export block and unmatched-quote hint.
 - Installing `@narumitw/pi-goal` no longer hangs extension loading; REPI loads the package, suppresses the external `/goal`/`goal_complete`, and keeps the built-in goal footer/tool contract active.
 
 ### Tests
 
-- Added installer regression coverage for `~/.local/bin/repi` symlink creation, idempotent PATH rc updates, and no-op rc behavior when the launcher directory is already on PATH.
+- Added installer regression coverage for `~/.local/bin/repi` symlink creation, idempotent PATH rc updates, no-op rc behavior when the launcher directory is already on PATH, and `repi doctor --fix` fresh-profile initialization.
 - Added `/goal` unit coverage for print/RPC/no-UI behavior, token-budget stop/resume semantics, edit-with-token-budget footer preservation, and a JSON-clean release tarball smoke that builds, packs, installs the four `.tgz` artifacts, and verifies PATH-resolved `repi`, fresh envless models, redacted `repi model status` for `REPI_*`, RPC `/goal` + `goal_complete` tool introspection, and `/goal status` under an active `REPI_*` env model.
 - Added pure runtime-adapter contract tests for file magic detection, rootfs-over-PCAP path priority, command materialization, and parser signal extraction.
 - Added upstream extension alias coverage for pi-goal-style `defineTool` + `@earendil-works/pi-ai` imports and a real npm extension smoke for `pi-web-access` plus `@narumitw/pi-goal`.

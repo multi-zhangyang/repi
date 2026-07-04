@@ -48,7 +48,11 @@ describe("repi doctor scoped memory bootstrap", () => {
 		);
 		writeFileSync(
 			join(repoRoot, "scripts", "reverse-agent", "model-inspect.mjs"),
-			"buildStatusReport\nrepi model status\n",
+			"#!/usr/bin/env node\n// buildStatusReport\n// repi model status\nconsole.log(JSON.stringify({ ok: true }));\n",
+		);
+		writeFileSync(
+			join(repoRoot, "scripts", "reverse-agent", "memory-inspect.mjs"),
+			"#!/usr/bin/env node\nconsole.log(JSON.stringify({ ok: true }));\n",
 		);
 		writeFileSync(
 			join(repoRoot, "packages", "coding-agent", "src", "core", "repi", "goal.ts"),
@@ -162,6 +166,35 @@ process.exit(0);
 		expect(report.checks.find((check) => check.id === "models:env-overrides-saved-default")).toMatchObject({
 			status: "pass",
 		});
+	});
+
+	it("doctor --fix initializes a fresh agent dir before running readiness checks", () => {
+		const doctor = spawnSync(process.execPath, [DOCTOR, repoRoot, "--fix", "--json"], {
+			encoding: "utf8",
+			env: { ...process.env, REPI_CODING_AGENT_DIR: agentDir },
+			timeout: 20_000,
+		});
+		expect(doctor.status, `${doctor.stderr}\n${doctor.stdout}`).toBe(0);
+		const report = JSON.parse(doctor.stdout) as {
+			ok: boolean;
+			fixActions: Array<{ id: string; exit: number; stdoutTail?: string }>;
+			checks: Array<{ id: string; status: string; evidence: string }>;
+		};
+
+		expect(report.ok).toBe(true);
+		expect(report.fixActions.find((action) => action.id === "install-repi")).toMatchObject({ exit: 0 });
+		expect(report.fixActions.find((action) => action.id === "profile-init")).toMatchObject({ exit: 0 });
+		expect(report.checks.find((check) => check.id === "runtime:settings")).toMatchObject({ status: "pass" });
+		expect(report.checks.find((check) => check.id === "memory:scoped-defaults")).toMatchObject({
+			status: "pass",
+			evidence: expect.stringContaining('"schemaVersion":2'),
+		});
+		for (const id of ["memory:core-file", "memory:project-file", "memory:procedural-file", "memory:event-store"]) {
+			expect(report.checks.find((check) => check.id === id)).toMatchObject({
+				status: "pass",
+				evidence: expect.stringContaining("lazyScoped=true"),
+			});
+		}
 	});
 
 	it("fails the PATH resolution check when an installed repi command is shadowed", () => {
