@@ -5,6 +5,14 @@ the [pi coding agent](https://github.com/earendil-works/pi) runtime. This
 changelog covers REPI-specific releases. The upstream pi changelog is preserved
 in `CHANGELOG.upstream.md` for reference.
 
+
+## [Unreleased]
+
+### Changed
+
+- Tightened the package README into a product-first launch page: source installer first, GitHub Release tarball install spelled out as four same-version packages, `REPI_*` env model block, `/goal` footer/progress behavior, and the verified installer PATH prompt.
+- `/goal status` now surfaces a compact token-budget progress bar in help/status notifications so print/RPC/non-TUI operators can see budget burn without relying on the TUI footer.
+
 ## [0.1.2] - 2026-07-03
 
 Release focused on install reliability, env-first model selection, and upstream pi extension compatibility.

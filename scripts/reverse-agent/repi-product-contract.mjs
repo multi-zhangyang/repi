@@ -274,6 +274,34 @@ rows.push(
 );
 rows.push(
 	check(
+		"docs:product-launch-contract",
+		includesAll(read("README.md"), [
+			"Claude Code 风格",
+			"REPI_AUTH_TOKEN",
+			"REPI_MODEL_API",
+			"Successfully added repi to $PATH in ~/.bashrc",
+			"npm run smoke:release -- . --json",
+			"repi install npm:pi-web-access",
+		]) &&
+			includesAll(read("packages/coding-agent/README.md"), [
+				"# REPI Coding Agent",
+				"Recommended source installer:",
+				"Release tarball install uses the four same-version GitHub Release packages together",
+				"source ~/.bashrc  # Load new PATH (or open a new terminal)",
+				"REPI_CONTEXT_WINDOW=262144",
+				"repi doctor",
+				"/goal [--tokens 100k]",
+				"repi install npm:pi-web-access",
+			]) &&
+			!read("packages/coding-agent/README.md").includes(
+				"npm install -g --ignore-scripts @pi-recon/repi-coding-agent",
+			),
+		"README and package README lead with install, env model, goal/footer, extension, and release-smoke launch paths",
+		"Keep docs product-first and operator-usable; do not regress to a generic npm package README or hide REPI_* env setup.",
+	),
+);
+rows.push(
+	check(
 		"doctor:launch-readiness-contract",
 		includesAll(read("scripts/reverse-agent/repi-doctor.mjs"), [
 			"repi:launch-readiness",

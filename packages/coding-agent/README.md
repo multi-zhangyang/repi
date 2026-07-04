@@ -9,11 +9,11 @@
 
 ---
 
-REPI Agent is an independent reverse-engineering and penetration-testing task harness. It is not a `pi` profile skin: the product command is `repi`, runtime state lives in `~/.repi/agent`, and normal upstream `pi` stays separate.
+# REPI Coding Agent
 
-The npm/bin entry itself defaults into the REPI kernel: `--recon`, clean-room resource isolation, context compaction/resume support, evidence ledgers, verifier/compiler/replayer/autofix/proof-loop commands, and the REPI profile initializer are applied inside the CLI. A shell wrapper is only a convenience for source checkouts.
+**REPI is the runnable reverse / pentest harness agent.** It maps targets, executes real tools, verifies claims, writes evidence, and keeps upstream `pi` isolated: command is `repi`, profile is `~/.repi/agent`, and normal `pi` / `~/.pi` are not owned by REPI.
 
-REPI still supports the extension, skill, prompt-template, theme, RPC and SDK surfaces inherited from the harness, but the default product path is the reverse/pentest control plane documented in the repository root README.
+The npm/bin entry boots straight into the REPI kernel: reverse/pentest prompts, `/goal`, evidence ledgers, verifier → compiler → replayer → autofix proof-loop, runtime adapters, extension compatibility, and profile initialization are all product defaults.
 
 ## Table of Contents
 
@@ -43,50 +43,67 @@ REPI still supports the extension, skill, prompt-template, theme, RPC and SDK su
 
 ## Quick Start
 
+Recommended source installer:
+
 ```bash
-npm install -g --ignore-scripts @pi-recon/repi-coding-agent
+curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/pi-recon-agent/main/install.sh | bash
 ```
 
-`--ignore-scripts` disables dependency lifecycle scripts during install. REPI does not require install scripts for normal npm installs.
-
-Source checkout alternative:
+Local checkout refresh:
 
 ```bash
 git clone https://github.com/multi-zhangyang/pi-recon-agent.git
 cd pi-recon-agent
 npm install --ignore-scripts
-npm run install:repi
+bash install.sh
 ```
 
-The source installer writes a `repi` launcher into an existing PATH directory when possible (`/usr/local/bin` / `/usr/local/sbin`, with sudo if available). If it falls back to `~/.local/bin`, it now creates/updates `.bashrc`/`.profile` (or `.zshrc`/`.profile`) and prints the one-line `export PATH="$HOME/.local/bin:$PATH"` needed for the current shell.
+Release tarball install uses the four same-version GitHub Release packages together; do not install only `@pi-recon/repi-coding-agent` unless the matching `@pi-recon/*` packages are published for that exact version.
+
+```bash
+npm install -g \
+  pi-recon-repi-ai-0.1.2.tgz \
+  pi-recon-repi-agent-core-0.1.2.tgz \
+  pi-recon-repi-tui-0.1.2.tgz \
+  pi-recon-repi-coding-agent-0.1.2.tgz
+```
+
+The source installer writes a `repi` launcher into an existing PATH directory when possible (`/usr/local/bin` / `/usr/local/sbin`, with sudo if available). If it falls back to `~/.local/bin`, it creates/updates `.bashrc`/`.profile` (or `.zshrc`/`.profile`) and prints the exact next command, for example:
+
+```text
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100%
+Successfully added repi to $PATH in ~/.bashrc
+
+REPI 0.1.2 installed successfully, to start:
+
+source ~/.bashrc  # Load new PATH (or open a new terminal)
+cd <project>  # Open directory
+repi          # Run command
+```
 
 Configure a model with REPI's Claude Code-style env-only path:
 
 ```bash
-export REPI_AUTH_TOKEN=sk-...
-export REPI_BASE_URL=https://gateway.example/v1
-export REPI_PROVIDER=gateway                  # optional; footer/provider id, default: repi-env
-export REPI_MODEL=vendor/model-id
-export REPI_MODEL_API=openai-compatible   # also: openai-responses, anthropic
-export REPI_AUTO_COMPACT_WINDOW=262144    # optional alias of REPI_CONTEXT_WINDOW
-repi model status                         # offline effective-config check
+export REPI_AUTH_TOKEN="sk-..."
+export REPI_BASE_URL="https://gateway.example/v1"
+export REPI_PROVIDER="gateway"              # optional; footer/provider id, default: repi-env
+export REPI_MODEL="vendor/model-id"
+export REPI_MODEL_API="openai-compatible"   # openai-compatible | openai-responses | anthropic
+export REPI_CONTEXT_WINDOW=262144
+export REPI_AUTO_COMPACT_WINDOW=262144
+
+repi model status
+repi doctor
 repi
 ```
 
-Persistent multi-provider setups can be stored in `~/.repi/agent/models.json` with `repi model add/login`.
-
-```bash
-repi model add --provider gateway --api openai-completions --base-url https://gateway.example/v1 --model vendor/model-id
-repi model login --provider gateway --api-key-stdin
-```
-
-Goal mode is built in: use `/goal [--tokens 100k] <objective>` and watch the footer `🎯 active/paused/budget/complete` status; `/goal help` shows controls, and the agent stops only after `goal_complete` verifies the goal. Install other upstream pi ecosystem packages when needed:
+Goal mode is built in: use `/goal [--tokens 100k] <objective>` and watch the footer `🎯 active/paused/budget/complete` plus the status progress bar; the agent stops only after `goal_complete` verifies the goal. Install upstream pi ecosystem packages when needed:
 
 ```bash
 repi install npm:pi-web-access
 ```
 
-Then start with `/goal <objective>`, `/re-profile-check quick`, `/re-kernel build <target>`, `/re-map <target> 2`, `/re-operator plan <target>`, `/re-verifier matrix`, and `/re-complete audit`. REPI still exposes the standard `read`, `write`, `edit`, and `bash` tools, but its default system prompt and commands are the REPI reverse/pentest control plane.
+Then start with `/goal <objective>`, `/re-profile-check quick`, `/re-map <target> 2`, `/re-operator plan <target>`, `/re-verifier matrix`, and `/re-complete audit`. REPI still exposes standard `read`, `write`, `edit`, and `bash`, but its default system prompt and commands are the REPI reverse/pentest control plane.
 
 **Platform notes:** [Windows](docs/windows.md) | [Termux (Android)](docs/termux.md) | [tmux](docs/tmux.md) | [Terminal setup](docs/terminal-setup.md) | [Shell aliases](docs/shell-aliases.md)
 
