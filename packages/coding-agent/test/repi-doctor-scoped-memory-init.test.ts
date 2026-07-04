@@ -29,22 +29,59 @@ describe("repi doctor scoped memory bootstrap", () => {
 		repoRoot = join(tempRoot, "repo");
 		agentDir = join(tempRoot, "agent");
 		mkdirSync(join(repoRoot, "packages", "coding-agent", "src", "cli"), { recursive: true });
+		mkdirSync(join(repoRoot, "packages", "coding-agent", "src", "core", "repi"), { recursive: true });
+		mkdirSync(join(repoRoot, "packages", "coding-agent", "src", "core"), { recursive: true });
+		mkdirSync(join(repoRoot, "scripts", "reverse-agent"), { recursive: true });
 		writeFileSync(join(repoRoot, "package.json"), '{"name":"fake-repi"}\n');
 		writeFileSync(
 			join(repoRoot, "packages", "coding-agent", "src", "cli", "repi-bootstrap.ts"),
-			`${GUARDRAILS.join("\n")}\n`,
+			`${GUARDRAILS.join("\n")}\nmissingRepiEnvModelConfig\nREPI_LOAD_BUILTIN_MODELS\nREPI_MODEL_API\nprocess.env.REPI_LOAD_BUILTIN_MODELS || "0"\n`,
+		);
+		writeFileSync(
+			join(repoRoot, "packages", "coding-agent", "src", "cli", "args.ts"),
+			"REPI_LOAD_BUILTIN_MODELS\nREPI_MODEL_API\n",
+		);
+		writeFileSync(
+			join(repoRoot, "packages", "coding-agent", "src", "core", "model-registry.ts"),
+			"repiEnvProviderConfig\nREPI_AUTO_COMPACT_WINDOW\nopenai-compatible\n",
+		);
+		writeFileSync(
+			join(repoRoot, "scripts", "reverse-agent", "model-inspect.mjs"),
+			"buildStatusReport\nrepi model status\n",
+		);
+		writeFileSync(
+			join(repoRoot, "packages", "coding-agent", "src", "core", "repi", "goal.ts"),
+			[
+				"installRepiGoalMode",
+				"goal_complete",
+				"REPI_GOAL_STATE_ENTRY_TYPE",
+				"formatGoalFooterStatus",
+				"formatGoalStatus",
+				"ctx.ui.setStatus(STATUS_KEY, formatGoalFooterStatus(goal))",
+				'"🎯 complete"',
+				"The footer shows",
+			].join("\n"),
+		);
+		writeFileSync(
+			join(repoRoot, "packages", "coding-agent", "src", "core", "repi", "resources.ts"),
+			"hasGoalModeSignature\nisExternalGoalModeExtension\nsuppressLegacyReconConflicts\n",
+		);
+		writeFileSync(
+			join(repoRoot, "packages", "coding-agent", "src", "core", "recon-profile.ts"),
+			"installRepiGoalMode(pi)\n",
 		);
 		const fakeRepi = join(repoRoot, "repi");
 		writeFileSync(
 			fakeRepi,
 			`#!/usr/bin/env node
+// validate_repi_env_model_config REPI_LOAD_BUILTIN_MODELS REPI_MODEL_API
 const args = process.argv.slice(2).join(" ");
 if (args.includes("--help")) {
   console.log("REPI reverse/pentest --offline REPI_SKIP_VERSION_CHECK ${GUARDRAILS.join(" ")}");
   process.exit(0);
 }
 if (args.includes("--list-models")) {
-  console.log("No models available. Configure a provider in ~/.repi/agent/models.json");
+  console.log("No models available. Configure a model with REPI_* environment variables (Claude Code-style) or ~/.repi/agent/models.json");
   process.exit(0);
 }
 process.exit(0);

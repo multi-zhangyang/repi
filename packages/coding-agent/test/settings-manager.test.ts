@@ -311,11 +311,12 @@ describe("SettingsManager", () => {
 			expect(manager.getHttpIdleTimeoutMs()).toBe(0);
 		});
 
-		it("should reject invalid timeout values", () => {
+		it("should fall back for invalid persisted timeout values and reject invalid setter input", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ httpIdleTimeoutMs: -1 }));
 			const manager = SettingsManager.create(projectDir, agentDir);
 
-			expect(() => manager.getHttpIdleTimeoutMs()).toThrow("Invalid httpIdleTimeoutMs setting");
+			expect(manager.getHttpIdleTimeoutMs()).toBe(DEFAULT_HTTP_IDLE_TIMEOUT_MS);
+			expect(() => manager.setHttpIdleTimeoutMs(-1)).toThrow("Invalid httpIdleTimeoutMs setting");
 		});
 	});
 

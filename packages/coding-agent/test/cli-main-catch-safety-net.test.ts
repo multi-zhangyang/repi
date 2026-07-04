@@ -44,15 +44,11 @@ describe("cli.ts main().catch() safety net (opt #268)", () => {
 		// Importing cli.ts runs its top-level main(cliArgs).catch(...) — the catch
 		// fires on the next microtask after main's rejection settles.
 		await import("../src/cli.ts");
-		// Drain the microtask queue so the .catch callback has run.
-		await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
-		await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
-
 		// main was actually invoked (the entry point called it).
-		expect(mainFn).toHaveBeenCalled();
+		await vi.waitFor(() => expect(mainFn).toHaveBeenCalled());
 
 		// The safety net restored stdout (headless takeover) before exiting.
-		expect(restoreStdout).toHaveBeenCalled();
+		await vi.waitFor(() => expect(restoreStdout).toHaveBeenCalled());
 
 		// The error was surfaced to stderr (not silently swallowed).
 		expect(errorSpy).toHaveBeenCalled();

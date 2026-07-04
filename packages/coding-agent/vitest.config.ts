@@ -10,6 +10,12 @@ export default defineConfig({
 		globals: true,
 		environment: "node",
 		pool: "threads",
+		// Only the process.cwd characterization tests need forked workers:
+		// worker_threads intentionally forbid process.chdir().
+		poolMatchGlobs: [
+			["**/footer-data-provider.test.ts", "forks"],
+			["**/package-command-paths.test.ts", "forks"],
+		],
 		reporters: ["dot"],
 		testTimeout: 30000,
 		server: {

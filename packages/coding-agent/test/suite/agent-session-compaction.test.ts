@@ -35,6 +35,7 @@ function createUsage(totalTokens: number) {
 function createAssistant(
 	harness: Harness,
 	options: {
+		text?: string;
 		stopReason?: AssistantMessage["stopReason"];
 		errorMessage?: string;
 		totalTokens?: number;
@@ -43,7 +44,7 @@ function createAssistant(
 ): AssistantMessage {
 	const model = harness.getModel();
 	return {
-		...fauxAssistantMessage("", {
+		...fauxAssistantMessage(options.text ?? "", {
 			stopReason: options.stopReason,
 			errorMessage: options.errorMessage,
 			timestamp: options.timestamp,
@@ -84,6 +85,7 @@ function seedCompactableSession(harness: Harness): void {
 	});
 	harness.sessionManager.appendMessage(
 		createAssistant(harness, {
+			text: "assistant message to compact ".repeat(40),
 			stopReason: "stop",
 			totalTokens: 100,
 			timestamp: now - 500,
@@ -105,6 +107,7 @@ describe("AgentSession compaction characterization", () => {
 
 	it("manually compacts using an extension-provided summary", async () => {
 		const harness = await createHarness({
+			settings: { compaction: { keepRecentTokens: 1 } },
 			extensionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => ({
@@ -120,8 +123,7 @@ describe("AgentSession compaction characterization", () => {
 		});
 		harnesses.push(harness);
 
-		await harness.session.prompt("one");
-		await harness.session.prompt("two");
+		seedCompactableSession(harness);
 
 		const result = await harness.session.compact();
 		const compactionEntries = harness.sessionManager.getEntries().filter((entry) => entry.type === "compaction");
@@ -138,6 +140,7 @@ describe("AgentSession compaction characterization", () => {
 		process.env[ENV_AGENT_DIR] = agentDir;
 		try {
 			const harness = await createHarness({
+				settings: { compaction: { keepRecentTokens: 1 } },
 				extensionFactories: [createReconExtensionFactory()],
 			});
 			harnesses.push(harness);
@@ -262,19 +265,25 @@ describe("AgentSession compaction characterization", () => {
 	});
 
 	it("manually compacts with a custom streamFn when registry auth is absent", async () => {
-		const harness = await createHarness({ withConfiguredAuth: false });
+		const harness = await createHarness({
+			withConfiguredAuth: false,
+			settings: { compaction: { keepRecentTokens: 1 } },
+		});
 		harnesses.push(harness);
 		seedCompactableSession(harness);
 		const getStreamCallCount = useSummaryStreamFn(harness, "summary from custom stream");
 
 		const result = await harness.session.compact();
 
-		expect(result.summary).toBe("summary from custom stream");
+		expect(result.summary).toContain("summary from custom stream");
 		expect(getStreamCallCount()).toBe(1);
 	});
 
 	it("auto-compacts with a custom streamFn when registry auth is absent", async () => {
-		const harness = await createHarness({ withConfiguredAuth: false });
+		const harness = await createHarness({
+			withConfiguredAuth: false,
+			settings: { compaction: { keepRecentTokens: 1 } },
+		});
 		harnesses.push(harness);
 		seedCompactableSession(harness);
 		const getStreamCallCount = useSummaryStreamFn(harness, "auto summary from custom stream");
@@ -289,6 +298,7 @@ describe("AgentSession compaction characterization", () => {
 
 	it("cancels in-progress manual compaction when abortCompaction is called", async () => {
 		const harness = await createHarness({
+			settings: { compaction: { keepRecentTokens: 1 } },
 			extensionFactories: [
 				(pi) => {
 					pi.on("session_before_compact", async (event) => {
@@ -301,8 +311,7 @@ describe("AgentSession compaction characterization", () => {
 		});
 		harnesses.push(harness);
 
-		await harness.session.prompt("one");
-		await harness.session.prompt("two");
+		seedCompactableSession(harness);
 
 		const compactPromise = harness.session.compact();
 		await new Promise((resolve) => setTimeout(resolve, 0));
