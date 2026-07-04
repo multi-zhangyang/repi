@@ -1301,6 +1301,9 @@ rows.push(
 			includesAll(reconProfile, [
 				"parseEvidenceLedgerTaskRecords",
 				"runtime-adapter-json",
+				"runtime-output-hash",
+				"proof-loop-output",
+				"output_sha256",
 				"proof-loop quick path",
 				"gap_classifier",
 				"tool:runtime-adapter",

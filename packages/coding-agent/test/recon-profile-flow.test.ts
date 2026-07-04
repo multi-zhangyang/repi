@@ -166,6 +166,8 @@ describe("REPI kernel profile runtime/proof/swarm flows", () => {
 		expect(graphText).toContain("--blocks:missing-proof-exit");
 		expect(graphText).toContain("[command]");
 		expect(graphText).toContain("runtime-adapter-json");
+		expect(graphText).toContain("runtime-output-hash");
+		expect(graphText).toContain("stdout_hash");
 		expect(graphText).toContain("parser-tshark-conversation");
 		expect(graphText).toContain("parser-rootfs-passwd");
 		expect(graphText).toContain("--verifies:parser:");
@@ -301,6 +303,15 @@ describe("REPI kernel profile runtime/proof/swarm flows", () => {
 		expect(proof.content[0]?.text).toContain("re_autofix plan https://target.local/app");
 		expect(proof.content[0]?.text).toContain("source=attack_graph_gap");
 
+		const proofRun = await proofLoopTool.execute("tool-call-id", {
+			action: "run",
+			target: "https://target.local/app",
+			maxSteps: 1,
+			replaySteps: 1,
+		});
+		expect(proofRun.content[0]?.text).toContain("proof_loop:");
+		expect(proofRun.content[0]?.text).toContain("executed_steps: 1");
+
 		const graph = await graphTool.execute("tool-call-id", { action: "build" });
 		const graphPath = /graph_artifact: (.+)/.exec(graph.content[0]?.text ?? "")?.[1]?.trim();
 		expect(graphPath).toBeDefined();
@@ -308,6 +319,8 @@ describe("REPI kernel profile runtime/proof/swarm flows", () => {
 		expect(graphText).toContain("proof_loop plan");
 		expect(graphText).toContain("quick_path");
 		expect(graphText).toContain("proof-loop-gap");
+		expect(graphText).toContain("proof-loop-output-hash");
+		expect(graphText).toContain("output_sha256");
 		expect(graphText).toContain("re_runtime_adapter run web-cdp-network-adapter https://target.local/app");
 	});
 

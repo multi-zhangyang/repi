@@ -13511,6 +13511,32 @@ function buildAttackGraph(): AttackGraphArtifact {
 		});
 		addEdge({ from: adapterId, to: commandId, kind: "requires", label: artifact.selectedRunner });
 		addEdge({ from: commandId, to: artifactId, kind: "produces", label: "runtime-adapter-json" });
+		for (const stream of [
+			{ name: "stdout", hash: artifact.stdoutSha256, head: artifact.stdoutHead },
+			{ name: "stderr", hash: artifact.stderrSha256, head: artifact.stderrHead },
+		] as const) {
+			const outputId = `artifact:runtime-output:${slug(artifact.adapterId)}:${slug(artifactBase)}:${stream.name}`;
+			const outputHead = truncateMiddle((stream.head ?? "").replace(/\s+/g, " ").trim(), 260);
+			addNode({
+				id: outputId,
+				kind: "artifact",
+				label: `${stream.name} sha256=${stream.hash.slice(0, 16)}`,
+				status: "runtime-output-hash",
+				path,
+				note: outputHead || `${stream.name} empty`,
+			});
+			addTask({
+				id: outputId,
+				parentId: artifactId,
+				kind: "artifact",
+				label: `${stream.name} sha256=${stream.hash.slice(0, 16)}`,
+				status: "runtime-output-hash",
+				path,
+				evidence: [`${stream.name}_sha256=${stream.hash}`, outputHead ? `${stream.name}_head=${outputHead}` : `${stream.name}_empty`],
+			});
+			addEdge({ from: commandId, to: outputId, kind: "produces", label: stream.name });
+			addEdge({ from: outputId, to: artifactId, kind: "evidences", label: `${stream.name}_hash` });
+		}
 		if (targetProfile) addEdge({ from: targetProfileId, to: artifactId, kind: "evidences", label: "target-profile" });
 
 		addNode({
@@ -13670,12 +13696,15 @@ function buildAttackGraph(): AttackGraphArtifact {
 
 		for (const execution of proof.executed.slice(0, 12)) {
 			const executionId = `run:proof-loop:${slug(proofBase)}:${slug(execution.stepId)}`;
+			const outputText = execution.output.replace(/\s+/g, " ");
+			const outputHash = sha256Text(execution.output);
+			const outputId = `artifact:proof-loop-output:${slug(proofBase)}:${slug(execution.stepId)}`;
 			addNode({
 				id: executionId,
 				kind: "run",
 				label: truncateMiddle(execution.command, 160),
 				status: execution.status,
-				note: truncateMiddle(execution.output.replace(/\s+/g, " "), 260),
+				note: truncateMiddle(outputText, 260),
 			});
 			addTask({
 				id: executionId,
@@ -13684,9 +13713,27 @@ function buildAttackGraph(): AttackGraphArtifact {
 				label: truncateMiddle(execution.command, 180),
 				status: execution.status,
 				command: execution.command,
-				evidence: [`output=${truncateMiddle(execution.output.replace(/\s+/g, " "), 260)}`],
+				evidence: [`output_sha256=${outputHash}`, `output=${truncateMiddle(outputText, 260)}`],
 			});
-			addEdge({ from: executionId, to: proofId, kind: execution.status === "blocked" ? "blocks" : "verifies", label: "executed-output" });
+			addNode({
+				id: outputId,
+				kind: "artifact",
+				label: `proof-loop-output sha256=${outputHash.slice(0, 16)}`,
+				status: "proof-loop-output-hash",
+				path,
+				note: truncateMiddle(outputText, 260),
+			});
+			addTask({
+				id: outputId,
+				parentId: executionId,
+				kind: "artifact",
+				label: `proof-loop-output sha256=${outputHash.slice(0, 16)}`,
+				status: "proof-loop-output-hash",
+				path,
+				evidence: [`output_sha256=${outputHash}`],
+			});
+			addEdge({ from: executionId, to: outputId, kind: "produces", label: "proof-loop-output" });
+			addEdge({ from: outputId, to: proofId, kind: execution.status === "blocked" ? "blocks" : "verifies", label: "executed-output-hash" });
 		}
 
 		for (const [index, row] of proof.gapClassifier.slice(0, 10).entries()) {
