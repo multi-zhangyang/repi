@@ -83,6 +83,7 @@ const requiredFiles = [
 	"packages/coding-agent/src/core/repi/text.ts",
 	"packages/coding-agent/src/core/repi/toolchain.ts",
 	"packages/coding-agent/src/core/repi/worker-runtime.ts",
+	"packages/coding-agent/test/recon-profile-compaction.e2e.test.ts",
 	"packages/coding-agent/test/repi-goal-rpc-mode.test.ts",
 	"packages/coding-agent/test/repi-goal.test.ts",
 	"scripts/reverse-agent/repi-smoke.mjs",
@@ -174,6 +175,21 @@ rows.push(
 		]),
 		"CI gates PRs on offline smoke, installer PATH smoke, and real npm extension compatibility smoke before diff cleanliness",
 		"Keep PR/main CI wired to user-visible install and extension smokes, not only unit/type checks.",
+	),
+);
+const reconCompactionE2E = read("packages/coding-agent/test/recon-profile-compaction.e2e.test.ts");
+rows.push(
+	check(
+		"validation:recon-e2e-lazy-import-contract",
+		includesAll(reconCompactionE2E, [
+			"it.skipIf(!RUN_RECON_E2E)",
+			'await import("../src/core/recon-profile.ts")',
+		]) &&
+			!/import\s+\{\s*createReconExtensionFactory\s*\}\s+from\s+["']\.\.\/src\/core\/recon-profile\.ts["']/m.test(
+				reconCompactionE2E,
+			),
+		"skipped recon compaction e2e lazily imports recon-profile only when enabled",
+		"Keep opt-in recon e2e coverage out of the fast default suite collect path.",
 	),
 );
 rows.push(

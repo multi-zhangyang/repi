@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../src/core/extensions/types.ts";
-import { createReconExtensionFactory } from "../src/core/recon-profile.ts";
 
 const ENV_AGENT_DIR = "REPI_CODING_AGENT_DIR";
 const ENV_BRANCH_ID = "REPI_BRANCH_ID";
@@ -43,6 +42,7 @@ describe("REPI compaction/resume e2e", () => {
 	// This exercises the full compaction -> auto-resume -> proof-loop -> case-memory
 	// chain and is intentionally kept out of the fast default suite.
 	it.skipIf(!RUN_RECON_E2E)("returns a REPI owned compaction result with a resume contract", async () => {
+		const { createReconExtensionFactory } = await import("../src/core/recon-profile.ts");
 		const commands = new Map<string, unknown>();
 		const tools = new Map<string, unknown>();
 		const handlers = new Map<string, unknown[]>();
