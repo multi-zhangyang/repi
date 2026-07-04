@@ -13358,12 +13358,40 @@ function recentRuntimeAdapterExecutionArtifacts(
 	}
 }
 
+function parseProofLoopArtifact(path: string): ProofLoopArtifact | undefined {
+	const match = /```json\s*([\s\S]*?)\s*```/m.exec(readText(path));
+	if (!match?.[1]) return undefined;
+	try {
+		const parsed = JSON.parse(match[1]) as Partial<ProofLoopArtifact>;
+		return parsed &&
+			(parsed.mode === "plan" || parsed.mode === "run") &&
+			Array.isArray(parsed.steps) &&
+			Array.isArray(parsed.executed) &&
+			Array.isArray(parsed.quickPath) &&
+			Array.isArray(parsed.gapClassifier)
+			? (parsed as ProofLoopArtifact)
+			: undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function recentProofLoopArtifacts(limit = 4): Array<{ path: string; proof: ProofLoopArtifact }> {
+	return recentMarkdownArtifacts(evidenceProofLoopsDir(), limit)
+		.map((path) => {
+			const proof = parseProofLoopArtifact(path);
+			return proof ? { path, proof } : undefined;
+		})
+		.filter((item): item is { path: string; proof: ProofLoopArtifact } => Boolean(item));
+}
+
 function buildAttackGraph(): AttackGraphArtifact {
 	ensureReconStorage();
 	const timestamp = new Date().toISOString();
 	const mission = readCurrentMission();
 	const map = latestPassiveMapContext();
 	const runtimeAdapterArtifacts = recentRuntimeAdapterExecutionArtifacts();
+	const proofLoopArtifacts = recentProofLoopArtifacts();
 	const nodes = new Map<string, AttackGraphNode>();
 	const edges: AttackGraphEdge[] = [];
 	const taskTree: AttackGraphTaskTreeNode[] = [];
@@ -13676,6 +13704,125 @@ function buildAttackGraph(): AttackGraphArtifact {
 			gaps.push(`runtime adapter failed: ${artifact.adapterId} exit=${artifact.exitCode ?? "null"} killed=${artifact.killed}`);
 		}
 		if (parserMatchCount === 0) gaps.push(`runtime adapter parser no-match: ${artifact.adapterId}`);
+	}
+
+	for (const { path, proof } of proofLoopArtifacts) {
+		sourceArtifacts.push(path, ...proof.sourceArtifacts.filter((artifactPath) => existsSync(artifactPath)).slice(0, 8));
+		const proofBase = artifactBasename(path);
+		const proofId = `proof-loop:${slug(proofBase)}`;
+		addNode({
+			id: proofId,
+			kind: "verification",
+			label: `proof_loop ${proof.mode}`,
+			status: `verdict=${proof.verdict} executed=${proof.executed.length}`,
+			path,
+			note: `target=${proof.target ?? "<none>"} max_steps=${proof.maxSteps} replay_steps=${proof.replaySteps}`,
+		});
+		addTask({
+			id: proofId,
+			parentId: proof.missionId ? `mission:${proof.missionId}` : mission ? `mission:${mission.id}` : undefined,
+			kind: "verification",
+			label: `proof_loop ${proof.mode}`,
+			status: `verdict=${proof.verdict} executed=${proof.executed.length}`,
+			path,
+			evidence: [
+				`gap_classifier=${proof.gapClassifier.length}`,
+				`quick_path=${proof.quickPath.length}`,
+				`next_actions=${proof.nextActions.length}`,
+			],
+			note: `target=${proof.target ?? "<none>"}`,
+		});
+		if (mission) addEdge({ from: `mission:${mission.id}`, to: proofId, kind: "verifies", label: "proof-loop" });
+
+		for (const [index, command] of proof.quickPath.slice(0, 10).entries()) {
+			const commandId = `command:proof-loop:${slug(proofBase)}:quick:${index + 1}`;
+			addNode({
+				id: commandId,
+				kind: "command",
+				label: truncateMiddle(command, 160),
+				status: "quick_path",
+				note: "proof-loop quick path",
+			});
+			addTask({
+				id: commandId,
+				parentId: proofId,
+				kind: "command",
+				label: truncateMiddle(command, 180),
+				status: "quick_path",
+				command,
+			});
+			addEdge({ from: proofId, to: commandId, kind: "suggests", label: "quick_path" });
+		}
+
+		for (const step of proof.steps.slice(0, 18)) {
+			const stepId = `command:proof-loop:${slug(proofBase)}:${slug(step.id)}`;
+			addNode({
+				id: stepId,
+				kind: "command",
+				label: truncateMiddle(step.command, 160),
+				status: `${step.phase}/${step.status}`,
+				note: step.reason,
+			});
+			addTask({
+				id: stepId,
+				parentId: proofId,
+				kind: "command",
+				label: truncateMiddle(step.command, 180),
+				status: `${step.phase}/${step.status}`,
+				command: step.command,
+				evidence: step.sourceArtifacts.slice(0, 4),
+				note: step.reason,
+			});
+			addEdge({
+				from: stepId,
+				to: proofId,
+				kind: step.status === "blocked" ? "blocks" : step.status === "done" ? "verifies" : "requires",
+				label: `proof-loop:${step.phase}`,
+			});
+		}
+
+		for (const execution of proof.executed.slice(0, 12)) {
+			const executionId = `run:proof-loop:${slug(proofBase)}:${slug(execution.stepId)}`;
+			addNode({
+				id: executionId,
+				kind: "run",
+				label: truncateMiddle(execution.command, 160),
+				status: execution.status,
+				note: truncateMiddle(execution.output.replace(/\s+/g, " "), 260),
+			});
+			addTask({
+				id: executionId,
+				parentId: proofId,
+				kind: "run",
+				label: truncateMiddle(execution.command, 180),
+				status: execution.status,
+				command: execution.command,
+				evidence: [`output=${truncateMiddle(execution.output.replace(/\s+/g, " "), 260)}`],
+			});
+			addEdge({ from: executionId, to: proofId, kind: execution.status === "blocked" ? "blocks" : "verifies", label: "executed-output" });
+		}
+
+		for (const [index, row] of proof.gapClassifier.slice(0, 10).entries()) {
+			const gapId = `gap:proof-loop:${slug(proofBase)}:${index + 1}`;
+			addNode({
+				id: gapId,
+				kind: "gap",
+				label: truncateMiddle(row, 160),
+				status: "proof-loop-gap",
+				note: row,
+			});
+			addTask({
+				id: gapId,
+				parentId: proofId,
+				kind: "gap",
+				label: truncateMiddle(row, 180),
+				status: "proof-loop-gap",
+				evidence: [path],
+			});
+			addEdge({ from: gapId, to: proofId, kind: "blocks", label: "gap_classifier" });
+			gaps.push(`proof loop gap: ${truncateMiddle(row, 180)}`);
+		}
+		if (proof.verdict !== "ready") gaps.push(`proof loop verdict ${proof.verdict}: ${path}`);
 	}
 
 	for (const node of evidenceLedgerGraphNodes()) {

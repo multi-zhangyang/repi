@@ -300,6 +300,15 @@ describe("REPI kernel profile runtime/proof/swarm flows", () => {
 		expect(proof.content[0]?.text).toContain("re_replayer run https://target.local/app 1");
 		expect(proof.content[0]?.text).toContain("re_autofix plan https://target.local/app");
 		expect(proof.content[0]?.text).toContain("source=attack_graph_gap");
+
+		const graph = await graphTool.execute("tool-call-id", { action: "build" });
+		const graphPath = /graph_artifact: (.+)/.exec(graph.content[0]?.text ?? "")?.[1]?.trim();
+		expect(graphPath).toBeDefined();
+		const graphText = readFileSync(graphPath!, "utf-8");
+		expect(graphText).toContain("proof_loop plan");
+		expect(graphText).toContain("quick_path");
+		expect(graphText).toContain("proof-loop-gap");
+		expect(graphText).toContain("re_runtime_adapter run web-cdp-network-adapter https://target.local/app");
 	});
 
 	it("propagates swarm worker timeout budgets into runtime manifests", async () => {

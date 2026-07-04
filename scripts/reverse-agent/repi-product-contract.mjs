@@ -1293,9 +1293,13 @@ rows.push(
 		]) &&
 			includesAll(reconProfile, [
 				"parseEvidenceLedgerTaskRecords",
+				"parseProofLoopArtifact",
+				"recentProofLoopArtifacts",
 				"recentRuntimeAdapterExecutionArtifacts",
 				"runtimeAdapterParserSummaryForGraph",
 				"runtime-adapter-json",
+				"proof-loop quick path",
+				"gap_classifier",
 				"tool:runtime-adapter",
 				"target-profile-auto-detect",
 				"parser_signal_summary",
