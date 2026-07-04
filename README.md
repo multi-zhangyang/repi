@@ -34,11 +34,32 @@ repi -p "先对当前目标做被动 mapping，找入口、状态机和可验证
 
 REPI 独立于 upstream `pi`：命令是 `repi`，运行目录是 `~/.repi/agent`，不会覆盖 `pi` 或 `~/.pi`。模型默认走 `REPI_*` 环境变量；如需恢复 upstream 大型内置 provider catalog，显式设置 `REPI_LOAD_BUILTIN_MODELS=1`。
 
+## 当前上线状态
+
+这版已经按“真实运行 → 暴露问题 → 修复 → 回归测试”的方式压过核心入口：
+
+| 真实压测 | 目标 | 结果 | 已沉淀的修复 |
+|---|---|---|---|
+| Native reverse | stripped ELF `crackme` | 找出 `REPI-2026-READY!` 并执行到 `ok: REPI_LIVE_PROOF` | concrete native target 优先，避免被 `harness/runtime` 反馈词误路由到 agent-sec；mission checkpoint 按域裁剪。 |
+| Web/API authz | 本地 HTTP API | 证明 IDOR/BOLA：跨用户读取 `secret`，并产出 PoC/HTTP 证据 | URL/API 信号优先于 meta 反馈词；`web-api-authz`/`web-authz`/`web-runtime` alias 到 `web-api` 技术库。 |
+| PCAP/DFIR | `capture.pcap` | 从 HTTP 200 流恢复真实 flag/token/API key，并排除 404 decoy | `pcap/dfir/forensic` 目标优先于 `flag`/agent feedback；`pcap-dfir-carve`/`dfir`/`pcap` alias 到 `dfir-pcap` 技术库。 |
+
+上线前建议跑：
+
+```bash
+repi doctor --json
+repi selfcheck --deep --json
+npm run check
+npm run smoke:install-path -- --json
+npm run smoke:release -- . --skip-build --json
+npm run smoke:extensions -- --json
+```
+
 > 版本：`0.1.2` · 仓库：`https://github.com/multi-zhangyang/pi-recon-agent` · fork 自 `earendil-works/pi`
 
 ## 五分钟上线
 
-**前置**：`node >= 22.19`、`git`。缺 `node` 推荐用 [nvm](https://github.com/nvm-sh/nvm)：`nvm install 22`。
+**前置**：`node >= 22.19.0`、`git`。缺 `node` 推荐用 [nvm](https://github.com/nvm-sh/nvm)：`nvm install 22`。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/pi-recon-agent/main/install.sh | bash

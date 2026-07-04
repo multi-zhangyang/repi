@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -72,6 +72,31 @@ let ok = false;
 try {
 	const script = join(root, "scripts", "reverse-agent", "install-repi.sh");
 	const expectedVersion = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+
+	const oldNodeBin = join(outDir, "old-node-bin");
+	mkdirSync(oldNodeBin, { recursive: true });
+	writeFileSync(
+		join(oldNodeBin, "node"),
+		`#!/usr/bin/env bash
+if [ "$1" = "-p" ]; then
+  printf '22.18.0\\n'
+  exit 0
+fi
+printf 'v22.18.0\\n'
+exit 0
+`,
+	);
+	chmodSync(join(oldNodeBin, "node"), 0o755);
+	run("install:reject-node-before-22-19", "bash", [join(root, "install.sh"), "--skip-npm", "--bin-dir", join(outDir, "old-node-bin-target")], {
+		env: {
+			HOME: join(outDir, "old-node-home"),
+			PATH: `${oldNodeBin}:${process.env.PATH ?? ""}`,
+			REPI_CODING_AGENT_DIR: join(outDir, "old-node-agent"),
+		},
+		expectExit: 1,
+		expectOutput: ["Node.js >= 22.19.0 required (found v22.18.0). Upgrade via nvm: nvm install 22"],
+		rejectOutput: ["INFO: Installing REPI launcher", "installed successfully, to start:"],
+	});
 
 	const directHome = join(outDir, "direct-home");
 	const directBin = join(outDir, "direct-bin");

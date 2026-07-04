@@ -44,6 +44,33 @@ export function routeRepiTask(text: string): RoutePlan {
 			!/(?:api|graphql|jwt|oauth|auth|session|csrf|ssrf|idor|bola|xss|sqli|ssti|rce|web\s*api|web\s*渗透)/.test(
 				lower,
 			));
+	// Concrete local/native target signals must outrank meta words like "harness"
+	// or "runtime". A live run against `./crackme` asked REPI to also record
+	// harness feedback; the earlier agent-boundary branch matched "harness" first
+	// and routed the native binary as an LLM-boundary audit. Keep pure REPI QA
+	// tasks on the Agent lane, but let concrete ELF/binary/crackme wording win.
+	const nativeConcreteSignal =
+		/elf|pe\b|dll|so\b|binary|二进制|反编译|反汇编|ida|radare2|\br2\b|ghidra|wasm|\.exe\b|executable|compiled|\bcrackme\b|keygen|license[-_ ]?check|许可证校验/i.test(
+			lower,
+		);
+	// nativeReverseWord requires the "engineer" compound (or 逆向) so the bare English
+	// word "reverse" — which appears in default fallback task strings like "reverse/pentest
+	// task" across recon-profile.ts — does NOT flip a generic task to Native reverse.
+	// Without this, default missions route to Native (triage/control-flow lanes) instead of
+	// the generic Reverse/Pentest general lanes (map/prove), breaking the autopilot contract.
+	const nativeReverseWord = /逆向|reverse[-_ ]?engineer/i.test(lower);
+	const nativeRouteSignal = nativeConcreteSignal || (nativeReverseWord && !webTargetSignal);
+	const memoryForensicsSignal =
+		/memory dump|memdump|mem\.raw|\.vmem|hiberfil|pagefile|volatility|内存取证|内存镜像|内存转储|lsass dump|crash dump/.test(
+			lower,
+		);
+	const pcapDfirSignal = /\b(?:pcap|pcapng|tshark|wireshark|capinfos|dfir|forensic)\b|流量|取证/i.test(lower);
+	const nonAgentConcreteTargetSignal =
+		nativeRouteSignal ||
+		webTargetSignal ||
+		/\b(?:pcap|pcapng|tshark|wireshark|capinfos|dfir|forensic|firmware|rootfs|squashfs|apk|ipa|android|ios|frida|jadx|apktool|malware|yara|sigma|volatility|memdump|vmem|kerberos|ntlm|ldap|bloodhound|certipy|kubernetes|docker|metadata|aws|azure|gcp|crypto|stego)\b|流量|取证|固件|内存镜像|恶意样本|域控|云|容器|隐写/i.test(
+			lower,
+		);
 	const agentBoundarySpecific =
 		/prompt injection|system prompt|developer message|tool injection|tool-call|tool call|function call|mcp|model context protocol|agent\s*安全|llm\s*安全|rag|retrieval|memory poisoning|记忆投毒|工具滥用|越狱|jailbreak|indirect prompt|untrusted content|repi\s*(?:自身|self|harness|qa)|harness\s*qa|agent[-_ ]?thread|sub[-_ ]?agent|agent\s*(?:harness|runtime|orchestration|boundary)|env[-_ ]?only|model provider|print mode/.test(
 			lower,
@@ -61,7 +88,7 @@ export function routeRepiTask(text: string): RoutePlan {
 			["PoC inventory", "normalization", "replay matrix", "flake triage", "artifact bundle/report"],
 		);
 	}
-	if (agentBoundarySpecific) {
+	if (agentBoundarySpecific && !nonAgentConcreteTargetSignal) {
 		return plan(
 			"Agent / LLM boundary",
 			"prove prompt, memory, tool-call, and delegation boundary failures",
@@ -74,6 +101,24 @@ export function routeRepiTask(text: string): RoutePlan {
 				"delegation/tool-call trace",
 				"report",
 			],
+		);
+	}
+	if (memoryForensicsSignal) {
+		return plan(
+			"Memory forensics",
+			"recover process, network, credential, malware, and timeline evidence from memory images",
+			"volatility3/file/strings/yara + timeline/carving",
+			"memory-forensics",
+			["image profile", "process/network map", "credential/artifact hunt", "timeline/carve", "verification/report"],
+		);
+	}
+	if (pcapDfirSignal) {
+		return plan(
+			"DFIR / PCAP / stego",
+			"recover artifact or timeline",
+			"tshark/volatility/exiftool + transform chain",
+			"forensic",
+			["artifact inventory", "timeline/flow map", "extract payload", "decode transform", "verify recovered data"],
 		);
 	}
 	if (/ctf|靶场|challenge|flag|sandbox/.test(lower)) {
@@ -198,17 +243,7 @@ export function routeRepiTask(text: string): RoutePlan {
 	// signal — otherwise "逆向 https://example.com" (a Web/API target) would land here on
 	// "逆向" instead of the web-authz workflow. .exe/.dll etc. are concrete binaries, so a
 	// URL hosting a binary still routes Native (the binary keyword beats the URL signal).
-	const nativeConcrete =
-		/elf|pe\b|dll|so\b|binary|二进制|反编译|反汇编|ida|radare2|\br2\b|ghidra|wasm|\.exe\b|executable|compiled/i.test(
-			lower,
-		);
-	// nativeReverseWord requires the "engineer" compound (or 逆向) so the bare English
-	// word "reverse" — which appears in default fallback task strings like "reverse/pentest
-	// task" across recon-profile.ts — does NOT flip a generic task to Native reverse.
-	// Without this, default missions route to Native (triage/control-flow lanes) instead of
-	// the generic Reverse/Pentest general lanes (map/prove), breaking the autopilot contract.
-	const nativeReverseWord = /逆向|reverse[-_ ]?engineer/i.test(lower);
-	if (nativeConcrete || (nativeReverseWord && !webTargetSignal)) {
+	if (nativeRouteSignal) {
 		return plan(
 			"Native reverse",
 			"understand compiled/native target",

@@ -544,6 +544,7 @@ import {
 	ADVANCED_TECHNIQUES,
 	formatTechniqueIndex,
 	formatTechniquePlaybook,
+	resolveTechniqueDomain,
 	techniqueById,
 	techniquesForDomain,
 	type TechniqueDomain,
@@ -33365,8 +33366,8 @@ function installReconTools(pi: ExtensionAPI): void {
 				const entry = techniqueById(params.id);
 				if (entry) entries.push(entry);
 			} else if (params.domain) {
-				const domain = params.domain as TechniqueDomain;
-				const domainEntries = techniquesForDomain(domain);
+				const domain = resolveTechniqueDomain(params.domain);
+				const domainEntries = domain ? techniquesForDomain(domain) : [];
 				if (params.intent) {
 					const needle = params.intent.toLowerCase();
 					const filtered = domainEntries.filter(
@@ -33388,6 +33389,7 @@ function installReconTools(pi: ExtensionAPI): void {
 					domain: params.domain,
 					id: params.id,
 					intent: params.intent,
+					resolvedDomain: params.domain ? resolveTechniqueDomain(params.domain) : undefined,
 					matched: entries.length,
 				} as Record<string, unknown>,
 			};

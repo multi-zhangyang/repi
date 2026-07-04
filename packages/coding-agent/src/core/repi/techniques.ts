@@ -1339,6 +1339,39 @@ export function techniqueDomains(): TechniqueDomain[] {
 	return [...byDomainMap.keys()];
 }
 
+const DOMAIN_ALIASES: Record<string, TechniqueDomain> = {
+	"web-api-authz": "web-api",
+	"web-authz": "web-api",
+	"api-authz": "web-api",
+	"web-runtime": "web-api",
+	webauthz: "web-api",
+	"native-reverse-pwn": "native-reverse",
+	"native-runtime": "native-reverse",
+	"pwn-chain": "pwn",
+	"mobile-reverse": "mobile",
+	"mobile-android": "mobile",
+	"mobile-ios": "mobile",
+	firmware: "firmware-iot",
+	"agent-boundary": "agent-llm",
+	"agentsec-boundary": "agent-llm",
+	"pcap-dfir-carve": "dfir-pcap",
+	"pcap-dfir": "dfir-pcap",
+	dfir: "dfir-pcap",
+	pcap: "dfir-pcap",
+	forensic: "dfir-pcap",
+	"cloud-identity-pivot": "cloud-container",
+	"identity-windows": "identity-ad",
+	"malware-analysis": "malware",
+};
+
+/** Resolve user/model-facing route aliases (skill hints, older capsule names)
+ *  to catalogued technique domains. */
+export function resolveTechniqueDomain(domain: string): TechniqueDomain | undefined {
+	const normalized = domain.trim().toLowerCase();
+	if ((techniqueDomains() as string[]).includes(normalized)) return normalized as TechniqueDomain;
+	return DOMAIN_ALIASES[normalized];
+}
+
 const DOMAIN_LABELS: Record<TechniqueDomain, string> = {
 	pwn: "Pwn / exploit",
 	"web-api": "Web / API",
@@ -1381,7 +1414,7 @@ export function formatTechniqueIndex(): string {
 		lines.push("");
 	}
 	lines.push(
-		"调用 re_techniques(domain=<domain>) 取该域完整 playbook(触发条件/具体程序/proof-exit/坑/工具),或 re_techniques(id=<id>) 取单条。",
+		"调用 re_techniques(domain=<domain>) 取该域完整 playbook(触发条件/具体程序/proof-exit/坑/工具),或 re_techniques(id=<id>) 取单条。常用别名如 web-api-authz/web-authz/web-runtime 会解析到 web-api。",
 	);
 	return lines.join("\n");
 }

@@ -276,6 +276,44 @@ describe("re_techniques tool end-to-end", () => {
 		expect(text).toContain("proof-exit");
 	});
 
+	it("accepts web-authz route aliases for the web-api technique catalog", async () => {
+		const harness = await createHarness({ extensionFactories: [createReconExtensionFactory()] });
+		harnesses.push(harness);
+		await harness.session.bindExtensions({});
+
+		harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("re_techniques", { domain: "web-api-authz" })], { stopReason: "toolUse" }),
+			fauxAssistantMessage("done"),
+		]);
+		await harness.session.prompt("show web authz techniques");
+
+		const result = harness.session.messages.find((message) => message.role === "toolResult");
+		const text = getMessageText(result);
+		expect(text).toContain("web-idor-bola");
+		expect(text).toContain("IDOR / BOLA");
+		expect(text).toContain("proof-exit");
+	});
+
+	it("accepts PCAP/DFIR route aliases for the dfir-pcap technique catalog", async () => {
+		const harness = await createHarness({ extensionFactories: [createReconExtensionFactory()] });
+		harnesses.push(harness);
+		await harness.session.bindExtensions({});
+
+		harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("re_techniques", { domain: "pcap-dfir-carve" })], {
+				stopReason: "toolUse",
+			}),
+			fauxAssistantMessage("done"),
+		]);
+		await harness.session.prompt("show pcap techniques");
+
+		const result = harness.session.messages.find((message) => message.role === "toolResult");
+		const text = getMessageText(result);
+		expect(text).toContain("dfir-credential-pcap");
+		expect(text).toContain("PCAP credential");
+		expect(text).toContain("proof-exit");
+	});
+
 	it("re_verifier binds a falsifiable proof-contract from a technique's proofExit", async () => {
 		const harness = await createHarness({ extensionFactories: [createReconExtensionFactory()] });
 		harnesses.push(harness);

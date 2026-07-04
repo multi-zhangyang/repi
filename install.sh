@@ -60,13 +60,18 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js >= 22.19 is required. Install it first:" >&2
+  echo "Node.js >= 22.19.0 is required. Install it first:" >&2
   echo "  https://nodejs.org/  or  https://github.com/nvm-sh/nvm  (nvm install 22)" >&2
   exit 1
 fi
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
-if [ "$NODE_MAJOR" -lt 22 ] 2>/dev/null; then
-  echo "Node.js >= 22.19 required (found $(node -v 2>/dev/null || echo unknown)). Upgrade via nvm: nvm install 22" >&2
+NODE_VERSION="$(node -p 'process.versions.node' 2>/dev/null || echo 0.0.0)"
+IFS=. read -r NODE_MAJOR NODE_MINOR NODE_PATCH_EXTRA <<<"$NODE_VERSION"
+NODE_MAJOR="${NODE_MAJOR:-0}"
+NODE_MINOR="${NODE_MINOR:-0}"
+if [ "$NODE_MAJOR" -lt 22 ] 2>/dev/null || {
+  [ "$NODE_MAJOR" -eq 22 ] 2>/dev/null && [ "$NODE_MINOR" -lt 19 ] 2>/dev/null
+}; then
+  echo "Node.js >= 22.19.0 required (found v$NODE_VERSION). Upgrade via nvm: nvm install 22" >&2
   exit 1
 fi
 if [ "$SKIP_NPM" -eq 0 ] && ! command -v npm >/dev/null 2>&1; then

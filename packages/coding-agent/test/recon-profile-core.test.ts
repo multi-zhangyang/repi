@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createMission } from "../src/core/repi/mission.ts";
 import {
 	createReconResourceLoaderOptions,
 	RECON_APPEND_SYSTEM_PROMPT,
@@ -53,8 +54,30 @@ describe("REPI kernel profile core routing/resources", () => {
 		expect(routeReconTask("read-only audit of generic repository").domain).not.toBe("Identity / Windows / AD");
 		expect(routeReconTask("autopwn exploit reliability poc replay matrix").domain).toBe("Exploit reliability");
 		expect(routeReconTask("nuclei ffuf web 漏洞扫描和目录扫描").domain).toBe("Web pentest scanning");
+		expect(
+			routeReconTask("目标 http://127.0.0.1:8765 API 授权越权验证，同时记录 REPI harness/runtime 使用问题").domain,
+		).toBe("Web / API pentest");
+		expect(
+			routeReconTask("分析当前目录 capture.pcap，恢复 proof flag，同时记录 REPI harness/runtime 使用问题").domain,
+		).toBe("DFIR / PCAP / stego");
 		expect(routeReconTask("iOS IPA Keychain TLS pinning Frida 逆向").domain).toBe("Mobile / iOS");
 		expect(routeReconTask("volatility vmem memory dump 内存取证").domain).toBe("Memory forensics");
+	});
+
+	it("lets concrete native targets outrank harness feedback wording and prunes irrelevant checkpoints", () => {
+		const route = routeReconTask(
+			"对当前目录 ./crackme 找出有效输入并运行二进制验证，同时记录 REPI harness/runtime 使用问题",
+		);
+		expect(route.domain).toBe("Native reverse");
+
+		const mission = createMission("live crackme harness feedback", route);
+		const checkpointNames = mission.checkpoints.map((checkpoint) => checkpoint.name);
+		expect(checkpointNames).toContain("native_runtime_ready");
+		expect(checkpointNames).toContain("minimal_path_proven");
+		expect(checkpointNames).not.toContain("live_browser_ready");
+		expect(checkpointNames).not.toContain("web_authz_ready");
+		expect(checkpointNames).not.toContain("mobile_runtime_ready");
+		expect(checkpointNames.length).toBeLessThan(20);
 	});
 
 	it("a Web/API target wins over the bare word 逆向 (no Native misroute) — opt #86", () => {
