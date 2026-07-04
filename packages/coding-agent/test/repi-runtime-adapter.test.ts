@@ -546,6 +546,8 @@ describe("REPI runtime adapter pure contracts", () => {
 			},
 		);
 		const r2Summary = summarizeRuntimeAdapterSignals(r2Adapter, parseRuntimeAdapterSignals(r2Adapter, r2Output));
+		expect(r2Output).toContain("[native-target]");
+		expect(r2Output).toMatch(/\[native-(?:symbol|xref|branch)\]/);
 		expect(r2Output).toContain("license password token flag");
 		expect(r2Summary.matchedProofExitSignals).toEqual(
 			expect.arrayContaining(["symbol/import map", "control-flow xref", "runtime adapter transcript"]),
@@ -565,6 +567,8 @@ describe("REPI runtime adapter pure contracts", () => {
 			},
 		);
 		const gdbSummary = summarizeRuntimeAdapterSignals(gdbAdapter, parseRuntimeAdapterSignals(gdbAdapter, gdbOutput));
+		expect(gdbOutput).toContain("[native-debug-target]");
+		expect(gdbOutput).toContain("[native-entrypoint]");
 		expect(gdbOutput).toMatch(/Entry point|\\.text|<main>/);
 		expect(gdbSummary.matchedProofExitSignals).toEqual(expect.arrayContaining(["function/runtime entry map"]));
 
@@ -585,6 +589,8 @@ describe("REPI runtime adapter pure contracts", () => {
 			ghidraAdapter,
 			parseRuntimeAdapterSignals(ghidraAdapter, ghidraOutput),
 		);
+		expect(ghidraOutput).toContain("[decompiler-summary-fallback]");
+		expect(ghidraOutput).toMatch(/\[native-(?:symbol-table|import-table|dynamic-import)\]|\[function-summary\]/);
 		expect(ghidraOutput).toMatch(/Symbol table|Entry point|GLOBAL/);
 		expect(ghidraSummary.matchedProofExitSignals).toEqual(
 			expect.arrayContaining(["function inventory", "import table proof"]),

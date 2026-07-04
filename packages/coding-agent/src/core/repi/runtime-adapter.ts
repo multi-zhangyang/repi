@@ -144,8 +144,7 @@ export const RUNTIME_ADAPTER_EXECUTION_MATRIX: RuntimeAdapterExecutionSpec[] = [
 		fallbackTool: "objdump",
 		runnerKind: "shell-command",
 		commandTemplate: "adapter-r2-native-xref-runner: r2 -A -q -c 'iI; afl; izz; axt @@ sym.main' <target>",
-		fallbackCommandTemplate:
-			"adapter-r2-native-xref-runner-fallback: file <target>; strings -a <target> | head -200; objdump -d <target> | head -240",
+		fallbackCommandTemplate: nativeXrefFallbackCommandTemplate(),
 		parserRules: [
 			{
 				id: "parser-r2-symbol-import-xref",
@@ -180,8 +179,7 @@ export const RUNTIME_ADAPTER_EXECUTION_MATRIX: RuntimeAdapterExecutionSpec[] = [
 		runnerKind: "shell-command",
 		commandTemplate:
 			"adapter-gdb-native-trace-runner: gdb -q <target> -ex 'set pagination off' -ex 'set disassembly-flavor intel' -ex 'info files' -ex 'info functions' -ex 'break main' -ex 'run' -ex 'bt' -ex 'info registers' -ex 'quit'",
-		fallbackCommandTemplate:
-			"adapter-gdb-native-trace-runner-fallback: file <target>; readelf -h <target> 2>/dev/null; objdump -d <target> | head -260",
+		fallbackCommandTemplate: nativeDebuggerFallbackCommandTemplate(),
 		parserRules: [
 			{
 				id: "parser-gdb-entry-registers",
@@ -220,8 +218,7 @@ export const RUNTIME_ADAPTER_EXECUTION_MATRIX: RuntimeAdapterExecutionSpec[] = [
 			"{REPI_GHIDRA_PROJECT_DIR:-/tmp/repi-ghidra} repi -import <target> -overwrite -scriptPath " +
 			"$" +
 			"{REPI_GHIDRA_SCRIPT_DIR:-/tmp} -postScript RepiSummary.java",
-		fallbackCommandTemplate:
-			"adapter-ghidra-headless-summary-runner-fallback: file <target>; readelf -h <target>; readelf -Ws <target> | head -160; objdump -T <target> 2>/dev/null | head -160 || true",
+		fallbackCommandTemplate: nativeDecompilerSummaryFallbackCommandTemplate(),
 		parserRules: [
 			{
 				id: "parser-ghidra-function-summary",
@@ -630,6 +627,55 @@ export const RUNTIME_ADAPTER_EXECUTION_MATRIX: RuntimeAdapterExecutionSpec[] = [
 		proofExitSignals: ["account database proof", "rootfs service map", "credential/config proof"],
 	},
 ];
+
+function nativeXrefFallbackCommandTemplate(): string {
+	return [
+		"adapter-r2-native-xref-runner-fallback: target=<target>;",
+		'printf "[native-target] path=%s\\n" "$target";',
+		'file "$target" 2>/dev/null || true;',
+		"if command -v readelf >/dev/null 2>&1; then",
+		'  readelf -h "$target" 2>/dev/null | awk \'/Entry point/ {print "[native-entrypoint] " $0}\';',
+		'  readelf -Ws "$target" 2>/dev/null | awk \'/FUNC|OBJECT|UND|GLOBAL/ {print "[native-symbol] " $0}\' | head -180;',
+		"fi;",
+		"if command -v objdump >/dev/null 2>&1; then",
+		'  objdump -d "$target" 2>/dev/null | awk \'/<[^>]+>:/ {print "[native-xref] " $0} /\\b(call|jmp|ret)\\b/ {print "[native-branch] " $0}\' | head -260;',
+		"fi;",
+		"if command -v strings >/dev/null 2>&1; then",
+		"  strings -a \"$target\" 2>/dev/null | grep -E -i 'password|license|token|flag|secret|strcmp|memcmp|system|execve|/bin/sh' | sed 's/^/[native-string] /' | head -160 || true;",
+		"fi",
+	].join(" ");
+}
+
+function nativeDebuggerFallbackCommandTemplate(): string {
+	return [
+		"adapter-gdb-native-trace-runner-fallback: target=<target>;",
+		'printf "[native-debug-target] path=%s\\n" "$target";',
+		'file "$target" 2>/dev/null || true;',
+		"if command -v readelf >/dev/null 2>&1; then",
+		'  readelf -h "$target" 2>/dev/null | awk \'/Entry point/ {print "[native-entrypoint] " $0} /Type:/ {print "[native-file-type] " $0} /Machine:/ {print "[native-machine] " $0}\';',
+		'  readelf -Ws "$target" 2>/dev/null | awk \'/\\bmain\\b|FUNC|UND/ {print "[native-function] " $0}\' | head -140;',
+		"fi;",
+		"if command -v objdump >/dev/null 2>&1; then",
+		'  objdump -d "$target" 2>/dev/null | awk \'/<main>:/ {print "[native-main] " $0; seen=1} seen && NR < 260 {print "[native-disasm] " $0} /\\b(call|jmp|ret)\\b/ {print "[native-control-flow] " $0}\' | head -260;',
+		"fi",
+	].join(" ");
+}
+
+function nativeDecompilerSummaryFallbackCommandTemplate(): string {
+	return [
+		"adapter-ghidra-headless-summary-runner-fallback: target=<target>;",
+		'printf "[decompiler-summary-fallback] path=%s\\n" "$target";',
+		'file "$target" 2>/dev/null || true;',
+		"if command -v readelf >/dev/null 2>&1; then",
+		'  readelf -h "$target" 2>/dev/null | awk \'/Entry point/ {print "[native-entrypoint] " $0}\';',
+		'  readelf -Ws "$target" 2>/dev/null | awk \'/Symbol table/ {print "[native-symbol-table] " $0} /FUNC|OBJECT|UND|GLOBAL|GLIBC/ {print "[native-import-table] " $0}\' | head -220;',
+		"fi;",
+		"if command -v objdump >/dev/null 2>&1; then",
+		'  objdump -T "$target" 2>/dev/null | awk \'/GLIBC|UND|GLOBAL/ {print "[native-dynamic-import] " $0}\' | head -140 || true;',
+		'  objdump -d "$target" 2>/dev/null | awk \'/<[^>]+>:/ {print "[function-summary] Function " $0}\' | head -140 || true;',
+		"fi",
+	].join(" ");
+}
 
 function pcapFallbackCommandTemplate(): string {
 	return [
