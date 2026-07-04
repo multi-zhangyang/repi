@@ -43,6 +43,12 @@ jobs:
       - name: REPI offline smoke
         run: node scripts/reverse-agent/repi-smoke.mjs . --json
 
+      - name: REPI install path smoke
+        run: npm run smoke:install-path -- --json
+
+      - name: REPI extension compatibility smoke
+        run: npm run smoke:extensions -- --json
+
       - name: No generated diff
         run: |
           git diff --check

@@ -37,6 +37,7 @@ function firstMissing(text, values) {
 
 const requiredFiles = [
 	"repi",
+	".github/workflows/repi-ci.yml",
 	".github/workflows/release.yml",
 	"README.md",
 	"AGENTS.md",
@@ -154,6 +155,22 @@ rows.push(
 		]),
 		"release workflow runs the same tarball install smoke before uploading assets",
 		"Keep GitHub Releases gated by the packed-tarball install smoke, not just build/check.",
+	),
+);
+rows.push(
+	check(
+		"validation:ci-workflow-user-entrypoint-smoke-gates",
+		includesAll(read(".github/workflows/repi-ci.yml"), [
+			"REPI offline smoke",
+			"node scripts/reverse-agent/repi-smoke.mjs . --json",
+			"REPI install path smoke",
+			"npm run smoke:install-path -- --json",
+			"REPI extension compatibility smoke",
+			"npm run smoke:extensions -- --json",
+			"No generated diff",
+		]),
+		"CI gates PRs on offline smoke, installer PATH smoke, and real npm extension compatibility smoke before diff cleanliness",
+		"Keep PR/main CI wired to user-visible install and extension smokes, not only unit/type checks.",
 	),
 );
 rows.push(
