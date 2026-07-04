@@ -209,7 +209,11 @@ describe("REPI goal mode over RPC", () => {
 
 			const notifications = extensionRequests("notify").map((request) => String(request.message));
 			expect(notifications.join("\n")).toContain("REPI /goal runs a task until verified completion.");
+			expect(notifications.join("\n")).toContain("Non-TUI/RPC:");
+			expect(notifications.join("\n")).toContain("Status: clear");
+			expect(notifications.join("\n")).toContain("Footer: 🎯 <clear>");
 			expect(notifications.join("\n")).toContain("No goal is currently set.");
+			expect(notifications.join("\n")).toContain("Next: /goal [--tokens 100k] <objective>");
 			expect(
 				extensionRequests("setStatus").some(
 					(request) => request.statusKey === "goal" && request.statusText === undefined,

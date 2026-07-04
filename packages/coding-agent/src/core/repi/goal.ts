@@ -189,7 +189,7 @@ export function installRepiGoalMode(pi: ExtensionAPI): void {
 
 			switch (result.kind) {
 				case "help":
-					showGoalHelp(runtime, ctx);
+					showGoalHelp(pi, runtime, ctx);
 					return;
 				case "show":
 					showGoal(pi, runtime, ctx);
@@ -496,7 +496,7 @@ async function editGoal(
 
 function showGoal(pi: ExtensionAPI, runtime: RepiGoalRuntime, ctx: RepiGoalContext): void {
 	if (!runtime.activeGoal) {
-		ctx.ui.notify("Usage: /goal <objective>\nNo goal is currently set.", "info");
+		ctx.ui.notify(emptyGoalSummary(), "info");
 		ctx.ui.setStatus(STATUS_KEY, undefined);
 		return;
 	}
@@ -506,7 +506,14 @@ function showGoal(pi: ExtensionAPI, runtime: RepiGoalRuntime, ctx: RepiGoalConte
 	ctx.ui.notify(goalSummary(runtime.activeGoal), "info");
 }
 
-function showGoalHelp(runtime: RepiGoalRuntime, ctx: RepiGoalContext): void {
+function showGoalHelp(pi: ExtensionAPI, runtime: RepiGoalRuntime, ctx: RepiGoalContext): void {
+	if (runtime.activeGoal) {
+		updateGoalUsage(runtime.activeGoal, ctx);
+		persistGoal(pi, runtime.activeGoal);
+		updateStatus(runtime, ctx, runtime.activeGoal);
+	} else {
+		ctx.ui.setStatus(STATUS_KEY, undefined);
+	}
 	const active = runtime.activeGoal ? `\n\nCurrent:\n${goalSummary(runtime.activeGoal)}` : "";
 	ctx.ui.notify(
 		[
@@ -524,6 +531,14 @@ function showGoalHelp(runtime: RepiGoalRuntime, ctx: RepiGoalContext): void {
 			"",
 			"Status panel:",
 			"  /goal status shows footer preview, elapsed/token budget, and the safest next command.",
+			"",
+			"Examples:",
+			"  /goal --tokens 100k finish the release checklist",
+			"  /goal status",
+			"  /goal clear",
+			"",
+			"Non-TUI/RPC:",
+			"  print/json/rpc modes emit notifications/status events and queue continuation as follow-up; no blocking confirm.",
 		].join("\n") + active,
 		"info",
 	);
@@ -733,13 +748,26 @@ function formatBudget(goal: RepiGoalState): string {
 function goalSummary(goal: RepiGoalState): string {
 	const footer = formatGoalFooterStatus(goal) ?? "🎯 <clear>";
 	return [
-		`🎯 Goal: ${goal.text}`,
+		"🎯 REPI Goal Status",
+		`Goal: ${goal.text}`,
 		`Status: ${goal.status}`,
 		`Footer: ${footer}`,
 		`Iteration: ${goal.iteration}`,
 		`Elapsed: ${formatDuration(goal.timeUsedSeconds)}`,
 		`Tokens: ${goal.tokenBudget === undefined ? formatTokenCount(goal.tokensUsed) : formatBudget(goal)}`,
+		"Completion gate: goal_complete only after verified completion",
 		`Next: ${goalCommandHint(goal.status)}`,
+	].join("\n");
+}
+
+function emptyGoalSummary(): string {
+	return [
+		"🎯 REPI Goal Status",
+		"Status: clear",
+		"Footer: 🎯 <clear>",
+		"No goal is currently set.",
+		"Usage: /goal <objective>",
+		"Next: /goal [--tokens 100k] <objective>",
 	].join("\n");
 }
 

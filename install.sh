@@ -93,7 +93,7 @@ if [ "$LOCAL_MODE" -ne 1 ]; then
     git -C "$PREFIX" pull --ff-only --quiet origin "$BRANCH" || git -C "$PREFIX" reset --hard "origin/$BRANCH"
     print_done_bar
   else
-    echo "INFO: Downloading REPI into $PREFIX"
+    echo "INFO: Downloading REPI source into $PREFIX"
     mkdir -p "$(dirname "$PREFIX")"
     git clone --quiet --branch "$BRANCH" "$REPO" "$PREFIX"
     print_done_bar

@@ -64,8 +64,11 @@ export PATH="$HOME/.local/bin:$PATH"
 安装成功时会给出一屏可直接照做的启动提示：
 
 ```text
+INFO: Downloading REPI source into ~/.repi-src
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100%
 INFO: Installing REPI launcher
 ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100%
+INFO: Verifying offline startup
 
 Successfully added repi to $PATH in ~/.bashrc
 

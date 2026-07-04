@@ -84,6 +84,8 @@ const requiredFiles = [
 	"packages/coding-agent/src/core/repi/toolchain.ts",
 	"packages/coding-agent/src/core/repi/worker-runtime.ts",
 	"packages/coding-agent/test/recon-profile-compaction.e2e.test.ts",
+	"packages/coding-agent/test/recon-profile-proof-loop.test.ts",
+	"packages/coding-agent/test/recon-profile-proof-swarm.test.ts",
 	"packages/coding-agent/test/repi-goal-rpc-mode.test.ts",
 	"packages/coding-agent/test/repi-goal.test.ts",
 	"scripts/reverse-agent/repi-smoke.mjs",
@@ -190,6 +192,24 @@ rows.push(
 			),
 		"skipped recon compaction e2e lazily imports recon-profile only when enabled",
 		"Keep opt-in recon e2e coverage out of the fast default suite collect path.",
+	),
+);
+rows.push(
+	check(
+		"validation:recon-profile-test-shard-contract",
+		!existsSync(join(root, "packages/coding-agent/test/recon-profile.test.ts")) &&
+			includesAll(read("packages/coding-agent/test/recon-profile-proof-loop.test.ts"), [
+				"REPI kernel profile proof-loop flow",
+				"createRegisteredReconHarness",
+				"quick_path_execution",
+			]) &&
+			includesAll(read("packages/coding-agent/test/recon-profile-proof-swarm.test.ts"), [
+				"REPI kernel profile swarm flows",
+				"repi-profile-swarm-timeout",
+				"repi-profile-swarm-retry",
+			]),
+		"proof-loop and swarm tests are split into focused shards; monolithic recon-profile.test.ts is absent",
+		"Keep recon profile coverage sharded so CI can run focused slices without a slow monolithic recon-profile.test.ts.",
 	),
 );
 rows.push(
@@ -1297,6 +1317,7 @@ rows.push(
 			"buildGoalSystemPrompt",
 			"formatGoalFooterStatus",
 			"Status panel:",
+			"Non-TUI/RPC:",
 			"Footer: ${footer}",
 			"repi-goal-continuation",
 		]) &&
@@ -1318,6 +1339,7 @@ rows.push(
 			"replaces an existing goal without waiting for RPC/non-TUI confirmation dialogs",
 			"retries recoverable provider interruptions in print/RPC/json modes without pausing the goal",
 			"compacts then resumes active goals after context overflow instead of clearing state",
+			"shows a fresh status panel in print/RPC/json without starting a model turn",
 			"Footer: 🎯 active 0/1k",
 			"Status panel:",
 		]) &&
@@ -1333,6 +1355,7 @@ rows.push(
 				"Goal token budget is still reached:",
 				"Goal cleared: rpc budget lifecycle",
 				"No goal is currently set.",
+				"Status: clear",
 			]) &&
 			includesAll(printModeTests, [
 				"prints extension notifications in text mode so slash-command help is visible without a TUI",

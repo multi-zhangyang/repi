@@ -314,6 +314,26 @@ describe("REPI built-in goal mode", () => {
 		}
 	});
 
+	it("shows a fresh status panel in print/RPC/json without starting a model turn", async () => {
+		for (const mode of ["print", "rpc", "json"] as const) {
+			const harness = createHarness();
+			harness.ctx.hasUI = false;
+			harness.ctx.mode = mode;
+
+			await harness.commands.get("goal").handler("status", harness.ctx);
+
+			expect(harness.sent).toHaveLength(0);
+			expect(harness.statuses.get("goal")).toBeUndefined();
+			const status = harness.notifications.at(-1)?.message ?? "";
+			expect(status).toContain("🎯 REPI Goal Status");
+			expect(status).toContain("Status: clear");
+			expect(status).toContain("Footer: 🎯 <clear>");
+			expect(status).toContain("No goal is currently set.");
+			expect(status).toContain("Next: /goal [--tokens 100k] <objective>");
+			expect(harness.entries.some((entry) => entry.customType === REPI_GOAL_STATE_ENTRY_TYPE)).toBe(false);
+		}
+	});
+
 	it("surfaces goal command/status through an RPC-style extension context", async () => {
 		const harness = createHarness();
 		harness.ctx.hasUI = true;
@@ -449,6 +469,9 @@ describe("REPI built-in goal mode", () => {
 
 		const help = harness.notifications.at(-1)?.message ?? "";
 		expect(help).toContain("Status panel:");
+		expect(help).toContain("Examples:");
+		expect(help).toContain("Non-TUI/RPC:");
+		expect(help).toContain("no blocking confirm");
 		expect(help).toContain("Current:");
 		expect(help).toContain("Goal: help objective");
 		expect(help).toContain("Footer: 🎯 active 0/2k");
