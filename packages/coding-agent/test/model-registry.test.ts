@@ -189,6 +189,22 @@ describe("ModelRegistry", () => {
 			);
 		});
 
+		test("rejects invalid REPI_MODEL_API at registry load time so env-only setup cannot silently hit the wrong endpoint", async () => {
+			await withRepiModelEnv(
+				{
+					REPI_AUTH_TOKEN: "env-runtime-key",
+					REPI_BASE_URL: "https://gateway.example.invalid/v1",
+					REPI_MODEL: "env-invalid-api-model",
+					REPI_MODEL_API: "totally-custom-json",
+				},
+				() => {
+					const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+					expect(registry.find("repi-env", "env-invalid-api-model")).toBeUndefined();
+					expect(registry.getError()).toContain("invalid REPI_MODEL_API");
+				},
+			);
+		});
+
 		test("accepts REPI_AUTO_COMPACT_WINDOW as a Claude Code-style context-window alias", async () => {
 			await withRepiModelEnv(
 				{

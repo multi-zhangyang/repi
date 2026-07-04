@@ -28,6 +28,20 @@ function formatTokens(count: number): string {
 	return `${Math.round(count / 1000000)}M`;
 }
 
+export function shouldShowProviderInFooter(availableProviderCount: number, provider?: string): boolean {
+	if (!provider) return false;
+	if (availableProviderCount > 1) return true;
+	// REPI's default model path is env-only and operators frequently switch
+	// gateways by changing REPI_PROVIDER/REPI_MODEL in the shell. Always showing
+	// the provider under the product launcher prevents a stale saved provider
+	// (for example "kimchi") from looking like the active env model.
+	return (
+		process.env.REPI_PRODUCT === "1" ||
+		process.env.REPI_PRIMARY === "1" ||
+		process.env.REPI_CODING_AGENT_APP_NAME === "repi"
+	);
+}
+
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
 	if (!home) return cwd;
 
@@ -200,7 +214,10 @@ export class FooterComponent implements Component {
 
 		// Prepend the provider in parentheses if there are multiple providers and there's enough room
 		let rightSide = rightSideWithoutProvider;
-		if (this.footerData.getAvailableProviderCount() > 1 && state.model) {
+		if (
+			shouldShowProviderInFooter(this.footerData.getAvailableProviderCount(), state.model?.provider) &&
+			state.model
+		) {
 			rightSide = `(${state.model!.provider}) ${rightSideWithoutProvider}`;
 			if (statsLeftWidth + minPadding + visibleWidth(rightSide) > width) {
 				// Too wide, fall back

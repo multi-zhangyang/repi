@@ -238,6 +238,21 @@ interface ProviderRequestConfig {
 }
 
 const envModelApis = new Set<Api>(["openai-completions", "openai-responses", "anthropic-messages"]);
+const envModelApiAliases = new Set([
+	"openai-compatible",
+	"openai-chat",
+	"chat",
+	"chat-completions",
+	"openai-completions",
+	"response",
+	"responses",
+	"openai-response",
+	"openai-responses",
+	"anthropic",
+	"claude",
+	"anthropic-compatible",
+	"anthropic-messages",
+]);
 
 function normalizeEnvModelApi(value: string | undefined): Api {
 	const normalized = String(value ?? "openai-completions")
@@ -254,6 +269,12 @@ function normalizeEnvModelApi(value: string | undefined): Api {
 		return "anthropic-messages";
 	}
 	return envModelApis.has(normalized as Api) ? (normalized as Api) : "openai-completions";
+}
+
+function invalidEnvModelApi(value: string | undefined): string | undefined {
+	if (!value?.trim()) return undefined;
+	const normalized = value.trim().toLowerCase().replace(/_/g, "-");
+	return envModelApiAliases.has(normalized) ? undefined : value;
 }
 
 function firstEnvValue(names: string[]): string | undefined {
@@ -300,7 +321,14 @@ function repiEnvProviderConfig(): { providerName: string; config: ProviderConfig
 	const primaryModel = firstEnvValue(["REPI_MODEL", "REPI_MODEL_ID"]);
 	if (!baseUrl || !primaryModel) return undefined;
 
-	const api = normalizeEnvModelApi(firstEnvValue(["REPI_MODEL_API", "REPI_API"]));
+	const rawApi = firstEnvValue(["REPI_MODEL_API", "REPI_API"]);
+	const invalidApi = invalidEnvModelApi(rawApi);
+	if (invalidApi) {
+		throw new Error(
+			`invalid REPI_MODEL_API=${JSON.stringify(invalidApi)}; allowed openai-compatible|openai-responses|anthropic`,
+		);
+	}
+	const api = normalizeEnvModelApi(rawApi);
 	const apiKeyEnv = firstEnvValue(["REPI_AUTH_TOKEN"])
 		? "REPI_AUTH_TOKEN"
 		: firstEnvValue(["REPI_API_KEY"])
@@ -613,7 +641,14 @@ export class ModelRegistry {
 		}
 
 		this.models = combined;
-		const envProvider = repiEnvProviderConfig();
+		let envProvider: { providerName: string; config: ProviderConfigInput } | undefined;
+		try {
+			envProvider = repiEnvProviderConfig();
+		} catch (error) {
+			this.loadError = `REPI environment model provider failed to apply: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+		}
 		if (envProvider) {
 			try {
 				this.applyProviderConfig(envProvider.providerName, envProvider.config);

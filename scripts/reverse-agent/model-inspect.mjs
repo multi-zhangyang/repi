@@ -21,6 +21,21 @@ const modelsPath = join(agentDir, "models.json");
 const authPath = join(agentDir, "auth.json");
 const settingsPath = join(agentDir, "settings.json");
 const allowedApis = new Set(["openai-completions", "openai-responses", "anthropic-messages"]);
+const envModelApiAliases = new Set([
+	"openai-compatible",
+	"openai-chat",
+	"chat",
+	"chat-completions",
+	"openai-completions",
+	"response",
+	"responses",
+	"openai-response",
+	"openai-responses",
+	"anthropic",
+	"claude",
+	"anthropic-compatible",
+	"anthropic-messages",
+]);
 
 function usage() {
 	return `Usage:
@@ -638,7 +653,9 @@ function envStatusReport() {
 	const baseUrl = firstEnv(["REPI_BASE_URL", "REPI_MODEL_BASE_URL"]);
 	const model = firstEnv(["REPI_MODEL", "REPI_MODEL_ID"]);
 	const provider = firstEnv(["REPI_PROVIDER", "REPI_MODEL_PROVIDER", "REPI_PROVIDER_ID"]) || "repi-env";
-	const api = normalizeModelApi(firstEnv(["REPI_MODEL_API", "REPI_API"]));
+	const rawApi = firstEnv(["REPI_MODEL_API", "REPI_API"]);
+	const api = normalizeModelApi(rawApi);
+	const invalidApi = invalidModelApi(rawApi);
 	const authEnv = firstEnv(["REPI_AUTH_TOKEN"])
 		? "REPI_AUTH_TOKEN"
 		: firstEnv(["REPI_API_KEY"])
@@ -653,6 +670,11 @@ function envStatusReport() {
 	if (!baseUrl) issues.push("REPI_BASE_URL is missing");
 	if (!model) issues.push("REPI_MODEL is missing");
 	if (!process.env[authEnv]) issues.push(`${authEnv} is missing`);
+	if (invalidApi) {
+		issues.push(
+			`REPI_MODEL_API is invalid: ${invalidApi}; allowed openai-compatible|openai-responses|anthropic`,
+		);
+	}
 	for (const [name, value] of Object.entries({
 		REPI_BASE_URL: baseUrl,
 		REPI_MODEL: model,
@@ -666,6 +688,8 @@ function envStatusReport() {
 		provider,
 		model: model ?? null,
 		api,
+		rawApi: rawApi ?? null,
+		invalidApi,
 		baseUrl: baseUrl ? displayUrl(baseUrl) : null,
 		baseUrlHidden: !showUrls(),
 		authEnv,
@@ -715,7 +739,14 @@ function buildStatusReport() {
 				};
 	const diagnostics = [];
 	if (loaded.parseError) diagnostics.push({ level: "fail", id: "models-json-parse", message: loaded.parseError });
-	for (const issue of env.issues) diagnostics.push({ level: env.enabled ? "warn" : "info", id: "env-model", message: issue });
+	for (const issue of env.issues) {
+		const invalidApi = issue.startsWith("REPI_MODEL_API is invalid:");
+		diagnostics.push({
+			level: invalidApi ? "fail" : env.enabled ? "warn" : "info",
+			id: invalidApi ? "env-model-api" : "env-model",
+			message: issue,
+		});
+	}
 	if (!env.enabled && !defaultModel.configured)
 		diagnostics.push({
 			level: "info",
@@ -764,6 +795,12 @@ function normalizeModelApi(value) {
 		return "anthropic-messages";
 	}
 	return allowedApis.has(normalized) ? normalized : "openai-completions";
+}
+
+function invalidModelApi(value) {
+	if (!value) return null;
+	const normalized = String(value).trim().toLowerCase().replace(/_/g, "-");
+	return envModelApiAliases.has(normalized) ? null : value;
 }
 
 function envInt(names, fallback, min, max) {

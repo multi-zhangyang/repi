@@ -42,6 +42,21 @@ const REPI_ENV_MODEL_CONFIG_KEYS = [
 	"REPI_MODEL_API",
 	"REPI_API",
 ] as const;
+const REPI_MODEL_API_ALIASES = new Set([
+	"openai-compatible",
+	"openai-chat",
+	"chat",
+	"chat-completions",
+	"openai-completions",
+	"response",
+	"responses",
+	"openai-response",
+	"openai-responses",
+	"anthropic",
+	"claude",
+	"anthropic-compatible",
+	"anthropic-messages",
+]);
 
 function hasFlag(args: readonly string[], flag: string): boolean {
 	return args.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
@@ -125,11 +140,25 @@ export function missingRepiEnvModelConfig(
 	return missing;
 }
 
+export function invalidRepiEnvModelApi(
+	env: Partial<Record<"REPI_MODEL_API" | "REPI_API", string | undefined>> = process.env,
+): string | undefined {
+	const raw = env.REPI_MODEL_API || env.REPI_API;
+	if (!raw?.trim()) return undefined;
+	const normalized = raw.trim().toLowerCase().replace(/_/g, "-");
+	return REPI_MODEL_API_ALIASES.has(normalized) ? undefined : raw;
+}
+
 function validateRepiEnvModelConfig(): void {
 	const missing = missingRepiEnvModelConfig();
-	if (missing.length === 0) return;
-	console.error("REPI env model config is incomplete; refusing to fall back to a saved/default model.");
+	const invalidApi = invalidRepiEnvModelApi();
+	if (missing.length === 0 && !invalidApi) return;
+	console.error("REPI env model config is incomplete or invalid; refusing to fall back to a saved/default model.");
 	for (const key of missing) console.error(`  missing: ${key}`);
+	if (invalidApi) {
+		console.error(`  invalid: REPI_MODEL_API=${JSON.stringify(invalidApi)}`);
+		console.error("  allowed: openai-compatible | openai-responses | anthropic");
+	}
 	console.error(`
 Use a complete, quoted block, for example:
   export REPI_AUTH_TOKEN="sk-xxxxx"

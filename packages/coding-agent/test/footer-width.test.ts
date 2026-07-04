@@ -3,7 +3,11 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { CompactionSettings } from "../src/core/compaction/index.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";
-import { FooterComponent, formatCwdForFooter } from "../src/modes/interactive/components/footer.ts";
+import {
+	FooterComponent,
+	formatCwdForFooter,
+	shouldShowProviderInFooter,
+} from "../src/modes/interactive/components/footer.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
@@ -163,5 +167,25 @@ describe("FooterComponent width handling", () => {
 
 		const statsLine = stripAnsi(footer.render(120)[1]);
 		expect(statsLine).toContain("(auto@85%)");
+	});
+
+	it("shows the provider for REPI env-style model switching even when only one provider is visible", () => {
+		const previousProduct = process.env.REPI_PRODUCT;
+		process.env.REPI_PRODUCT = "1";
+		try {
+			expect(shouldShowProviderInFooter(1, "morph")).toBe(true);
+			const session = createSession({
+				sessionName: "",
+				modelId: "morph-glm52-744b",
+				provider: "morph",
+			});
+			const footer = new FooterComponent(session, createFooterData(1));
+
+			const statsLine = stripAnsi(footer.render(120)[1]);
+			expect(statsLine).toContain("(morph) morph-glm52-744b");
+		} finally {
+			if (previousProduct === undefined) delete process.env.REPI_PRODUCT;
+			else process.env.REPI_PRODUCT = previousProduct;
+		}
 	});
 });

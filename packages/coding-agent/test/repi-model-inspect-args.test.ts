@@ -174,6 +174,27 @@ describe("repi model argument parsing", () => {
 		expect((json.env as Record<string, unknown>).baseUrl).not.toContain("status-gateway");
 	});
 
+	it("fails model status on invalid REPI_MODEL_API instead of silently selecting chat completions", () => {
+		const { result, json } = run(["status"], {
+			REPI_AUTH_TOKEN: "env-only-key",
+			REPI_BASE_URL: "https://status-gateway.example.invalid/v1",
+			REPI_MODEL: "status-main-model",
+			REPI_MODEL_API: "custom-wire-format",
+		});
+		expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(1);
+		expect(json).toMatchObject({
+			ok: false,
+			env: {
+				enabled: true,
+				model: "status-main-model",
+				rawApi: "custom-wire-format",
+				invalidApi: "custom-wire-format",
+			},
+		});
+		expect(JSON.stringify(json.diagnostics)).toContain("env-model-api");
+		expect(JSON.stringify(json.diagnostics)).toContain("REPI_MODEL_API is invalid");
+	});
+
 	it("adds the Baseten Kimi K2.7 Code preset without leaking the key or URL by default", () => {
 		const cleanEnv = { ...process.env };
 		for (const name of REPI_MODEL_ENV_NAMES) delete cleanEnv[name];

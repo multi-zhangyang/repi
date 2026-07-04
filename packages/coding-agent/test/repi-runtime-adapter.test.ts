@@ -166,9 +166,14 @@ describe("REPI runtime adapter pure contracts", () => {
 		expect(webOutput).not.toMatch(/replay diff pending|manual-confirm|fallback=portable/i);
 		const webSummary = summarizeRuntimeAdapterSignals(webAdapter, parseRuntimeAdapterSignals(webAdapter, webOutput));
 		expect(webSummary.matchedProofExitSignals).toEqual(
-			expect.arrayContaining(["HTTP/CDP response capture", "XHR/WS route extraction", "signed request replay"]),
+			expect.arrayContaining([
+				"HTTP/CDP response capture",
+				"XHR/WS route extraction",
+				"request order proof",
+				"signed request replay",
+			]),
 		);
-		expect(webSummary.missingProofExitSignals).toContain("request order proof");
+		expect(webSummary.missingProofExitSignals).toEqual([]);
 	});
 
 	test("keeps pwn verifier evidence tied to real runs instead of synthetic success markers", () => {

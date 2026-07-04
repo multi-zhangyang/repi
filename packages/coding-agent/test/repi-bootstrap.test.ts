@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { bootstrapRepiCli, missingRepiEnvModelConfig } from "../src/cli/repi-bootstrap.ts";
+import { bootstrapRepiCli, invalidRepiEnvModelApi, missingRepiEnvModelConfig } from "../src/cli/repi-bootstrap.ts";
 
 const ENV_KEYS = [
 	"REPI_CODING_AGENT_DIR",
@@ -100,5 +100,12 @@ describe("bootstrapRepiCli", () => {
 			}),
 		).toEqual([]);
 		expect(missingRepiEnvModelConfig({})).toEqual([]);
+	});
+
+	test("detects invalid REPI_MODEL_API values instead of silently using the wrong wire format", () => {
+		expect(invalidRepiEnvModelApi({ REPI_MODEL_API: "openai-compatible" })).toBeUndefined();
+		expect(invalidRepiEnvModelApi({ REPI_MODEL_API: "response" })).toBeUndefined();
+		expect(invalidRepiEnvModelApi({ REPI_MODEL_API: "anthropic" })).toBeUndefined();
+		expect(invalidRepiEnvModelApi({ REPI_MODEL_API: "totally-custom-json" })).toBe("totally-custom-json");
 	});
 });

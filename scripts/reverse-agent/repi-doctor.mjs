@@ -32,6 +32,21 @@ const probeTimeoutMs = (() => {
 const packageBinMode = process.env.REPI_PACKAGE_BIN === "1";
 const installedRepi = process.env.REPI_INSTALLED_BIN_PATH || (existsSync(join(root, "repi")) ? join(root, "repi") : "/usr/local/bin/repi");
 const localScriptsDir = dirname(fileURLToPath(import.meta.url));
+const envModelApiAliases = new Set([
+	"openai-compatible",
+	"openai-chat",
+	"chat",
+	"chat-completions",
+	"openai-completions",
+	"response",
+	"responses",
+	"openai-response",
+	"openai-responses",
+	"anthropic",
+	"claude",
+	"anthropic-compatible",
+	"anthropic-messages",
+]);
 
 function readJson(path) {
 	try {
@@ -80,6 +95,56 @@ function redactText(value) {
 		.replace(/(authorization|x-api-key|api-key)\s*[:=]\s*[A-Za-z0-9._-]{12,}/gi, "$1: <redacted>")
 		.replace(/(baseUrl|baseURL|endpoint|url)\s*[:=]\s*https?:\/\/[^\s"',}]+/gi, "$1=<redacted:url>")
 		.replace(/\bhttps?:\/\/api\.[^\s"',}<)]+/gi, "<redacted:url>");
+}
+
+function firstEnv(names) {
+	for (const name of names) {
+		const value = process.env[name]?.trim();
+		if (value) return value;
+	}
+	return undefined;
+}
+
+function normalizeEnvModelApi(value) {
+	const normalized = String(value || "openai-completions").trim().toLowerCase().replace(/_/g, "-");
+	if (["openai-compatible", "openai-chat", "chat", "chat-completions", "openai-completions"].includes(normalized))
+		return "openai-completions";
+	if (["response", "responses", "openai-response", "openai-responses"].includes(normalized)) return "openai-responses";
+	if (["anthropic", "claude", "anthropic-compatible", "anthropic-messages"].includes(normalized))
+		return "anthropic-messages";
+	return "openai-completions";
+}
+
+function currentEnvModelConfigStatus() {
+	const baseUrl = firstEnv(["REPI_BASE_URL", "REPI_MODEL_BASE_URL"]);
+	const model = firstEnv(["REPI_MODEL", "REPI_MODEL_ID"]);
+	const provider = firstEnv(["REPI_PROVIDER", "REPI_MODEL_PROVIDER", "REPI_PROVIDER_ID"]) || "repi-env";
+	const rawApi = firstEnv(["REPI_MODEL_API", "REPI_API"]);
+	const normalizedApi = rawApi ? rawApi.trim().toLowerCase().replace(/_/g, "-") : "";
+	const invalidApi = rawApi && !envModelApiAliases.has(normalizedApi) ? rawApi : undefined;
+	const authEnv = firstEnv(["REPI_AUTH_TOKEN"])
+		? "REPI_AUTH_TOKEN"
+		: firstEnv(["REPI_API_KEY"])
+			? "REPI_API_KEY"
+			: firstEnv(["REPI_MODEL_API_KEY"])
+				? "REPI_MODEL_API_KEY"
+				: "REPI_AUTH_TOKEN";
+	const touched = Boolean(baseUrl || model || rawApi);
+	const missing = [];
+	if (touched && !baseUrl) missing.push("REPI_BASE_URL");
+	if (touched && !model) missing.push("REPI_MODEL");
+	return {
+		touched,
+		enabled: Boolean(baseUrl && model),
+		provider,
+		model: model ? redactText(model) : "<unset>",
+		api: normalizeEnvModelApi(rawApi),
+		rawApi: rawApi ?? "<default>",
+		invalidApi,
+		authEnv,
+		authPresent: Boolean(process.env[authEnv]),
+		missing,
+	};
 }
 
 function run(cmd, args, options = {}) {
@@ -347,6 +412,7 @@ const models = readJson(join(agentDir, "models.json"));
 const help = existsSync(repiBin) ? run(repiBin, ["--offline", "--help"], { timeout: probeTimeoutMs }) : { code: 1, stdout: "", stderr: "missing repi", timedOut: false };
 const listModels = existsSync(repiBin) ? run(repiBin, ["--offline", "--list-models"], { timeout: probeTimeoutMs }) : { code: 1, stdout: "", stderr: "missing repi", timedOut: false };
 const helpText = `${help.stdout}\n${help.stderr}`;
+const envModelRuntime = currentEnvModelConfigStatus();
 const globalRepi = pathEntry(installedRepi);
 const localRepi = pathEntry(repiBin);
 const globalRepiOk = packageBinMode || (globalRepi.exists && globalRepi.resolved === localRepi.resolved);
@@ -519,6 +585,12 @@ const checks = [
 		envModelContractOk,
 		`envGuard=${envModelGuardOk} envSourceBuiltin=${envModelSource.includes("REPI_LOAD_BUILTIN_MODELS")} bootstrapBuiltinDefault0=${bootstrapSource.includes('process.env.REPI_LOAD_BUILTIN_MODELS || "0"')} registryEnv=${modelRegistrySource.includes("repiEnvProviderConfig")} modelStatus=${modelInspectSource.includes("buildStatusReport")}`,
 		"keep Claude-Code-style REPI_* env model config as the default path and built-in provider catalog disabled",
+	),
+	check(
+		"models:env-runtime-config",
+		envModelRuntime.missing.length === 0 && !envModelRuntime.invalidApi,
+		`touched=${envModelRuntime.touched} enabled=${envModelRuntime.enabled} provider=${envModelRuntime.provider} model=${envModelRuntime.model} api=${envModelRuntime.api} rawApi=${envModelRuntime.rawApi} auth=${envModelRuntime.authEnv}:${envModelRuntime.authPresent ? "set" : "missing"} missing=${envModelRuntime.missing.join(",") || "<none>"} invalidApi=${envModelRuntime.invalidApi ?? "<none>"}`,
+		"export REPI_AUTH_TOKEN, REPI_BASE_URL, REPI_MODEL, and REPI_MODEL_API=openai-compatible|openai-responses|anthropic",
 	),
 	check("network:update-suppressed", /--offline/.test(helpText) && /REPI_SKIP_VERSION_CHECK/.test(helpText), "offline/version-check controls available"),
 ];
