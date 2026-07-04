@@ -179,33 +179,33 @@ case " ${BIN_ARGS[*]} " in
   *" --bin-dir "*) for i in "${!BIN_ARGS[@]}"; do [ "${BIN_ARGS[$i]}" = "--bin-dir" ] && BIN_DIR="${BIN_ARGS[$((i+1))]}" && break; done; DISPLAY_DIR="$BIN_DIR" ;;
   *) BIN_DIR="$HOME/.local/bin"; DISPLAY_DIR="~/.local/bin" ;;
 esac
-PATH_HINT=""
 SOURCE_COMMAND=""
 PATH_STATUS="Successfully linked repi in $DISPLAY_DIR (already on \$PATH)"
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;
   *)
     RC_LINE="export PATH=\"$BIN_DIR:\$PATH\""
-    RC_UPDATED_DISPLAY=""
+    RC_CONFIGURED_DISPLAY=""
     for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
       [ -f "$rc" ] || continue
       if grep -qF "$RC_LINE" "$rc" 2>/dev/null; then
-        RC_UPDATED_DISPLAY="${RC_UPDATED_DISPLAY}~/${rc##*/} "
+        RC_CONFIGURED_DISPLAY="${RC_CONFIGURED_DISPLAY}~/${rc##*/} "
       fi
     done
-    RC_UPDATED_DISPLAY="${RC_UPDATED_DISPLAY% }"
-    if [ -n "$RC_UPDATED_DISPLAY" ]; then
-      PATH_STATUS="Successfully added repi to \$PATH in $RC_UPDATED_DISPLAY"
-      case " $RC_UPDATED_DISPLAY " in
-        *" ~/.bashrc "*) SOURCE_COMMAND="source ~/.bashrc  # Load new PATH (or open a new terminal)" ;;
-        *" ~/.zshrc "*) SOURCE_COMMAND="source ~/.zshrc   # Load new PATH (or open a new terminal)" ;;
-        *" ~/.profile "*) SOURCE_COMMAND="source ~/.profile # Load new PATH (or open a new terminal)" ;;
+    RC_CONFIGURED_DISPLAY="${RC_CONFIGURED_DISPLAY% }"
+    if [ -n "$RC_CONFIGURED_DISPLAY" ]; then
+      RC_PRIMARY=""
+      case " $RC_CONFIGURED_DISPLAY " in
+        *" ~/.bashrc "*) RC_PRIMARY="~/.bashrc"; SOURCE_COMMAND="source ~/.bashrc  # Load new PATH (or open a new terminal)" ;;
+        *" ~/.zshrc "*) RC_PRIMARY="~/.zshrc"; SOURCE_COMMAND="source ~/.zshrc   # Load new PATH (or open a new terminal)" ;;
+        *" ~/.profile "*) RC_PRIMARY="~/.profile"; SOURCE_COMMAND="source ~/.profile # Load new PATH (or open a new terminal)" ;;
       esac
+      RC_PRIMARY="${RC_PRIMARY:-$RC_CONFIGURED_DISPLAY}"
+      PATH_STATUS="Successfully added repi to \$PATH in $RC_PRIMARY"
     else
       PATH_STATUS="Installed repi to $DISPLAY_DIR; add it to \$PATH for direct command use"
       SOURCE_COMMAND="export PATH=\"$BIN_DIR:\$PATH\"  # Load repi for this shell"
     fi
-    PATH_HINT="  export PATH=\"$BIN_DIR:\$PATH\"   # for this shell; new shells are updated when possible"
     ;;
 esac
 REPI_VERSION="$(ROOT_PACKAGE_JSON="$ROOT/package.json" node -e 'try { console.log(require(process.env.ROOT_PACKAGE_JSON).version) } catch { console.log("unknown") }' 2>/dev/null || echo unknown)"
@@ -217,18 +217,8 @@ $PATH_STATUS
 REPI $REPI_VERSION installed successfully, to start:
 
 ${SOURCE_COMMAND:+$SOURCE_COMMAND
-}cd <project>  # Open target/project directory
+}cd <project>  # Open directory
 repi          # Run command
 
-Useful first checks:
-
-repi doctor
-repi model status
-
 For more information visit https://github.com/multi-zhangyang/pi-recon-agent
-
-Install details:
-  source  : $ROOT
-  launcher: $DISPLAY_DIR/repi
-${PATH_HINT:+$PATH_HINT}
 MSG

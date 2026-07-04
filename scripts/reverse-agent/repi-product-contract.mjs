@@ -205,7 +205,9 @@ rows.push(
 				"path:explicit-bin-current-shell",
 				"INFO: Installing REPI launcher",
 				"■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100%",
+				"Successfully added repi to $PATH in ~/.bashrc",
 				"installed successfully, to start:",
+				"cd <project>  # Open directory",
 				"For more information visit https://github.com/multi-zhangyang/pi-recon-agent",
 				"REPI_CODING_AGENT_DIR",
 			]) &&
@@ -216,6 +218,7 @@ rows.push(
 				"REPI_INSTALL_EMBEDDED=1",
 				"installed successfully, to start:",
 				"source ~/.bashrc",
+				"cd <project>  # Open directory",
 				"repi          # Run command",
 			]),
 		`smoke:install-path=${packageJson.scripts?.["smoke:install-path"] ?? "<missing>"}`,

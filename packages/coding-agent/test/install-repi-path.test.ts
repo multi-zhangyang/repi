@@ -83,8 +83,8 @@ describe("install-repi launcher PATH setup", () => {
 		expect(bashrc).toContain("# Added by repi install");
 		expect(bashrc).toContain(pathLine);
 		expect(profile).toContain(pathLine);
-		expect(result.stdout).toContain("Added PATH export to: .bashrc .profile");
-		expect(result.stdout).toContain(`export PATH="${join(home, ".local", "bin")}:$PATH"`);
+		expect(result.stdout).toContain("Successfully added repi to $PATH in ~/.bashrc");
+		expect(result.stdout).toContain("source ~/.bashrc  # Load new PATH (or open a new terminal)");
 	});
 
 	it("does not duplicate PATH exports when the installer is re-run", () => {
@@ -92,6 +92,8 @@ describe("install-repi launcher PATH setup", () => {
 		expect(first.status, `${first.stderr}\n${first.stdout}`).toBe(0);
 		const second = runInstaller();
 		expect(second.status, `${second.stderr}\n${second.stdout}`).toBe(0);
+		expect(second.stdout).toContain("Successfully added repi to $PATH in ~/.bashrc");
+		expect(second.stdout).not.toContain("add it to $PATH for direct command use");
 
 		const pathLine = `export PATH="${join(home, ".local", "bin")}:$PATH"`;
 		const bashrc = readFileSync(join(home, ".bashrc"), "utf8");
@@ -119,6 +121,6 @@ describe("install-repi launcher PATH setup", () => {
 		expect(existsSync(join(home, ".bashrc"))).toBe(false);
 		expect(existsSync(join(home, ".profile"))).toBe(false);
 		expect(result.stdout).not.toContain("PATH hint");
-		expect(result.stdout).not.toContain("Added PATH export");
+		expect(result.stdout).not.toContain("Shell startup files updated");
 	});
 });

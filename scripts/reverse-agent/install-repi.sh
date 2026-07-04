@@ -230,7 +230,7 @@ if path_contains_dir "$BIN_DIR"; then
 fi
 
 RC_LINE="export PATH=\"$BIN_DIR:\$PATH\""
-RC_UPDATED=""
+RC_CONFIGURED=""
 if [ "$BIN_ON_PATH" -ne 1 ] && [ "${SUDO_USER:-}" = "" ] && [ -n "$HOME" ]; then
   case "$BIN_DIR" in
     "$HOME"|"$HOME"/*)
@@ -248,33 +248,53 @@ if [ "$BIN_ON_PATH" -ne 1 ] && [ "${SUDO_USER:-}" = "" ] && [ -n "$HOME" ]; then
         [ -f "$rc" ] || : > "$rc"
         if ! grep -qF "$RC_LINE" "$rc" 2>/dev/null; then
           printf '\n# Added by repi install\n%s\n' "$RC_LINE" >> "$rc"
-          RC_UPDATED="${RC_UPDATED}${rc##*/} "
+        fi
+        if grep -qF "$RC_LINE" "$rc" 2>/dev/null; then
+          RC_CONFIGURED="${RC_CONFIGURED}${rc##*/} "
         fi
       done
       ;;
   esac
 fi
 
-PATH_HINT=""
+display_rc_list() {
+  local names="$1"
+  local display="" rc_name
+  for rc_name in $names; do
+    display="${display}~/${rc_name#./} "
+  done
+  printf '%s' "${display% }"
+}
+
+primary_rc_display() {
+  local names=" $1 "
+  case "$names" in
+    *" .bashrc "*) printf '%s' "~/.bashrc"; return 0 ;;
+    *" .zshrc "*) printf '%s' "~/.zshrc"; return 0 ;;
+    *" .profile "*) printf '%s' "~/.profile"; return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+source_command_for_rc() {
+  case "$1" in
+    "~/.bashrc") printf '%s' "source ~/.bashrc  # Load new PATH (or open a new terminal)" ;;
+    "~/.zshrc") printf '%s' "source ~/.zshrc   # Load new PATH (or open a new terminal)" ;;
+    "~/.profile") printf '%s' "source ~/.profile # Load new PATH (or open a new terminal)" ;;
+    *) return 1 ;;
+  esac
+}
+
 PATH_STATUS=""
 SOURCE_COMMAND=""
 if [ "$BIN_ON_PATH" -ne 1 ]; then
-  if [ -n "$RC_UPDATED" ]; then
-    RC_UPDATED_DISPLAY=""
-    for rc_name in $RC_UPDATED; do
-      RC_UPDATED_DISPLAY="${RC_UPDATED_DISPLAY}~/${rc_name#./} "
-    done
-    RC_UPDATED_DISPLAY="${RC_UPDATED_DISPLAY% }"
-    PATH_HINT="  Added PATH export to: $RC_UPDATED_DISPLAY
-  Open a new shell, or for this shell run: export PATH=\"$BIN_DIR:\$PATH\""
-    PATH_STATUS="Successfully added repi to \$PATH in $RC_UPDATED_DISPLAY"
-    case " $RC_UPDATED " in
-      *" .bashrc "*) SOURCE_COMMAND="source ~/.bashrc  # Load new PATH (or open a new terminal)" ;;
-      *" .zshrc "*) SOURCE_COMMAND="source ~/.zshrc   # Load new PATH (or open a new terminal)" ;;
-      *" .profile "*) SOURCE_COMMAND="source ~/.profile # Load new PATH (or open a new terminal)" ;;
-    esac
+  if [ -n "$RC_CONFIGURED" ]; then
+    RC_CONFIGURED_DISPLAY="$(display_rc_list "$RC_CONFIGURED")"
+    RC_PRIMARY="$(primary_rc_display "$RC_CONFIGURED" || true)"
+    RC_PRIMARY="${RC_PRIMARY:-$RC_CONFIGURED_DISPLAY}"
+    PATH_STATUS="Successfully added repi to \$PATH in $RC_PRIMARY"
+    SOURCE_COMMAND="$(source_command_for_rc "$RC_PRIMARY" || true)"
   else
-    PATH_HINT="  PATH hint (run in this shell): export PATH=\"$BIN_DIR:\$PATH\""
     PATH_STATUS="Installed repi to $BIN_DIR; add it to \$PATH for direct command use"
     SOURCE_COMMAND="export PATH=\"$BIN_DIR:\$PATH\"  # Load repi for this shell"
   fi
@@ -286,12 +306,6 @@ if [ "${REPI_INSTALL_EMBEDDED:-0}" = "1" ]; then
   cat <<MSG
 INFO: Installing REPI launcher
 $(print_done_bar)
-
-REPI launcher ready:
-  launcher: $BIN_DIR/repi -> $ROOT/repi
-  runtime : ${REPI_CODING_AGENT_DIR:-${REPI_AGENT_DIR:-$HOME/.repi/agent}}
-  profile : built-in reverse/pentest kernel initialized
-$PATH_HINT
 MSG
   exit 0
 fi
@@ -299,24 +313,13 @@ cat <<MSG
 INFO: Installing REPI launcher
 $(print_done_bar)
 
-Installed REPI:
-  launcher: $BIN_DIR/repi -> $ROOT/repi
-  runtime : ${REPI_CODING_AGENT_DIR:-${REPI_AGENT_DIR:-$HOME/.repi/agent}}
-  profile : built-in reverse/pentest kernel initialized
-$PATH_HINT
-
 $PATH_STATUS
 
 REPI $REPI_VERSION installed successfully, to start:
 
 ${SOURCE_COMMAND:+$SOURCE_COMMAND
-}cd <project>  # Open target/project directory
+}cd <project>  # Open directory
 repi          # Run command
-
-Useful first checks:
-
-repi doctor
-repi model status
 
 For more information visit https://github.com/multi-zhangyang/pi-recon-agent
 MSG

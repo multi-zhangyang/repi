@@ -61,6 +61,23 @@ repi -p "对当前目录做 REPI mapping，并给出下一步可验证计划"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+安装成功时会给出一屏可直接照做的启动提示：
+
+```text
+INFO: Installing REPI launcher
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100%
+
+Successfully added repi to $PATH in ~/.bashrc
+
+REPI 0.1.2 installed successfully, to start:
+
+source ~/.bashrc  # Load new PATH (or open a new terminal)
+cd <project>  # Open directory
+repi          # Run command
+
+For more information visit https://github.com/multi-zhangyang/pi-recon-agent
+```
+
 常用检查：
 
 ```bash
