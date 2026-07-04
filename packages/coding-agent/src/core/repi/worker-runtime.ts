@@ -1007,6 +1007,17 @@ export function workerChildSessionToWorkerRuntimePoolBridge(
 	};
 }
 
+export function workerChildSessionRuntimeBridgeEvidenceContract(): string[] {
+	return [
+		"runtime:child-session-pool-bridge-validation",
+		"WorkerChildSessionRuntimeBatchV1 must capture childSessionRuntimeCaptured=true before supervisor promotion",
+		"poolBridge.workerIds must exactly match child session worker ids",
+		"child-session runtime status must be compatible with WorkerRuntimePoolV1 status",
+		"child-session claim ledger must bridge into WorkerRuntimePoolV1 claim-aware merge validation",
+		"child-session launch policy must keep REPI isolated, update checks disabled, telemetry disabled, and secrets denied",
+	];
+}
+
 export function workerRetryHandoffClosureEvidenceContract(): string[] {
 	return [
 		"WorkerRetryHandoffClosureV1",
@@ -1484,12 +1495,23 @@ export function verifyWorkerChildSessionRuntimeBatch(batch: RepiWorkerChildSessi
 	errors: string[];
 } {
 	const errors: string[] = [];
+	if (batch.kind !== "WorkerChildSessionRuntimeBatchV1") errors.push("child_session_batch_kind_invalid");
+	if (batch.schemaVersion !== 1) errors.push("child_session_batch_schema_version_invalid");
+	if (!batch.sessions.length) errors.push("child_session_sessions_missing");
 	if (batch.launchPolicy.command !== "repi") errors.push("child_session_command_not_repi");
 	if (!batch.launchPolicy.args.includes("--recon")) errors.push("child_session_missing_recon_arg");
 	if (!batch.launchPolicy.isolatedHome.includes(".repi") || batch.launchPolicy.isolatedHome.includes("/.pi/"))
 		errors.push("child_session_isolated_home_invalid");
 	if (batch.launchPolicy.importPiAuth !== false) errors.push("child_session_import_pi_auth_not_false");
 	if (!batch.launchPolicy.updateChecksDisabled) errors.push("child_session_update_checks_not_disabled");
+	if (!batch.launchPolicy.telemetryDisabled) errors.push("child_session_telemetry_not_disabled");
+	if (batch.poolBridge?.kind !== "WorkerRuntimePoolV1Bridge") errors.push("child_session_pool_bridge_kind_invalid");
+	if (batch.poolBridge?.poolId !== batch.poolId) errors.push("child_session_pool_bridge_pool_mismatch");
+	if (!batch.poolBridge?.claimAwareMerge) errors.push("child_session_claim_aware_merge_missing");
+	if (!batch.poolBridge?.childSessionRuntimeCaptured) errors.push("child_session_runtime_not_captured");
+	const sessionWorkerIds = batch.sessions.map((session) => session.workerId);
+	if (!sameStringSet(batch.poolBridge?.workerIds ?? [], sessionWorkerIds))
+		errors.push("child_session_pool_bridge_workerIds_mismatch");
 	if (batch.poolBridge?.childProcessRuntimeCaptured) {
 		const probe = batch.childProcessProbe;
 		if (!probe) errors.push("child_process_probe_missing");
@@ -1536,6 +1558,36 @@ export function verifyWorkerChildSessionRuntimeBatch(batch: RepiWorkerChildSessi
 			errors.push(`child_session_exhausted_still_running:${session.sessionId}`);
 		if (session.runtime.status === "timeout" && !session.runtime.cancelledAt)
 			errors.push(`child_session_timeout_without_cancel:${session.sessionId}`);
+		if (
+			!workerChildRuntimeStatusMatchesPoolStatus(session.runtime.status, session.poolBridge.workerRuntimePoolStatus)
+		)
+			errors.push(`child_session_pool_status_mismatch:${session.sessionId}`);
 	}
+	const bridgePool = workerChildSessionToWorkerRuntimePoolBridge(batch);
+	const bridgeValidation = verifyWorkerRuntimePool(bridgePool);
+	if (!bridgeValidation.ok)
+		errors.push(...bridgeValidation.errors.map((error) => `child_session_pool_bridge:${error}`));
 	return { ok: errors.length === 0, errors: uniqueNonEmpty(errors, 80) };
+}
+
+function workerChildRuntimeStatusMatchesPoolStatus(
+	runtimeStatus: RepiWorkerChildSessionRuntimeStatus,
+	poolStatus: RepiWorkerRuntimePoolWorkerV1["status"],
+): boolean {
+	switch (runtimeStatus) {
+		case "queued":
+			return poolStatus === "queued" || poolStatus === "retry_queued";
+		case "running":
+			return poolStatus === "queued" || poolStatus === "retry_queued";
+		case "passed":
+			return poolStatus === "done" || poolStatus === "passed";
+		case "failed":
+			return ["failed", "retry_queued", "exhausted", "blocked"].includes(poolStatus);
+		case "timeout":
+			return ["timeout", "cancelled", "retry_queued", "exhausted", "blocked"].includes(poolStatus);
+		case "cancelled":
+			return ["cancelled", "retry_queued", "exhausted", "blocked"].includes(poolStatus);
+		case "exhausted":
+			return poolStatus === "exhausted" || poolStatus === "blocked";
+	}
 }

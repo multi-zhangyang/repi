@@ -11,6 +11,8 @@ import {
 	verifyWorkerRetryHandoffClosureV1,
 	verifyWorkerRuntimePool,
 	workerChildSessionLaunchPolicy,
+	workerChildSessionRuntimeBridgeEvidenceContract,
+	workerChildSessionToWorkerRuntimePoolBridge,
 	workerLeaseSchedulerEventHash,
 } from "../src/core/repi/worker-runtime.ts";
 
@@ -537,7 +539,11 @@ describe("REPI worker runtime pure contracts", () => {
 				childSessionRuntimeCaptured: true,
 			},
 		};
+		expect(workerChildSessionRuntimeBridgeEvidenceContract().join("\n")).toContain(
+			"runtime:child-session-pool-bridge-validation",
+		);
 		expect(verifyWorkerChildSessionRuntimeBatch(batch)).toEqual({ ok: true, errors: [] });
+		expect(verifyWorkerRuntimePool(workerChildSessionToWorkerRuntimePoolBridge(batch)).ok).toBe(true);
 		expect(
 			verifyWorkerChildSessionRuntimeBatch({
 				...batch,
@@ -546,5 +552,49 @@ describe("REPI worker runtime pure contracts", () => {
 				],
 			}).errors,
 		).toContain("child_session_literal_api_key:child-w1-1");
+		expect(
+			verifyWorkerChildSessionRuntimeBatch({
+				...batch,
+				poolBridge: {
+					...batch.poolBridge,
+					workerIds: ["w9"],
+					claimAwareMerge: false,
+					childSessionRuntimeCaptured: false,
+				},
+			}).errors,
+		).toEqual(
+			expect.arrayContaining([
+				"child_session_claim_aware_merge_missing",
+				"child_session_runtime_not_captured",
+				"child_session_pool_bridge_workerIds_mismatch",
+			]),
+		);
+		expect(
+			verifyWorkerChildSessionRuntimeBatch({
+				...batch,
+				sessions: [
+					{
+						...batch.sessions[0],
+						runtime: { ...batch.sessions[0].runtime, status: "failed" },
+						poolBridge: { ...batch.sessions[0].poolBridge, workerRuntimePoolStatus: "done" },
+					},
+				],
+			}).errors,
+		).toContain("child_session_pool_status_mismatch:child-w1-1");
+		expect(
+			verifyWorkerChildSessionRuntimeBatch({
+				...batch,
+				claimLedgerEvents: batch.claimLedgerEvents.map((event) => ({
+					...event,
+					source: "worker-child-session" as const,
+				})),
+			}).errors,
+		).toEqual(
+			expect.arrayContaining([
+				"child_session_pool_bridge:claim_without_artifact_handoff:claim-a",
+				"child_session_pool_bridge:claim_without_validation:claim-a",
+				"child_session_pool_bridge:claim_without_resolution:claim-a",
+			]),
+		);
 	});
 });

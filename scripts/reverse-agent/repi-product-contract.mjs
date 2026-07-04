@@ -1242,6 +1242,7 @@ rows.push(
 			"verifyWorkerChildSessionRuntimeBatch",
 			"runtime:worker-runtime-pool-validation",
 			"runtime:claim-aware-worker-merge",
+			"runtime:child-session-pool-bridge-validation",
 		]) &&
 			includesAll(reconProfile, [
 				"./repi/worker-runtime.ts",
