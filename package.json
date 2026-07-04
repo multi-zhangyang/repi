@@ -63,6 +63,7 @@
 		"doctor:repi": "node scripts/reverse-agent/repi-doctor.mjs .",
 		"contract:repi": "node scripts/reverse-agent/repi-product-contract.mjs .",
 		"smoke:repi": "node scripts/reverse-agent/repi-smoke.mjs .",
+		"smoke:install-path": "node scripts/reverse-agent/repi-install-path-smoke.mjs .",
 		"selfcheck:repi": "node scripts/reverse-agent/repi-selfcheck.mjs .",
 		"memory:consolidate": "node scripts/reverse-agent/memory-consolidate.mjs .",
 		"clean:repi-legacy-profile": "bash scripts/reverse-agent/clean-global-repi-profile.sh",

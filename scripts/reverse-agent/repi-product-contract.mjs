@@ -84,6 +84,7 @@ const requiredFiles = [
 	"packages/coding-agent/test/repi-goal-rpc-mode.test.ts",
 	"packages/coding-agent/test/repi-goal.test.ts",
 	"scripts/reverse-agent/repi-smoke.mjs",
+	"scripts/reverse-agent/repi-install-path-smoke.mjs",
 	"scripts/reverse-agent/repi-release-tarball-smoke.mjs",
 	"scripts/reverse-agent/repi-extension-compat-smoke.mjs",
 	"scripts/reverse-agent/memory-inspect.mjs",
@@ -153,6 +154,23 @@ rows.push(
 			]),
 		`smoke:extensions=${packageJson.scripts?.["smoke:extensions"] ?? "<missing>"}`,
 		"Keep a real npm extension smoke that validates pi-web-access tools and @narumitw/pi-goal conflict suppression.",
+	),
+);
+rows.push(
+	check(
+		"validation:install-path-smoke-script",
+		packageJson.scripts?.["smoke:install-path"] === "node scripts/reverse-agent/repi-install-path-smoke.mjs ." &&
+			existsSync(join(root, "scripts/reverse-agent/repi-install-path-smoke.mjs")) &&
+			includesAll(read("scripts/reverse-agent/repi-install-path-smoke.mjs"), [
+				"install:user-bin-off-path",
+				"assert:user-rc-path-export",
+				"path:user-rc-new-shell",
+				"install:explicit-bin-on-path",
+				"path:explicit-bin-current-shell",
+				"REPI_CODING_AGENT_DIR",
+			]),
+		`smoke:install-path=${packageJson.scripts?.["smoke:install-path"] ?? "<missing>"}`,
+		"Keep an installer smoke proving fresh install writes a repi launcher into PATH or an rc-backed user path.",
 	),
 );
 
