@@ -286,10 +286,14 @@ describe("REPI kernel profile runtime adapter and evidence graph flows", () => {
 		expect(graphText).toContain("## Task Tree");
 		expect(graphText).toContain("[command]");
 		expect(graphText).toContain("[artifact]");
+		expect(graphText).toContain("evidence-output-hash");
+		expect(graphText).toContain("evidence-output sha256=");
 		expect(graphText).toContain("[hypothesis]");
 		expect(graphText).toContain("[counter_evidence]");
 		expect(graphText).toContain("--produces");
 		expect(graphText).toContain("--supports");
+		expect(graphText).toContain("--supports:command-output-hypothesis");
 		expect(graphText).toContain("--refutes");
+		expect(graphText).toContain("--refutes:counter-evidence-prior-hypothesis");
 	});
 });

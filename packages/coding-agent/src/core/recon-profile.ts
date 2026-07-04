@@ -13846,8 +13846,11 @@ function buildAttackGraph(): AttackGraphArtifact {
 		if (mission)
 			addEdge({ from: `mission:${mission.id}`, to: node.id, kind: "evidences", label: `P${node.priority}` });
 	}
+	const openEvidenceHypotheses: string[] = [];
 	for (const record of parseEvidenceLedgerTaskRecords()) {
 		const parentId = mission ? `mission:${mission.id}` : undefined;
+		let commandId: string | undefined;
+		let commandOutputId: string | undefined;
 		addTask({
 			id: record.evidenceId,
 			parentId,
@@ -13859,7 +13862,7 @@ function buildAttackGraph(): AttackGraphArtifact {
 			note: record.timestamp,
 		});
 		if (record.command) {
-			const commandId = `command:${record.index}:${slug(record.command)}`;
+			commandId = `command:${record.index}:${slug(record.command)}`;
 			addNode({
 				id: commandId,
 				kind: "command",
@@ -13876,6 +13879,34 @@ function buildAttackGraph(): AttackGraphArtifact {
 				command: record.command,
 			});
 			addEdge({ from: commandId, to: record.evidenceId, kind: "produces", label: "stdout/fact" });
+			if (record.fact || record.hash || record.verify) {
+				const outputSurface = [record.fact, record.hash, record.verify, record.confidence]
+					.filter((item): item is string => Boolean(item))
+					.join("\n");
+				const outputHash = record.hash ?? sha256Text(outputSurface);
+				commandOutputId = `artifact:command-output:${record.index}:${slug(record.title)}`;
+				addNode({
+					id: commandOutputId,
+					kind: "artifact",
+					label: `evidence-output sha256=${outputHash.slice(0, 16)}`,
+					status: "evidence-output-hash",
+					note: truncateMiddle(outputSurface.replace(/\s+/g, " "), 260),
+				});
+				addTask({
+					id: commandOutputId,
+					parentId: commandId,
+					kind: "artifact",
+					label: `evidence-output sha256=${outputHash.slice(0, 16)}`,
+					status: "evidence-output-hash",
+					evidence: [
+						`output_sha256=${outputHash}`,
+						record.fact ? `fact=${truncateMiddle(record.fact, 260)}` : undefined,
+						record.confidence ? `confidence=${record.confidence}` : undefined,
+					].filter((item): item is string => Boolean(item)),
+				});
+				addEdge({ from: commandId, to: commandOutputId, kind: "produces", label: "evidence-output-hash" });
+				addEdge({ from: commandOutputId, to: record.evidenceId, kind: "supports", label: "command-output" });
+			}
 		}
 		if (record.path) {
 			const artifactId = `artifact:${record.index}:${slug(artifactBasename(record.path))}`;
@@ -13901,6 +13932,7 @@ function buildAttackGraph(): AttackGraphArtifact {
 		}
 		const shouldAddHypothesis =
 			record.fact && (evidenceRecordHasHypothesisSignal(record) || evidenceRecordHasCounterSignal(record) || record.command || record.path);
+		const priorHypotheses = openEvidenceHypotheses.slice(-4);
 		if (shouldAddHypothesis) {
 			const hypothesisId = `hypothesis:${record.index}:${slug(record.title)}`;
 			addNode({
@@ -13919,6 +13951,8 @@ function buildAttackGraph(): AttackGraphArtifact {
 				evidence: [record.title],
 			});
 			addEdge({ from: record.evidenceId, to: hypothesisId, kind: "supports", label: `P${record.priority}` });
+			if (commandOutputId)
+				addEdge({ from: commandOutputId, to: hypothesisId, kind: "supports", label: "command-output-hypothesis" });
 			if (record.verify) {
 				const verifyId = `verify:${record.index}:${slug(record.verify)}`;
 				addNode({
@@ -13938,6 +13972,7 @@ function buildAttackGraph(): AttackGraphArtifact {
 				});
 				addEdge({ from: verifyId, to: hypothesisId, kind: "verifies", label: "verify command" });
 			}
+			openEvidenceHypotheses.push(hypothesisId);
 		}
 		if (evidenceRecordHasCounterSignal(record)) {
 			const counterId = `counter:${record.index}:${slug(record.title)}`;
@@ -13958,6 +13993,14 @@ function buildAttackGraph(): AttackGraphArtifact {
 			});
 			const hypothesisId = `hypothesis:${record.index}:${slug(record.title)}`;
 			addEdge({ from: counterId, to: hypothesisId, kind: "refutes", label: "counter-evidence" });
+			for (const priorHypothesisId of priorHypotheses) {
+				addEdge({
+					from: counterId,
+					to: priorHypothesisId,
+					kind: "refutes",
+					label: "counter-evidence-prior-hypothesis",
+				});
+			}
 		}
 	}
 
