@@ -502,9 +502,17 @@ repi memory repair --dry-run
 ```bash
 npm run check
 node scripts/reverse-agent/repi-smoke.mjs . --json
-# 发版前再跑一次真实 tarball 安装 smoke:
-npm run smoke:release -- --json
 ```
+
+上线/发版前必须多跑三项真实入口验证:
+
+```bash
+npm run smoke:install-path -- --json          # 安装后 repi 是否进 PATH / shell rc
+npm run smoke:release -- . --json            # pack → fresh npm install → repi + /goal + REPI_* env
+npm run smoke:extensions -- --json           # 真实安装 pi-web-access + @narumitw/pi-goal
+```
+
+GitHub Release workflow 也会在上传 tarball 前执行 `npm run smoke:release -- . --skip-build --json`，保证发布资产不是只 build 未安装验证。
 
 这些检查不依赖私有模型、不要求外部凭据、不访问真实目标,也不依赖某个特定 MCP。
 

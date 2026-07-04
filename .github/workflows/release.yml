@@ -57,6 +57,14 @@ jobs:
       - name: REPI offline smoke
         run: node scripts/reverse-agent/repi-smoke.mjs . --json
 
+      # This is the release-critical gate: it packs the four local npm
+      # artifacts, installs them into a fresh throwaway project, and validates
+      # the user-facing entrypoints that must work after a GitHub Release:
+      # `repi` on PATH, `/goal` in print/json/RPC, fresh env-only models, stale
+      # saved-provider override, and `repi doctor` diagnostics.
+      - name: REPI release tarball install smoke
+        run: npm run smoke:release -- . --skip-build --json
+
       - name: No generated diff
         run: |
           git diff --check

@@ -37,6 +37,7 @@ function firstMissing(text, values) {
 
 const requiredFiles = [
 	"repi",
+	".github/workflows/release.yml",
 	"README.md",
 	"AGENTS.md",
 	"docs/reverse-agent/mainline-overhaul.md",
@@ -137,6 +138,22 @@ rows.push(
 			]),
 		`smoke:release=${packageJson.scripts?.["smoke:release"] ?? "<missing>"}`,
 		"Keep a release tarball smoke that installs packed npm artifacts and validates repi + /goal + REPI_* env.",
+	),
+);
+rows.push(
+	check(
+		"validation:release-workflow-tarball-gate",
+		includesAll(read(".github/workflows/release.yml"), [
+			"REPI release tarball install smoke",
+			"npm run smoke:release -- . --skip-build --json",
+			"`repi` on PATH",
+			"`/goal` in print/json/RPC",
+			"fresh env-only models",
+			"stale",
+			"`repi doctor` diagnostics",
+		]),
+		"release workflow runs the same tarball install smoke before uploading assets",
+		"Keep GitHub Releases gated by the packed-tarball install smoke, not just build/check.",
 	),
 );
 rows.push(

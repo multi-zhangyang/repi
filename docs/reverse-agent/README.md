@@ -9,7 +9,12 @@ REPI 的主题是逆向渗透执行，不是泛安全助手、通用 coding agen
 ```bash
 npm run check
 node scripts/reverse-agent/repi-smoke.mjs . --json
+npm run smoke:install-path -- --json
+npm run smoke:release -- . --json
+npm run smoke:extensions -- --json
 ```
+
+Release workflow 在上传 GitHub Release tarball 前会跑 `npm run smoke:release -- . --skip-build --json`。这条 smoke 会把四个 workspace 包 pack 成 `.tgz`、装进 fresh project，然后验证 `repi` 命令、`/goal` print/json/RPC、fresh env-only 模型、旧默认模型覆盖和 `repi doctor`。不要发布只经过 build/check、没有经过 tarball 安装验证的资产。
 
 核心文档：
 
