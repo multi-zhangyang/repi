@@ -110,4 +110,46 @@ describe("createAgentSession REPI env model priority", () => {
 			session.dispose();
 		}
 	});
+
+	it("uses REPI_* env model instead of a saved default provider/model", async () => {
+		const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
+		const modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+		modelRegistry.registerProvider("kimchi", {
+			name: "Kimchi",
+			api: "openai-completions",
+			baseUrl: "https://kimchi.example.invalid/v1",
+			apiKey: "$KIMCHI_TEST_KEY",
+			models: [
+				{
+					id: "kimi-k2.7",
+					name: "Kimi K2.7",
+					contextWindow: 262144,
+					maxTokens: 16384,
+					input: ["text"],
+					reasoning: true,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				},
+			],
+		});
+
+		const settingsManager = SettingsManager.create(cwd, agentDir);
+		settingsManager.setDefaultModelAndProvider("kimchi", "kimi-k2.7");
+
+		const { session } = await createAgentSession({
+			cwd,
+			agentDir,
+			authStorage,
+			modelRegistry,
+			settingsManager,
+			sessionManager: SessionManager.inMemory(cwd),
+			resourceLoader: createTestResourceLoader(),
+		});
+		try {
+			expect(session.agent.state.model.provider).toBe("repi-env");
+			expect(session.agent.state.model.id).toBe("morph-glm52-744b");
+			expect(session.agent.state.model.contextWindow).toBe(262144);
+		} finally {
+			session.dispose();
+		}
+	});
 });

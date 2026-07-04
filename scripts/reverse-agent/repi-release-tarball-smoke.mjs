@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 
@@ -137,6 +137,52 @@ try {
 	rows.push(run("package-bin:env-model", repiBin, ["--offline", "--list-models"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: envAgentDir }, expectOutput: ["repi-env", "release-smoke-env-model", "262.1K"], rejectOutput: ["kimchi", "aigateway"] }));
 	rows.push(run("package-bin:model-status-env", repiBin, ["model", "status", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "model-status-agent") }, expectOutput: ['"source": "REPI_* environment"', '"provider": "repi-env"', '"model": "release-smoke-env-model"'], rejectOutput: ["https://release-smoke.invalid"] }));
 	rows.push(run("package-bin:doctor-env-model", repiBin, ["doctor", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "doctor-agent") }, timeout: 120_000, expectOutput: ['"ok": true', '"goal:built-in-mode"', '"goal:footer-status-contract"', '"models:env-only-contract"'] }));
+	const staleDefaultAgentDir = join(outDir, "stale-default-agent");
+	mkdirSync(staleDefaultAgentDir, { recursive: true });
+	writeFileSync(join(staleDefaultAgentDir, "settings.json"), `${JSON.stringify({ defaultProvider: "kimchi", defaultModel: "kimi-k2.7" }, null, "\t")}\n`);
+	writeFileSync(
+		join(staleDefaultAgentDir, "models.json"),
+		`${JSON.stringify(
+			{
+				providers: {
+					kimchi: {
+						name: "Kimchi stale default",
+						baseUrl: "https://kimchi-stale.invalid/v1",
+						apiKey: "$KIMCHI_RELEASE_SMOKE_KEY",
+						api: "openai-completions",
+						models: [
+							{
+								id: "kimi-k2.7",
+								name: "Kimi stale default",
+								contextWindow: 262144,
+								maxTokens: 16384,
+								input: ["text"],
+								reasoning: false,
+								cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+							},
+						],
+					},
+				},
+			},
+			null,
+			"\t",
+		)}\n`,
+	);
+	rows.push(
+		run("package-bin:rpc-env-overrides-saved-default", repiBin, ["--offline", "--mode", "rpc", "--no-session"], {
+			cwd: installDir,
+			env: {
+				...envModel,
+				REPI_CODING_AGENT_DIR: staleDefaultAgentDir,
+				REPI_PROVIDER: "morph",
+				REPI_MODEL: "morph-env-model",
+				KIMCHI_RELEASE_SMOKE_KEY: "stale-kimchi-key",
+			},
+			input: `${JSON.stringify({ id: "state", type: "get_state" })}\n`,
+			expectOutput: ['"provider":"morph"', '"id":"morph-env-model"', '"contextWindow":262144'],
+			rejectOutput: ['"provider":"kimchi"', '"id":"kimi-k2.7"'],
+		}),
+	);
 	rows.push(
 		run("package-bin:rpc-goal", repiBin, ["--offline", "--mode", "rpc", "--no-session"], {
 			cwd: installDir,
