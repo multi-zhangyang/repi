@@ -91,6 +91,10 @@ function responseByCommand(lines, command) {
 	return lines.find((line) => line?.type === "response" && line.command === command);
 }
 
+function responseById(lines, id) {
+	return lines.find((line) => line?.type === "response" && line.id === id);
+}
+
 async function runRpcProbe() {
 	const startedAt = Date.now();
 	const id = "rpc:pi-web-access-and-goal";
@@ -116,13 +120,21 @@ async function runRpcProbe() {
 	child.stdout.on("data", (chunk) => {
 		stdout += chunk;
 		const lines = parseJsonl(stdout);
-		if (responseByCommand(lines, "get_commands") && responseByCommand(lines, "get_tools")) finish();
+		if (
+			responseByCommand(lines, "get_state") &&
+			responseByCommand(lines, "get_commands") &&
+			responseByCommand(lines, "get_tools") &&
+			responseById(lines, "goal-status")
+		)
+			finish();
 	});
 	child.stderr.on("data", (chunk) => {
 		stderr += chunk;
 	});
+	child.stdin.write(`${JSON.stringify({ id: "state", type: "get_state" })}\n`);
 	child.stdin.write(`${JSON.stringify({ id: "commands", type: "get_commands" })}\n`);
 	child.stdin.write(`${JSON.stringify({ id: "tools", type: "get_tools" })}\n`);
+	child.stdin.write(`${JSON.stringify({ id: "goal-status", type: "prompt", message: "/goal status" })}\n`);
 	child.stdin.end();
 	const close = await new Promise((resolve) => {
 		child.on("close", (code, signal) => resolve({ code, signal }));
@@ -133,15 +145,27 @@ async function runRpcProbe() {
 	const lines = parseJsonl(stdout);
 	const commandResponse = responseByCommand(lines, "get_commands");
 	const toolResponse = responseByCommand(lines, "get_tools");
+	const stateResponse = responseByCommand(lines, "get_state");
+	const goalStatusResponse = responseById(lines, "goal-status");
 	const commands = commandResponse?.data?.commands ?? [];
 	const tools = toolResponse?.data?.tools ?? [];
 	const commandNames = commands.map((command) => command.name);
 	const toolNames = tools.map((tool) => tool.name);
 	const goalCommands = commands.filter((command) => command.name === "goal");
 	const goalTools = tools.filter((tool) => tool.name === "goal_complete");
+	const statusRequests = lines.filter((line) => line?.type === "extension_ui_request" && line?.method === "setStatus");
+	const notifications = lines.filter((line) => line?.type === "extension_ui_request" && line?.method === "notify");
 	const failures = [];
+	if (!stateResponse?.success) failures.push("missing get_state response");
 	if (!commandResponse?.success) failures.push("missing get_commands response");
 	if (!toolResponse?.success) failures.push("missing get_tools response");
+	if (!goalStatusResponse?.success) failures.push("missing /goal status response");
+	if (stateResponse?.data?.model?.provider !== "extension-smoke")
+		failures.push(`REPI_* env provider not active: ${stateResponse?.data?.model?.provider ?? "<missing>"}`);
+	if (stateResponse?.data?.model?.id !== "extension-smoke-model")
+		failures.push(`REPI_* env model not active: ${stateResponse?.data?.model?.id ?? "<missing>"}`);
+	if (stateResponse?.data?.model?.contextWindow !== 262144)
+		failures.push(`REPI_* env context not active: ${stateResponse?.data?.model?.contextWindow ?? "<missing>"}`);
 	for (const name of ["websearch", "curator", "search", "skill:librarian"]) {
 		if (!commandNames.includes(name)) failures.push(`missing command ${name}`);
 	}
@@ -162,6 +186,22 @@ async function runRpcProbe() {
 	if (!tools.some((tool) => tool.name === "web_search" && tool.sourceInfo?.source === "npm:pi-web-access")) {
 		failures.push("pi-web-access web_search tool did not keep npm source metadata");
 	}
+	if (
+		!statusRequests.some(
+			(request) => request.statusKey === "repi" && request.statusText === "REPI kernel profile ready",
+		)
+	) {
+		failures.push("REPI footer status was not emitted after npm extensions loaded");
+	}
+	if (!statusRequests.some((request) => request.statusKey === "goal" && request.statusText === undefined)) {
+		failures.push("fresh /goal footer clear status was not emitted after npm extensions loaded");
+	}
+	if (!notifications.some((request) => String(request.message ?? "").includes("No goal is currently set."))) {
+		failures.push("/goal status did not come from built-in REPI goal mode after npm extensions loaded");
+	}
+	if (stdout.includes('"provider":"kimchi"') || stdout.includes('"id":"kimi-k2.7"')) {
+		failures.push("stale kimchi default leaked into extension RPC smoke");
+	}
 
 	const exit = failures.length === 0 ? 0 : 1;
 	const row = {
@@ -176,12 +216,15 @@ async function runRpcProbe() {
 		stderrTail: stderr.slice(-2400),
 		error: close.error ? String(close.error.message || close.error) : undefined,
 		summary: {
+			modelProvider: stateResponse?.data?.model?.provider,
+			modelId: stateResponse?.data?.model?.id,
 			commandCount: commands.length,
 			toolCount: tools.length,
 			webCommands: commandNames.filter((name) => ["websearch", "curator", "search", "skill:librarian"].includes(name)),
 			webTools: toolNames.filter((name) => ["web_search", "fetch_content", "get_search_content"].includes(name)),
 			goalCommands: goalCommands.map((command) => command.sourceInfo?.path),
 			goalTools: goalTools.map((tool) => tool.sourceInfo?.path),
+			footerStatuses: statusRequests.map((request) => `${request.statusKey}:${request.statusText ?? "<clear>"}`),
 		},
 	};
 	if (!json) console.log(`${exit === 0 ? "PASS" : "FAIL"} ${id} exit=${exit} ms=${row.ms}`);
