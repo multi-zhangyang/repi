@@ -5,6 +5,7 @@ import {
 	type RepiProofLoopGapItem,
 	repiProofLoopCommandTarget,
 	repiProofLoopQuickPathFromItems,
+	repiProofLoopRuntimeAdapterCommands,
 	repiProofLoopSpecialistQueueFromItems,
 	repiProofLoopWorkerForText,
 } from "../src/core/repi/proof-loop.ts";
@@ -99,5 +100,18 @@ describe("REPI proof-loop pure planner", () => {
 		expect(
 			repiProofLoopSpecialistQueueFromItems([gap("artifact missing", { worker: "native-runtime" })], "./vuln")[0],
 		).toContain("re_delegate plan ./vuln");
+	});
+
+	it("builds bounded target-runtime adapter commands for proof-loop front-loading", () => {
+		expect(
+			repiProofLoopRuntimeAdapterCommands(
+				["gdb-native-trace-adapter", "r2-native-xref-adapter", "gdb-native-trace-adapter", "bad;rm-rf-adapter"],
+				" ./target ",
+			),
+		).toEqual([
+			"re_runtime_adapter run gdb-native-trace-adapter ./target",
+			"re_runtime_adapter run r2-native-xref-adapter ./target",
+		]);
+		expect(repiProofLoopRuntimeAdapterCommands(["web-cdp-network-adapter"], "")).toEqual([]);
 	});
 });

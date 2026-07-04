@@ -60,6 +60,7 @@ import {
 	formatRepiProofLoopGapClassifier as formatProofLoopGapClassifier,
 	repiProofLoopCommandTarget as proofLoopCommandTarget,
 	repiProofLoopQuickPathFromItems as proofLoopQuickPathFromItems,
+	repiProofLoopRuntimeAdapterCommands as proofLoopRuntimeAdapterCommands,
 	repiProofLoopSpecialistQueueFromItems as proofLoopSpecialistQueueFromItems,
 	repiProofLoopWorkerForText as proofLoopWorkerForText,
 	type RepiProofLoopGapItem as ProofLoopGapItem,
@@ -24839,8 +24840,26 @@ function proofLoopGapClassifier(target?: string): string[] {
 	return formatProofLoopGapClassifier(proofLoopGapItems(target));
 }
 
+function proofLoopTargetRuntimeAdapterCommands(target?: string): string[] {
+	const targetRef = target?.trim();
+	if (!targetRef) return [];
+	const profile = inspectRuntimeAdapterTarget(targetRef);
+	const targetKinds = new Set(profile.targetKinds);
+	const mobilePackageId =
+		targetKinds.has("mobile-package") && /^([a-z][a-z0-9_]*\.){2,}[a-z][a-z0-9_]*$/i.test(targetRef);
+	const strongRuntimeTarget =
+		profile.exists ||
+		targetKinds.has("web-url") ||
+		targetKinds.has("cdp-endpoint") ||
+		mobilePackageId;
+	if (!strongRuntimeTarget) return [];
+	return proofLoopRuntimeAdapterCommands(profile.adapterIds, targetRef);
+}
+
 function proofLoopQuickPath(target?: string): string[] {
-	return proofLoopQuickPathFromItems(proofLoopGapItems(target), target);
+	return Array.from(
+		new Set([...proofLoopTargetRuntimeAdapterCommands(target), ...proofLoopQuickPathFromItems(proofLoopGapItems(target), target)]),
+	);
 }
 
 function proofLoopSpecialistQueue(target?: string): string[] {
@@ -24904,7 +24923,10 @@ function buildProofLoopSteps(target?: string): ProofLoopStep[] {
 	const graphGapCommands = proofLoopQuickPathFromItems(graphGapItems, target).filter((command) =>
 		/^(?:re_graph build|re_runtime_adapter )/i.test(command),
 	);
+	const targetRuntimeCommands = proofLoopTargetRuntimeAdapterCommands(target);
+	const targetRuntimeCommandSet = new Set(targetRuntimeCommands);
 	const specs: Array<[ProofLoopPhase, string]> = [
+		...targetRuntimeCommands.map((command): [ProofLoopPhase, string] => ["runtime-adapter", command]),
 		["verifier", `re_verifier matrix${suffix}`],
 		["compiler", `re_compiler draft${suffix}`],
 		["replayer", `re_replayer run ${replayTarget} 2`],
@@ -24937,19 +24959,23 @@ function buildProofLoopSteps(target?: string): ProofLoopStep[] {
 				? "target placeholder is unresolved"
 				: phase === "compact-resume"
 					? "source=compact_resume"
-					: phase === "failure-signature"
-						? "source=failure_signature_priority"
-						: phase === "attack-graph" || phase === "runtime-adapter"
-							? "source=attack_graph_gap"
-							: undefined,
+				: phase === "failure-signature"
+					? "source=failure_signature_priority"
+					: phase === "attack-graph" || phase === "runtime-adapter"
+						? targetRuntimeCommandSet.has(command)
+							? "source=target_auto_detection"
+							: "source=attack_graph_gap"
+						: undefined,
 			sourceArtifacts:
 				phase === "compact-resume"
 					? [compactResume.path, ...sourceArtifacts]
 					: phase === "failure-signature"
 						? failureSignaturePriority.sourceArtifacts
-						: phase === "attack-graph" || phase === "runtime-adapter"
-							? Array.from(new Set(graphGapItems.flatMap((item) => item.sourceArtifacts))).slice(0, 16)
-							: sourceArtifacts,
+					: phase === "attack-graph" || phase === "runtime-adapter"
+						? targetRuntimeCommandSet.has(command)
+							? sourceArtifacts
+							: Array.from(new Set(graphGapItems.flatMap((item) => item.sourceArtifacts))).slice(0, 16)
+						: sourceArtifacts,
 		};
 	});
 }
@@ -25006,11 +25032,26 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 	const graphGapCommands = proofLoopQuickPathFromItems(graphGapItems, proof.target).filter((command) =>
 		/^(?:re_graph build|re_runtime_adapter )/i.test(command),
 	);
+	const targetRuntimeCommands = proofLoopTargetRuntimeAdapterCommands(proof.target);
+	const targetRuntimeSteps: ProofLoopStep[] = targetRuntimeCommands
+		.filter((command) => !existingCommands.has(command))
+		.slice(0, 4)
+		.map((command, index) => ({
+			id: `proof:${proof.steps.length + index + 1}:runtime-adapter`,
+			phase: "runtime-adapter",
+			command,
+			status: /<target>/i.test(command) && !proof.target ? "blocked" : "ready",
+			reason:
+				/<target>/i.test(command) && !proof.target
+					? "target placeholder is unresolved"
+					: "source=target_auto_detection",
+			sourceArtifacts: proofLoopSourceArtifacts(proof.target),
+		}));
 	const compactResumeSteps: ProofLoopStep[] = compactResumeQueue
 		.filter((command) => !existingCommands.has(command))
 		.slice(0, 4)
 		.map((command, index) => ({
-			id: `proof:${proof.steps.length + index + 1}:compact-resume`,
+			id: `proof:${proof.steps.length + targetRuntimeSteps.length + index + 1}:compact-resume`,
 			phase: "compact-resume",
 			command,
 			status: /<target>/i.test(command) && !proof.target ? "blocked" : "ready",
@@ -25022,7 +25063,7 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 		.filter((command) => !existingCommands.has(command))
 		.slice(0, 4)
 		.map((command, index) => ({
-			id: `proof:${proof.steps.length + compactResumeSteps.length + index + 1}:attack-graph`,
+			id: `proof:${proof.steps.length + targetRuntimeSteps.length + compactResumeSteps.length + index + 1}:attack-graph`,
 			phase: /^re_runtime_adapter /i.test(command) ? ("runtime-adapter" as const) : ("attack-graph" as const),
 			command,
 			status: /<target>/i.test(command) && !proof.target ? "blocked" : "ready",
@@ -25036,7 +25077,7 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 		.filter((command) => !existingCommands.has(command))
 		.slice(0, 4)
 		.map((command, index) => ({
-			id: `proof:${proof.steps.length + compactResumeSteps.length + graphGapSteps.length + index + 1}:failure-signature`,
+			id: `proof:${proof.steps.length + targetRuntimeSteps.length + compactResumeSteps.length + graphGapSteps.length + index + 1}:failure-signature`,
 			phase: "failure-signature",
 			command,
 			status: /<target>/i.test(command) && !proof.target ? "blocked" : "ready",
@@ -25050,14 +25091,21 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 		.filter((command) => !existingCommands.has(command))
 		.slice(0, 4)
 		.map((command, index) => ({
-			id: `proof:${proof.steps.length + compactResumeSteps.length + graphGapSteps.length + failureSignatureSteps.length + index + 1}:operator-feedback`,
+			id: `proof:${proof.steps.length + targetRuntimeSteps.length + compactResumeSteps.length + graphGapSteps.length + failureSignatureSteps.length + index + 1}:operator-feedback`,
 			phase: "operator-feedback",
 			command,
 			status: /<target>/i.test(command) && !proof.target ? "blocked" : "ready",
 			reason: /<target>/i.test(command) && !proof.target ? "target placeholder is unresolved" : undefined,
 			sourceArtifacts: operatorFeedback.sourceArtifacts,
 		}));
-	const steps = [...proof.steps, ...failureSignatureSteps, ...compactResumeSteps, ...graphGapSteps, ...operatorFeedbackSteps];
+	const steps = [
+		...proof.steps,
+		...targetRuntimeSteps,
+		...failureSignatureSteps,
+		...compactResumeSteps,
+		...graphGapSteps,
+		...operatorFeedbackSteps,
+	];
 	const gapItems = proofLoopGapItems(proof.target);
 	const swarmRetry = proofLoopSwarmRetryQueue(proof.target);
 	const specialistQueue = proofLoopSpecialistQueueFromItems(gapItems, proof.target);
@@ -25067,7 +25115,7 @@ function refreshProofLoop(proof: ProofLoopArtifact): ProofLoopArtifact {
 	const caseMemoryBridge = caseMemoryProofBridge(caseMemoryLanePlan, proof.target);
 	const autonomousBudget = autonomousExecutionBudget(proof.target);
 	const gapClassifier = formatProofLoopGapClassifier(gapItems);
-	const quickPath = proofLoopQuickPathFromItems(gapItems, proof.target);
+	const quickPath = proofLoopQuickPath(proof.target);
 	return {
 		...proof,
 		steps,

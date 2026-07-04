@@ -171,6 +171,14 @@ export function repiProofLoopCommandTarget(target?: string): string {
 	return target?.trim() ? ` ${target.trim()}` : "";
 }
 
+export function repiProofLoopRuntimeAdapterCommands(adapterIds: string[], target?: string): string[] {
+	const targetRef = target?.trim();
+	if (!targetRef) return [];
+	return Array.from(new Set(adapterIds.filter((adapterId) => /^[a-z0-9][a-z0-9-]*-adapter$/i.test(adapterId))))
+		.slice(0, 4)
+		.map((adapterId) => `re_runtime_adapter run ${adapterId} ${targetRef}`);
+}
+
 function appendProofSpine(commands: string[], targetRef: string, options: { includeAutofixPlan?: boolean } = {}): void {
 	commands.push(`re_verifier matrix ${targetRef}`, `re_compiler draft ${targetRef}`, `re_replayer run ${targetRef} 1`);
 	if (options.includeAutofixPlan) commands.push(`re_autofix plan ${targetRef}`);
