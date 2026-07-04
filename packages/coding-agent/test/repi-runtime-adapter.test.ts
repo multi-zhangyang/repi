@@ -174,6 +174,51 @@ describe("REPI runtime adapter pure contracts", () => {
 			]),
 		);
 		expect(webSummary.missingProofExitSignals).toEqual([]);
+
+		const har = join(tempDir, "signed-flow.har");
+		writeFileSync(
+			har,
+			JSON.stringify({
+				log: {
+					entries: [
+						{
+							request: {
+								method: "POST",
+								url: "https://example.test/api/orders?nonce=123&timestamp=456",
+								headers: [{ name: "x-signature", value: "abc" }],
+								postData: { text: '{"signature":"abc","timestamp":456}' },
+							},
+							response: {
+								status: 200,
+								headers: [{ name: "etag", value: "signed-response" }],
+								content: { mimeType: "application/json", text: '{"ok":true}' },
+							},
+						},
+					],
+				},
+			}),
+		);
+		const harOutput = execFileSync(
+			"bash",
+			["-lc", materializeRuntimeAdapterCommand(webAdapter.commandTemplate, har)],
+			{
+				encoding: "utf8",
+				env: { ...process.env, REPI_ADAPTER_TARGET: har },
+				timeout: 10_000,
+			},
+		);
+		const harSummary = summarizeRuntimeAdapterSignals(webAdapter, parseRuntimeAdapterSignals(webAdapter, harOutput));
+		expect(harOutput).toContain("[har-file]");
+		expect(harOutput).toContain("[request-order] index=1");
+		expect(harSummary.matchedProofExitSignals).toEqual(
+			expect.arrayContaining([
+				"HTTP/CDP response capture",
+				"XHR/WS route extraction",
+				"request order proof",
+				"signed request replay",
+			]),
+		);
+		expect(harSummary.missingProofExitSignals).toEqual([]);
 	});
 
 	test("keeps pwn verifier evidence tied to real runs instead of synthetic success markers", () => {

@@ -1272,6 +1272,7 @@ rows.push(
 		syntheticRuntimeAdapterHits.length === 0 &&
 			includesAll(runtimeAdapterSource, [
 				"[http-response]",
+				"[har-file]",
 				"[route-candidate]",
 				"[crypto-request-field]",
 				"[pwn-exec-run]",
