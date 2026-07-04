@@ -1238,6 +1238,8 @@ rows.push(
 				"goal_complete",
 				"🎯 active 0/1k",
 				"🎯 complete",
+				"returns /goal help and fresh status over RPC without starting a model turn",
+				"No goal is currently set.",
 			]) &&
 			includesAll(printModeTests, [
 				"prints extension notifications in text mode so slash-command help is visible without a TUI",

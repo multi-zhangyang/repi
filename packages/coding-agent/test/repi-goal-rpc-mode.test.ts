@@ -193,4 +193,34 @@ describe("REPI goal mode over RPC", () => {
 			await harness.cleanup();
 		}
 	});
+
+	it("returns /goal help and fresh status over RPC without starting a model turn", async () => {
+		const harness = await startGoalRpcHarness();
+		try {
+			harness.lineHandler(JSON.stringify({ id: "goal-help", type: "prompt", message: "/goal help" }));
+			harness.lineHandler(JSON.stringify({ id: "goal-status", type: "prompt", message: "/goal status" }));
+
+			await vi.waitFor(() => {
+				expect(responseById("goal-help")).toMatchObject({ success: true, command: "prompt" });
+				expect(responseById("goal-status")).toMatchObject({ success: true, command: "prompt" });
+			});
+
+			const notifications = extensionRequests("notify").map((request) => String(request.message));
+			expect(notifications.join("\n")).toContain("REPI /goal runs a task until verified completion.");
+			expect(notifications.join("\n")).toContain("No goal is currently set.");
+			expect(
+				extensionRequests("setStatus").some(
+					(request) => request.statusKey === "goal" && request.statusText === undefined,
+				),
+			).toBe(true);
+			expect(harness.faux.contexts).toHaveLength(0);
+			expect(
+				harness.sessionManager
+					.getEntries()
+					.some((entry) => entry.type === "custom" && entry.customType === REPI_GOAL_STATE_ENTRY_TYPE),
+			).toBe(false);
+		} finally {
+			await harness.cleanup();
+		}
+	});
 });
