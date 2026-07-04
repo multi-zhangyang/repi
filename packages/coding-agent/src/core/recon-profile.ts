@@ -13300,6 +13300,27 @@ function buildAttackGraph(): AttackGraphArtifact {
 	const sourceArtifacts: string[] = [];
 	const gaps: string[] = [];
 	const criticalPath: string[] = [];
+	const runtimeArtifactLineage = runtimeAdapterArtifacts.map(({ path, artifact }) => {
+		const artifactBase = artifactBasename(path);
+		return {
+			path,
+			artifact,
+			artifactBase,
+			adapterId: artifact.adapterId,
+			target: artifact.target ?? "",
+			artifactId: `artifact:runtime-adapter:${slug(artifact.adapterId)}:${slug(artifactBase)}`,
+			commandId: `command:runtime-adapter:${slug(artifact.adapterId)}:${slug(artifactBase)}`,
+		};
+	});
+	const runtimeArtifactsForCommand = (command: string) => {
+		if (!/\bre_runtime_adapter\s+run\b/i.test(command)) return [];
+		const lowerCommand = command.toLowerCase();
+		return runtimeArtifactLineage.filter((lineage) => {
+			const adapterMatches = lowerCommand.includes(lineage.adapterId.toLowerCase());
+			const targetMatches = lineage.target.length > 0 && lowerCommand.includes(lineage.target.toLowerCase());
+			return adapterMatches || targetMatches;
+		});
+	};
 
 	if (!mission) {
 		gaps.push("no active mission");
@@ -13420,10 +13441,11 @@ function buildAttackGraph(): AttackGraphArtifact {
 
 	for (const { path, artifact } of runtimeAdapterArtifacts) {
 		sourceArtifacts.push(path);
-		const artifactBase = artifactBasename(path);
+		const lineage = runtimeArtifactLineage.find((item) => item.path === path);
+		const artifactBase = lineage?.artifactBase ?? artifactBasename(path);
 		const adapterId = `tool:runtime-adapter:${slug(artifact.adapterId)}`;
-		const artifactId = `artifact:runtime-adapter:${slug(artifact.adapterId)}:${slug(artifactBase)}`;
-		const commandId = `command:runtime-adapter:${slug(artifact.adapterId)}:${slug(artifactBase)}`;
+		const artifactId = lineage?.artifactId ?? `artifact:runtime-adapter:${slug(artifact.adapterId)}:${slug(artifactBase)}`;
+		const commandId = lineage?.commandId ?? `command:runtime-adapter:${slug(artifact.adapterId)}:${slug(artifactBase)}`;
 		const parserMatchCount = artifact.parserSignals.reduce((sum, signal) => sum + signal.matches.length, 0);
 		const parserSummary = runtimeAdapterParserSummaryForGraph(artifact);
 		const parserSummaryId = `summary:runtime-adapter:${slug(artifact.adapterId)}:${slug(artifactBase)}`;
@@ -13672,8 +13694,8 @@ function buildAttackGraph(): AttackGraphArtifact {
 			addEdge({ from: proofId, to: commandId, kind: "suggests", label: "quick_path" });
 		}
 
-		for (const step of proof.steps.slice(0, 18)) {
-			const stepId = `command:proof-loop:${slug(proofBase)}:${slug(step.id)}`;
+			for (const step of proof.steps.slice(0, 18)) {
+				const stepId = `command:proof-loop:${slug(proofBase)}:${slug(step.id)}`;
 			addNode({
 				id: stepId,
 				kind: "command",
@@ -13691,16 +13713,43 @@ function buildAttackGraph(): AttackGraphArtifact {
 				evidence: step.sourceArtifacts.slice(0, 4),
 				note: step.reason,
 			});
-			addEdge({
-				from: stepId,
-				to: proofId,
-				kind: step.status === "blocked" ? "blocks" : step.status === "done" ? "verifies" : "requires",
-				label: `proof-loop:${step.phase}`,
-			});
-		}
+				addEdge({
+					from: stepId,
+					to: proofId,
+					kind: step.status === "blocked" ? "blocks" : step.status === "done" ? "verifies" : "requires",
+					label: `proof-loop:${step.phase}`,
+				});
+				for (const lineage of runtimeArtifactsForCommand(step.command).slice(0, 4)) {
+					const lineageId = `artifact:proof-loop-runtime-lineage:${slug(proofBase)}:${slug(step.id)}:${slug(lineage.artifactBase)}`;
+					addNode({
+						id: lineageId,
+						kind: "artifact",
+						label: lineage.artifactBase,
+						status: `runtime-adapter-lineage ${lineage.adapterId}`,
+						path: lineage.path,
+						note: `target=${lineage.target || "<none>"}`,
+					});
+					addTask({
+						id: lineageId,
+						parentId: stepId,
+						kind: "artifact",
+						label: lineage.artifactBase,
+						status: `runtime-adapter-lineage ${lineage.adapterId}`,
+						path: lineage.path,
+						evidence: [
+							`adapter=${lineage.adapterId}`,
+							`target=${lineage.target || "<none>"}`,
+							`runtime_artifact=${lineage.path}`,
+						],
+					});
+					addEdge({ from: stepId, to: lineageId, kind: "produces", label: "runtime-adapter-lineage" });
+					addEdge({ from: lineageId, to: lineage.artifactId, kind: "supports", label: "runtime-adapter-json" });
+					addEdge({ from: lineage.artifactId, to: proofId, kind: "verifies", label: "runtime-adapter-artifact" });
+				}
+			}
 
-		for (const execution of proof.executed.slice(0, 12)) {
-			const executionId = `run:proof-loop:${slug(proofBase)}:${slug(execution.stepId)}`;
+			for (const execution of proof.executed.slice(0, 12)) {
+				const executionId = `run:proof-loop:${slug(proofBase)}:${slug(execution.stepId)}`;
 			const outputText = execution.output.replace(/\s+/g, " ");
 			const outputHash = sha256Text(execution.output);
 			const outputId = `artifact:proof-loop-output:${slug(proofBase)}:${slug(execution.stepId)}`;
@@ -13736,10 +13785,38 @@ function buildAttackGraph(): AttackGraphArtifact {
 				status: "proof-loop-output-hash",
 				path,
 				evidence: [`output_sha256=${outputHash}`],
-			});
-			addEdge({ from: executionId, to: outputId, kind: "produces", label: "proof-loop-output" });
-			addEdge({ from: outputId, to: proofId, kind: execution.status === "blocked" ? "blocks" : "verifies", label: "executed-output-hash" });
-		}
+				});
+				addEdge({ from: executionId, to: outputId, kind: "produces", label: "proof-loop-output" });
+				addEdge({ from: outputId, to: proofId, kind: execution.status === "blocked" ? "blocks" : "verifies", label: "executed-output-hash" });
+				for (const lineage of runtimeArtifactsForCommand(execution.command).slice(0, 4)) {
+					const lineageId = `artifact:proof-loop-runtime-execution:${slug(proofBase)}:${slug(execution.stepId)}:${slug(lineage.artifactBase)}`;
+					addNode({
+						id: lineageId,
+						kind: "artifact",
+						label: lineage.artifactBase,
+						status: `runtime-adapter-lineage ${lineage.adapterId}`,
+						path: lineage.path,
+						note: `executed=${execution.status} target=${lineage.target || "<none>"}`,
+					});
+					addTask({
+						id: lineageId,
+						parentId: executionId,
+						kind: "artifact",
+						label: lineage.artifactBase,
+						status: `runtime-adapter-lineage ${lineage.adapterId}`,
+						path: lineage.path,
+						evidence: [
+							`adapter=${lineage.adapterId}`,
+							`target=${lineage.target || "<none>"}`,
+							`runtime_artifact=${lineage.path}`,
+							`proof_execution=${execution.status}`,
+						],
+					});
+					addEdge({ from: executionId, to: lineageId, kind: "produces", label: "runtime-adapter-lineage" });
+					addEdge({ from: lineageId, to: lineage.artifactId, kind: "supports", label: "runtime-adapter-json" });
+					addEdge({ from: lineage.artifactId, to: proofId, kind: "verifies", label: "runtime-adapter-artifact" });
+				}
+			}
 
 		for (const [index, row] of proof.gapClassifier.slice(0, 10).entries()) {
 			const gapId = `gap:proof-loop:${slug(proofBase)}:${index + 1}`;

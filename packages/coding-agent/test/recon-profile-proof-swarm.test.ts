@@ -120,6 +120,8 @@ describe("REPI kernel profile proof-loop and swarm flows", () => {
 		expect(graphText).toContain("proof-loop-output-hash");
 		expect(graphText).toContain("output_sha256");
 		expect(graphText).toContain("re_runtime_adapter run web-cdp-network-adapter https://target.local/app");
+		expect(graphText).toContain("runtime-adapter-lineage");
+		expect(graphText).toContain("runtime-adapter-artifact");
 	});
 
 	it("propagates swarm worker timeout budgets into runtime manifests", async () => {

@@ -1414,6 +1414,8 @@ rows.push(
 			includesAll(reconProfile, [
 				"parseEvidenceLedgerTaskRecords",
 				"runtime-adapter-json",
+				"runtime-adapter-lineage",
+				"runtime-adapter-artifact",
 				"runtime-output-hash",
 				"proof-loop-output",
 				"output_sha256",
