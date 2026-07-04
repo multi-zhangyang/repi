@@ -118,6 +118,9 @@ describe("ModelRegistry", () => {
 			"REPI_MODEL_REASONING",
 			"REPI_REASONING",
 			"REPI_SUBAGENT_MODEL",
+			"REPI_PRODUCT",
+			"REPI_PRIMARY",
+			"REPI_CODING_AGENT_APP_NAME",
 			"REPI_LOAD_BUILTIN_MODELS",
 			"REPI_ENABLE_BUILTIN_MODELS",
 			"REPI_BUILTIN_PROVIDERS",
@@ -235,6 +238,36 @@ describe("ModelRegistry", () => {
 					expect(getModelsForProvider(registry, "openai")).toHaveLength(0);
 					expect(registry.find("repi-env", "env-only-model")).toBeDefined();
 					expect(registry.getAvailable().map((model) => model.provider)).toEqual(["repi-env"]);
+				},
+			);
+		});
+
+		test("defaults to no upstream built-in catalog in REPI product mode unless explicitly re-enabled", async () => {
+			await withRepiModelEnv(
+				{
+					REPI_PRODUCT: "1",
+					OPENAI_API_KEY: "ambient-openai-key-should-not-enable-builtins",
+					REPI_AUTH_TOKEN: "env-runtime-key",
+					REPI_BASE_URL: "https://gateway.example.invalid/v1",
+					REPI_MODEL: "product-env-only-model",
+				},
+				() => {
+					const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+					expect(getModelsForProvider(registry, "openai")).toHaveLength(0);
+					expect(registry.find("repi-env", "product-env-only-model")).toBeDefined();
+					expect(registry.getAvailable().map((model) => model.provider)).toEqual(["repi-env"]);
+				},
+			);
+
+			await withRepiModelEnv(
+				{
+					REPI_PRODUCT: "1",
+					REPI_LOAD_BUILTIN_MODELS: "1",
+					OPENAI_API_KEY: "ambient-openai-key-can-enable-builtins",
+				},
+				() => {
+					const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+					expect(getModelsForProvider(registry, "openai").length).toBeGreaterThan(0);
 				},
 			);
 		});

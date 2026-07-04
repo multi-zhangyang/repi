@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -199,5 +199,86 @@ describe("REPI runtime adapter pure contracts", () => {
 			expect.arrayContaining(["primitive control evidence", "multi-run verifier", "stdout/stderr hash"]),
 		);
 		expect(summary.missingProofExitSignals).toContain("crash-to-offset proof");
+	});
+
+	test("executes real fallback commands for PCAP, mobile package, and pwn fixtures", () => {
+		const pcap = join(tempDir, "capture.pcap");
+		writeFileSync(
+			pcap,
+			Buffer.concat([
+				Buffer.from("d4c3b2a1020004000000000000000000ffff000001000000", "hex"),
+				Buffer.from("GET /login HTTP/1.1\r\nHost: target.local\r\nCookie: sid=abc\r\npassword=demo\r\n", "latin1"),
+			]),
+		);
+		const pcapReport = buildRuntimeAdapterExecutionGate("tshark-pcap-flow-adapter", {
+			toolIndexPath: "/tmp/tool-index.md",
+			isToolPresent: (tool) => tool === "strings",
+		});
+		const pcapAdapter = pcapReport.adapters.find((row) => row.adapterId === "tshark-pcap-flow-adapter")!;
+		const pcapOutput = execFileSync(
+			"bash",
+			["-lc", materializeRuntimeAdapterCommand(pcapAdapter.fallbackCommandTemplate, pcap)],
+			{ encoding: "utf8", timeout: 10_000 },
+		);
+		const pcapSummary = summarizeRuntimeAdapterSignals(
+			pcapAdapter,
+			parseRuntimeAdapterSignals(pcapAdapter, pcapOutput),
+		);
+		expect(pcapOutput).toContain("GET /login HTTP/1.1");
+		expect(pcapSummary.matchedProofExitSignals).toEqual(
+			expect.arrayContaining(["follow-stream", "timeline evidence"]),
+		);
+
+		const apk = join(tempDir, "target.apk");
+		writeFileSync(
+			apk,
+			Buffer.from(
+				"PK\x03\x04 AndroidManifest.xml classes.dex OkHttp CertificatePinner TrustManager Cipher MessageDigest pinning X509",
+				"latin1",
+			),
+		);
+		const mobileReport = buildRuntimeAdapterExecutionGate("frida-mobile-hook-adapter", {
+			toolIndexPath: "/tmp/tool-index.md",
+			isToolPresent: (tool) => tool === "bash",
+		});
+		const mobileAdapter = mobileReport.adapters.find((row) => row.adapterId === "frida-mobile-hook-adapter")!;
+		const mobileOutput = execFileSync(
+			"bash",
+			["-lc", materializeRuntimeAdapterCommand(mobileAdapter.fallbackCommandTemplate, apk)],
+			{ encoding: "utf8", timeout: 10_000 },
+		);
+		const mobileSummary = summarizeRuntimeAdapterSignals(
+			mobileAdapter,
+			parseRuntimeAdapterSignals(mobileAdapter, mobileOutput),
+		);
+		expect(mobileOutput).toMatch(/classes\.dex|OkHttp|CertificatePinner/);
+		expect(mobileSummary.matchedProofExitSignals).toEqual(
+			expect.arrayContaining(["runtime attach env checkpoint", "hook output artifact contract"]),
+		);
+
+		const pwnTarget = join(tempDir, "pwn-fixture.sh");
+		writeFileSync(pwnTarget, "#!/usr/bin/env bash\nprintf 'read write puts system /bin/sh flag token\\n'\n", "utf8");
+		chmodSync(pwnTarget, 0o700);
+		const pwnReport = buildRuntimeAdapterExecutionGate("pwntools-local-verifier-adapter", {
+			toolIndexPath: "/tmp/tool-index.md",
+			isToolPresent: (tool) => tool === "python3",
+		});
+		const pwnAdapter = pwnReport.adapters.find((row) => row.adapterId === "pwntools-local-verifier-adapter")!;
+		const pwnOutput = execFileSync(
+			"bash",
+			["-lc", materializeRuntimeAdapterCommand(pwnAdapter.commandTemplate, pwnTarget)],
+			{
+				encoding: "utf8",
+				env: { ...process.env, REPI_ADAPTER_TARGET: pwnTarget, REPI_EXPLOIT_VERIFY_RUNS: "2" },
+				timeout: 15_000,
+			},
+		);
+		const pwnSummary = summarizeRuntimeAdapterSignals(pwnAdapter, parseRuntimeAdapterSignals(pwnAdapter, pwnOutput));
+		expect(pwnOutput).toContain("[pwn-exec-run] run=1");
+		expect(pwnOutput).toContain("stdout_sha256=");
+		expect(pwnSummary.matchedProofExitSignals).toEqual(
+			expect.arrayContaining(["primitive control evidence", "multi-run verifier", "stdout/stderr hash"]),
+		);
+		expect(pwnOutput).not.toMatch(/manual-confirm|replay diff pending|fallback=portable/i);
 	});
 });

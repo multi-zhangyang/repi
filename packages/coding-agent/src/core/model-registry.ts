@@ -300,8 +300,19 @@ function envBool(names: string[], fallback = false): boolean {
 	return fallback;
 }
 
+function isRuntimeRepiProductMode(): boolean {
+	return (
+		process.env.REPI_PRODUCT === "1" ||
+		process.env.REPI_PRIMARY === "1" ||
+		process.env.REPI_CODING_AGENT_APP_NAME === "repi"
+	);
+}
+
 function shouldLoadBuiltInModelCatalog(): boolean {
-	return envBool(["REPI_LOAD_BUILTIN_MODELS", "REPI_ENABLE_BUILTIN_MODELS", "REPI_BUILTIN_PROVIDERS"], true);
+	return envBool(
+		["REPI_LOAD_BUILTIN_MODELS", "REPI_ENABLE_BUILTIN_MODELS", "REPI_BUILTIN_PROVIDERS"],
+		!isRuntimeRepiProductMode(),
+	);
 }
 
 function envInputList(value: string | undefined): ("text" | "image")[] {
