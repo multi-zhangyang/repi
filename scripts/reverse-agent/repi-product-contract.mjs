@@ -1466,8 +1466,11 @@ rows.push(
 			includesAll(runtimeAdapterSource, [
 				"[http-response]",
 				"[har-file]",
+				"[web-route-map]",
+				"[request-order]",
 				"[route-candidate]",
 				"[crypto-request-field]",
+				"[web-signed-field]",
 				"[mobile-ios-info]",
 				"[mobile-ios-binary]",
 				"[mobile-artifact-string]",

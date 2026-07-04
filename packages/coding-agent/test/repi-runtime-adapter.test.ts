@@ -418,6 +418,52 @@ describe("REPI runtime adapter pure contracts", () => {
 			]),
 		);
 		expect(harSummary.missingProofExitSignals).toEqual([]);
+
+		const fallbackHtml = join(tempDir, "web-fallback.html");
+		writeFileSync(
+			fallbackHtml,
+			[
+				"<script>",
+				"fetch('/api/fallback?nonce=999&timestamp=1000&signature=abc');",
+				"new WebSocket('wss://fallback.example/socket');",
+				"</script>",
+			].join("\n"),
+		);
+		const webFallbackReport = buildRuntimeAdapterExecutionGate("web-cdp-network-adapter", {
+			toolIndexPath: "/tmp/tool-index.md",
+			isToolPresent: (tool) => tool === "curl",
+		});
+		const webFallbackAdapter = webFallbackReport.adapters.find((row) => row.adapterId === "web-cdp-network-adapter")!;
+		expect(webFallbackAdapter.status).toBe("fallback-ready");
+		const webFallbackOutput = execFileSync(
+			"bash",
+			[
+				"-lc",
+				materializeRuntimeAdapterCommand(webFallbackAdapter.fallbackCommandTemplate, `file://${fallbackHtml}`),
+			],
+			{
+				encoding: "utf8",
+				timeout: 10_000,
+			},
+		);
+		const webFallbackSummary = summarizeRuntimeAdapterSignals(
+			webFallbackAdapter,
+			parseRuntimeAdapterSignals(webFallbackAdapter, webFallbackOutput),
+		);
+		expect(webFallbackOutput).toContain("[http-response] status=");
+		expect(webFallbackOutput).toContain("[web-route-map] source=curl index=1 method=GET");
+		expect(webFallbackOutput).toContain("[request-order] index=1");
+		expect(webFallbackOutput).toContain("[route-candidate]");
+		expect(webFallbackOutput).toContain("[web-signed-field] source=curl");
+		expect(webFallbackSummary.matchedProofExitSignals).toEqual(
+			expect.arrayContaining([
+				"HTTP/CDP response capture",
+				"XHR/WS route extraction",
+				"request order proof",
+				"signed request replay",
+			]),
+		);
+		expect(webFallbackSummary.missingProofExitSignals).toEqual([]);
 	});
 
 	test("keeps pwn verifier evidence tied to real runs instead of synthetic success markers", () => {
