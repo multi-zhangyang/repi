@@ -137,6 +137,22 @@ try {
 	rows.push(run("package-bin:env-model", repiBin, ["--offline", "--list-models"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: envAgentDir }, expectOutput: ["repi-env", "release-smoke-env-model", "262.1K"], rejectOutput: ["kimchi", "aigateway"] }));
 	rows.push(run("package-bin:model-status-env", repiBin, ["model", "status", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "model-status-agent") }, expectOutput: ['"source": "REPI_* environment"', '"provider": "repi-env"', '"model": "release-smoke-env-model"'], rejectOutput: ["https://release-smoke.invalid"] }));
 	rows.push(run("package-bin:doctor-env-model", repiBin, ["doctor", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "doctor-agent") }, timeout: 120_000, expectOutput: ['"ok": true', '"launcher:path-command-resolution"', '"launcher:shell-rc-path-activation"', '"goal:built-in-mode"', '"goal:footer-status-contract"', '"goal:rpc-runtime-registration"', '"models:env-only-contract"', '"models:env-rpc-runtime"', '"models:env-overrides-saved-default"', '"repi:launch-readiness"'] }));
+	rows.push(
+		run("package-bin:rpc-fresh-env-footer", repiBin, ["--offline", "--mode", "rpc", "--no-session"], {
+			cwd: installDir,
+			env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "rpc-fresh-env-footer-agent") },
+			input: `${JSON.stringify({ id: "state", type: "get_state" })}\n`,
+			expectOutput: [
+				'"statusKey":"repi"',
+				'"statusText":"REPI kernel profile ready"',
+				'"statusKey":"goal"',
+				'"provider":"repi-env"',
+				'"id":"release-smoke-env-model"',
+				'"contextWindow":262144',
+			],
+			rejectOutput: ['"provider":"kimchi"', '"id":"kimi-k2.7"'],
+		}),
+	);
 	const staleDefaultAgentDir = join(outDir, "stale-default-agent");
 	mkdirSync(staleDefaultAgentDir, { recursive: true });
 	writeFileSync(join(staleDefaultAgentDir, "settings.json"), `${JSON.stringify({ defaultProvider: "kimchi", defaultModel: "kimi-k2.7" }, null, "\t")}\n`);

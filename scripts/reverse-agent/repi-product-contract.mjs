@@ -131,6 +131,8 @@ rows.push(
 				"package-bin:env-incomplete-guard",
 				"package-bin:model-status-env",
 				"REPI_* environment",
+				"package-bin:rpc-fresh-env-footer",
+				"REPI kernel profile ready",
 				"package-bin:rpc-env-overrides-saved-default",
 				"package-bin:rpc-goal",
 				"get_tools",
