@@ -25647,11 +25647,16 @@ async function runProofLoop(
 	let remaining = proof.maxSteps;
 	let proofDirty = false;
 	const executedCommands = new Set<string>();
+	const normalizeExecutedCommand = (command: string) => command.trim().replace(/\s+/g, " ");
+	const pruneExecutedQuickCommands = () => {
+		proof.quickPath = proof.quickPath.filter((command) => !executedCommands.has(normalizeExecutedCommand(command)));
+		proof.nextActions = proof.nextActions.filter((command) => !executedCommands.has(normalizeExecutedCommand(command)));
+	};
 	const runStep = async (step: ProofLoopStep, replaySteps = proof.replaySteps) => {
 		if (remaining <= 0) return;
 		const result = await executeProofLoopStep(pi, step, proof.target, replaySteps);
 		proof.executed.push(result);
-		executedCommands.add(result.command.trim().replace(/\s+/g, " "));
+		executedCommands.add(normalizeExecutedCommand(result.command));
 		step.status = result.status === "blocked" ? "blocked" : "done";
 		step.reason = result.status === "blocked" ? result.output : step.reason;
 		remaining -= 1;
@@ -25663,7 +25668,7 @@ async function runProofLoop(
 		let touched = false;
 		for (const [index, command] of quickCommands.entries()) {
 			if (remaining <= 0) break;
-			const normalized = command.trim().replace(/\s+/g, " ");
+			const normalized = normalizeExecutedCommand(command);
 			if (!normalized || executedCommands.has(normalized)) continue;
 			const result = await executeProofLoopQuickPathCommand(pi, proof, command, index);
 			proof.executed.push(result);
@@ -25672,6 +25677,7 @@ async function runProofLoop(
 			remaining -= 1;
 			touched = true;
 		}
+		if (touched) pruneExecutedQuickCommands();
 		if (touched && remaining > 0) {
 			proof = refreshProofLoop(proof);
 			proofDirty = false;
@@ -25753,7 +25759,8 @@ async function runProofLoop(
 	}
 	const compactResumeExecution = proof.executed.some((execution) => /compact resume/i.test(execution.output));
 	updateReconCompactionTelemetryFromExecutions(proof.executed, proof.sourceArtifacts);
-	if (proofDirty || compactResumeExecution) proof = refreshProofLoop(proof);
+	if (compactResumeExecution) proof = refreshProofLoop(proof);
+	else if (proofDirty) pruneExecutedQuickCommands();
 	const path = writeProofLoopArtifact(proof);
 	return formatProofLoop(proof, path);
 }

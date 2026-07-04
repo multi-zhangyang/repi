@@ -1435,6 +1435,8 @@ rows.push(
 				"source=target_auto_detection",
 				"source=attack_graph_gap",
 				"executeProofLoopQuickPathCommand",
+				"pruneExecutedQuickCommands",
+				"normalizeExecutedCommand",
 				"quick_path_execution",
 				"gap_classifier",
 				"quick_path",

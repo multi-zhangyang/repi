@@ -101,8 +101,14 @@ describe("REPI kernel profile proof-loop and swarm flows", () => {
 			maxSteps: 1,
 			replaySteps: 1,
 		});
-		expect(proofRun.content[0]?.text).toContain("proof_loop:");
-		expect(proofRun.content[0]?.text).toContain("executed_steps: 1");
+		const proofRunText = proofRun.content[0]?.text ?? "";
+		expect(proofRunText).toContain("proof_loop:");
+		expect(proofRunText).toContain("executed_steps: 1");
+		expect(proofRunText).toContain(
+			"quick_path_execution: index=1 phase=runtime-adapter command=re_runtime_adapter run web-cdp-network-adapter https://target.local/app",
+		);
+		const nextProofActions = /next_proof_actions:([\s\S]*?)source_artifacts:/m.exec(proofRunText)?.[1] ?? "";
+		expect(nextProofActions).not.toContain("re_runtime_adapter run web-cdp-network-adapter https://target.local/app");
 
 		const graph = await graphTool.execute("tool-call-id", { action: "build" });
 		const graphPath = /graph_artifact: (.+)/.exec(graph.content[0]?.text ?? "")?.[1]?.trim();
