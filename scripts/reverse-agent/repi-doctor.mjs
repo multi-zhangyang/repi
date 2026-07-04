@@ -158,6 +158,7 @@ function run(cmd, args, options = {}) {
 			REPI_SKIP_PACKAGE_UPDATE_CHECK: "1",
 			REPI_TELEMETRY: "0",
 		},
+		input: options.input,
 		encoding: "utf8",
 		timeout: timeoutMs,
 		maxBuffer: 2 * 1024 * 1024,
@@ -174,6 +175,54 @@ function run(cmd, args, options = {}) {
 		signal: result.signal ?? undefined,
 		timedOut,
 		timeoutMs,
+	};
+}
+
+function parseJsonl(text) {
+	const rows = [];
+	for (const line of String(text ?? "").split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		try {
+			rows.push(JSON.parse(trimmed));
+		} catch {
+			rows.push({ type: "parse_error", line: trimmed.slice(0, 240) });
+		}
+	}
+	return rows;
+}
+
+function rpcResponse(lines, command) {
+	return lines.find((line) => line?.type === "response" && line.command === command);
+}
+
+function rpcCommandAndToolProbeSummary(probe) {
+	const lines = parseJsonl(probe.stdout);
+	const commandResponse = rpcResponse(lines, "get_commands");
+	const toolResponse = rpcResponse(lines, "get_tools");
+	const stateResponse = rpcResponse(lines, "get_state");
+	const commands = Array.isArray(commandResponse?.data?.commands) ? commandResponse.data.commands : [];
+	const tools = Array.isArray(toolResponse?.data?.tools) ? toolResponse.data.tools : [];
+	const goalCommands = commands.filter((command) => command?.name === "goal");
+	const goalTools = tools.filter((tool) => tool?.name === "goal_complete");
+	const model = stateResponse?.data?.model;
+	return {
+		exit: probe.code,
+		timedOut: Boolean(probe.timedOut),
+		parseErrors: lines.filter((line) => line?.type === "parse_error").length,
+		commandResponseOk: commandResponse?.success === true,
+		toolResponseOk: toolResponse?.success === true,
+		stateResponseOk: stateResponse?.success === true,
+		commandCount: commands.length,
+		toolCount: tools.length,
+		goalCommandCount: goalCommands.length,
+		goalToolCount: goalTools.length,
+		goalCommandInline: goalCommands.every((command) => String(command?.sourceInfo?.path ?? "").startsWith("<inline:")),
+		goalToolInline: goalTools.every((tool) => String(tool?.sourceInfo?.path ?? "").startsWith("<inline:")),
+		modelProvider: typeof model?.provider === "string" ? model.provider : undefined,
+		modelId: typeof model?.id === "string" ? model.id : undefined,
+		modelApi: typeof model?.api === "string" ? model.api : undefined,
+		contextWindow: typeof model?.contextWindow === "number" ? model.contextWindow : undefined,
 	};
 }
 
@@ -411,8 +460,20 @@ const memory = settings?.memory ?? {};
 const models = readJson(join(agentDir, "models.json"));
 const help = existsSync(repiBin) ? run(repiBin, ["--offline", "--help"], { timeout: probeTimeoutMs }) : { code: 1, stdout: "", stderr: "missing repi", timedOut: false };
 const listModels = existsSync(repiBin) ? run(repiBin, ["--offline", "--list-models"], { timeout: probeTimeoutMs }) : { code: 1, stdout: "", stderr: "missing repi", timedOut: false };
+const rpcProbe = existsSync(repiBin)
+	? run(repiBin, ["--offline", "--mode", "rpc", "--no-session"], {
+			timeout: probeTimeoutMs,
+			input: `${JSON.stringify({ id: "state", type: "get_state" })}\n${JSON.stringify({ id: "commands", type: "get_commands" })}\n${JSON.stringify({ id: "tools", type: "get_tools" })}\n`,
+		})
+	: { code: 1, stdout: "", stderr: "missing repi", timedOut: false };
+const rpcRuntime = rpcCommandAndToolProbeSummary(rpcProbe);
 const helpText = `${help.stdout}\n${help.stderr}`;
 const envModelRuntime = currentEnvModelConfigStatus();
+const expectedEnvModel = firstEnv(["REPI_MODEL", "REPI_MODEL_ID"]);
+const expectedEnvProvider = firstEnv(["REPI_PROVIDER", "REPI_MODEL_PROVIDER", "REPI_PROVIDER_ID"]) || "repi-env";
+const expectedEnvContextWindow = Number(
+	firstEnv(["REPI_CONTEXT_WINDOW", "REPI_MODEL_CONTEXT_WINDOW", "REPI_AUTO_COMPACT_WINDOW", "REPI_MODEL_AUTO_COMPACT_WINDOW"]),
+);
 const globalRepi = pathEntry(installedRepi);
 const localRepi = pathEntry(repiBin);
 const globalRepiOk = packageBinMode || (globalRepi.exists && globalRepi.resolved === localRepi.resolved);
@@ -595,6 +656,19 @@ const checks = [
 		"keep /goal help/status visible in print/json non-TUI mode and covered by release tarball smoke",
 	),
 	check(
+		"goal:rpc-runtime-registration",
+		rpcRuntime.exit === 0 &&
+			!rpcRuntime.timedOut &&
+			rpcRuntime.commandResponseOk &&
+			rpcRuntime.toolResponseOk &&
+			rpcRuntime.goalCommandCount === 1 &&
+			rpcRuntime.goalToolCount === 1 &&
+			rpcRuntime.goalCommandInline &&
+			rpcRuntime.goalToolInline,
+		`exit=${rpcRuntime.exit} timeout=${rpcRuntime.timedOut} commands=${rpcRuntime.commandCount} tools=${rpcRuntime.toolCount} goalCommands=${rpcRuntime.goalCommandCount} inlineCommand=${rpcRuntime.goalCommandInline} goalTools=${rpcRuntime.goalToolCount} inlineTool=${rpcRuntime.goalToolInline} parseErrors=${rpcRuntime.parseErrors}`,
+		"run repi doctor --fix; remove conflicting external goal extension if /goal is not inline-owned",
+	),
+	check(
 		"goal:extension-conflict-suppression",
 		goalConflictSuppressionOk,
 		`hasGoalSignature=${resourceSource.includes("hasGoalModeSignature")} externalGoalSuppression=${resourceSource.includes("isExternalGoalModeExtension")}`,
@@ -611,6 +685,16 @@ const checks = [
 		envModelRuntime.missing.length === 0 && !envModelRuntime.invalidApi,
 		`touched=${envModelRuntime.touched} enabled=${envModelRuntime.enabled} provider=${envModelRuntime.provider} model=${envModelRuntime.model} api=${envModelRuntime.api} rawApi=${envModelRuntime.rawApi} auth=${envModelRuntime.authEnv}:${envModelRuntime.authPresent ? "set" : "missing"} missing=${envModelRuntime.missing.join(",") || "<none>"} invalidApi=${envModelRuntime.invalidApi ?? "<none>"}`,
 		"export REPI_AUTH_TOKEN, REPI_BASE_URL, REPI_MODEL, and REPI_MODEL_API=openai-compatible|openai-responses|anthropic",
+	),
+	check(
+		"models:env-rpc-runtime",
+		!envModelRuntime.enabled ||
+			(rpcRuntime.stateResponseOk &&
+				rpcRuntime.modelProvider === expectedEnvProvider &&
+				rpcRuntime.modelId === expectedEnvModel &&
+				(!Number.isFinite(expectedEnvContextWindow) || rpcRuntime.contextWindow === expectedEnvContextWindow)),
+		`envEnabled=${envModelRuntime.enabled} stateOk=${rpcRuntime.stateResponseOk} provider=${rpcRuntime.modelProvider ?? "<none>"} expectedProvider=${expectedEnvProvider} model=${redactText(rpcRuntime.modelId ?? "<none>")} expectedModel=${redactText(expectedEnvModel ?? "<none>")} api=${rpcRuntime.modelApi ?? "<none>"} context=${rpcRuntime.contextWindow ?? "<none>"} expectedContext=${Number.isFinite(expectedEnvContextWindow) ? expectedEnvContextWindow : "<unset>"}`,
+		"fix REPI_* exports or clear stale saved default provider/model",
 	),
 	check("network:update-suppressed", /--offline/.test(helpText) && /REPI_SKIP_VERSION_CHECK/.test(helpText), "offline/version-check controls available"),
 ];

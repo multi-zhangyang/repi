@@ -73,7 +73,7 @@ describe("repi doctor scoped memory bootstrap", () => {
 		);
 		writeFileSync(
 			join(repoRoot, "scripts", "reverse-agent", "repi-release-tarball-smoke.mjs"),
-			"package-bin:goal-help-print\npackage-bin:goal-help-json\n",
+			"package-bin:goal-help-print\npackage-bin:goal-help-json\npackage-bin:goal-status-fresh-print\npackage-bin:goal-status-fresh-json\n",
 		);
 		writeFileSync(
 			join(repoRoot, "packages", "coding-agent", "src", "core", "recon-profile.ts"),
@@ -85,6 +85,12 @@ describe("repi doctor scoped memory bootstrap", () => {
 			`#!/usr/bin/env node
 // validate_repi_env_model_config REPI_LOAD_BUILTIN_MODELS REPI_MODEL_API
 const args = process.argv.slice(2).join(" ");
+if (args.includes("--mode rpc")) {
+  console.log(JSON.stringify({id:"state", type:"response", command:"get_state", success:true, data:{model:{provider:"fake-provider", id:"fake-model", api:"openai-completions", contextWindow:262144}}}));
+  console.log(JSON.stringify({id:"commands", type:"response", command:"get_commands", success:true, data:{commands:[{name:"goal", sourceInfo:{path:"<inline:1>", source:"inline"}}]}}));
+  console.log(JSON.stringify({id:"tools", type:"response", command:"get_tools", success:true, data:{tools:[{name:"goal_complete", sourceInfo:{path:"<inline:1>", source:"inline"}}]}}));
+  process.exit(0);
+}
 if (args.includes("--help")) {
   console.log("REPI reverse/pentest --offline REPI_SKIP_VERSION_CHECK ${GUARDRAILS.join(" ")}");
   process.exit(0);
@@ -128,5 +134,12 @@ process.exit(0);
 				evidence: expect.stringContaining("lazyScoped=true"),
 			});
 		}
+		expect(report.checks.find((check) => check.id === "goal:rpc-runtime-registration")).toMatchObject({
+			status: "pass",
+			evidence: expect.stringContaining("goalCommands=1"),
+		});
+		expect(report.checks.find((check) => check.id === "models:env-rpc-runtime")).toMatchObject({
+			status: "pass",
+		});
 	});
 });
