@@ -530,7 +530,7 @@ function showGoalHelp(pi: ExtensionAPI, runtime: RepiGoalRuntime, ctx: RepiGoalC
 			"  The agent must call goal_complete only after requirement-by-requirement verification.",
 			"",
 			"Status panel:",
-			"  /goal status shows footer preview, elapsed/token budget, and the safest next command.",
+			"  /goal status shows footer preview, elapsed/token budget, progress bar, and the safest next command.",
 			"",
 			"Examples:",
 			"  /goal --tokens 100k finish the release checklist",
@@ -745,6 +745,21 @@ function formatBudget(goal: RepiGoalState): string {
 	return `${formatTokenCount(goal.tokensUsed)}/${formatTokenCount(goal.tokenBudget ?? 0)}`;
 }
 
+function formatGoalProgressBar(percent: number): string {
+	const bounded = Math.max(0, Math.min(100, Math.floor(percent)));
+	const filled = Math.max(0, Math.min(10, Math.floor(bounded / 10)));
+	return `[${"█".repeat(filled)}${"░".repeat(10 - filled)}]`;
+}
+
+function goalProgressLine(goal: RepiGoalState): string {
+	if (goal.tokenBudget === undefined) {
+		return `Progress: elapsed=${formatDuration(goal.timeUsedSeconds)} tokens=${formatTokenCount(goal.tokensUsed)}`;
+	}
+	const percent = goal.tokenBudget <= 0 ? 100 : Math.min(100, Math.floor((goal.tokensUsed / goal.tokenBudget) * 100));
+	const remaining = Math.max(0, goal.tokenBudget - goal.tokensUsed);
+	return `Budget: ${formatGoalProgressBar(percent)} ${percent}% used (${formatTokenCount(remaining)} remaining)`;
+}
+
 function goalSummary(goal: RepiGoalState): string {
 	const footer = formatGoalFooterStatus(goal) ?? "🎯 <clear>";
 	return [
@@ -755,6 +770,7 @@ function goalSummary(goal: RepiGoalState): string {
 		`Iteration: ${goal.iteration}`,
 		`Elapsed: ${formatDuration(goal.timeUsedSeconds)}`,
 		`Tokens: ${goal.tokenBudget === undefined ? formatTokenCount(goal.tokensUsed) : formatBudget(goal)}`,
+		goalProgressLine(goal),
 		"Completion gate: goal_complete only after verified completion",
 		`Next: ${goalCommandHint(goal.status)}`,
 	].join("\n");

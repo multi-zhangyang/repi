@@ -345,6 +345,9 @@ describe("REPI built-in goal mode", () => {
 		expect(harness.statuses.get("goal")).toBe("🎯 active 0/1k");
 		expect(harness.notifications.map((item) => item.message).join("\n")).toContain("Goal: rpc objective");
 		expect(harness.notifications.map((item) => item.message).join("\n")).toContain("Footer: 🎯 active 0/1k");
+		expect(harness.notifications.map((item) => item.message).join("\n")).toContain(
+			"Budget: [░░░░░░░░░░] 0% used (1k remaining)",
+		);
 		expect(harness.notifications.map((item) => item.message).join("\n")).toContain("Next: /goal edit");
 	});
 
@@ -381,6 +384,7 @@ describe("REPI built-in goal mode", () => {
 			await harness.commands.get("goal").handler("status", harness.ctx);
 			expect(harness.sent).toHaveLength(2);
 			expect(harness.notifications.at(-1)?.message).toContain("Footer: 🎯 active 500/2k");
+			expect(harness.notifications.at(-1)?.message).toContain("Budget: [██░░░░░░░░] 25% used (1.5k remaining)");
 		}
 	});
 
@@ -512,6 +516,7 @@ describe("REPI built-in goal mode", () => {
 		expect(help).toContain("Goal: help objective");
 		expect(help).toContain("Footer: 🎯 active 0/2k");
 		expect(help).toContain("Tokens: 0/2k");
+		expect(help).toContain("Budget: [░░░░░░░░░░] 0% used (2k remaining)");
 	});
 
 	it("restores legacy pi-goal state into the REPI footer", () => {
