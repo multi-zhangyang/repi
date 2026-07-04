@@ -27010,7 +27010,7 @@ function buildProfileCheckArtifact(mode: ProfileCheckMode = "quick"): ProfileChe
 	const regressionGuards = [
 		...criticalChecks.map((check) => `${check.status}:${check.id}:${check.evidence[0] ?? ""}`),
 		"transpile_guard=node TypeScript transpile packages/coding-agent/src/core/recon-profile.ts repi-profile/extensions/reverse-pentest-core.ts",
-		"focused_tests=node node_modules/vitest/dist/cli.js --run packages/coding-agent/test/recon-profile.test.ts packages/coding-agent/test/args.test.ts",
+		"focused_tests=node node_modules/vitest/dist/cli.js --run packages/coding-agent/test/recon-profile-inline-profile.test.ts packages/coding-agent/test/recon-profile-context-resume.test.ts packages/coding-agent/test/recon-profile-memory-store-v5.test.ts packages/coding-agent/test/recon-profile-lane-quality.test.ts packages/coding-agent/test/args.test.ts",
 		"repo_check=npm run check",
 	];
 	const reverseCapabilityGuards = reverseChecks.map(
