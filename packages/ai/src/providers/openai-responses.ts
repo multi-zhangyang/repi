@@ -41,6 +41,7 @@ function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention 
 
 function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCompat> {
 	return {
+		supportsStore: model.compat?.supportsStore ?? false,
 		supportsDeveloperRole: model.compat?.supportsDeveloperRole ?? true,
 		sendSessionIdHeader: model.compat?.sendSessionIdHeader ?? true,
 		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
@@ -242,10 +243,20 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 		model: model.id,
 		input: messages,
 		stream: true,
-		prompt_cache_key: cacheRetention === "none" ? undefined : clampOpenAIPromptCacheKey(options?.sessionId),
-		prompt_cache_retention: getPromptCacheRetention(compat, cacheRetention),
-		store: false,
 	};
+
+	if (cacheRetention !== "none") {
+		params.prompt_cache_key = clampOpenAIPromptCacheKey(options?.sessionId);
+	}
+
+	const promptCacheRetention = getPromptCacheRetention(compat, cacheRetention);
+	if (promptCacheRetention !== undefined) {
+		params.prompt_cache_retention = promptCacheRetention;
+	}
+
+	if (compat.supportsStore) {
+		params.store = false;
+	}
 
 	if (options?.maxTokens) {
 		params.max_output_tokens = options?.maxTokens;

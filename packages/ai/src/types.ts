@@ -374,13 +374,13 @@ export type AssistantMessageEvent =
  * Use this to override URL-based auto-detection for custom providers.
  */
 export interface OpenAICompletionsCompat {
-	/** Whether the provider supports the `store` field. Default: auto-detected from URL. */
+	/** Whether the provider supports the `store` field. Default: false; standard SDK payloads omit optional storage controls unless explicitly enabled. */
 	supportsStore?: boolean;
 	/** Whether the provider supports the `developer` role (vs `system`). Default: auto-detected from URL. */
 	supportsDeveloperRole?: boolean;
 	/** Whether the provider supports `reasoning_effort`. Default: auto-detected from URL. */
 	supportsReasoningEffort?: boolean;
-	/** Whether the provider supports `stream_options: { include_usage: true }` for token usage in streaming responses. Default: true. */
+	/** Whether the provider supports `stream_options: { include_usage: true }` for token usage in streaming responses. Default: false; standard compatible payloads omit optional usage controls unless explicitly enabled. */
 	supportsUsageInStreaming?: boolean;
 	/** Which field to use for max tokens. Default: auto-detected from URL. */
 	maxTokensField?: "max_completion_tokens" | "max_tokens";
@@ -421,6 +421,8 @@ export interface OpenAICompletionsCompat {
 
 /** Compatibility settings for OpenAI Responses APIs. */
 export interface OpenAIResponsesCompat {
+	/** Whether the provider supports the `store` field. Default: false; standard SDK payloads omit optional storage controls unless explicitly enabled. */
+	supportsStore?: boolean;
 	/** Whether the provider supports the `developer` role (vs `system`). Default: true. */
 	supportsDeveloperRole?: boolean;
 	/** Whether to send the OpenAI `session_id` cache-affinity header from `options.sessionId` when caching is enabled. Default: true. */

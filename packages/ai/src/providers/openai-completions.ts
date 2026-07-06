@@ -554,13 +554,18 @@ function buildParams(
 		model: model.id,
 		messages,
 		stream: true,
-		prompt_cache_key:
-			(model.baseUrl.includes("api.openai.com") && cacheRetention !== "none") ||
-			(cacheRetention === "long" && compat.supportsLongCacheRetention)
-				? clampOpenAIPromptCacheKey(options?.sessionId)
-				: undefined,
-		prompt_cache_retention: cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined,
 	};
+
+	if (
+		(model.baseUrl.includes("api.openai.com") && cacheRetention !== "none") ||
+		(cacheRetention === "long" && compat.supportsLongCacheRetention)
+	) {
+		params.prompt_cache_key = clampOpenAIPromptCacheKey(options?.sessionId);
+	}
+
+	if (cacheRetention === "long" && compat.supportsLongCacheRetention) {
+		params.prompt_cache_retention = "24h";
+	}
 
 	if (compat.supportsUsageInStreaming !== false) {
 		(params as any).stream_options = { include_usage: true };
@@ -1197,11 +1202,11 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 	const cacheControlFormat = provider === "openrouter" && model.id.startsWith("anthropic/") ? "anthropic" : undefined;
 
 	return {
-		supportsStore: !isNonStandard,
+		supportsStore: false,
 		supportsDeveloperRole: isOpenRouterDeveloperRoleModel || (!isNonStandard && !isOpenRouter),
 		supportsReasoningEffort:
 			!isGrok && !isZai && !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia && !isAntLing,
-		supportsUsageInStreaming: true,
+		supportsUsageInStreaming: false,
 		maxTokensField: useMaxTokens ? "max_tokens" : "max_completion_tokens",
 		requiresToolResultName: false,
 		requiresAssistantAfterToolResult: false,

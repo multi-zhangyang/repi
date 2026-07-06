@@ -156,6 +156,45 @@ describe("openai-completions tool_choice", () => {
 		expect("strict" in (tool ?? {})).toBe(false);
 	});
 
+	it("omits optional OpenAI control fields from the default OpenAI-compatible payload", async () => {
+		const model: Model<"openai-completions"> = {
+			id: "generic-chat-model",
+			name: "Generic Chat Model",
+			api: "openai-completions",
+			provider: "repi-env",
+			baseUrl: "https://llm-gateway.example/v1",
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 1000000,
+			maxTokens: 16384,
+		};
+		let payload: unknown;
+
+		await streamSimple(
+			model,
+			{
+				messages: [{ role: "user", content: "Hi", timestamp: Date.now() }],
+			},
+			{
+				apiKey: "test",
+				onPayload: (params: unknown) => {
+					payload = params;
+				},
+			} as unknown as Parameters<typeof streamSimple>[2],
+		).result();
+
+		const params = (payload ?? mockState.lastParams) as Record<string, unknown>;
+		expect(params.store).toBeUndefined();
+		expect(params.stream_options).toBeUndefined();
+		expect(params.reasoning_effort).toBeUndefined();
+		expect(params.prompt_cache_key).toBeUndefined();
+		expect(params.prompt_cache_retention).toBeUndefined();
+		expect(params.max_tokens).toBeUndefined();
+		expect(params.max_completion_tokens).toBeUndefined();
+		expect(Object.keys(params).sort()).toEqual(["messages", "model", "stream"]);
+	});
+
 	it("maps groq qwen3 reasoning levels to default reasoning_effort", async () => {
 		const model = getModel("groq", "qwen/qwen3-32b")!;
 		let payload: unknown;
