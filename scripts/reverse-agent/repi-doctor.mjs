@@ -133,10 +133,12 @@ function currentEnvModelConfigStatus() {
 	const missing = [];
 	if (touched && !baseUrl) missing.push("REPI_BASE_URL");
 	if (touched && !model) missing.push("REPI_MODEL");
+	const enabled = Boolean(baseUrl && model);
 	return {
 		touched,
-		enabled: Boolean(baseUrl && model),
-		provider,
+		enabled,
+		mode: enabled ? "env-model" : touched ? "incomplete-env-model" : "saved-profile",
+		provider: enabled || touched ? provider : "<env-disabled>",
 		model: model ? redactText(model) : "<unset>",
 		api: normalizeEnvModelApi(rawApi),
 		rawApi: rawApi ?? "<default>",
@@ -548,7 +550,9 @@ const rpcRuntime = rpcCommandAndToolProbeSummary(rpcProbe);
 const helpText = `${help.stdout}\n${help.stderr}`;
 const envModelRuntime = currentEnvModelConfigStatus();
 const expectedEnvModel = firstEnv(["REPI_MODEL", "REPI_MODEL_ID"]);
-const expectedEnvProvider = firstEnv(["REPI_PROVIDER", "REPI_MODEL_PROVIDER", "REPI_PROVIDER_ID"]) || "repi-env";
+const expectedEnvProvider = envModelRuntime.enabled
+	? firstEnv(["REPI_PROVIDER", "REPI_MODEL_PROVIDER", "REPI_PROVIDER_ID"]) || "repi-env"
+	: undefined;
 const expectedEnvContextWindow = Number(
 	firstEnv(["REPI_CONTEXT_WINDOW", "REPI_MODEL_CONTEXT_WINDOW", "REPI_AUTO_COMPACT_WINDOW", "REPI_MODEL_AUTO_COMPACT_WINDOW"]),
 );
@@ -807,20 +811,20 @@ const checks = [
 	check(
 		"models:env-rpc-runtime",
 		envModelRpcMatchesExpected,
-		`envEnabled=${envModelRuntime.enabled} stateOk=${rpcRuntime.stateResponseOk} provider=${rpcRuntime.modelProvider ?? "<none>"} expectedProvider=${expectedEnvProvider} model=${redactText(rpcRuntime.modelId ?? "<none>")} expectedModel=${redactText(expectedEnvModel ?? "<none>")} api=${rpcRuntime.modelApi ?? "<none>"} context=${rpcRuntime.contextWindow ?? "<none>"} expectedContext=${Number.isFinite(expectedEnvContextWindow) ? expectedEnvContextWindow : "<unset>"}`,
-		"fix REPI_* exports or clear stale saved default provider/model",
+		`mode=${envModelRuntime.mode} envEnabled=${envModelRuntime.enabled} savedProfileActive=${Boolean(savedDefaultProvider || savedDefaultModel)} stateOk=${rpcRuntime.stateResponseOk} provider=${rpcRuntime.modelProvider ?? "<none>"} expectedEnvProvider=${expectedEnvProvider ?? "<env-disabled>"} model=${redactText(rpcRuntime.modelId ?? "<none>")} expectedEnvModel=${redactText(expectedEnvModel ?? "<env-disabled>")} api=${rpcRuntime.modelApi ?? "<none>"} context=${rpcRuntime.contextWindow ?? "<none>"} expectedContext=${Number.isFinite(expectedEnvContextWindow) ? expectedEnvContextWindow : "<unset>"}`,
+		"fix REPI_* exports or run `repi model reset --yes` to clear stale saved default provider/model",
 	),
 	check(
 		"models:env-overrides-saved-default",
 		envModelRpcMatchesExpected,
-		`envEnabled=${envModelRuntime.enabled} savedProvider=${redactText(savedDefaultProvider ?? "<none>")} savedModel=${redactText(savedDefaultModel ?? "<none>")} runtimeProvider=${rpcRuntime.modelProvider ?? "<none>"} runtimeModel=${redactText(rpcRuntime.modelId ?? "<none>")} expectedProvider=${expectedEnvProvider} expectedModel=${redactText(expectedEnvModel ?? "<none>")}`,
-		"when REPI_* is set it must win over stale ~/.repi/agent/settings.json defaults; clear saved defaults or fix env exports",
+		`mode=${envModelRuntime.mode} envEnabled=${envModelRuntime.enabled} savedProvider=${redactText(savedDefaultProvider ?? "<none>")} savedModel=${redactText(savedDefaultModel ?? "<none>")} runtimeProvider=${rpcRuntime.modelProvider ?? "<none>"} runtimeModel=${redactText(rpcRuntime.modelId ?? "<none>")} expectedEnvProvider=${expectedEnvProvider ?? "<env-disabled>"} expectedEnvModel=${redactText(expectedEnvModel ?? "<env-disabled>")}`,
+		"when REPI_* is set it must win over stale ~/.repi/agent/settings.json defaults; run `repi model reset --yes` or fix env exports",
 	),
 	check(
 		"repi:launch-readiness",
 		launchReadinessOk,
 		`goalMode=${goalModeBuiltInOk} footer=${goalFooterStatusOk} nonTui=${goalPrintUiOk} goalConflictSuppression=${goalConflictSuppressionOk} rpcGoal=${rpcRuntime.goalCommandCount}/${rpcRuntime.goalToolCount} envContract=${envModelContractOk} envRuntimeMissing=${envModelRuntime.missing.join(",") || "<none>"} envInvalidApi=${envModelRuntime.invalidApi ?? "<none>"} envRpc=${envModelRpcMatchesExpected}`,
-		"run repi doctor --fix; remove conflicting external goal extensions; fix REPI_* env exports or clear stale saved model defaults",
+		"run repi doctor --fix; remove conflicting external goal extensions; fix REPI_* env exports or run `repi model reset --yes`",
 	),
 	check("network:update-suppressed", /--offline/.test(helpText) && /REPI_SKIP_VERSION_CHECK/.test(helpText), "offline/version-check controls available"),
 ];

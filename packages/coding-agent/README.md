@@ -62,10 +62,10 @@ Release tarball install uses the four same-version GitHub Release packages toget
 
 ```bash
 npm install -g \
-  pi-recon-repi-ai-0.1.2.tgz \
-  pi-recon-repi-agent-core-0.1.2.tgz \
-  pi-recon-repi-tui-0.1.2.tgz \
-  pi-recon-repi-coding-agent-0.1.2.tgz
+  pi-recon-repi-ai-0.1.3.tgz \
+  pi-recon-repi-agent-core-0.1.3.tgz \
+  pi-recon-repi-tui-0.1.3.tgz \
+  pi-recon-repi-coding-agent-0.1.3.tgz
 ```
 
 The source installer writes a `repi` launcher into an existing PATH directory when possible (`/usr/local/bin` / `/usr/local/sbin`, with sudo if available). If it falls back to `~/.local/bin`, it creates/updates `.bashrc`/`.profile` (or `.zshrc`/`.profile`) and prints the exact next command, for example:
@@ -74,7 +74,7 @@ The source installer writes a `repi` launcher into an existing PATH directory wh
 ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100%
 Successfully added repi to $PATH in ~/.bashrc
 
-REPI 0.1.2 installed successfully, to start:
+REPI 0.1.3 installed successfully, to start:
 
 source ~/.bashrc  # Load new PATH (or open a new terminal)
 cd <project>  # Open directory

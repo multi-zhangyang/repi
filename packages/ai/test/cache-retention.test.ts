@@ -254,7 +254,7 @@ describe("Cache Retention (PI_CACHE_RETENTION)", () => {
 		);
 
 		it.skipIf(!process.env.OPENAI_API_KEY)(
-			"should set prompt_cache_retention to 24h when PI_CACHE_RETENTION=long",
+			"should not infer prompt_cache_retention from PI_CACHE_RETENTION without compat opt-in",
 			async () => {
 				process.env.PI_CACHE_RETENTION = "long";
 				const model = getModel("openai", "gpt-4o-mini");
@@ -272,11 +272,61 @@ describe("Cache Retention (PI_CACHE_RETENTION)", () => {
 				}
 
 				expect(capturedPayload).not.toBeNull();
-				expect(capturedPayload.prompt_cache_retention).toBe("24h");
+				expect(capturedPayload.prompt_cache_key).toBeUndefined();
+				expect(capturedPayload.prompt_cache_retention).toBeUndefined();
 			},
 		);
 
-		it("should set prompt_cache_retention for non-api.openai.com baseUrl by default", async () => {
+		it("should omit store by default for OpenAI Responses compatible providers", async () => {
+			const model = getModel("openai", "gpt-4o-mini");
+			let capturedPayload: any = null;
+
+			try {
+				const s = streamOpenAIResponses(model, context, {
+					apiKey: "fake-key",
+					onPayload: stopAfterPayload((payload) => {
+						capturedPayload = payload;
+					}),
+				});
+
+				for await (const event of s) {
+					if (event.type === "error") break;
+				}
+			} catch {
+				// Expected to fail
+			}
+
+			expect(capturedPayload).not.toBeNull();
+			expect(capturedPayload.store).toBeUndefined();
+		});
+
+		it("should send store=false only when OpenAI Responses compat opts in", async () => {
+			const model = {
+				...getModel("openai", "gpt-4o-mini"),
+				compat: { supportsStore: true },
+			};
+			let capturedPayload: any = null;
+
+			try {
+				const s = streamOpenAIResponses(model, context, {
+					apiKey: "fake-key",
+					onPayload: stopAfterPayload((payload) => {
+						capturedPayload = payload;
+					}),
+				});
+
+				for await (const event of s) {
+					if (event.type === "error") break;
+				}
+			} catch {
+				// Expected to fail
+			}
+
+			expect(capturedPayload).not.toBeNull();
+			expect(capturedPayload.store).toBe(false);
+		});
+
+		it("should omit prompt_cache_retention for non-api.openai.com baseUrl unless explicitly compatible", async () => {
 			process.env.PI_CACHE_RETENTION = "long";
 
 			// Create a model with a different baseUrl (simulating a proxy)
@@ -305,7 +355,8 @@ describe("Cache Retention (PI_CACHE_RETENTION)", () => {
 			}
 
 			expect(capturedPayload).not.toBeNull();
-			expect(capturedPayload.prompt_cache_retention).toBe("24h");
+			expect(capturedPayload.prompt_cache_key).toBeUndefined();
+			expect(capturedPayload.prompt_cache_retention).toBeUndefined();
 		});
 
 		it("should omit prompt_cache_retention when supportsLongCacheRetention is false", async () => {
@@ -362,8 +413,11 @@ describe("Cache Retention (PI_CACHE_RETENTION)", () => {
 			expect(capturedPayload.prompt_cache_retention).toBeUndefined();
 		});
 
-		it("should set prompt_cache_retention when cacheRetention is long", async () => {
-			const model = getModel("openai", "gpt-4o-mini");
+		it("should set prompt_cache_retention when cacheRetention is long and compat opts in", async () => {
+			const model = {
+				...getModel("openai", "gpt-4o-mini"),
+				compat: { supportsLongCacheRetention: true },
+			};
 			let capturedPayload: any = null;
 
 			try {
@@ -406,14 +460,45 @@ describe("Cache Retention (PI_CACHE_RETENTION)", () => {
 			};
 		}
 
-		it("should set prompt_cache_retention for non-api.openai.com baseUrl by default", async () => {
+		it("should set prompt_cache_retention only when compat opts in", async () => {
+			let capturedPayload: any = null;
+
+			try {
+				const s = streamOpenAICompletions(
+					createCompletionsModel({
+						supportsLongCacheRetention: true,
+					}),
+					context,
+					{
+						apiKey: "fake-key",
+						cacheRetention: "long",
+						sessionId: "session-completions",
+						onPayload: stopAfterPayload((payload) => {
+							capturedPayload = payload;
+						}),
+					},
+				);
+
+				for await (const event of s) {
+					if (event.type === "error") break;
+				}
+			} catch {
+				// Expected to fail
+			}
+
+			expect(capturedPayload).not.toBeNull();
+			expect(capturedPayload.prompt_cache_key).toBe("session-completions");
+			expect(capturedPayload.prompt_cache_retention).toBe("24h");
+		});
+
+		it("should omit prompt_cache_retention by default for OpenAI-compatible providers", async () => {
 			let capturedPayload: any = null;
 
 			try {
 				const s = streamOpenAICompletions(createCompletionsModel(), context, {
 					apiKey: "fake-key",
 					cacheRetention: "long",
-					sessionId: "session-completions",
+					sessionId: "session-completions-default",
 					onPayload: stopAfterPayload((payload) => {
 						capturedPayload = payload;
 					}),
@@ -427,8 +512,8 @@ describe("Cache Retention (PI_CACHE_RETENTION)", () => {
 			}
 
 			expect(capturedPayload).not.toBeNull();
-			expect(capturedPayload.prompt_cache_key).toBe("session-completions");
-			expect(capturedPayload.prompt_cache_retention).toBe("24h");
+			expect(capturedPayload.prompt_cache_key).toBeUndefined();
+			expect(capturedPayload.prompt_cache_retention).toBeUndefined();
 		});
 
 		it("should omit prompt_cache_retention when supportsLongCacheRetention is false", async () => {

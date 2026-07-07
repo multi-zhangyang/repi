@@ -111,23 +111,29 @@ describe("openai-completions prompt caching", () => {
 		};
 	}
 
-	it("sets prompt_cache_key for direct OpenAI requests when caching is enabled", async () => {
+	it("omits prompt cache fields by default for direct OpenAI-compatible requests", async () => {
 		const { payload } = await captureRequest({ sessionId: "session-123" });
 
-		expect(payload?.prompt_cache_key).toBe("session-123");
+		expect(payload?.prompt_cache_key).toBeUndefined();
 		expect(payload?.prompt_cache_retention).toBeUndefined();
 	});
 
-	it("sets prompt_cache_retention to 24h for direct OpenAI requests when cacheRetention is long", async () => {
-		const { payload } = await captureRequest({ cacheRetention: "long", sessionId: "session-456" });
+	it("sets prompt cache fields only when long retention is explicitly compatible", async () => {
+		const model = createModel({
+			compat: { supportsLongCacheRetention: true },
+		});
+		const { payload } = await captureRequest({ cacheRetention: "long", sessionId: "session-456" }, model);
 
 		expect(payload?.prompt_cache_key).toBe("session-456");
 		expect(payload?.prompt_cache_retention).toBe("24h");
 	});
 
-	it("clamps prompt_cache_key to OpenAI's 64-character limit", async () => {
+	it("clamps opt-in prompt_cache_key to OpenAI's 64-character limit", async () => {
 		const sessionId = "x".repeat(67);
-		const { payload } = await captureRequest({ sessionId });
+		const model = createModel({
+			compat: { supportsLongCacheRetention: true },
+		});
+		const { payload } = await captureRequest({ cacheRetention: "long", sessionId }, model);
 
 		expect(payload?.prompt_cache_key).toBe("x".repeat(64));
 	});
@@ -150,9 +156,12 @@ describe("openai-completions prompt caching", () => {
 		expect(payload?.prompt_cache_retention).toBeUndefined();
 	});
 
-	it("uses PI_CACHE_RETENTION for direct OpenAI requests", async () => {
+	it("uses PI_CACHE_RETENTION only with explicit long-retention compatibility", async () => {
 		process.env.PI_CACHE_RETENTION = "long";
-		const { payload } = await captureRequest({ sessionId: "session-env" });
+		const model = createModel({
+			compat: { supportsLongCacheRetention: true },
+		});
+		const { payload } = await captureRequest({ sessionId: "session-env" }, model);
 
 		expect(payload?.prompt_cache_key).toBe("session-env");
 		expect(payload?.prompt_cache_retention).toBe("24h");

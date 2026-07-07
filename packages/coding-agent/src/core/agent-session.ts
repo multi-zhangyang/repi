@@ -2829,8 +2829,8 @@ export class AgentSession {
 			return;
 		}
 
-		const refreshedModel = this._modelRegistry.find(currentModel.provider, currentModel.id);
-		if (!refreshedModel || refreshedModel === currentModel) {
+		const refreshedModel = this._modelRegistry.resolveActiveModel(currentModel);
+		if (refreshedModel === currentModel) {
 			return;
 		}
 

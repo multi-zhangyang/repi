@@ -81,8 +81,8 @@ validate_repi_env_model_config() {
 Use a complete, quoted block, for example:
   export REPI_AUTH_TOKEN="sk-xxxxx"
   export REPI_BASE_URL="https://api.example.com/v1"
-  export REPI_PROVIDER="morph"        # optional display/provider id
-  export REPI_MODEL="morph-glm52-744b"
+  export REPI_PROVIDER="gateway"      # optional display/provider id
+  export REPI_MODEL="vendor/model-id"
   export REPI_MODEL_API="openai-compatible"
 
 If your prompt is currently just `>`, press Ctrl+C first: bash is waiting for an unmatched quote.

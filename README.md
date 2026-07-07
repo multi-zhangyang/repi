@@ -71,7 +71,7 @@ INFO: Verifying offline startup
 
 Successfully added repi to $PATH in ~/.bashrc
 
-REPI 0.1.2 installed successfully, to start:
+REPI 0.1.3 installed successfully, to start:
 
 source ~/.bashrc  # Load new PATH (or open a new terminal)
 cd <project>      # Open directory
@@ -101,10 +101,10 @@ bash install.sh --skip-npm
 
 ```bash
 npm install -g \
-  pi-recon-repi-ai-0.1.2.tgz \
-  pi-recon-repi-agent-core-0.1.2.tgz \
-  pi-recon-repi-tui-0.1.2.tgz \
-  pi-recon-repi-coding-agent-0.1.2.tgz
+  pi-recon-repi-ai-0.1.3.tgz \
+  pi-recon-repi-agent-core-0.1.3.tgz \
+  pi-recon-repi-tui-0.1.3.tgz \
+  pi-recon-repi-coding-agent-0.1.3.tgz
 
 repi doctor
 ```
@@ -140,9 +140,9 @@ repi
 
 ```bash
 export REPI_AUTH_TOKEN="sk-xxxxx"
-export REPI_BASE_URL="https://api.morphllm.com/v1"
-export REPI_PROVIDER="morph"
-export REPI_MODEL="morph-glm52-744b"
+export REPI_BASE_URL="https://api.example.com/v1"
+export REPI_PROVIDER="gateway"
+export REPI_MODEL="vendor/model-id"
 export REPI_MODEL_API="openai-compatible"
 export REPI_CONTEXT_WINDOW=262144
 export REPI_AUTO_COMPACT_WINDOW=262144

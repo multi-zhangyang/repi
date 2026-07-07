@@ -37,6 +37,17 @@ jobs:
       - name: Repository check
         run: npm run check
 
+      - name: Provider payload regression tests
+        working-directory: packages/ai
+        run: npx vitest --run test/openai-completions-prompt-cache.test.ts test/cache-retention.test.ts test/openai-completions-cache-control-format.test.ts
+
+      - name: Agent runtime regression tests
+        working-directory: packages/coding-agent
+        run: npx vitest --run test/agent-session-dynamic-provider.test.ts test/agent-session-auto-compaction-queue.test.ts
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Provision REPI runtime
         run: node scripts/reverse-agent/init-repi-profile.mjs .
 

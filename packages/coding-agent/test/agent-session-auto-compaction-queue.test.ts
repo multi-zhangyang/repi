@@ -81,7 +81,9 @@ describe("AgentSession auto-compaction queue resume", () => {
 		mkdirSync(tempDir, { recursive: true });
 		vi.useFakeTimers();
 
-		const model = getModel("anthropic", "claude-sonnet-4-5")!;
+		// Keep this test independent from generated/dist model metadata drift.
+		// The regression exercises threshold behavior near a 200k window.
+		const model = { ...getModel("anthropic", "claude-sonnet-4-5")!, contextWindow: 200_000 };
 		const agent = new Agent({
 			initialState: {
 				model,

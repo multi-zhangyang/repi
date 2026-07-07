@@ -760,6 +760,45 @@ export class ModelRegistry {
 	}
 
 	/**
+	 * Resolve the currently active model after dynamic provider registration.
+	 *
+	 * REPI does not load an implicit built-in catalog into ModelRegistry, so a
+	 * session can legitimately hold a model object that is not present in
+	 * `this.models` (for example a caller passed `getModel(...)` directly). A
+	 * registerProvider("anthropic", { baseUrl }) override must still affect that
+	 * active model immediately; otherwise the next request keeps using the stale
+	 * base URL until the user reloads or switches models.
+	 */
+	resolveActiveModel<TApi extends Api>(model: Model<TApi>): Model<TApi> {
+		const registeredModel = this.find(model.provider, model.id);
+		if (registeredModel) {
+			return registeredModel as Model<TApi>;
+		}
+
+		const providerConfig = this.registeredProviders.get(model.provider);
+		if (!providerConfig) {
+			return model;
+		}
+
+		let changed = false;
+		const resolved: Model<Api> = { ...model };
+		if (providerConfig.baseUrl && providerConfig.baseUrl !== model.baseUrl) {
+			resolved.baseUrl = providerConfig.baseUrl;
+			changed = true;
+		}
+		if (providerConfig.api && providerConfig.api !== model.api) {
+			resolved.api = providerConfig.api;
+			changed = true;
+		}
+		if (providerConfig.compat) {
+			resolved.compat = mergeCompat(model.compat, providerConfig.compat);
+			changed = true;
+		}
+
+		return changed ? (resolved as Model<TApi>) : model;
+	}
+
+	/**
 	 * Get API key for a model.
 	 */
 	hasConfiguredAuth(model: Model<Api>): boolean {
@@ -1093,13 +1132,15 @@ export class ModelRegistry {
 					this.models = config.oauth.modifyModels(this.models, cred);
 				}
 			}
-		} else if (config.baseUrl || config.headers) {
-			// Override-only: update baseUrl for existing models. Request headers are resolved per request.
+		} else if (config.baseUrl || config.headers || config.compat || config.api) {
+			// Override-only: update existing models. Request headers are resolved per request.
 			this.models = this.models.map((m) => {
 				if (m.provider !== providerName) return m;
 				return {
 					...m,
+					api: (config.api ?? m.api) as Api,
 					baseUrl: config.baseUrl ?? m.baseUrl,
+					compat: mergeCompat(m.compat, config.compat),
 				};
 			});
 		}

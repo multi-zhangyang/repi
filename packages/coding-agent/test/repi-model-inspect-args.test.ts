@@ -234,6 +234,51 @@ describe("repi model argument parsing", () => {
 		expect(report.error).toContain("--provider --api --base-url --model");
 	});
 
+	it("resets saved model profile while preserving auth by default", () => {
+		writeFileSync(
+			join(agentDir, "settings.json"),
+			`${JSON.stringify(
+				{
+					defaultProvider: "alpha",
+					defaultModel: "model-a",
+					defaultThinkingLevel: "high",
+					enabledModels: ["alpha/model-a"],
+					memory: { mode: "scoped" },
+				},
+				null,
+				2,
+			)}\n`,
+		);
+		writeFileSync(
+			join(agentDir, "auth.json"),
+			`${JSON.stringify({ alpha: { type: "api_key", key: "secret" } }, null, 2)}\n`,
+		);
+
+		const missingConfirm = run(["reset"]);
+		expect(missingConfirm.result.status).toBe(1);
+		expect(missingConfirm.json).toMatchObject({ ok: false });
+		expect(String(missingConfirm.json.error)).toContain("requires --yes");
+
+		const { result, json } = run(["reset", "--yes"]);
+		expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+		expect(json).toMatchObject({
+			ok: true,
+			preservedAuth: true,
+			before: { providerCount: 1, modelCount: 1 },
+			after: { providerCount: 0, modelCount: 0 },
+		});
+		expect(JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8"))).toEqual({ providers: {} });
+		expect(JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8"))).toMatchObject({
+			alpha: { type: "api_key", key: "secret" },
+		});
+		const settings = JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf8")) as Record<string, unknown>;
+		expect(settings.defaultProvider).toBeUndefined();
+		expect(settings.defaultModel).toBeUndefined();
+		expect(settings.defaultThinkingLevel).toBeUndefined();
+		expect(settings.enabledModels).toBeUndefined();
+		expect(settings.memory).toEqual({ mode: "scoped" });
+	});
+
 	it("adds an explicit provider without leaking the key or URL by default", () => {
 		const cleanEnv = { ...process.env };
 		for (const name of REPI_MODEL_ENV_NAMES) delete cleanEnv[name];

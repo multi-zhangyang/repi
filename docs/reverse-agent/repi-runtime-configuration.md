@@ -232,14 +232,15 @@ min(contextWindow * triggerPercent / 100, contextWindow - reserveTokens)
 
 ## 7. upstream pi 扩展兼容
 
-REPI 可以安装使用 upstream pi 生态里采用 `package.json` `pi` manifest 的 npm/git 包，同时保持运行目录隔离。Goal mode 已内置：`/goal [--tokens 100k] <objective>` 会在 footer 显示 `🎯 active/paused/budget/complete`,并通过 `goal_complete` 结束。常用扩展示例：
+REPI 可以安装使用 upstream pi 生态里采用 `package.json` `pi` manifest 的 npm/git 包，同时保持运行目录隔离。常用示例：
 
 ```bash
+repi install npm:@narumitw/pi-goal
 repi install npm:pi-web-access
 repi list
 ```
 
-若历史 profile 已安装 `@narumitw/pi-goal`,REPI 会以内置 goal mode 为准以避免 `/goal`/`goal_complete` 重名。release tarball smoke 会在仓库外真实安装打包产物并验证 `repi`、fresh envless model、`REPI_*` env provider 和 RPC `/goal` 均可用。兼容层已覆盖常见 upstream 包名：
+兼容层已覆盖常见 upstream 包名：
 
 ```text
 @earendil-works/pi-coding-agent

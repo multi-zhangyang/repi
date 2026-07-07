@@ -7,7 +7,22 @@ import { join, resolve } from "node:path";
 import { safeWriteReport } from "./lib/report-write-helpers.mjs";
 
 const rawArgs = process.argv.slice(2);
-const knownCommands = new Set(["doctor", "status", "list", "cost", "add", "edit", "remove", "login", "test", "default", "export", "import", "help"]);
+const knownCommands = new Set([
+	"doctor",
+	"status",
+	"list",
+	"cost",
+	"add",
+	"edit",
+	"remove",
+	"login",
+	"test",
+	"default",
+	"reset",
+	"export",
+	"import",
+	"help",
+]);
 let root = process.cwd();
 if (rawArgs[0] && !rawArgs[0].startsWith("--") && !knownCommands.has(rawArgs[0])) {
 	root = resolve(rawArgs.shift());
@@ -47,6 +62,7 @@ function usage() {
   repi model remove --provider <id> [--model <id>] [--json]
   repi model login --provider <id> --api-key-stdin
   repi model default --provider <id> --model <id>
+  repi model reset --yes [--delete-auth] [--json]
   repi model test --provider <id> --model <id> [--timeout-ms N]
   repi model cost --provider <id> --model <id> --input-tokens N --output-tokens N [--cache-read-tokens N] [--cache-write-tokens N]
   repi model export [--output <path>] [--json]
@@ -68,6 +84,7 @@ Base URL note: OpenAI-compatible/Responses SDKs usually expect REPI_BASE_URL=htt
 model doctor is offline: it parses ~/.repi/agent/models.json plus REPI_* env-only providers, checks provider/model metadata, local auth, context window and cost fields; --fix repairs safe local config issues but does not auto-pick a settings default provider/model.
 model list hides provider base URLs by default to avoid leaking private gateway endpoints into screenshots/logs; add --show-urls for local troubleshooting.
 model add writes ~/.repi/agent/models.json and can store a local credential immediately with --api-key-stdin; model login writes/updates ~/.repi/agent/auth.json locally. Provider presets are intentionally not shipped; use REPI_* env or explicit --provider/--base-url/--model values.
+model reset clears saved model/provider/default selection pollution from ~/.repi/agent while preserving auth.json by default. Add --delete-auth only when you intentionally want to wipe stored credentials too.
 For shell-history safety, pass API keys through --api-key-stdin. Plain --api-key is rejected unless REPI_ALLOW_INSECURE_API_KEY_ARG=1.
 model export never exports local API keys; model import preserves/creates env-ref apiKey fields and never writes auth.json.
 `;
@@ -1404,6 +1421,101 @@ function buildDefaultReport() {
 	};
 }
 
+function modelConfigStats(config) {
+	const providers =
+		config?.providers && typeof config.providers === "object" && !Array.isArray(config.providers)
+			? config.providers
+			: {};
+	return {
+		providerCount: Object.keys(providers).length,
+		modelCount: Object.values(providers).reduce(
+			(sum, provider) => sum + (Array.isArray(provider?.models) ? provider.models.length : 0),
+			0,
+		),
+	};
+}
+
+function existingJsonObject(path) {
+	if (!existsSync(path)) return { existed: false, data: {}, parseError: null };
+	const parsed = readJson(path);
+	if (parsed?.__error) return { existed: true, data: {}, parseError: parsed.__error };
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return { existed: true, data: {}, parseError: "expected JSON object" };
+	}
+	return { existed: true, data: parsed, parseError: null };
+}
+
+function buildResetReport() {
+	const confirmed = hasFlag(rawArgs, ["--yes", "--force", "-y"]);
+	const deleteAuth = hasFlag(rawArgs, ["--delete-auth", "--wipe-auth"]);
+	if (!confirmed) {
+		return {
+			kind: "repi-model-reset-report",
+			schemaVersion: 1,
+			generatedAt: new Date().toISOString(),
+			ok: false,
+			error: "model reset requires --yes (or --force); it clears saved providers/default model selection. auth.json is preserved unless --delete-auth is set.",
+			agentDir,
+			modelsPath,
+			settingsPath,
+			authPath,
+			next: ["repi model reset --yes", "repi model status"],
+		};
+	}
+
+	const beforeModels = existingJsonObject(modelsPath);
+	const beforeSettings = existingJsonObject(settingsPath);
+	const beforeAuth = existingJsonObject(authPath);
+	const beforeStats = modelConfigStats(beforeModels.data);
+	const settings = { ...beforeSettings.data };
+	const removedSettings = [];
+	for (const key of ["defaultProvider", "defaultModel", "defaultThinkingLevel", "enabledModels"]) {
+		if (Object.prototype.hasOwnProperty.call(settings, key)) {
+			delete settings[key];
+			removedSettings.push(key);
+		}
+	}
+
+	writeJsonFile(modelsPath, { providers: {} }, 0o600);
+	writeJsonFile(settingsPath, settings, 0o600);
+	if (deleteAuth) {
+		writeJsonFile(authPath, {}, 0o600);
+	}
+
+	return {
+		kind: "repi-model-reset-report",
+		schemaVersion: 1,
+		generatedAt: new Date().toISOString(),
+		ok: true,
+		agentDir,
+		modelsPath,
+		settingsPath,
+		authPath,
+		preservedAuth: !deleteAuth,
+		deletedAuth: deleteAuth,
+		before: {
+			modelsJsonExisted: beforeModels.existed,
+			modelsJsonParseError: beforeModels.parseError,
+			providerCount: beforeStats.providerCount,
+			modelCount: beforeStats.modelCount,
+			settingsJsonExisted: beforeSettings.existed,
+			settingsJsonParseError: beforeSettings.parseError,
+			authJsonExisted: beforeAuth.existed,
+			authJsonParseError: beforeAuth.parseError,
+		},
+		after: {
+			providerCount: 0,
+			modelCount: 0,
+			removedSettings,
+		},
+		next: [
+			'export REPI_AUTH_TOKEN="sk-..." REPI_BASE_URL="https://gateway.example/v1" REPI_MODEL="vendor/model" REPI_MODEL_API="openai-compatible"',
+			"repi model status",
+			"repi --list-models",
+		],
+	};
+}
+
 function buildTestReport() {
 	const providerId = flagValue(rawArgs, "--provider") || positional(rawArgs, 0);
 	const modelId = flagValue(rawArgs, "--model") || positional(rawArgs, providerId && positional(rawArgs, 0) === providerId ? 1 : 0);
@@ -1588,7 +1700,23 @@ if (command === "help" || command === "--help" || command === "-h") {
 	console.log(usage());
 	process.exit(0);
 }
-if (!["doctor", "status", "list", "cost", "add", "edit", "remove", "login", "test", "default", "export", "import"].includes(command)) {
+if (
+	![
+		"doctor",
+		"status",
+		"list",
+		"cost",
+		"add",
+		"edit",
+		"remove",
+		"login",
+		"test",
+		"default",
+		"reset",
+		"export",
+		"import",
+	].includes(command)
+) {
 	console.error(`Unknown model command: ${command}`);
 	console.error(usage());
 	process.exit(2);
@@ -1611,13 +1739,15 @@ const report =
 						? buildLoginReport()
 						: command === "default"
 							? buildDefaultReport()
-							: command === "test"
-								? buildTestReport()
-								: command === "export"
-									? buildExportReport()
-									: command === "import"
-										? buildImportReport()
-										: buildDoctorReport();
+							: command === "reset"
+								? buildResetReport()
+								: command === "test"
+									? buildTestReport()
+									: command === "export"
+										? buildExportReport()
+										: command === "import"
+											? buildImportReport()
+											: buildDoctorReport();
 if (json) console.log(JSON.stringify(report, null, 2));
 else if (command === "status") printStatus(report);
 else if (command === "list") printList(report);
@@ -1627,6 +1757,7 @@ else if (command === "edit") printMutationReport("REPI Model Edit", report);
 else if (command === "remove") printMutationReport("REPI Model Remove", report);
 else if (command === "login") printMutationReport("REPI Model Login", report);
 else if (command === "default") printMutationReport("REPI Model Default", report);
+else if (command === "reset") printMutationReport("REPI Model Reset", report);
 else if (command === "test") printMutationReport("REPI Model Test", report);
 else if (command === "export") printExport(report);
 else if (command === "import") printMutationReport("REPI Model Import", report);
