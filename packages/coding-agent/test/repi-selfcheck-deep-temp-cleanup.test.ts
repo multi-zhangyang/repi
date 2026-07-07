@@ -71,6 +71,42 @@ if (parallel) {
 }
 `;
 
+const FAKE_REPI_FRESH_PROFILE = String.raw`#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2).join(" ");
+const stateDir = process.env.FAKE_REPI_STATE_DIR;
+const fixedPath = path.join(stateDir, "fixed");
+const parallel = args.match(/REPI_PARALLEL_WORKER_(\d+)_OK/);
+if (parallel) {
+	console.log(parallel[0]);
+} else if (args === "doctor" && !fs.existsSync(fixedPath)) {
+	console.log("REPI Doctor");
+	console.log("FAIL runtime:settings :: settings=/tmp/fresh/settings.json");
+	console.log("FAIL memory:scoped-defaults :: memory={}");
+	process.exit(1);
+} else if (args === "doctor --fix --json") {
+	fs.writeFileSync(fixedPath, "1");
+	console.log(JSON.stringify({ kind: "repi-doctor-report", ok: true, fixActions: [{ id: "profile-init", exit: 0 }], checks: [{ id: "runtime:settings", status: "pass" }, { id: "memory:scoped-defaults", status: "pass" }] }));
+} else if (args.includes("model list")) {
+	console.log("repi-model-list-report");
+} else if (args.includes("memory doctor")) {
+	console.log("repi-memory-doctor-report");
+} else if (args.includes("bugreport")) {
+	console.log("repi-bugreport");
+} else if (args.includes("swarm plan")) {
+	console.log("SwarmPlannerV1");
+} else if (args.includes("REPI_MODEL_OK")) {
+	console.log("REPI_MODEL_OK");
+} else if (args.includes("REPI_TOOL_OK")) {
+	console.log("REPI_TOOL_OK");
+} else if (args.includes("YES or NO")) {
+	console.log("NO");
+} else {
+	console.log("ok");
+}
+`;
+
 describe("repi-selfcheck --deep temporary profile cleanup", () => {
 	let tempRoot: string;
 
@@ -112,6 +148,51 @@ describe("repi-selfcheck --deep temporary profile cleanup", () => {
 		const report = JSON.parse(result.stdout) as { ok: boolean };
 		expect(report.ok).toBe(true);
 		expect(readdirSync(fakeTmp).filter((name) => name.startsWith("repi-selfcheck-"))).toEqual([]);
+	});
+
+	it("bootstraps a fresh runtime profile before continuing selfcheck probes", () => {
+		const fakeRepo = join(tempRoot, "repo");
+		const sourceAgentDir = join(tempRoot, "source-agent");
+		const stateDir = join(tempRoot, "state");
+		mkdirSync(join(fakeRepo, "packages", "coding-agent", "src", "core"), { recursive: true });
+		mkdirSync(sourceAgentDir, { recursive: true });
+		mkdirSync(stateDir, { recursive: true });
+		writeFileSync(
+			join(fakeRepo, "packages", "coding-agent", "src", "core", "recon-profile.ts"),
+			RECON_PROFILE_MARKERS,
+		);
+		const fakeRepiPath = join(fakeRepo, "repi");
+		writeFileSync(fakeRepiPath, FAKE_REPI_FRESH_PROFILE);
+		chmodSync(fakeRepiPath, 0o755);
+
+		const result = spawnSync(process.execPath, [SELFCHECK, fakeRepo, "--json", "--timeout-ms=1000"], {
+			encoding: "utf8",
+			env: {
+				...process.env,
+				REPI_CODING_AGENT_DIR: sourceAgentDir,
+				FAKE_REPI_STATE_DIR: stateDir,
+			},
+			timeout: 10_000,
+		});
+
+		expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+		const report = JSON.parse(result.stdout) as {
+			ok: boolean;
+			warnings: Array<{ id: string; warning?: string }>;
+			rows: Array<{ id: string; ok: boolean; warning?: string }>;
+		};
+		expect(report.ok).toBe(true);
+		expect(report.rows.find((row) => row.id === "doctor")).toMatchObject({
+			ok: true,
+			exit: 0,
+			originalExit: 1,
+			warning: "fresh-profile-bootstrap-required",
+			stdoutTail: "fresh runtime profile was incomplete; selfcheck ran repi doctor --fix and rechecked successfully",
+			stderrTail: "",
+		});
+		expect(report.rows.find((row) => row.id === "doctor-fix-fresh-profile")).toMatchObject({ ok: true });
+		expect(report.rows.find((row) => row.id === "doctor-post-fix")).toMatchObject({ ok: true });
+		expect(report.warnings.some((row) => row.warning === "fresh-profile-bootstrap-required")).toBe(true);
 	});
 
 	it("downgrades existing memory secret-scan drift to a selfcheck warning unless strict memory is requested", () => {

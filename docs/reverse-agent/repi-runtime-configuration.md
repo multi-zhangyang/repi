@@ -23,7 +23,7 @@ REPI 是独立产品，不读写原版 `pi` 的默认 profile。
 ## 2. 默认模型：Claude Code 风格的 REPI 环境变量
 
 REPI 默认不再依赖写入 `defaultProvider/defaultModel`，优先学习 Claude Code 的“一个 shell 环境即可切换供应商/模型”方式；区别是 REPI 支持 OpenAI-compatible、OpenAI Responses 和 Anthropic Messages 多种 wire format。
-REPI 启动器默认设置 `REPI_LOAD_BUILTIN_MODELS=0`，不会把 upstream pi 的大内置 provider/model catalog 自动暴露出来；你显式设置的 `REPI_*` env-only provider 和 `models.json` provider 才是默认运行面。确实需要兼容旧 pi 内置模型表时，可临时设 `REPI_LOAD_BUILTIN_MODELS=1`。
+REPI 不再暴露 upstream pi 的内置 provider/model catalog；你显式设置的 `REPI_*` env-only provider、`models.json` provider 和扩展动态注册 provider 才是运行面。
 
 ```bash
 export REPI_AUTH_TOKEN=sk-xxxxx
@@ -45,6 +45,11 @@ IS_SANDBOX=1 repi --approve --thinking off -p "Reply exactly: REPI_OK"
 - `REPI_MODEL_API=openai-compatible` / `openai-completions` → Chat Completions wire format。
 - `REPI_MODEL_API=openai-responses` / `response` → OpenAI Responses wire format。
 - `REPI_MODEL_API=anthropic` / `anthropic-messages` → Anthropic Messages wire format。
+
+Base URL 按 SDK 语义填写：
+
+- OpenAI-compatible / Responses：通常是 `https://host/v1`。
+- Anthropic Messages：通常是 `https://host`，Anthropic SDK 会自行请求 `/v1/messages`。
 
 ## 3. 可选：写入 models.json 的 provider
 

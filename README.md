@@ -111,7 +111,7 @@ repi doctor
 
 ## 模型配置
 
-REPI 默认使用 Claude Code 风格的环境变量配置模型。内置 provider catalog 默认关闭；常规使用只需要设置 `REPI_*`。
+REPI 默认使用 Claude Code 风格的环境变量配置模型。常规使用只需要设置 `REPI_*`。
 
 ```bash
 export REPI_AUTH_TOKEN="sk-xxxxx"
@@ -158,12 +158,6 @@ repi --offline --list-models
 repi model list
 repi model doctor
 repi model test
-```
-
-如需启用 upstream pi 的内置模型表：
-
-```bash
-export REPI_LOAD_BUILTIN_MODELS=1
 ```
 
 ## 常用命令

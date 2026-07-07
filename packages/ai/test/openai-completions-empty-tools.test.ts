@@ -110,7 +110,7 @@ describe("openai-completions empty tools handling", () => {
 		expect(params.max_completion_tokens).toBeUndefined();
 	});
 
-	it("sends explicit maxTokens", async () => {
+	it("sends explicit maxTokens with the standard-compatible max_tokens field", async () => {
 		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
 		const model = { ...baseModel, api: "openai-completions" } as const;
 
@@ -123,8 +123,8 @@ describe("openai-completions empty tools handling", () => {
 		).result();
 
 		const params = mockState.lastParams as { max_tokens?: number; max_completion_tokens?: number };
-		expect(params.max_tokens).toBeUndefined();
-		expect(params.max_completion_tokens).toBe(1234);
+		expect(params.max_tokens).toBe(1234);
+		expect(params.max_completion_tokens).toBeUndefined();
 	});
 
 	it("uses conservative OpenAI-compatible fields for Cloudflare AI Gateway /compat models", async () => {

@@ -224,7 +224,7 @@ describe("RPC prompt response semantics", () => {
 					),
 				});
 				expect(String(responses[0]?.error)).toContain("export REPI_AUTH_TOKEN=sk-...");
-				expect(String(responses[0]?.error)).toContain("REPI_LOAD_BUILTIN_MODELS=1");
+				expect(String(responses[0]?.error)).toContain("REPI_MODEL_API=openai-compatible");
 			});
 		} finally {
 			await cleanup();

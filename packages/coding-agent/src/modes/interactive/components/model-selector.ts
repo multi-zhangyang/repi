@@ -147,8 +147,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.errorMessage = loadError;
 		}
 
-		// Load available models (env-only, models.json, dynamic providers, and
-		// optionally the legacy built-in catalog when REPI_LOAD_BUILTIN_MODELS=1).
+		// Load available models from REPI_* env, models.json, and dynamic providers only.
 		try {
 			const availableModels = await this.modelRegistry.getAvailable();
 			models = availableModels.map((model: Model<any>) => ({

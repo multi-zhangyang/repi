@@ -926,6 +926,71 @@ describe("repi-engage artifact writes", () => {
 		expect(report.target.pathExists).toBe(true);
 	});
 
+	it("does not misclassify ordinary loader/resource source files as malware", () => {
+		const repoDir = join(workspace, "loader-repo");
+		mkdirSync(join(repoDir, "src"), { recursive: true });
+		writeFileSync(join(repoDir, "package.json"), JSON.stringify({ scripts: { test: "node src/loader.js" } }));
+		writeFileSync(
+			join(repoDir, "src", "loader.js"),
+			"export function loadPlugin(name){ return import(name) }\nfetch('/api/plugins')\n",
+		);
+		writeFileSync(join(repoDir, "README.md"), "Resource loader docs with no malware indicators.\n");
+
+		const result = spawnSync(
+			process.execPath,
+			[ENGAGE, workspace, repoDir, "--no-mission", "--no-write", "--json", "--timeout-ms=5000"],
+			{
+				encoding: "utf8",
+				env: {
+					...process.env,
+					REPI_CODING_AGENT_DIR: agentDir,
+				},
+				timeout: 15_000,
+			},
+		);
+		expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+		const report = JSON.parse(result.stdout) as {
+			target: { lane: string; reason: string };
+			commands: Array<{ id: string }>;
+		};
+		expect(report.target.lane).toBe("js-reverse");
+		expect(report.target.reason).not.toContain("malware");
+		expect(report.commands.map((row) => row.id)).not.toContain("malware-quicklook");
+	});
+
+	it("does not misclassify ordinary SECURITY.md repositories as Windows/AD", () => {
+		const repoDir = join(workspace, "ordinary-repo");
+		mkdirSync(repoDir, { recursive: true });
+		writeFileSync(join(repoDir, "package.json"), JSON.stringify({ scripts: { test: "node index.js" } }));
+		writeFileSync(join(repoDir, "SECURITY.md"), "# Security Policy\nReport vulnerabilities responsibly.\n");
+		writeFileSync(join(repoDir, "index.js"), "fetch('/api/status')\n");
+
+		const result = spawnSync(
+			process.execPath,
+			[ENGAGE, workspace, repoDir, "--no-mission", "--no-write", "--json", "--timeout-ms=5000"],
+			{
+				encoding: "utf8",
+				env: {
+					...process.env,
+					REPI_CODING_AGENT_DIR: agentDir,
+				},
+				timeout: 15_000,
+			},
+		);
+		expect(
+			result.status,
+			`${result.stderr}
+${result.stdout}`,
+		).toBe(0);
+		const report = JSON.parse(result.stdout) as {
+			target: { lane: string; reason: string };
+			commands: Array<{ id: string }>;
+		};
+		expect(report.target.lane).toBe("js-reverse");
+		expect(report.target.reason).not.toContain("Windows/AD");
+		expect(report.commands.map((row) => row.id)).not.toContain("windows-ad-quicklook");
+	});
+
 	it("routes JS bundles and memory images into specialist engagement lanes", () => {
 		const jsTarget = join(workspace, "bundle.js");
 		writeFileSync(jsTarget, "function sign(x){ return crypto.subtle.digest('SHA-256', x) } fetch('/api')\n");
@@ -5755,7 +5820,7 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 		expect(report.nextQueue.some((command) => command.includes("--route 'native-pwn,web-api,js-reverse"))).toBe(true);
 	});
 
-	it("defaults live swarm dispatch to kimchi provider when provider flags are omitted", () => {
+	it("leaves live swarm dispatch provider/model unset when provider flags and REPI env are omitted", () => {
 		const scriptDir = join(workspace, "scripts", "reverse-agent");
 		mkdirSync(scriptDir, { recursive: true });
 		writeFileSync(
@@ -5785,12 +5850,11 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 			swarm: { exit: number; provider: string; model: string; stdoutTail: string };
 			nextQueue: string[];
 		};
-		expect(report.swarm).toMatchObject({ exit: 0, provider: "kimchi", model: "kimi-k2.7" });
-		expect(report.swarm.stdoutTail).toContain('"--provider"');
-		expect(report.swarm.stdoutTail).toContain('"kimchi"');
-		expect(report.swarm.stdoutTail).toContain('"kimi-k2.7"');
-		expect(report.nextQueue.some((command) => command.includes("--provider 'kimchi'"))).toBe(true);
-		expect(report.nextQueue.some((command) => command.includes("--model 'kimi-k2.7'"))).toBe(true);
+		expect(report.swarm).toMatchObject({ exit: 0, provider: "default", model: "default" });
+		expect(report.swarm.stdoutTail).not.toContain('"--provider"');
+		expect(report.swarm.stdoutTail).not.toContain('"--model"');
+		expect(report.nextQueue.some((command) => command.includes("--provider"))).toBe(false);
+		expect(report.nextQueue.some((command) => command.includes("--model"))).toBe(false);
 	});
 
 	it("extracts structured swarm merge summaries and repair commands from noisy JSON output", () => {
@@ -5798,7 +5862,7 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 		mkdirSync(scriptDir, { recursive: true });
 		writeFileSync(
 			join(scriptDir, "repi-swarm-llm-run.mjs"),
-			`#!/usr/bin/env node\nconsole.log("swarm prelude {not json}");\nconsole.log(JSON.stringify({noise:true}));\nconsole.log(JSON.stringify({ok:false,runId:"swarm-run-1",evidenceRoot:"/tmp/repi-swarm-evidence",mergeFailureReason:"route proof incomplete; missing proof-ready route(s): js-reverse",merge:{finalPromotionReady:false,proofPromotionReady:false,routeProofReady:false,routeCoverage:{complete:true,coveredCount:2,routeCount:2,uncoveredCount:0},proofReadyRouteIds:["web-api"],missingProofRoutes:[{id:"js-reverse",domain:"Frontend / JS reverse"}],routeReadinessRows:[{routeId:"web-api",proofReady:true,promotedClaimIds:["web-proof"],proofReadyPromotedClaimIds:["web-proof"],missing:[]},{routeId:"js-reverse",proofReady:false,promotedClaimIds:["js-weak"],proofReadyPromotedClaimIds:[],missing:["proof-ready promoted claim"]}],promotedClaims:[{claimId:"web-proof"},{claimId:"js-weak"}],proofReadyPromotedClaims:[{claimId:"web-proof"}],nextCommands:["repi swarm run target --route 'js-reverse' --provider 'kimchi' --model 'kimi-k2.7' --prompt 'check secret token handling'"]}}));\nprocess.exit(1);\n`,
+			`#!/usr/bin/env node\nconsole.log("swarm prelude {not json}");\nconsole.log(JSON.stringify({noise:true}));\nconsole.log(JSON.stringify({ok:false,runId:"swarm-run-1",evidenceRoot:"/tmp/repi-swarm-evidence",mergeFailureReason:"route proof incomplete; missing proof-ready route(s): js-reverse",merge:{finalPromotionReady:false,proofPromotionReady:false,routeProofReady:false,routeCoverage:{complete:true,coveredCount:2,routeCount:2,uncoveredCount:0},proofReadyRouteIds:["web-api"],missingProofRoutes:[{id:"js-reverse",domain:"Frontend / JS reverse"}],routeReadinessRows:[{routeId:"web-api",proofReady:true,promotedClaimIds:["web-proof"],proofReadyPromotedClaimIds:["web-proof"],missing:[]},{routeId:"js-reverse",proofReady:false,promotedClaimIds:["js-weak"],proofReadyPromotedClaimIds:[],missing:["proof-ready promoted claim"]}],promotedClaims:[{claimId:"web-proof"},{claimId:"js-weak"}],proofReadyPromotedClaims:[{claimId:"web-proof"}],nextCommands:["repi swarm run target --route 'js-reverse' --prompt 'check secret token handling'"]}}));\nprocess.exit(1);\n`,
 		);
 
 		const result = spawnSync(
@@ -5849,7 +5913,7 @@ server.listen(0,"127.0.0.1",()=>console.log(server.address().port));`,
 			};
 		};
 		expect(report.swarm.exit).toBe(1);
-		expect(report.swarm).toMatchObject({ provider: "kimchi", model: "kimi-k2.7", parsed: true });
+		expect(report.swarm).toMatchObject({ provider: "default", model: "default", parsed: true });
 		expect(report.swarm.summary).toMatchObject({
 			ok: false,
 			runId: "swarm-run-1",

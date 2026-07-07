@@ -41,6 +41,11 @@ export type AuthStatus = {
 	label?: string;
 };
 
+type AuthLookupOptions = {
+	includeFallback?: boolean;
+	includeEnvironment?: boolean;
+};
+
 type LockResult<T> = {
 	result: T;
 	next?: string;
@@ -344,33 +349,43 @@ export class AuthStorage {
 	 * Check if any form of auth is configured for a provider.
 	 * Unlike getApiKey(), this doesn't refresh OAuth tokens.
 	 */
-	hasAuth(provider: string): boolean {
+	hasDirectAuth(provider: string): boolean {
 		if (this.runtimeOverrides.has(provider)) return true;
 		if (this.data[provider]) return true;
-		if (getEnvApiKey(provider)) return true;
-		if (this.fallbackResolver?.(provider)) return true;
+		return false;
+	}
+
+	hasAuth(provider: string, options?: Pick<AuthLookupOptions, "includeEnvironment" | "includeFallback">): boolean {
+		if (this.hasDirectAuth(provider)) return true;
+		if (options?.includeEnvironment !== false && getEnvApiKey(provider)) return true;
+		if (options?.includeFallback !== false && this.fallbackResolver?.(provider)) return true;
 		return false;
 	}
 
 	/**
 	 * Return auth status without exposing credential values or refreshing tokens.
 	 */
-	getAuthStatus(provider: string): AuthStatus {
+	getAuthStatus(
+		provider: string,
+		options?: Pick<AuthLookupOptions, "includeEnvironment" | "includeFallback">,
+	): AuthStatus {
 		if (this.data[provider]) {
 			return { configured: true, source: "stored" };
 		}
 
 		if (this.runtimeOverrides.has(provider)) {
-			return { configured: false, source: "runtime", label: "--api-key" };
+			return { configured: true, source: "runtime", label: "--api-key" };
 		}
 
-		const envKeys = findEnvKeys(provider);
-		if (envKeys?.[0]) {
-			return { configured: false, source: "environment", label: envKeys[0] };
+		if (options?.includeEnvironment !== false) {
+			const envKeys = findEnvKeys(provider);
+			if (envKeys?.[0]) {
+				return { configured: true, source: "environment", label: envKeys[0] };
+			}
 		}
 
-		if (this.fallbackResolver?.(provider)) {
-			return { configured: false, source: "fallback", label: "custom provider config" };
+		if (options?.includeFallback !== false && this.fallbackResolver?.(provider)) {
+			return { configured: true, source: "fallback", label: "custom provider config" };
 		}
 
 		return { configured: false };
@@ -468,7 +483,7 @@ export class AuthStorage {
 	 * 4. Environment variable
 	 * 5. Fallback resolver (models.json custom providers)
 	 */
-	async getApiKey(providerId: string, options?: { includeFallback?: boolean }): Promise<string | undefined> {
+	async getApiKey(providerId: string, options?: AuthLookupOptions): Promise<string | undefined> {
 		// Runtime override takes highest priority
 		const runtimeKey = this.runtimeOverrides.get(providerId);
 		if (runtimeKey) {
@@ -520,8 +535,10 @@ export class AuthStorage {
 		}
 
 		// Fall back to environment variable
-		const envKey = getEnvApiKey(providerId);
-		if (envKey) return envKey;
+		if (options?.includeEnvironment !== false) {
+			const envKey = getEnvApiKey(providerId);
+			if (envKey) return envKey;
+		}
 
 		// Fall back to custom resolver (e.g., models.json custom providers)
 		if (options?.includeFallback !== false) {

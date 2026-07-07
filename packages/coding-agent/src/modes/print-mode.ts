@@ -296,6 +296,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 	// written live to stdout (streamTextEnabled only). Used to suppress the
 	// duplicate final write and to emit a terminating newline at message_end.
 	let streamedAssistantText = false;
+	let textOutputWritten = false;
 
 	const emitProgress = (line: string): void => {
 		if (!progressEnabled) return;
@@ -512,6 +513,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		for (const content of (lastMessage as AssistantMessage).content) {
 			if (content.type === "text" && content.text.trim() !== "") {
 				writeRawStdout(`${content.text}\n`);
+				textOutputWritten = true;
 				wroteText = true;
 			}
 		}
@@ -529,8 +531,8 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 	 * `streamingMessage` and is lost — `writeLastAssistantText` alone would find
 	 * no committed assistant message to write.
 	 */
-	const flushAssistantText = async (settleMs = 5000): Promise<void> => {
-		if (mode !== "text") return;
+	const flushAssistantText = async (settleMs = 5000): Promise<boolean> => {
+		if (mode !== "text") return false;
 		try {
 			const idle = session.agent.waitForIdle();
 			const settle = new Promise<void>((resolve) => {
@@ -541,8 +543,9 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		} catch {
 			// Best-effort flush; never let settlement errors suppress output.
 		}
-		writeLastAssistantText();
+		const wrote = writeLastAssistantText();
 		await flushRawStdout();
+		return wrote;
 	};
 
 	runtimeHost.setRebindSession(async () => {
@@ -612,6 +615,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 							for (const block of (event.message as AssistantMessage).content) {
 								if (block.type === "text" && block.text.trim() !== "") {
 									writeRawStdout(`${block.text}\n`);
+									textOutputWritten = true;
 								}
 							}
 						}
@@ -622,6 +626,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 					const delta = event.assistantMessageEvent;
 					if (delta.type === "text_delta" && event.message.role === "assistant") {
 						writeRawStdout(delta.delta);
+						textOutputWritten = true;
 						streamedAssistantText = true;
 					}
 				}
@@ -702,6 +707,12 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		// Let the in-flight turn finalize so partial assistant text commits,
 		// then write it before surfacing the error.
 		await flushAssistantText();
+		if (mode === "text" && guardAbortReason && !textOutputWritten) {
+			writeRawStdout(
+				`[REPI print guard] aborted: ${guardAbortReason}\nNo assistant text was produced before the guard fired. Increase REPI_PRINT_MAX_TURNS/REPI_PRINT_MAX_TOOL_CALLS or narrow the prompt.\n`,
+			);
+			await flushRawStdout();
+		}
 		console.error(error instanceof Error ? error.message : String(error));
 		return 1;
 	} finally {

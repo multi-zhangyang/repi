@@ -43,7 +43,6 @@ function usage() {
   repi model status [--show-urls] [--json]
   repi model list [--provider <id>] [--model <id>] [--show-urls] [--json]
   repi model add --provider <id> --api <openai-completions|openai-responses|anthropic-messages> --base-url <url> --model <id> [--api-key-stdin] [--set-default] [options]
-  repi model add --preset baseten-kimi-k2.7-code [--api-key-stdin] [--set-default] [options]
   repi model edit --provider <id> [--model <id>] [options]
   repi model remove --provider <id> [--model <id>] [--json]
   repi model login --provider <id> --api-key-stdin
@@ -65,10 +64,10 @@ Environment-only model setup is the recommended default path (Claude Code style,
   repi --approve -p "..."
 
 model status shows the effective REPI_* env-only provider, base URL redaction state, API style, model id, context window, max tokens, and shell-quote/config mistakes without making a network call.
+Base URL note: OpenAI-compatible/Responses SDKs usually expect REPI_BASE_URL=https://host/v1; Anthropic-compatible SDKs usually expect REPI_BASE_URL=https://host because the SDK appends /v1/messages.
 model doctor is offline: it parses ~/.repi/agent/models.json plus REPI_* env-only providers, checks provider/model metadata, local auth, context window and cost fields; --fix repairs safe local config issues but does not auto-pick a settings default provider/model.
 model list hides provider base URLs by default to avoid leaking private gateway endpoints into screenshots/logs; add --show-urls for local troubleshooting.
-model add writes ~/.repi/agent/models.json and can store a local credential immediately with --api-key-stdin; model login writes/updates ~/.repi/agent/auth.json locally.
-model add --preset baseten-kimi-k2.7-code configures Baseten's OpenAI-compatible endpoint for moonshotai/Kimi-K2.7-Code with a 262144 context window; it never embeds an API key unless supplied through --api-key-stdin.
+model add writes ~/.repi/agent/models.json and can store a local credential immediately with --api-key-stdin; model login writes/updates ~/.repi/agent/auth.json locally. Provider presets are intentionally not shipped; use REPI_* env or explicit --provider/--base-url/--model values.
 For shell-history safety, pass API keys through --api-key-stdin. Plain --api-key is rejected unless REPI_ALLOW_INSECURE_API_KEY_ARG=1.
 model export never exports local API keys; model import preserves/creates env-ref apiKey fields and never writes auth.json.
 `;
@@ -216,7 +215,6 @@ const valueFlags = new Set([
 	"--provider",
 	"--model",
 	"--api",
-	"--preset",
 	"--base-url",
 	"--baseUrl",
 	"--api-key-env",
@@ -675,6 +673,15 @@ function envStatusReport() {
 			`REPI_MODEL_API is invalid: ${invalidApi}; allowed openai-compatible|openai-responses|anthropic`,
 		);
 	}
+	const baseUrlText = String(baseUrl ?? "").replace(/\/+$/, "");
+	if (baseUrlText) {
+		if ((api === "openai-completions" || api === "openai-responses") && !baseUrlText.endsWith("/v1")) {
+			issues.push("REPI_BASE_URL for openai-compatible/openai-responses usually ends with /v1");
+		}
+		if (api === "anthropic-messages" && baseUrlText.endsWith("/v1")) {
+			issues.push("REPI_BASE_URL for anthropic usually omits /v1 because the SDK appends /v1/messages");
+		}
+	}
 	for (const [name, value] of Object.entries({
 		REPI_BASE_URL: baseUrl,
 		REPI_MODEL: model,
@@ -855,33 +862,10 @@ function envOnlyProviderConfig() {
 	};
 }
 
-const modelAddPresets = {
-	"baseten-kimi-k2.7-code": {
-		id: "baseten-kimi-k2.7-code",
-		provider: "baseten-kimi",
-		providerName: "Baseten Kimi K2.7 Code",
-		api: "openai-completions",
-		baseUrl: "https://inference.baseten.co/v1",
-		model: "moonshotai/Kimi-K2.7-Code",
-		modelName: "moonshotai/Kimi-K2.7-Code",
-		contextWindow: 262144,
-		maxTokens: 16384,
-		input: "text",
-	},
-};
-
-function normalizePresetId(value) {
-	const text = String(value ?? "").trim();
-	if (!text) return "";
-	const normalized = text.toLowerCase().replace(/_/g, "-");
-	if (normalized === "baseten-kimi-k27-code" || normalized === "kimi-k2.7-code-baseten") return "baseten-kimi-k2.7-code";
-	return normalized;
-}
-
-function modelAddPreset(args) {
-	const id = normalizePresetId(flagValue(args, "--preset"));
-	if (!id) return undefined;
-	return modelAddPresets[id] ? { ...modelAddPresets[id] } : { __error: `unknown model add preset: ${id}; available=${Object.keys(modelAddPresets).join(",")}` };
+function removedPresetError(args) {
+	if (!hasFlag(args, "--preset")) return undefined;
+	const preset = flagValue(args, "--preset", "");
+	return `provider presets have been removed; configure the model explicitly with --provider --api --base-url --model, or use REPI_AUTH_TOKEN/REPI_BASE_URL/REPI_MODEL/REPI_MODEL_API. Received --preset${preset ? ` ${preset}` : ""}.`;
 }
 
 function inputList(value) {
@@ -925,20 +909,20 @@ function upsertDefaultSetting(providerId, modelId) {
 }
 
 function buildAddReport() {
-	const preset = modelAddPreset(rawArgs);
-	if (preset?.__error) {
+	const presetError = removedPresetError(rawArgs);
+	if (presetError) {
 		return {
 			kind: "repi-model-add-report",
 			schemaVersion: 1,
 			generatedAt: new Date().toISOString(),
 			ok: false,
-			error: preset.__error,
+			error: presetError,
 		};
 	}
-	const providerId = flagValue(rawArgs, "--provider") || positional(rawArgs, 0) || preset?.provider;
-	const modelId = flagValue(rawArgs, "--model") || preset?.model;
-	const api = flagValue(rawArgs, "--api", preset?.api ?? "openai-completions");
-	const baseUrl = flagValue(rawArgs, ["--base-url", "--baseUrl"], preset?.baseUrl ?? "");
+	const providerId = flagValue(rawArgs, "--provider") || positional(rawArgs, 0);
+	const modelId = flagValue(rawArgs, "--model");
+	const api = flagValue(rawArgs, "--api", "openai-completions");
+	const baseUrl = flagValue(rawArgs, ["--base-url", "--baseUrl"], "");
 	if (!providerId || !modelId || !baseUrl || !api) {
 		return {
 			kind: "repi-model-add-report",
@@ -997,11 +981,11 @@ function buildAddReport() {
 	const previousProvider = modelsConfig.providers[providerId] && typeof modelsConfig.providers[providerId] === "object" ? modelsConfig.providers[providerId] : {};
 	const modelEntry = {
 		id: modelId,
-		name: flagValue(rawArgs, ["--model-name", "--name"], preset?.modelName ?? modelId),
-		input: inputList(flagValue(rawArgs, "--input", preset?.input ?? "text")),
+		name: flagValue(rawArgs, ["--model-name", "--name"], modelId),
+		input: inputList(flagValue(rawArgs, "--input", "text")),
 		cost: costFromFlags(rawArgs),
-		contextWindow: intFlag(rawArgs, ["--context-window", "--context"], preset?.contextWindow ?? 262144, 1024, 1048576),
-		maxTokens: intFlag(rawArgs, ["--max-tokens", "--max-output"], preset?.maxTokens ?? 16384, 64, 131072),
+		contextWindow: intFlag(rawArgs, ["--context-window", "--context"], 262144, 1024, 1048576),
+		maxTokens: intFlag(rawArgs, ["--max-tokens", "--max-output"], 16384, 64, 131072),
 		reasoning: rawArgs.includes("--reasoning") ? boolFlag(rawArgs, "--reasoning", true) : boolFlag(rawArgs, "--reasoning", false),
 	};
 	const oldModels = Array.isArray(previousProvider.models) ? previousProvider.models : [];
@@ -1012,7 +996,7 @@ function buildAddReport() {
 			: previousProvider.authHeader;
 	modelsConfig.providers[providerId] = {
 		...previousProvider,
-		name: flagValue(rawArgs, "--provider-name", previousProvider.name ?? preset?.providerName ?? providerId),
+		name: flagValue(rawArgs, "--provider-name", previousProvider.name ?? providerId),
 		baseUrl,
 		api,
 		apiKey: `$${apiKeyEnv}`,
@@ -1034,7 +1018,7 @@ function buildAddReport() {
 		schemaVersion: 1,
 		generatedAt: new Date().toISOString(),
 		ok: true,
-		preset: preset?.id ?? null,
+		preset: null,
 		provider: providerId,
 		model: modelId,
 		api,

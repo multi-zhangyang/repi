@@ -98,6 +98,8 @@ afterEach(() => {
 	delete process.env.REPI_PRINT_TIMEOUT_GRACE_MS;
 	delete process.env.REPI_PRINT_TIMEOUT_TOOL_GRACE_MS;
 	delete process.env.REPI_PRINT_TIMEOUT_WARN_LEAD_MS;
+	delete process.env.REPI_PRINT_MAX_TURNS;
+	delete process.env.REPI_PRINT_MAX_TOOL_CALLS;
 	delete process.env.REPI_PRINT_STREAM_TEXT;
 	delete process.env.REPI_PRINT_STATUS;
 });
@@ -397,6 +399,48 @@ describe("runPrintMode", () => {
 		expect(session.agent.waitForIdle).toHaveBeenCalled();
 		const combined = written.join("");
 		expect(combined).toContain("partial output recovered");
+
+		writeSpy.mockRestore();
+		errorSpy.mockRestore();
+	});
+
+	it("prints a guard summary when max-turn abort fires before assistant text", async () => {
+		process.env.REPI_PRINT_MAX_TURNS = "1";
+		const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "" }));
+		const { session } = runtimeHost;
+		let listener: ((event: any) => void) | undefined;
+		session.subscribe.mockImplementation((fn) => {
+			listener = fn;
+			return () => {};
+		});
+		session.prompt.mockImplementation(
+			() =>
+				new Promise<void>(() => {
+					queueMicrotask(() => {
+						listener?.({ type: "turn_start", turnIndex: 0, timestamp: Date.now() });
+						listener?.({ type: "turn_start", turnIndex: 1, timestamp: Date.now() });
+					});
+				}),
+		);
+
+		const written: string[] = [];
+		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: any, encOrCb?: any, cb?: any) => {
+			written.push(String(chunk));
+			const callback = typeof encOrCb === "function" ? encOrCb : cb;
+			if (typeof callback === "function") callback();
+			return true;
+		});
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const exitCode = await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+			mode: "text",
+			initialMessage: "loop until guard",
+		});
+
+		expect(exitCode).toBe(1);
+		expect(session.abort).toHaveBeenCalledTimes(1);
+		expect(written.join("")).toContain("[REPI print guard] aborted: max_turns_exceeded:2/1");
+		expect(errorSpy).toHaveBeenCalledWith("REPI print guard aborted: max_turns_exceeded:2/1");
 
 		writeSpy.mockRestore();
 		errorSpy.mockRestore();

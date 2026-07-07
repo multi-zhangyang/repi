@@ -36,12 +36,9 @@ describe("repi doctor scoped memory bootstrap", () => {
 		writeFileSync(join(repoRoot, "package.json"), '{"name":"fake-repi"}\n');
 		writeFileSync(
 			join(repoRoot, "packages", "coding-agent", "src", "cli", "repi-bootstrap.ts"),
-			`${GUARDRAILS.join("\n")}\nmissingRepiEnvModelConfig\nREPI_LOAD_BUILTIN_MODELS\nREPI_MODEL_API\nprocess.env.REPI_LOAD_BUILTIN_MODELS || "0"\n`,
+			`${GUARDRAILS.join("\n")}\nmissingRepiEnvModelConfig\nREPI_MODEL_API\n`,
 		);
-		writeFileSync(
-			join(repoRoot, "packages", "coding-agent", "src", "cli", "args.ts"),
-			"REPI_LOAD_BUILTIN_MODELS\nREPI_MODEL_API\n",
-		);
+		writeFileSync(join(repoRoot, "packages", "coding-agent", "src", "cli", "args.ts"), "REPI_MODEL_API\n");
 		writeFileSync(
 			join(repoRoot, "packages", "coding-agent", "src", "core", "model-registry.ts"),
 			"repiEnvProviderConfig\nREPI_AUTO_COMPACT_WINDOW\nopenai-compatible\n",
@@ -87,7 +84,7 @@ describe("repi doctor scoped memory bootstrap", () => {
 		writeFileSync(
 			fakeRepi,
 			`#!/usr/bin/env node
-// validate_repi_env_model_config REPI_LOAD_BUILTIN_MODELS REPI_MODEL_API
+// validate_repi_env_model_config REPI_MODEL_API
 const args = process.argv.slice(2).join(" ");
 if (args.includes("--mode rpc")) {
   console.log(JSON.stringify({id:"state", type:"response", command:"get_state", success:true, data:{model:{provider:"fake-provider", id:"fake-model", api:"openai-completions", contextWindow:262144}}}));

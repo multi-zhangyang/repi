@@ -28,8 +28,18 @@ const localScriptsDir = dirname(fileURLToPath(import.meta.url));
 const timeoutMs = Number(argValue("--timeout-ms") || (deep ? 20_000 : 10_000));
 const maxBuffer = 16 * 1024 * 1024;
 const commandExistsCache = new Map();
-const DEFAULT_SWARM_PROVIDER = process.env.REPI_SWARM_DEFAULT_PROVIDER || "kimchi";
-const DEFAULT_SWARM_MODEL = process.env.REPI_SWARM_DEFAULT_MODEL || "kimi-k2.7";
+
+function firstEnv(names) {
+	for (const name of names) {
+		const value = process.env[name]?.trim();
+		if (value) return value;
+	}
+	return undefined;
+}
+
+const DEFAULT_SWARM_PROVIDER = firstEnv(["REPI_SWARM_DEFAULT_PROVIDER", "REPI_PROVIDER", "REPI_MODEL_PROVIDER", "REPI_PROVIDER_ID"]);
+const DEFAULT_SWARM_MODEL = firstEnv(["REPI_SWARM_DEFAULT_MODEL", "REPI_MODEL", "REPI_MODEL_ID"]);
+const DEFAULT_SWARM_LABEL = DEFAULT_SWARM_PROVIDER || DEFAULT_SWARM_MODEL ? `${DEFAULT_SWARM_PROVIDER ?? "<auto>"}/${DEFAULT_SWARM_MODEL ?? "<auto>"}` : "REPI env/default";
 
 function usage() {
 	return `Usage:
@@ -42,7 +52,7 @@ Active Engagement Engine turns a target into an executable reverse/pentest run:
 - classify target and select lane
 - run bounded real tool probes immediately
 - write engagement artifacts, command ledger, evidence summary and next queue
-- optionally create/update mission and dispatch swarm workers (defaults: ${DEFAULT_SWARM_PROVIDER}/${DEFAULT_SWARM_MODEL})
+- optionally create/update mission and dispatch swarm workers (default model selection: ${DEFAULT_SWARM_LABEL})
 `;
 }
 
@@ -409,14 +419,46 @@ function detectCloudIdentityDirectory(fileEntries, lowerNames = []) {
 	return undefined;
 }
 
+function windowsAdBasename(entry) {
+	return basename(entry.name).toLowerCase();
+}
+
+function isWindowsRegistryHiveArtifact(entry) {
+	const base = windowsAdBasename(entry);
+	return ["sam", "system", "security"].includes(base) || /^(?:sam|system|security)[._-].*\.(?:hive|hiv|reg)$/i.test(base);
+}
+
+function isBloodHoundArtifact(entry) {
+	const lower = entry.lower;
+	const base = windowsAdBasename(entry);
+	return (
+		/(?:^|\/)(?:bloodhound|sharphound)\//i.test(lower) && /\.(?:json|zip)$/i.test(base)
+	) || /(?:bloodhound|sharphound)[^/]*\.(?:json|zip)$/i.test(base);
+}
+
+function isStrongWindowsAdArtifact(entry) {
+	return (
+		/(?:^|\/)ntds\.dit$/i.test(entry.name) ||
+		/\.(?:evtx|kirbi|ccache|dit|hive|hiv)$/i.test(entry.name) ||
+		isWindowsRegistryHiveArtifact(entry) ||
+		isBloodHoundArtifact(entry)
+	);
+}
+
 function textLikeWindowsAdFile(entry) {
-	return /\.(?:txt|csv|json|xml|evtx|kirbi|ccache|dit|hive|hiv|log|ps1|bat|cmd|yml|yaml)$/i.test(entry.name) || /(?:ntds\.dit|bloodhound|kerberoast|asrep|ldap|adcs|certipy|sharphound|powershell|event|security|system|sam$)/i.test(entry.name);
+	return (
+		/\.(?:txt|csv|json|xml|evtx|kirbi|ccache|dit|hive|hiv|log|ps1|bat|cmd|yml|yaml)$/i.test(entry.name) ||
+		/(?:ntds\.dit|bloodhound|kerberoast|asrep|ldap|adcs|certipy|sharphound|powershell|event)/i.test(entry.name) ||
+		isWindowsRegistryHiveArtifact(entry)
+	);
 }
 
 function detectWindowsAdDirectory(fileEntries) {
 	const artifact =
 		fileEntries.find((entry) => /(?:^|\/)ntds\.dit$/i.test(entry.name)) ??
-		fileEntries.find((entry) => /\.(?:evtx|kirbi|ccache|dit|hive|hiv)$/i.test(entry.name) || /(?:^|\/)(?:sam|system|security|bloodhound|sharphound)[^/]*$/i.test(entry.name));
+		fileEntries.find((entry) => /\.(?:evtx|kirbi|ccache|dit|hive|hiv)$/i.test(entry.name)) ??
+		fileEntries.find((entry) => isWindowsRegistryHiveArtifact(entry)) ??
+		fileEntries.find((entry) => isBloodHoundArtifact(entry));
 	if (artifact) return { reason: `Windows/AD artifact found: ${artifact.name}`, representativePath: artifact.path };
 	for (const entry of fileEntries.slice(0, 220)) {
 		if (!textLikeWindowsAdFile(entry)) continue;
@@ -428,27 +470,59 @@ function detectWindowsAdDirectory(fileEntries) {
 	return undefined;
 }
 
+function malwareNameBase(name) {
+	return basename(name).toLowerCase();
+}
+
+function hasStrongMalwareNameToken(name) {
+	return /(?:^|[._\-/])(?:malware|trojan|ransom(?:ware)?|dropper|beacon|implant|stealer|rat|backdoor|botnet|c2|packed|upx|yara|floss|capa|ioc)(?:$|[._\-/])/i.test(name);
+}
+
+function hasWeakMalwareNameToken(name) {
+	return /(?:^|[._\-/])(?:sample|payload|loader)(?:$|[._\-/])/i.test(name);
+}
+
+function isExecutableOrHighRiskScript(name) {
+	return /\.(?:exe|dll|sys|scr|ps1|vbs|vbe|jse|hta|bat|cmd|lnk)$/i.test(name);
+}
+
+function isOpaqueSampleExtension(name) {
+	return /\.(?:bin|dat)$/i.test(name);
+}
+
+function isMalwareRuleOrReportName(name) {
+	return /\.(?:yar|yara)$/i.test(name) || /(?:^|\/)(?:capa|floss|yara|ioc|sandbox|behavior|malware|triage)[^/]*\.(?:txt|json|log|md)$/i.test(name);
+}
+
 function looksLikeMalwareName(name) {
-	return /(?:^|[._\-/])(?:malware|sample|trojan|ransom|loader|dropper|beacon|implant|stealer|rat|backdoor|bot|c2|payload|packed|upx|yara|floss|capa|ioc)(?:$|[._\-/])/i.test(name);
+	const base = malwareNameBase(name);
+	if (hasStrongMalwareNameToken(base)) return true;
+	return hasWeakMalwareNameToken(base) && (isExecutableOrHighRiskScript(base) || isOpaqueSampleExtension(base));
 }
 
 function textLikeMalwareFile(entry) {
-	return /\.(?:yar|yara|txt|json|log|cfg|conf|ini|ps1|vbs|vbe|js|jse|hta|bat|cmd)$/i.test(entry.name) || looksLikeMalwareName(entry.name) || /(?:capa|floss|yara|ioc|sandbox|behavior|triage|config|mutex)/i.test(entry.name);
+	const base = malwareNameBase(entry.name);
+	return isMalwareRuleOrReportName(entry.name) || looksLikeMalwareName(entry.name) || (hasStrongMalwareNameToken(base) && /\.(?:txt|json|log|cfg|conf|ini|md|js)$/i.test(base));
 }
 
 function malwareArtifactFile(entry) {
-	return /\.(?:exe|dll|sys|scr|bin|dat|ps1|vbs|vbe|js|jse|hta|lnk|yar|yara)$/i.test(entry.name) || looksLikeMalwareName(entry.name);
+	const base = malwareNameBase(entry.name);
+	if (/\.(?:yar|yara)$/i.test(base)) return true;
+	if (isExecutableOrHighRiskScript(base)) return hasStrongMalwareNameToken(base) || hasWeakMalwareNameToken(base);
+	if (isOpaqueSampleExtension(base)) return hasStrongMalwareNameToken(base) || hasWeakMalwareNameToken(base);
+	if (/\.js$/i.test(base)) return hasStrongMalwareNameToken(base);
+	return false;
 }
 
 function detectMalwareDirectory(fileEntries) {
-	const ruleOrReport = fileEntries.find((entry) => /\.(?:yar|yara)$/i.test(entry.name) || /(?:^|\/)(?:capa|floss|yara|ioc|sandbox|behavior|malware)[^/]*\.(?:txt|json|log|md)$/i.test(entry.name));
+	const ruleOrReport = fileEntries.find((entry) => isMalwareRuleOrReportName(entry.name));
 	const namedSample = fileEntries.find((entry) => looksLikeMalwareName(entry.name) && malwareArtifactFile(entry));
 	if (ruleOrReport) return { reason: `malware rule/report artifact found: ${ruleOrReport.name}`, representativePath: namedSample?.path ?? ruleOrReport.path };
 	if (namedSample) return { reason: `malware sample-like artifact found: ${namedSample.name}`, representativePath: namedSample.path };
 	for (const entry of fileEntries.slice(0, 220)) {
 		if (!textLikeMalwareFile(entry)) continue;
 		const text = readSmallText(entry.path, 100_000);
-		if (/\b(?:YARA|capa|FLOSS|ATT&CK|CreateRemoteThread|VirtualAlloc|WriteProcessMemory|IsDebuggerPresent|NtQueryInformationProcess|CurrentVersion\\Run|schtasks|mutex|bot_id|ransom|C2|command-and-control|beacon|UPX|VMProtect|Themida)\b|https?:\/\/[^\s"']+/i.test(text)) {
+		if (/\b(?:YARA|capa|FLOSS|ATT&CK|CreateRemoteThread|VirtualAlloc|WriteProcessMemory|IsDebuggerPresent|NtQueryInformationProcess|CurrentVersion\\Run|schtasks|mutex|bot_id|ransom|command-and-control|beacon|UPX|VMProtect|Themida)\b|\bC2\b/i.test(text)) {
 			return { reason: `malware analysis content found: ${entry.name}`, representativePath: entry.path };
 		}
 	}
@@ -23389,7 +23463,21 @@ function maybeRunSwarm(targetInfo) {
 	const model = argValue("--model") || DEFAULT_SWARM_MODEL;
 	const workers = argValue("--workers") || "5";
 	const prompt = argValue("--prompt") || "Return structured reverse/pentest evidence, blockers, commands, and next proof step.";
-	const result = run(process.execPath, [resolveScript("repi-swarm-llm-run.mjs"), root, "run", targetInfo.target, "--workers", workers, ...swarmRouteArgs(targetInfo), "--provider", provider, "--model", model, "--prompt", prompt, "--json"], {
+	const swarmArgs = [
+		resolveScript("repi-swarm-llm-run.mjs"),
+		root,
+		"run",
+		targetInfo.target,
+		"--workers",
+		workers,
+		...swarmRouteArgs(targetInfo),
+		...(provider ? ["--provider", provider] : []),
+		...(model ? ["--model", model] : []),
+		"--prompt",
+		prompt,
+		"--json",
+	];
+	const result = run(process.execPath, swarmArgs, {
 		id: "swarm-run",
 		timeout: deep ? 300_000 : 180_000,
 		includeRaw: true,
@@ -23417,8 +23505,8 @@ function maybeRunSwarm(targetInfo) {
 	}
 	return {
 		exit: result.exit,
-		provider,
-		model,
+		provider: provider ?? "default",
+		model: model ?? "default",
 		parsed: Boolean(parsed),
 		summarySource,
 		summary,

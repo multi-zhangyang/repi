@@ -89,6 +89,39 @@ function restoreGeneratedModelSnapshots() {
 	}
 }
 
+const repiEnvModelUnset = Object.fromEntries(
+	[
+		"REPI_AUTH_TOKEN",
+		"REPI_API_KEY",
+		"REPI_MODEL_API_KEY",
+		"REPI_BASE_URL",
+		"REPI_MODEL_BASE_URL",
+		"REPI_PROVIDER",
+		"REPI_MODEL_PROVIDER",
+		"REPI_PROVIDER_ID",
+		"REPI_MODEL",
+		"REPI_MODEL_ID",
+		"REPI_MODEL_API",
+		"REPI_API",
+		"REPI_CONTEXT_WINDOW",
+		"REPI_MODEL_CONTEXT_WINDOW",
+		"REPI_AUTO_COMPACT_WINDOW",
+		"REPI_MODEL_AUTO_COMPACT_WINDOW",
+		"REPI_MAX_TOKENS",
+		"REPI_MODEL_MAX_TOKENS",
+		"REPI_MAX_OUTPUT_TOKENS",
+		"REPI_SUBAGENT_MODEL",
+		"REPI_MODEL_INPUT",
+		"REPI_INPUT",
+		"REPI_MODEL_REASONING",
+		"REPI_REASONING",
+		"REPI_PROVIDER_NAME",
+		"REPI_MODEL_PROVIDER_NAME",
+		"REPI_MODEL_NAME",
+		"REPI_SUBAGENT_MODEL_NAME",
+	].map((key) => [key, undefined]),
+);
+
 const outDir = mkdtempSync(join(tmpdir(), "repi-release-tarball-smoke-"));
 const tarballDir = join(outDir, "tarballs");
 const installDir = join(outDir, "install");
@@ -117,23 +150,22 @@ try {
 		REPI_MODEL_API: "openai-compatible",
 		REPI_CONTEXT_WINDOW: "262144",
 		REPI_AUTO_COMPACT_WINDOW: "262144",
-		REPI_LOAD_BUILTIN_MODELS: "0",
 	};
-	rows.push(run("package-bin:help", repiBin, ["--offline", "--help"], { cwd: installDir, expectOutput: ["REPI reverse/pentest", "REPI_AUTH_TOKEN", "REPI_LOAD_BUILTIN_MODELS"] }));
+	rows.push(run("package-bin:help", repiBin, ["--offline", "--help"], { cwd: installDir, expectOutput: ["REPI reverse/pentest", "REPI_AUTH_TOKEN", "REPI_MODEL_API"] }));
 	rows.push(run("package-bin:path-command", "repi", ["--version"], { cwd: installDir, env: { PATH: `${dirname(repiBin)}:${process.env.PATH ?? ""}` }, expectOutput: [rootPackageJson.version] }));
-	rows.push(run("package-bin:fresh-list-models", repiBin, ["--offline", "--list-models"], { cwd: installDir, env: { REPI_CODING_AGENT_DIR: freshAgentDir, REPI_LOAD_BUILTIN_MODELS: "0" }, expectOutput: ["No models available"], rejectOutput: ["kimchi", "aigateway"] }));
-	rows.push(run("package-bin:goal-help-print", repiBin, ["--offline", "-p", "/goal help"], { cwd: installDir, env: { REPI_CODING_AGENT_DIR: join(outDir, "goal-help-agent"), REPI_LOAD_BUILTIN_MODELS: "0", REPI_PRINT_PROGRESS: "0" }, expectOutput: ["REPI /goal runs a task until verified completion.", "Completion:"], rejectOutput: ["kimchi", "aigateway"] }));
-	rows.push(run("package-bin:goal-status-fresh-print", repiBin, ["--offline", "-p", "/goal status"], { cwd: installDir, env: { REPI_CODING_AGENT_DIR: join(outDir, "goal-status-agent"), REPI_LOAD_BUILTIN_MODELS: "0", REPI_PRINT_PROGRESS: "0", REPI_PRINT_STATUS: "1" }, expectOutput: ["Usage: /goal <objective>", "No goal is currently set.", "Status: clear", "Footer: 🎯 <clear>", "[repi:status] goal=<clear>"], rejectOutput: ["kimchi", "aigateway"] }));
+	rows.push(run("package-bin:fresh-list-models", repiBin, ["--offline", "--list-models"], { cwd: installDir, env: { ...repiEnvModelUnset, REPI_CODING_AGENT_DIR: freshAgentDir }, expectOutput: ["No models available"], rejectOutput: ["kimchi", "aigateway"] }));
+	rows.push(run("package-bin:goal-help-print", repiBin, ["--offline", "-p", "/goal help"], { cwd: installDir, env: { ...repiEnvModelUnset, REPI_CODING_AGENT_DIR: join(outDir, "goal-help-agent"), REPI_PRINT_PROGRESS: "0" }, expectOutput: ["REPI /goal runs a task until verified completion.", "Completion:"], rejectOutput: ["kimchi", "aigateway"] }));
+	rows.push(run("package-bin:goal-status-fresh-print", repiBin, ["--offline", "-p", "/goal status"], { cwd: installDir, env: { ...repiEnvModelUnset, REPI_CODING_AGENT_DIR: join(outDir, "goal-status-agent"), REPI_PRINT_PROGRESS: "0", REPI_PRINT_STATUS: "1" }, expectOutput: ["Usage: /goal <objective>", "No goal is currently set.", "Status: clear", "Footer: 🎯 <clear>", "[repi:status] goal=<clear>"], rejectOutput: ["kimchi", "aigateway"] }));
 	rows.push(
 		run("package-bin:goal-help-json", repiBin, ["--offline", "--mode", "json", "-p", "/goal help"], {
 			cwd: installDir,
-			env: { REPI_CODING_AGENT_DIR: join(outDir, "goal-help-json-agent"), REPI_LOAD_BUILTIN_MODELS: "0", REPI_PRINT_PROGRESS: "0" },
+			env: { ...repiEnvModelUnset, REPI_CODING_AGENT_DIR: join(outDir, "goal-help-json-agent"), REPI_PRINT_PROGRESS: "0" },
 			expectOutput: ['"type":"extension_ui_request"', '"method":"notify"', "REPI /goal runs a task until verified completion.", '"statusKey":"goal"'],
 			rejectOutput: ["kimchi", "aigateway"],
 		}),
 	);
-	rows.push(run("package-bin:goal-status-fresh-json", repiBin, ["--offline", "--mode", "json", "-p", "/goal status"], { cwd: installDir, env: { REPI_CODING_AGENT_DIR: join(outDir, "goal-status-json-agent"), REPI_LOAD_BUILTIN_MODELS: "0", REPI_PRINT_PROGRESS: "0" }, expectOutput: ['"type":"extension_ui_request"', '"method":"notify"', "No goal is currently set.", "Status: clear", "Footer: 🎯 <clear>", '"statusKey":"goal"'], rejectOutput: ["kimchi", "aigateway"] }));
-	rows.push(run("package-bin:env-incomplete-guard", repiBin, ["--offline", "--list-models"], { cwd: installDir, env: { REPI_CODING_AGENT_DIR: join(outDir, "bad-env-agent"), REPI_LOAD_BUILTIN_MODELS: "0", REPI_MODEL: "release-smoke-env-model", REPI_MODEL_API: "openai-compatible" }, expectExit: 2, expectOutput: ["REPI env model config is incomplete", "missing: REPI_BASE_URL"], rejectOutput: ["kimchi", "aigateway"] }));
+	rows.push(run("package-bin:goal-status-fresh-json", repiBin, ["--offline", "--mode", "json", "-p", "/goal status"], { cwd: installDir, env: { ...repiEnvModelUnset, REPI_CODING_AGENT_DIR: join(outDir, "goal-status-json-agent"), REPI_PRINT_PROGRESS: "0" }, expectOutput: ['"type":"extension_ui_request"', '"method":"notify"', "No goal is currently set.", "Status: clear", "Footer: 🎯 <clear>", '"statusKey":"goal"'], rejectOutput: ["kimchi", "aigateway"] }));
+	rows.push(run("package-bin:env-incomplete-guard", repiBin, ["--offline", "--list-models"], { cwd: installDir, env: { ...repiEnvModelUnset, REPI_CODING_AGENT_DIR: join(outDir, "bad-env-agent"), REPI_MODEL: "release-smoke-env-model", REPI_MODEL_API: "openai-compatible" }, expectExit: 2, expectOutput: ["REPI env model config is incomplete", "missing: REPI_BASE_URL"], rejectOutput: ["kimchi", "aigateway"] }));
 	rows.push(run("package-bin:env-model", repiBin, ["--offline", "--list-models"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: envAgentDir }, expectOutput: ["repi-env", "release-smoke-env-model", "262.1K"], rejectOutput: ["kimchi", "aigateway"] }));
 	rows.push(run("package-bin:model-status-env", repiBin, ["model", "status", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "model-status-agent") }, expectOutput: ['"source": "REPI_* environment"', '"provider": "repi-env"', '"model": "release-smoke-env-model"'], rejectOutput: ["https://release-smoke.invalid"] }));
 	rows.push(run("package-bin:doctor-env-model", repiBin, ["doctor", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "doctor-agent") }, timeout: 120_000, expectOutput: ['"ok": true', '"launcher:path-command-resolution"', '"launcher:shell-rc-path-activation"', '"goal:built-in-mode"', '"goal:footer-status-contract"', '"goal:rpc-runtime-registration"', '"models:env-only-contract"', '"models:env-rpc-runtime"', '"models:env-overrides-saved-default"', '"repi:launch-readiness"'] }));

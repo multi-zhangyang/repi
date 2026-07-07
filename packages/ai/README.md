@@ -502,7 +502,7 @@ Many models support thinking/reasoning capabilities where they can show their in
 import { getModel, streamSimple, completeSimple } from '@pi-recon/repi-ai';
 
 // Many models across providers support thinking/reasoning
-const model = getModel('anthropic', 'claude-sonnet-4-20250514');
+const model = getModel('anthropic', 'claude-sonnet-4-5');
 // or getModel('openai', 'gpt-5-mini');
 // or getModel('google', 'gemini-2.5-flash');
 // or getModel('xai', 'grok-code-fast-1');
@@ -547,7 +547,7 @@ await complete(openaiModel, context, {
 });
 
 // Anthropic Thinking (Claude Sonnet 4)
-const anthropicModel = getModel('anthropic', 'claude-sonnet-4-20250514');
+const anthropicModel = getModel('anthropic', 'claude-sonnet-4-5');
 await complete(anthropicModel, context, {
   thinkingEnabled: true,
   thinkingBudgetTokens: 8192  // Optional token limit
@@ -968,7 +968,7 @@ Models are typed by their API, which keeps the model metadata accurate. Provider
 import { streamAnthropic, type AnthropicOptions } from '@pi-recon/repi-ai';
 
 // TypeScript knows this is an Anthropic model
-const claude = getModel('anthropic', 'claude-sonnet-4-20250514');
+const claude = getModel('anthropic', 'claude-sonnet-4-5');
 
 const options: AnthropicOptions = {
   thinkingEnabled: true,
@@ -997,7 +997,7 @@ When messages from one provider are sent to a different provider, the library au
 import { getModel, complete, Context } from '@pi-recon/repi-ai';
 
 // Start with Claude
-const claude = getModel('anthropic', 'claude-sonnet-4-20250514');
+const claude = getModel('anthropic', 'claude-sonnet-4-5');
 const context: Context = {
   messages: []
 };

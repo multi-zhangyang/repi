@@ -44,7 +44,7 @@ function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCo
 		supportsStore: model.compat?.supportsStore ?? false,
 		supportsDeveloperRole: model.compat?.supportsDeveloperRole ?? true,
 		sendSessionIdHeader: model.compat?.sendSessionIdHeader ?? true,
-		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
+		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? false,
 	};
 }
 
@@ -245,7 +245,7 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 		stream: true,
 	};
 
-	if (cacheRetention !== "none") {
+	if (cacheRetention === "long" && compat.supportsLongCacheRetention) {
 		params.prompt_cache_key = clampOpenAIPromptCacheKey(options?.sessionId);
 	}
 

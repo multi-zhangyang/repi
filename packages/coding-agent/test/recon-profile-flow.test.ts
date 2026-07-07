@@ -354,4 +354,65 @@ describe("REPI kernel profile runtime adapter and evidence graph flows", () => {
 		expect(graphText).toContain("--refutes");
 		expect(graphText).toContain("--refutes:counter-evidence-prior-hypothesis");
 	});
+
+	it("deduplicates self-review checkpoint notifications while the review is pending", async () => {
+		const handlers = new Map<string, Array<(event: any, ctx: any) => Promise<any>>>();
+		const notify = vi.fn();
+		const appendEntry = vi.fn();
+		const fakePi = {
+			registerCommand() {},
+			registerTool() {},
+			on(event: string, handler: (event: any, ctx: any) => Promise<any>) {
+				const list = handlers.get(event) ?? [];
+				list.push(handler);
+				handlers.set(event, list);
+			},
+			appendEntry,
+			getSessionName: () => undefined,
+			setSessionName() {},
+			sendMessage() {},
+			exec: async () => ({ code: 0, stdout: "", stderr: "", killed: false }),
+		} as unknown as ExtensionAPI;
+
+		createReconExtensionFactory()(fakePi);
+		const beforeAgentStart = handlers.get("before_agent_start")?.[0];
+		const toolResult = handlers.get("tool_result")?.[0];
+		expect(beforeAgentStart).toBeDefined();
+		expect(toolResult).toBeDefined();
+
+		await beforeAgentStart!(
+			{
+				type: "before_agent_start",
+				prompt: "目标：只读审计当前 REPI harness 的逆向渗透运行问题",
+				systemPrompt: "base",
+				systemPromptOptions: {},
+			},
+			{
+				hasUI: true,
+				ui: { notify, setStatus: vi.fn() },
+				sessionManager: { getSessionFile: () => undefined },
+			},
+		);
+
+		const ctx = { hasUI: true, ui: { notify, setStatus: vi.fn() } };
+		for (let index = 0; index < 10; index += 1) {
+			await toolResult!(
+				{
+					type: "tool_result",
+					toolName: "bash",
+					toolCallId: `tool-${index}`,
+					input: {},
+					content: [{ type: "text", text: "ok" }],
+					isError: false,
+					details: undefined,
+				},
+				ctx,
+			);
+		}
+
+		expect(notify).toHaveBeenCalledTimes(1);
+		expect(notify).toHaveBeenCalledWith("REPI self-review checkpoint is due", "info");
+		const selfReviewEntries = appendEntry.mock.calls.filter(([kind]) => kind === "repi-self-review-due");
+		expect(selfReviewEntries).toHaveLength(1);
+	});
 });

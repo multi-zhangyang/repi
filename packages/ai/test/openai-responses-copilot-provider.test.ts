@@ -182,7 +182,7 @@ describe("openai-responses provider defaults", () => {
 		);
 
 		const stream = streamOpenAIResponses(
-			getModel("openai", "gpt-5.4"),
+			{ ...getModel("openai", "gpt-5.4"), compat: { supportsLongCacheRetention: true } },
 			{
 				systemPrompt: "sys",
 				messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
@@ -190,6 +190,7 @@ describe("openai-responses provider defaults", () => {
 			{
 				apiKey: "test-key",
 				sessionId,
+				cacheRetention: "long",
 				onPayload: (payload) => {
 					capturedPayload = payload as { prompt_cache_key?: string };
 				},

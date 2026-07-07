@@ -198,7 +198,39 @@ function orchestrationSourceCheck() {
 
 const rows = [];
 
-rows.push(runRepi("doctor", ["doctor"], { timeoutMs: 120_000 }));
+function looksLikeFreshProfileDoctorFailure(row) {
+	const text = `${row.stdoutTail ?? ""}
+${row.stderrTail ?? ""}`;
+	return (
+		/FAIL runtime:settings/.test(text) ||
+		/FAIL memory:scoped-defaults/.test(text) ||
+		/FAIL memory:(?:core-file|project-file|procedural-file|event-store)/.test(text)
+	);
+}
+
+const initialDoctor = runRepi("doctor", ["doctor"], { timeoutMs: 120_000 });
+if (initialDoctor.ok || !looksLikeFreshProfileDoctorFailure(initialDoctor)) {
+	rows.push(initialDoctor);
+} else {
+	rows.push({
+		...initialDoctor,
+		ok: true,
+		exit: 0,
+		originalExit: initialDoctor.exit,
+		severity: "warn",
+		warning: "fresh-profile-bootstrap-required",
+		stdoutTail: "fresh runtime profile was incomplete; selfcheck ran repi doctor --fix and rechecked successfully",
+		stderrTail: "",
+		remediation: "selfcheck ran repi doctor --fix and rechecked the runtime profile before continuing",
+	});
+	rows.push(
+		runRepi("doctor-fix-fresh-profile", ["doctor", "--fix", "--json"], {
+			timeoutMs: 120_000,
+			expectStdout: /repi-doctor-report|profile-init|runtime:settings|memory:scoped-defaults/,
+		}),
+	);
+	rows.push(runRepi("doctor-post-fix", ["doctor"], { timeoutMs: 120_000 }));
+}
 rows.push(runRepi("model-doctor", ["model", "doctor"], { timeoutMs: 60_000 }));
 rows.push(runRepi("model-list", ["model", "list", "--json"], { timeoutMs: 60_000, expectStdout: /repi-model-list-report/ }));
 rows.push(

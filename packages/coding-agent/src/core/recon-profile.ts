@@ -658,6 +658,7 @@ export type ReconStats = {
 	lastCommands: string[];
 	active: boolean;
 	selfReviewDue: boolean;
+	selfReviewNotified?: boolean;
 	lastRoute?: RoutePlan;
 	currentMissionId?: string;
 	sessionFile?: string;
@@ -35649,6 +35650,7 @@ export function createReconExtensionFactory() {
 			lastCommands: [],
 			active: false,
 			selfReviewDue: false,
+			selfReviewNotified: false,
 		};
 		const compactAutoResumeIds = new Set<string>();
 		let compactAutoResumeBudget = 3;
@@ -35714,6 +35716,7 @@ export function createReconExtensionFactory() {
 				stats.selfReviewDue ? makeSelfReview(stats) : "",
 			].join("\n");
 			stats.selfReviewDue = false;
+			stats.selfReviewNotified = false;
 			return { systemPrompt: `${event.systemPrompt}\n\n${packet}` };
 		});
 
@@ -35734,6 +35737,7 @@ export function createReconExtensionFactory() {
 			stats.lastCommands.push(command);
 			stats.lastCommands = stats.lastCommands.slice(-8);
 			if (stats.active && stats.repeatedCommandCount >= 3) {
+				if (!stats.selfReviewDue) stats.selfReviewNotified = false;
 				stats.selfReviewDue = true;
 				return {
 					block: true,
@@ -35793,14 +35797,20 @@ export function createReconExtensionFactory() {
 				}
 			}
 			if (stats.active && stats.calls > 0 && stats.calls % 5 === 0) {
+				if (!stats.selfReviewDue) stats.selfReviewNotified = false;
 				stats.selfReviewDue = true;
-				pi.appendEntry("repi-self-review-due", { timestamp: Date.now(), stats: { ...stats } });
-				if (ctx.hasUI) ctx.ui.notify("REPI self-review checkpoint is due", "info");
+				if (!stats.selfReviewNotified) {
+					stats.selfReviewNotified = true;
+					pi.appendEntry("repi-self-review-due", { timestamp: Date.now(), stats: { ...stats } });
+					if (ctx.hasUI) ctx.ui.notify("REPI self-review checkpoint is due", "info");
+				}
 			}
 			if (stats.active && event.toolName === "bash") {
 				const text = textBlocksToString(event.content);
-				if (/command not found|not recognized|No such file|cannot stat|ModuleNotFoundError|ImportError/i.test(text))
+				if (/command not found|not recognized|No such file|cannot stat|ModuleNotFoundError|ImportError/i.test(text)) {
+					if (!stats.selfReviewDue) stats.selfReviewNotified = false;
 					stats.selfReviewDue = true;
+				}
 			}
 			if (stats.active) {
 				const recall = buildPerTurnMemoryRecall(event, stats);

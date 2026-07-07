@@ -19,8 +19,6 @@ export function getProviderLoginHelp(): string {
 			"  export REPI_AUTO_COMPACT_WINDOW=262144  # optional alias of REPI_CONTEXT_WINDOW",
 			"  repi --list-models",
 			'  repi -p "Reply exactly: REPI_OK"',
-			"",
-			"REPI does not load upstream pi's large built-in model catalog by default; set REPI_LOAD_BUILTIN_MODELS=1 only for legacy compatibility.",
 		].join("\n");
 	}
 	return [

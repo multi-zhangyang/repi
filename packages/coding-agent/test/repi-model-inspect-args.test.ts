@@ -174,6 +174,26 @@ describe("repi model argument parsing", () => {
 		expect((json.env as Record<string, unknown>).baseUrl).not.toContain("status-gateway");
 	});
 
+	it("warns when REPI_BASE_URL shape does not match the selected SDK wire format", () => {
+		const openai = run(["status"], {
+			REPI_AUTH_TOKEN: "env-only-key",
+			REPI_BASE_URL: "https://status-gateway.example.invalid",
+			REPI_MODEL: "status-main-model",
+			REPI_MODEL_API: "openai-compatible",
+		});
+		expect(openai.result.status, `${openai.result.stderr}\n${openai.result.stdout}`).toBe(0);
+		expect(JSON.stringify(openai.json.diagnostics)).toContain("usually ends with /v1");
+
+		const anthropic = run(["status"], {
+			REPI_AUTH_TOKEN: "env-only-key",
+			REPI_BASE_URL: "https://status-gateway.example.invalid/v1",
+			REPI_MODEL: "status-main-model",
+			REPI_MODEL_API: "anthropic",
+		});
+		expect(anthropic.result.status, `${anthropic.result.stderr}\n${anthropic.result.stdout}`).toBe(0);
+		expect(JSON.stringify(anthropic.json.diagnostics)).toContain("usually omits /v1");
+	});
+
 	it("fails model status on invalid REPI_MODEL_API instead of silently selecting chat completions", () => {
 		const { result, json } = run(["status"], {
 			REPI_AUTH_TOKEN: "env-only-key",
@@ -195,7 +215,26 @@ describe("repi model argument parsing", () => {
 		expect(JSON.stringify(json.diagnostics)).toContain("REPI_MODEL_API is invalid");
 	});
 
-	it("adds the Baseten Kimi K2.7 Code preset without leaking the key or URL by default", () => {
+	it("rejects removed provider presets and requires explicit model configuration", () => {
+		const cleanEnv = { ...process.env };
+		for (const name of REPI_MODEL_ENV_NAMES) delete cleanEnv[name];
+		const result = spawnSync(
+			process.execPath,
+			[MODEL_INSPECT, workspace, "add", "--preset", "baseten-kimi-k2.7-code", "--json"],
+			{
+				encoding: "utf8",
+				env: { ...cleanEnv, REPI_CODING_AGENT_DIR: agentDir },
+				timeout: 10_000,
+			},
+		);
+		expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(1);
+		const report = JSON.parse(result.stdout) as { ok: boolean; error: string };
+		expect(report.ok).toBe(false);
+		expect(report.error).toContain("provider presets have been removed");
+		expect(report.error).toContain("--provider --api --base-url --model");
+	});
+
+	it("adds an explicit provider without leaking the key or URL by default", () => {
 		const cleanEnv = { ...process.env };
 		for (const name of REPI_MODEL_ENV_NAMES) delete cleanEnv[name];
 		const result = spawnSync(
@@ -204,8 +243,14 @@ describe("repi model argument parsing", () => {
 				MODEL_INSPECT,
 				workspace,
 				"add",
-				"--preset",
-				"baseten-kimi-k2.7-code",
+				"--provider",
+				"explicit-gateway",
+				"--api",
+				"openai-completions",
+				"--base-url",
+				"https://gateway.example.invalid/v1",
+				"--model",
+				"vendor/model",
 				"--api-key-stdin",
 				"--set-default",
 				"--json",
@@ -213,14 +258,14 @@ describe("repi model argument parsing", () => {
 			{
 				encoding: "utf8",
 				env: { ...cleanEnv, REPI_CODING_AGENT_DIR: agentDir },
-				input: "baseten-test-key\n",
+				input: "explicit-test-key\n",
 				timeout: 10_000,
 			},
 		);
 		expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
 		const report = JSON.parse(result.stdout) as {
 			ok: boolean;
-			preset: string;
+			preset: null;
 			provider: string;
 			model: string;
 			baseUrl: string;
@@ -228,34 +273,34 @@ describe("repi model argument parsing", () => {
 		};
 		expect(report).toMatchObject({
 			ok: true,
-			preset: "baseten-kimi-k2.7-code",
-			provider: "baseten-kimi",
-			model: "moonshotai/Kimi-K2.7-Code",
+			preset: null,
+			provider: "explicit-gateway",
+			model: "vendor/model",
 			authWritten: true,
 		});
 		expect(report.baseUrl).toMatch(/^<redacted:url:/);
-		expect(report.baseUrl).not.toContain("baseten");
+		expect(report.baseUrl).not.toContain("gateway.example");
 		const models = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8")) as {
 			providers: Record<
 				string,
 				{ baseUrl: string; api: string; apiKey: string; models: Array<{ id: string; contextWindow: number }> }
 			>;
 		};
-		expect(models.providers["baseten-kimi"]).toMatchObject({
-			baseUrl: "https://inference.baseten.co/v1",
+		expect(models.providers["explicit-gateway"]).toMatchObject({
+			baseUrl: "https://gateway.example.invalid/v1",
 			api: "openai-completions",
-			apiKey: "$REPI_BASETEN_KIMI_API_KEY",
+			apiKey: "$REPI_EXPLICIT_GATEWAY_API_KEY",
 		});
-		expect(models.providers["baseten-kimi"].models[0]).toMatchObject({
-			id: "moonshotai/Kimi-K2.7-Code",
+		expect(models.providers["explicit-gateway"].models[0]).toMatchObject({
+			id: "vendor/model",
 			contextWindow: 262144,
 		});
 		expect(JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8"))).toMatchObject({
-			"baseten-kimi": { type: "api_key", key: "baseten-test-key" },
+			"explicit-gateway": { type: "api_key", key: "explicit-test-key" },
 		});
 		expect(JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf8"))).toMatchObject({
-			defaultProvider: "baseten-kimi",
-			defaultModel: "moonshotai/Kimi-K2.7-Code",
+			defaultProvider: "explicit-gateway",
+			defaultModel: "vendor/model",
 		});
 	});
 });

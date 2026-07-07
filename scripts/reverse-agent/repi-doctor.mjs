@@ -637,10 +637,7 @@ const envModelGuardOk =
 	bootstrapSource.includes("missingRepiEnvModelConfig");
 const envModelContractOk =
 	envModelGuardOk &&
-	envModelSource.includes("REPI_LOAD_BUILTIN_MODELS") &&
 	envModelSource.includes("REPI_MODEL_API") &&
-	bootstrapSource.includes("REPI_LOAD_BUILTIN_MODELS") &&
-	bootstrapSource.includes('process.env.REPI_LOAD_BUILTIN_MODELS || "0"') &&
 	modelRegistrySource.includes("repiEnvProviderConfig") &&
 	modelRegistrySource.includes("REPI_AUTO_COMPACT_WINDOW") &&
 	modelRegistrySource.includes("openai-compatible") &&
@@ -798,8 +795,8 @@ const checks = [
 	check(
 		"models:env-only-contract",
 		envModelContractOk,
-		`envGuard=${envModelGuardOk} envSourceBuiltin=${envModelSource.includes("REPI_LOAD_BUILTIN_MODELS")} bootstrapBuiltinDefault0=${bootstrapSource.includes('process.env.REPI_LOAD_BUILTIN_MODELS || "0"')} registryEnv=${modelRegistrySource.includes("repiEnvProviderConfig")} modelStatus=${modelInspectSource.includes("buildStatusReport")}`,
-		"keep Claude-Code-style REPI_* env model config as the default path and built-in provider catalog disabled",
+		`envGuard=${envModelGuardOk} envApi=${envModelSource.includes("REPI_MODEL_API")} registryEnv=${modelRegistrySource.includes("repiEnvProviderConfig")} modelStatus=${modelInspectSource.includes("buildStatusReport")}`,
+		"keep Claude-Code-style REPI_* env model config as the default path",
 	),
 	check(
 		"models:env-runtime-config",

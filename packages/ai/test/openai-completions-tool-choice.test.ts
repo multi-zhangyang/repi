@@ -195,8 +195,11 @@ describe("openai-completions tool_choice", () => {
 		expect(Object.keys(params).sort()).toEqual(["messages", "model", "stream"]);
 	});
 
-	it("maps groq qwen3 reasoning levels to default reasoning_effort", async () => {
-		const model = getModel("groq", "qwen/qwen3-32b")!;
+	it("maps groq qwen3 reasoning levels to default reasoning_effort when explicitly enabled", async () => {
+		const model = {
+			...getModel("groq", "qwen/qwen3-32b")!,
+			compat: { supportsReasoningEffort: true },
+		};
 		let payload: unknown;
 
 		await streamSimple(
@@ -223,8 +226,11 @@ describe("openai-completions tool_choice", () => {
 		expect(params.reasoning_effort).toBe("default");
 	});
 
-	it("keeps normal reasoning_effort for groq models without compat mapping", async () => {
-		const model = getModel("groq", "openai/gpt-oss-20b")!;
+	it("keeps normal reasoning_effort for groq models when explicitly enabled", async () => {
+		const model = {
+			...getModel("groq", "openai/gpt-oss-20b")!,
+			compat: { supportsReasoningEffort: true },
+		};
 		let payload: unknown;
 
 		await streamSimple(
@@ -879,15 +885,19 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("keeps developer messages for OpenAI and Anthropic OpenRouter reasoning model instructions", async () => {
-		for (const model of [
+		for (const baseModel of [
 			getModel("openrouter", "openai/gpt-5.2-codex"),
 			getModel("openrouter", "anthropic/claude-sonnet-4.5"),
 		]) {
-			expect(model).toBeDefined();
+			expect(baseModel).toBeDefined();
+			const model = {
+				...baseModel!,
+				compat: { ...baseModel!.compat, supportsDeveloperRole: true },
+			};
 			let payload: unknown;
 
 			await streamSimple(
-				model!,
+				model,
 				{
 					systemPrompt: "Follow instructions.",
 					messages: [{ role: "user", content: "Hi", timestamp: Date.now() }],
@@ -905,9 +915,9 @@ describe("openai-completions tool_choice", () => {
 		}
 	});
 
-	it("keeps developer messages for OpenAI reasoning model instructions", async () => {
+	it("keeps developer messages for OpenAI reasoning model instructions when explicitly enabled", async () => {
 		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-5.5")!;
-		const model = { ...baseModel, api: "openai-completions" } as const;
+		const model = { ...baseModel, api: "openai-completions", compat: { supportsDeveloperRole: true } } as const;
 		let payload: unknown;
 
 		await streamSimple(
@@ -956,7 +966,11 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("replays Xiaomi MiMo assistant tool calls with empty reasoning_content when thinking is missing", async () => {
-		const model = getModel("xiaomi", "mimo-v2.5-pro")!;
+		const baseModel = getModel("xiaomi", "mimo-v2.5-pro")!;
+		const model = {
+			...baseModel,
+			compat: { ...baseModel.compat, supportsReasoningEffort: true },
+		};
 		const assistantMessage: AssistantMessage = {
 			role: "assistant",
 			api: "openai-completions",
@@ -1310,8 +1324,12 @@ describe("openai-completions tool_choice", () => {
 		expect(response.usage.totalTokens).toBe(105);
 	});
 
-	it("uses OpenRouter reasoning object instead of reasoning_effort", async () => {
-		const model = getModel("openrouter", "deepseek/deepseek-r1")!;
+	it("uses OpenRouter reasoning object instead of reasoning_effort when explicitly configured", async () => {
+		const baseModel = getModel("openrouter", "deepseek/deepseek-r1")!;
+		const model = {
+			...baseModel,
+			compat: { ...baseModel.compat, thinkingFormat: "openrouter" as const },
+		};
 		let payload: unknown;
 
 		await streamSimple(

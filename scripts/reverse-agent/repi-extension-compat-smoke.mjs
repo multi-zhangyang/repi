@@ -18,7 +18,6 @@ const rows = [];
 const env = {
 	...process.env,
 	REPI_CODING_AGENT_DIR: agentDir,
-	REPI_LOAD_BUILTIN_MODELS: "0",
 	REPI_AUTH_TOKEN: "extension-smoke-token",
 	REPI_BASE_URL: "https://extension-smoke.invalid/v1",
 	REPI_PROVIDER: "extension-smoke",

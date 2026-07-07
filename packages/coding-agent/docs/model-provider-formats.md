@@ -32,9 +32,9 @@ export REPI_MODEL_API=openai-compatible
 export REPI_AUTO_COMPACT_WINDOW=262144  # alias of REPI_CONTEXT_WINDOW
 ```
 
-`~/.repi/agent/settings.json` 只保存 compact、UI 偏好和 legacy/user-explicit 默认值。凭据建议通过环境变量或命令式 secret loader 注入。下面的示例只使用占位符和环境变量引用，例如 `$OPENAI_API_KEY`、`$ANTHROPIC_API_KEY`、`$OPENROUTER_API_KEY`、`$GEMINI_API_KEY`。
+`~/.repi/agent/settings.json` 只保存 compact、UI 偏好和 legacy/user-explicit 默认值。凭据建议通过 `REPI_AUTH_TOKEN`、环境变量引用或命令式 secret loader 注入。下面的示例只使用占位符和环境变量引用。
 
-REPI 启动器默认 `REPI_LOAD_BUILTIN_MODELS=0`：不会因为环境里存在 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 等上游变量就自动加载 upstream pi 的大模型目录。默认运行面只包含 `REPI_*` env-only provider、`models.json` 里用户显式写入的 provider、以及扩展动态注册的 provider；如需旧行为，可显式设置 `REPI_LOAD_BUILTIN_MODELS=1`。
+REPI 不会因为环境里存在上游变量就自动加载 provider/model catalog。默认运行面只包含 `REPI_*` env-only provider、`models.json` 里用户显式写入的 provider，以及扩展动态注册的 provider。
 
 
 ## 0. 自定义模型支持结论

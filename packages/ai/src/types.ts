@@ -371,26 +371,26 @@ export type AssistantMessageEvent =
 
 /**
  * Compatibility settings for OpenAI-compatible completions APIs.
- * Use this to override URL-based auto-detection for custom providers.
+ * Use this to explicitly enable provider-specific extensions for custom providers.
  */
 export interface OpenAICompletionsCompat {
 	/** Whether the provider supports the `store` field. Default: false; standard SDK payloads omit optional storage controls unless explicitly enabled. */
 	supportsStore?: boolean;
-	/** Whether the provider supports the `developer` role (vs `system`). Default: auto-detected from URL. */
+	/** Whether the provider supports the `developer` role (vs `system`). Default: false; set explicitly for providers that require it. */
 	supportsDeveloperRole?: boolean;
-	/** Whether the provider supports `reasoning_effort`. Default: auto-detected from URL. */
+	/** Whether the provider supports `reasoning_effort`. Default: false; set explicitly for providers that support it. */
 	supportsReasoningEffort?: boolean;
 	/** Whether the provider supports `stream_options: { include_usage: true }` for token usage in streaming responses. Default: false; standard compatible payloads omit optional usage controls unless explicitly enabled. */
 	supportsUsageInStreaming?: boolean;
-	/** Which field to use for max tokens. Default: auto-detected from URL. */
+	/** Which field to use for max tokens. Default: `max_tokens`, the broadly supported Chat Completions field. */
 	maxTokensField?: "max_completion_tokens" | "max_tokens";
-	/** Whether tool results require the `name` field. Default: auto-detected from URL. */
+	/** Whether tool results require the `name` field. Default: false. */
 	requiresToolResultName?: boolean;
-	/** Whether a user message after tool results requires an assistant message in between. Default: auto-detected from URL. */
+	/** Whether a user message after tool results requires an assistant message in between. Default: false. */
 	requiresAssistantAfterToolResult?: boolean;
-	/** Whether thinking blocks must be converted to text blocks with <thinking> delimiters. Default: auto-detected from URL. */
+	/** Whether thinking blocks must be converted to text blocks with <thinking> delimiters. Default: false. */
 	requiresThinkingAsText?: boolean;
-	/** Whether all replayed assistant messages must include an empty reasoning_content field when reasoning is enabled. Default: auto-detected from URL. */
+	/** Whether all replayed assistant messages must include an empty reasoning_content field when reasoning is enabled. Default: false. */
 	requiresReasoningContentOnAssistantMessages?: boolean;
 	/** Format for reasoning/thinking parameter. "openai" uses reasoning_effort, "openrouter" uses reasoning: { effort }, "deepseek" uses thinking: { type } plus reasoning_effort when supported, "together" uses reasoning: { enabled } plus reasoning_effort when supported, "zai" uses top-level enable_thinking: boolean, "qwen" uses top-level enable_thinking: boolean, "qwen-chat-template" uses chat_template_kwargs.enable_thinking, "string-thinking" uses top-level thinking: string, and "ant-ling" uses reasoning: { effort } only when the mapped effort is non-null. Default: "openai". */
 	thinkingFormat?:
@@ -409,13 +409,13 @@ export interface OpenAICompletionsCompat {
 	vercelGatewayRouting?: VercelGatewayRouting;
 	/** Whether z.ai supports top-level `tool_stream: true` for streaming tool call deltas. Default: false. */
 	zaiToolStream?: boolean;
-	/** Whether the provider supports the `strict` field in tool definitions. Default: true. */
+	/** Whether the provider supports the `strict` field in tool definitions. Default: false. */
 	supportsStrictMode?: boolean;
 	/** Cache control convention for prompt caching. "anthropic" applies Anthropic-style `cache_control` markers to the system prompt, last tool definition, and last user/assistant text content. */
 	cacheControlFormat?: "anthropic";
 	/** Whether to send known session-affinity headers (`session_id`, `x-client-request-id`, `x-session-affinity`) from `options.sessionId` when caching is enabled. Default: false. */
 	sendSessionAffinityHeaders?: boolean;
-	/** Whether the provider supports long prompt cache retention (`prompt_cache_retention: "24h"` or Anthropic-style `cache_control.ttl: "1h"`, depending on format). Default: true. */
+	/** Whether the provider supports long prompt cache retention (`prompt_cache_retention: "24h"` or Anthropic-style `cache_control.ttl: "1h"`, depending on format). Default: false. */
 	supportsLongCacheRetention?: boolean;
 }
 
@@ -427,7 +427,7 @@ export interface OpenAIResponsesCompat {
 	supportsDeveloperRole?: boolean;
 	/** Whether to send the OpenAI `session_id` cache-affinity header from `options.sessionId` when caching is enabled. Default: true. */
 	sendSessionIdHeader?: boolean;
-	/** Whether the provider supports `prompt_cache_retention: "24h"`. Default: true. */
+	/** Whether the provider supports `prompt_cache_retention: "24h"`. Default: false. */
 	supportsLongCacheRetention?: boolean;
 }
 
@@ -589,7 +589,7 @@ export interface Model<TApi extends Api> {
 	contextWindow: number;
 	maxTokens: number;
 	headers?: Record<string, string>;
-	/** Compatibility overrides for OpenAI-compatible APIs. If not set, auto-detected from baseUrl. */
+	/** Compatibility overrides for OpenAI-compatible APIs. If not set, REPI sends a minimal standard payload. */
 	compat?: TApi extends "openai-completions"
 		? OpenAICompletionsCompat
 		: TApi extends "openai-responses"
