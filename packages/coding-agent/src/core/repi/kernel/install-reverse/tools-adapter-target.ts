@@ -48,14 +48,50 @@ export function resolveAdapterRunTarget(raw?: string): string | undefined {
 	return target;
 }
 
+function missionLexicalBlob(): string {
+	try {
+		const mission = readCurrentMission();
+		if (!mission) return "";
+		return [
+			mission.task,
+			mission.route?.domain,
+			mission.route?.intent,
+			mission.route?.skillHint,
+			mission.route?.toolchain,
+			...(mission.route?.workflow ?? []),
+		]
+			.filter(Boolean)
+			.map(String)
+			.join("\n");
+	} catch {
+		return "";
+	}
+}
+
 export function pickAdapterIdForRun(params: {
 	adapter?: string;
 	target?: string;
 	resolvedTarget?: string;
 }): string | undefined {
+	if (params.adapter) return params.adapter;
 	const rawTarget = String(params.target ?? "").trim();
-	const resolvedTarget = params.resolvedTarget;
-	return (
-		params.adapter || (rawTarget && rawTarget !== resolvedTarget ? detectRuntimeAdapterIds(rawTarget)[0] : undefined)
-	);
+	const resolvedTarget = String(params.resolvedTarget ?? "").trim();
+	// Prefer mission/task lexical when filesystem target is bare "." / cwd — directory inventory
+	// would otherwise demote stego/crypto/mobile into unrelated host adapters.
+	const missionBlob = missionLexicalBlob();
+	const bareFs = !rawTarget || rawTarget === "." || rawTarget === "./" || rawTarget === resolvedTarget;
+	const lexicalProbe = bareFs ? [missionBlob, rawTarget].filter(Boolean).join("\n") : rawTarget;
+	if (lexicalProbe.trim()) {
+		const ids = detectRuntimeAdapterIds(lexicalProbe);
+		if (ids[0]) return ids[0];
+	}
+	if (rawTarget && rawTarget !== resolvedTarget) {
+		const ids = detectRuntimeAdapterIds(rawTarget);
+		if (ids[0]) return ids[0];
+	}
+	if (resolvedTarget) {
+		const ids = detectRuntimeAdapterIds(resolvedTarget);
+		if (ids[0]) return ids[0];
+	}
+	return undefined;
 }
