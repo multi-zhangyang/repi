@@ -5,6 +5,7 @@ import { softFillOptionalOrchestrationWhenReverseReadyAsync } from "../../comple
 import { readCurrentMission } from "../../mission.ts";
 import { reverseDomainCaptureNextCommands } from "../../reverse-capture.ts";
 import { REPI_TOOL_BOOTSTRAP_CATALOG as TOOL_BOOTSTRAP_CATALOG } from "../../toolchain.ts";
+import { buildCompleteReadySkeleton } from "./complete-ready-skeleton.ts";
 import { COMPLETE_SOFT_FILL_TARGETS } from "./soft-fill-targets.ts";
 import type { ProofLoopToolDeps, ToolRegistrar } from "./types.ts";
 
@@ -69,13 +70,23 @@ export function registerRepiCompleteBootstrapTools(
 				};
 			}
 			let audit = deps.auditCompletion();
-			// Soft-fill only when reverse is ready but optional checkpoints remain.
 			// Avoid re-running authz/graph builds on repeated re_complete after already filled.
 			const missionPending =
 				readCurrentMission()
 					?.checkpoints?.filter((c: { status?: string }) => c.status !== "done")
 					.map((c: { name?: string }) => String(c.name)) ?? [];
 			const needsSoftFill = missionPending.some((name: string) => COMPLETE_SOFT_FILL_TARGETS.has(name));
+			// Second+ re_complete after ready with no pending soft-fill: return skeleton only.
+			if (audit?.ready && !needsSoftFill) {
+				const skeleton = buildCompleteReadySkeleton({ thrash: true });
+				return {
+					content: [{ type: "text" as const, text: skeleton }],
+					details: { action, skipped: true, reason: "already_ready", ...audit } as unknown as Record<
+						string,
+						unknown
+					>,
+				};
+			}
 			let softFilled: string[] = [];
 			if (audit?.ready && needsSoftFill) {
 				softFilled = await softFillOptionalOrchestrationWhenReverseReadyAsync(audit as any, pi);
@@ -112,15 +123,7 @@ export function registerRepiCompleteBootstrapTools(
 							softFilled.length ? `soft_fill_optional: ${softFilled.join(",")}` : undefined,
 							memoryEvent ? `\ncompletion_memory_event: ${memoryEvent.id}` : undefined,
 							reverseFooter || undefined,
-							ready
-								? [
-										"completion_stop: ready",
-										"final_report_skeleton:",
-										"HARNESS_BUGS: none",
-										"PROOF: reverse.proof_exit=partial_runtime_capture|runtime_capture_strong; reverse.bind_ready=true",
-										"note: copy skeleton above as final answer unless a real tool error=true exists; do not thrash re_*",
-									].join("\n")
-								: undefined,
+							ready ? buildCompleteReadySkeleton() : undefined,
 						]
 							.filter(Boolean)
 							.join("\n"),
