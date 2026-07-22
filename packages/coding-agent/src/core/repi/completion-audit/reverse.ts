@@ -2,35 +2,9 @@
 
 import { reverseDomainCaptureNextCommands } from "../reverse-capture.ts";
 import { reverseEvidenceProofLines } from "../reverse-evidence.ts";
+import { reverseQuerySignalsFromEvidence } from "./reverse-signals.ts";
 
-export function reverseQuerySignalsFromEvidence(text: string): string[] {
-	const out: string[] = [];
-	const tech =
-		/(?:^|\n)\s*-\s*query\.technique\s*:\s*(.+)$/im.exec(text)?.[1] ??
-		/(?:query\.)?technique\s*[:=]\s*([A-Za-z0-9_./-]+)/i.exec(text)?.[1];
-	const mitre =
-		/(?:^|\n)\s*-\s*query\.mitre\s*:\s*(.+)$/im.exec(text)?.[1] ??
-		/(?:query\.)?mitre\s*[:=]\s*([A-Za-z0-9_.,T-]+)/i.exec(text)?.[1];
-	const cwe =
-		/(?:^|\n)\s*-\s*query\.cwe\s*:\s*(.+)$/im.exec(text)?.[1] ??
-		/(?:query\.)?cwe\s*[:=]\s*([A-Za-z0-9_.,-]+)/i.exec(text)?.[1];
-	const proof =
-		/(?:^|\n)\s*-\s*query\.proof_exit\s*:\s*(.+)$/im.exec(text)?.[1] ??
-		/(?:query\.)?proof_exit\s*[:=]\s*([^\n|]+)/i.exec(text)?.[1] ??
-		/proof\.exit\s*=\s*([^\n|\s]+)/i.exec(text)?.[1] ??
-		/summary\.runtime_proof_exit\s*=\s*([^\n|\s]+)/i.exec(text)?.[1];
-	const bind =
-		/(?:^|\n)\s*-\s*(?:query\.|summary\.)?bind_ready\s*:\s*(true|false)/im.exec(text)?.[1] ??
-		/(?:query\.|summary\.)?bind_ready\s*[:=]\s*(true|false)/i.exec(text)?.[1] ??
-		/bind\.ready\s*[:=]\s*(true|false)/i.exec(text)?.[1] ??
-		/bind_ready\s*=\s*(true|false)/i.exec(text)?.[1];
-	if (tech) out.push(`reverse.technique=${tech.trim().slice(0, 80)}`);
-	if (mitre) out.push(`reverse.mitre=${mitre.trim().slice(0, 80)}`);
-	if (cwe) out.push(`reverse.cwe=${cwe.trim().slice(0, 80)}`);
-	if (proof) out.push(`reverse.proof_exit=${proof.trim().slice(0, 120)}`);
-	if (bind) out.push(`reverse.bind_ready=${bind.toLowerCase()}`);
-	return out;
-}
+export { reverseQuerySignalsFromEvidence } from "./reverse-signals.ts";
 
 export function auditReverseProofFromEvidence(evidence: string): {
 	blockers: string[];
