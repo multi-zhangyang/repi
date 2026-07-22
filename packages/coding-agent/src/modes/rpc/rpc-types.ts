@@ -11,7 +11,11 @@ import type { SessionStats } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { ToolInfo } from "../../core/extensions/types.ts";
+import type { SessionTreeNode } from "../../core/session-manager.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
+
+/** RPC session tree node (same shape as interactive session tree). */
+export type RpcSessionTreeNode = SessionTreeNode;
 
 // ============================================================================
 // RPC Commands (stdin)
@@ -65,6 +69,10 @@ export type RpcCommand =
 
 	// Messages
 	| { id?: string; type: "get_messages" }
+
+	// Session tree / entries (Pi 0.80-aligned; swarm/debug introspection)
+	| { id?: string; type: "get_entries" }
+	| { id?: string; type: "get_tree" }
 
 	// Commands (available for invocation via prompt)
 	| { id?: string; type: "get_commands" }
@@ -196,6 +204,34 @@ export type RpcResponse =
 
 	// Messages
 	| { id?: string; type: "response"; command: "get_messages"; success: true; data: { messages: AgentMessage[] } }
+	| {
+			id?: string;
+			type: "response";
+			command: "get_entries";
+			success: true;
+			data: {
+				leafId?: string;
+				sessionId: string;
+				entries: Array<{
+					id: string;
+					parentId: string | null;
+					type: string;
+					timestamp?: string;
+					label?: string;
+				}>;
+			};
+	  }
+	| {
+			id?: string;
+			type: "response";
+			command: "get_tree";
+			success: true;
+			data: {
+				leafId?: string;
+				sessionId: string;
+				roots: RpcSessionTreeNode[];
+			};
+	  }
 
 	// Commands
 	| {

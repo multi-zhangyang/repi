@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 /**
  * opt #206 — openai-responses `output_item.done` dropped a tool call when the
  * proxy/gateway omitted `response.output_item.added`.

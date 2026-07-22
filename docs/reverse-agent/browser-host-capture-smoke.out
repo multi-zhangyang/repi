@@ -1,0 +1,72 @@
+[browser-engine] playwright=yes source=playwright-core@file:///tmp/repi-browser-smoke/repi-live-browser.js
+[browser-engine] chromium_executable=/usr/bin/chromium-browser
+[browser-request] method=GET url=http://127.0.0.1:46441/ resource=document
+[browser-response] status=200 url=http://127.0.0.1:46441/ content_type=text/html; charset=utf-8
+[browser-request] method=GET url=http://127.0.0.1:46441/app.js resource=script
+[browser-script] url=http://127.0.0.1:46441/app.js
+[browser-response] status=200 url=http://127.0.0.1:46441/app.js content_type=application/javascript
+[browser-request] method=GET url=http://127.0.0.1:46441/api/users/1 resource=fetch
+[browser-xhr] method=GET url=http://127.0.0.1:46441/api/users/1
+[browser-websocket] url=ws://127.0.0.1:46441/ws
+[browser-cookie-flags] name=session httponly=0 secure=0 samesite=lax
+[browser-cookie-flags] name=repi_sid httponly=1 secure=0 samesite=absent
+[browser-cookie-jar] name=session httpOnly=0 secure=0 sameSite=Lax
+[browser-cookie-jar] name=repi_sid httpOnly=1 secure=0 sameSite=Strict
+[browser-cookie-flags] summary set_cookie_n=2 jar_n=2 httponly=2 secure=0 samesite=3
+summary.browser_cookie_flags=1
+[browser-response] status=200 url=http://127.0.0.1:46441/api/users/1 content_type=application/json
+[browser-storage] {"href":"http://127.0.0.1:46441/","title":"REPI Browser Smoke","cookies":"session=pwsmoke","localStorage":[["repi_browser_smoke","1"]],"sessionStorage":[["repi_session","pwsmoke"]],"forms":[{"action":"http://127.0.0.1:46441/api/login","method":"post","inputs":["user","pass"]}],"links":["http://127.0.0.1:46441/api/users/1"],"scripts":["http://127.0.0.1:46441/app.js"]}
+[browser-websocket-probe] url=ws://127.0.0.1:46441/ws inline=0
+[browser-websocket] url=ws://127.0.0.1:46441/ws
+[browser-websocket] url=ws://127.0.0.1:46441/ws
+[browser-sourcemap] url=http://127.0.0.1:46441/app.js.map
+[browser-har-lite] resources=3
+[browser-har-lite] type=script dur_ms=25 size=605 url=http://127.0.0.1:46441/app.js
+[browser-har-lite] type=fetch dur_ms=6 size=325 url=http://127.0.0.1:46441/api/users/1
+[browser-har-lite] type=other dur_ms=25 size=624 url=http://127.0.0.1:46441/favicon.ico
+summary.browser_har_lite=1
+[browser-deep] forms=1 links=1 scripts=1
+[browser-deep] ok=1 websocket=1 sourcemap=1 storage=1
+[browser-sec] origin=http://127.0.0.1:46441 title=REPI Browser Smoke
+[browser-sec-meta] name=Content-Security-Policy content=default-src 'self'
+[browser-sec-form] method=post action=http://127.0.0.1:46441/api/login inputs=2
+[browser-sec-input] name=user type=input autocomplete=
+[browser-sec-input] name=pass type=password autocomplete=
+[browser-sec-link] href=/api/users/1
+[browser-sec-cookie] present=1 sample=session=pwsmoke
+[browser-sec] ok=1 meta=1 forms=1 links=1 mixed=0
+[browser-request] method=GET url=http://127.0.0.1:46441/ resource=fetch
+[browser-xhr] method=GET url=http://127.0.0.1:46441/
+[browser-response] status=200 url=http://127.0.0.1:46441/ content_type=text/html; charset=utf-8
+[browser-sec-header] name=content-security-policy value=default-src 'self'; script-src 'self'; connect-src 'self' ws: wss:
+[browser-sec-header] name=x-frame-options value=DENY
+[browser-sec-header] name=x-content-type-options value=nosniff
+[browser-sec-header] name=referrer-policy value=no-referrer
+[browser-sec-header] name=permissions-policy value=geolocation=(), microphone=()
+[browser-sec-header] name=cross-origin-opener-policy value=same-origin
+[browser-sec-header] name=cross-origin-resource-policy value=same-origin
+[browser-sec-header-missing] name=none count=0
+[browser-sec-header] ok=1 status=200 count=7 missing=0
+[browser-sec-score] headers_present=7 headers_missing=0 score=100
+[browser-cookie-flags] summary set_cookie_n=0 httponly=0 secure=0 samesite=0 doc_n=1
+summary.browser_cookie_flags=1
+[browser-status] page
+[browser-url] http://127.0.0.1:46441/
+[browser-proof-capture] url=1 status=1 cookies=1 api=1 sourcemap=1 scripts=1 storage=1 websocket=1 engine=playwright
+[browser-proof-capture] proof.exit=runtime_capture_strong bind_ready=true note=engine-playwright
+summary.proof_exit=runtime_capture_strong
+summary.capture.url=1
+summary.capture.status=1
+summary.capture.cookies=1
+summary.capture.api=1
+summary.capture.sourcemap=1
+summary.capture.scripts=1
+[browser-env] node=/usr/bin/node work=/tmp/repi-browser-smoke
+[browser-host] node=/usr/bin/node work=/tmp/repi-browser-smoke
+[runtime-technique] web-browser-state-capture | web-session-cookie-diff | js-request-rebuild
+
+(node:2494878) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/repi-browser-smoke/repi-live-browser.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+

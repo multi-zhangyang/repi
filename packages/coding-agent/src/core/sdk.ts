@@ -11,6 +11,7 @@ import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefi
 import { convertToLlm } from "./messages.ts";
 import { ModelRegistry } from "./model-registry.ts";
 import { findInitialModel, resolveRepiEnvPreferredModel } from "./model-resolver.ts";
+import { ModelRuntime } from "./model-runtime.ts";
 import { mergeProviderAttributionHeaders } from "./provider-attribution.ts";
 import type { ResourceLoader } from "./resource-loader.ts";
 import { DefaultResourceLoader } from "./resource-loader.ts";
@@ -37,9 +38,11 @@ export interface CreateAgentSessionOptions {
 	/** Global config directory. Default: ~/.repi/agent */
 	agentDir?: string;
 
-	/** Auth storage for credentials. Default: AuthStorage.create(agentDir/auth.json) */
+	/** Preferred Pi-aligned model/auth runtime. When set, drives authStorage+modelRegistry. */
+	modelRuntime?: ModelRuntime;
+	/** Auth storage for credentials. Default: from ModelRuntime / AuthStorage.create */
 	authStorage?: AuthStorage;
-	/** Model registry. Default: ModelRegistry.create(authStorage, agentDir/models.json) */
+	/** Model registry. Default: from ModelRuntime / ModelRegistry.create */
 	modelRegistry?: ModelRegistry;
 
 	/** Model to use. Default: from settings, else first available */
@@ -311,11 +314,17 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getDefaultAgentDir();
 	let resourceLoader = options.resourceLoader;
 
-	// Use provided or create AuthStorage and ModelRegistry
+	// Pi-aligned ModelRuntime facade (wraps AuthStorage + ModelRegistry; keeps REPI env-first).
 	const authPath = options.agentDir ? join(agentDir, "auth.json") : undefined;
 	const modelsPath = options.agentDir ? join(agentDir, "models.json") : undefined;
-	const authStorage = options.authStorage ?? AuthStorage.create(authPath);
-	const modelRegistry = options.modelRegistry ?? ModelRegistry.create(authStorage, modelsPath);
+	let modelRuntime = options.modelRuntime;
+	if (!modelRuntime) {
+		const authStorageSeed = options.authStorage ?? AuthStorage.create(authPath);
+		const modelRegistrySeed = options.modelRegistry ?? ModelRegistry.create(authStorageSeed, modelsPath);
+		modelRuntime = ModelRuntime.from(authStorageSeed, modelRegistrySeed);
+	}
+	const _authStorage = modelRuntime.authStorage;
+	const modelRegistry = modelRuntime.modelRegistry;
 
 	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
 	const sessionManager = options.sessionManager ?? SessionManager.create(cwd, getDefaultSessionDir(cwd, agentDir));
@@ -461,6 +470,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const timeoutMs = options?.timeoutMs ?? providerRetrySettings.timeoutMs ?? effectiveTimeoutMs;
 			const websocketConnectTimeoutMs =
 				options?.websocketConnectTimeoutMs ?? settingsManager.getWebSocketConnectTimeoutMs();
+			// Base headers: auth + product attribution + caller overrides.
+			const baseHeaders =
+				mergeProviderAttributionHeaders(
+					model,
+					settingsManager,
+					options?.sessionId,
+					auth.headers,
+					options?.headers,
+				) ?? {};
+			// Pi-aligned before_provider_headers: gateway/tenant/signing injection.
+			const runner = extensionRunnerRef.current;
+			const headers = runner?.hasHandlers("before_provider_headers")
+				? await runner.emitBeforeProviderHeaders({
+						provider: model.provider,
+						modelId: model.id,
+						sessionId: options?.sessionId ?? sessionManager.getSessionId(),
+						headers: baseHeaders,
+					})
+				: baseHeaders;
 			return streamSimple(model, context, {
 				...options,
 				apiKey: auth.apiKey,
@@ -468,13 +496,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				websocketConnectTimeoutMs,
 				maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
 				maxRetryDelayMs: options?.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
-				headers: mergeProviderAttributionHeaders(
-					model,
-					settingsManager,
-					options?.sessionId,
-					auth.headers,
-					options?.headers,
-				),
+				headers: Object.keys(headers).length > 0 ? headers : undefined,
 			});
 		},
 		onPayload: async (payload, _model) => {

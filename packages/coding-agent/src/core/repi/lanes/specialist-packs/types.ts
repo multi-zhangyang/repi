@@ -1,0 +1,36 @@
+/** Specialist pack shared context. */
+export type SpecialistPackContext = {
+	domain: string;
+	laneName: string;
+	context: string;
+	targetArg: string;
+	targetPython: string;
+	urlArg: string;
+	urlPython: string;
+	target?: string;
+	targetIsUrl: boolean;
+	targetLooksPcap: boolean;
+	targetLooksApk: boolean;
+	targetLooksFirmware: boolean;
+	targetLooksMemoryImage: boolean;
+	targetLooksIpa: boolean;
+	add: (label: string, command: string, evidence: string) => void;
+	specialists: string[];
+	wantsBrowser: boolean;
+	wantsWebScanner: boolean;
+	wantsJsSigning: boolean;
+	wantsPwnPrimitive: boolean;
+	wantsExploitReliability: boolean;
+	wantsPcap: boolean;
+	wantsFirmware: boolean;
+	wantsMemoryForensics: boolean;
+	wantsCryptoStego: boolean;
+	wantsAgentSecurity: boolean;
+	wantsMalware: boolean;
+	wantsCloudRuntime: boolean;
+	wantsIdentityAd: boolean;
+	wantsAndroidMobile: boolean;
+	wantsIosMobile: boolean;
+	wantsFridaTrace: boolean;
+	wantsNativeDeep: boolean;
+};

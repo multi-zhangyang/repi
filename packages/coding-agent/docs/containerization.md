@@ -89,9 +89,9 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends bash ca-certificates git ripgrep \
   && rm -rf /var/lib/apt/lists/*
 
-ARG REPI_REPO=https://github.com/multi-zhangyang/pi-recon-agent.git
-RUN git clone "$REPI_REPO" /opt/pi-recon-agent \
-  && cd /opt/pi-recon-agent \
+ARG REPI_REPO=https://github.com/multi-zhangyang/repi.git
+RUN git clone "$REPI_REPO" /opt/repi \
+  && cd /opt/repi \
   && npm ci --ignore-scripts \
   && npm run install:repi
 

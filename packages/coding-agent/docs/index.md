@@ -5,8 +5,8 @@ REPI is an autonomous reverse-engineering and penetration-testing CLI agent. It 
 ## Quick start
 
 ```bash
-git clone https://github.com/multi-zhangyang/pi-recon-agent.git
-cd pi-recon-agent
+git clone https://github.com/multi-zhangyang/repi.git
+cd repi
 npm install
 npm run install:repi
 repi --offline --help

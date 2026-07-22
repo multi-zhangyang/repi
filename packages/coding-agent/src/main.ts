@@ -31,7 +31,6 @@ import {
 	createAgentSessionServices,
 } from "./core/agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
-import { AuthStorage } from "./core/auth-storage.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
 import type { ExtensionFactory } from "./core/extensions/types.ts";
 import { configureHttpDispatcher } from "./core/http-dispatcher.ts";
@@ -43,6 +42,7 @@ import {
 	resolveRepiEnvPreferredModel,
 	type ScopedModel,
 } from "./core/model-resolver.ts";
+import { ModelRuntime } from "./core/model-runtime.ts";
 import { installStdioErrorGuard, restoreStdout, takeOverStdout } from "./core/output-guard.ts";
 import {
 	createReconExtensionFactory,
@@ -50,7 +50,6 @@ import {
 	RECON_APPEND_SYSTEM_PROMPT,
 	RECON_SYSTEM_PROMPT,
 } from "./core/recon-profile.ts";
-import { noteIndexForInjection } from "./core/repi/memory-notes.ts";
 import { setMemoryScopeCwd } from "./core/repi/storage.ts";
 import type { CreateAgentSessionOptions } from "./core/sdk.ts";
 import {
@@ -763,7 +762,7 @@ export async function main(args: string[], options?: MainOptions) {
 	// opt #273 follow-on: inject the Claude-Code-style project note index into
 	// the system prompt so durable per-project facts are visible at session
 	// start (mirrors Claude Code's MEMORY.md auto-load). Empty when no notes.
-	const noteIndexSegment = parsed.recon ? noteIndexForInjection() : "";
+	const noteIndexSegment = parsed.recon ? "" : "";
 	const appendSystemPrompt = parsed.recon
 		? [
 				...(parsed.appendSystemPrompt ?? []),
@@ -772,7 +771,9 @@ export async function main(args: string[], options?: MainOptions) {
 			]
 		: parsed.appendSystemPrompt;
 	const systemPrompt = parsed.systemPrompt ?? (parsed.recon ? RECON_SYSTEM_PROMPT : undefined);
-	const authStorage = AuthStorage.create();
+	// Pi-aligned: construct via ModelRuntime; pass authStorage into services (registry rebuilt per cwd/agentDir).
+	const modelRuntime = ModelRuntime.create();
+	const authStorage = modelRuntime.authStorage;
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
 		cwd,
 		agentDir,

@@ -309,7 +309,7 @@ export function getSelfUpdateUnavailableInstruction(
 ): string {
 	const method = detectInstallMethod();
 	if (method === "bun-binary") {
-		return `Download from: https://github.com/multi-zhangyang/pi-recon-agent/releases/latest`;
+		return `Download from: https://github.com/multi-zhangyang/repi/releases/latest`;
 	}
 	const command = getSelfUpdateCommandForMethod(method, packageName, updatePackageName, npmCommand);
 	if (command) {

@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 /**
  * Foundational opt #260 — usage `input` subtraction must be floored at 0.
  *
@@ -128,7 +129,7 @@ import { streamGoogleVertex } from "../src/providers/google-vertex.ts";
 
 describe("google usage input floored at 0 (opt #260)", () => {
 	it("does not go negative when cachedContentTokenCount exceeds promptTokenCount", async () => {
-		const model = getModel("google-vertex", "gemini-3-flash-preview");
+		const model = getModel("google-vertex", "gemini-3-flash-preview")!;
 		const context: Context = {
 			messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
 		};

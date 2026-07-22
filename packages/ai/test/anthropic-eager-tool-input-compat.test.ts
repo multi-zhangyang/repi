@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Type } from "typebox";

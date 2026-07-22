@@ -1,301 +1,197 @@
 # REPI
 
-REPI 是面向逆向、渗透测试、取证和安全研究任务的终端智能体。它在本机环境中调用真实工具，完成目标识别、任务拆解、执行验证、证据记录和结果复现。
+**REPI** 是面向 **逆向工程、渗透测试、固件/移动安全、恶意样本与取证分析** 的终端智能体（Agent Harness）。
+
+它不是通用聊天机器人，也不是「只会写代码」的 coding agent。REPI 在本机真实环境中调度工具、跑验证、收证据，把逆向/渗透任务做成 **可复现的执行闭环**。
+
+```text
+目标识别 → 路线拆解 → 工具执行 → 证据固化 → 证明门禁 → 复现交付
+```
+
+---
+
+## 为什么是 REPI
+
+| 维度 | REPI |
+|------|------|
+| 产品定位 | 独立 reverse / pentest agent（`repi`，`~/.repi`） |
+| 执行方式 | 本机真实工具链 + 结构化证据，而非纯文本臆测 |
+| 能力域 | native / pwn / firmware / mobile / malware / memory / DFIR / web / cloud / crypto / agent-security |
+| 模型接入 | 仅环境变量 / `models.json` / `registerProvider`，不捆绑上游模型目录 |
+| 与 Pi 关系 | 吸收 Pi / Claude Code 式 harness 运行时能力；产品层独立，不与 `pi` / `~/.pi` 冲突 |
+
+---
+
+## 核心能力
+
+### 多域逆向与渗透
+
+- **Native / Pwn**：checksec、ROP 面、seccomp、dyn 偏移、ret2 规划、angr/qiling 等宿主能力
+- **Firmware / IoT**：镜像签名、squashfs/rootfs、DTB/FDT、binwalk 提取路径
+- **Mobile**：APK 静态面、签名、NSC/SSL pin、Frida local attach、deeplink/exported
+- **Malware**：PE 节/导出/overlay/熵、YARA/capa/floss 宿主优先
+- **Memory / DFIR**：vol 宿主 + pure 补强、pcap 多协议、JA3/HTTP2、handles/env 等
+- **Web / JS / Browser**：authz 回滚、JS 签名/SRI/WASM、Playwright 安全头与 cookie flags
+- **Cloud / Identity**：IMDS 诚实标签、k8s SA JWT claim、STS fixture、docker 网络面
+- **Crypto**：参数盘点、RSA/AES/RC4/ChaCha pure 向量、z3/openssl 宿主
+- **Agent Security**：prompt/tool/MCP/权限面扫描（产品包范围，去噪声）
+
+### 证据与门禁
+
+- 运行时 **proof.exit**（`partial` / `strong`）与 **bind_ready**
+- 产品命令：`repi reverse-smoke | reverse-e2e | reverse-proof | reverse-complete | reverse-gate`
+- 产品契约：`node scripts/reverse-agent/repi-product-contract.mjs`（多域 CAP + 结构门禁）
+- Doctor：`repi doctor`（含 memory 产品面移除等就绪检查）
+
+### 长任务与 harness
+
+- Goal Mode、sticky multi-turn inject（冷启动 lean + 后续 sticky）
+- 专家 lane / 子代理拆分（explorer、planner、operator、verifier 等）
+- 扩展兼容上游 pi 扩展生态（可选）
+
+---
+
+## 快速开始
+
+### 一键安装（发布仓库就绪后）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/pi-recon-agent/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/repi/main/install.sh | bash
 ```
+
+### 从源码
+
+```bash
+git clone https://github.com/multi-zhangyang/repi.git
+cd repi
+npm install --ignore-scripts
+# 按需构建 coding-agent 入口；日常可用仓库内 repi 包装脚本
+```
+
+### 模型环境（OpenAI 兼容示例）
 
 ```bash
 export REPI_AUTH_TOKEN="sk-xxxxx"
-export REPI_BASE_URL="https://api.example.com/v1"
+export REPI_BASE_URL="https://api.example.com/v1"   # OpenAI 兼容路径需含 /v1
 export REPI_MODEL="provider/model-id"
-export REPI_MODEL_API="openai-compatible"   # openai-compatible | openai-responses | anthropic
-export REPI_CONTEXT_WINDOW=262144
-export REPI_AUTO_COMPACT_WINDOW=262144
+export REPI_MODEL_API="openai-compatible"           # openai-compatible | anthropic | ...
+export REPI_PROVIDER="my-provider"                  # 可选标签
 
 repi doctor
-repi model status
-repi
+repi -p "对目标做逆向路线盘点" --provider my-provider --model "provider/model-id" --no-session
 ```
 
-## 特性
+> 不要把真实 token 写进仓库或文档示例。进程环境中的 token 才用于真实调用；transcript 可能脱敏。
 
-- **逆向与漏洞分析**：支持 native binary、pwn、firmware、mobile、malware、memory forensics、PCAP/DFIR、web/API、cloud/identity、crypto/stego 等任务类型。
-- **真实工具链执行**：可调用 `gdb`、`radare2`、`tshark`、`binwalk`、`frida`、`pwntools`、`angr`、`z3`、`volatility3`、`yara`、`nmap`、`sqlmap` 等工具。
-- **专家子代理**：内置 explorer、planner、operator、verifier、reverser，复杂任务可拆分给隔离 worker 执行。
-- **证据闭环**：默认要求命令输出、artifact、PoC、复现步骤和验证结论，不把猜测当结果。
-- **Goal Mode**：`/goal` 可启动长任务模式，footer 显示目标状态和 token 使用。
-- **环境变量模型配置**：使用 `REPI_*` 变量快速切换 OpenAI-compatible、OpenAI Responses、Anthropic Messages 兼容接口。
-- **扩展兼容**：支持 upstream pi 扩展生态，可安装 `pi-web-access` 等扩展。
-- **独立运行目录**：命令为 `repi`，运行目录为 `~/.repi/agent`，不覆盖 `pi` 或 `~/.pi`。
+### 常用命令
+
+```bash
+repi doctor                 # 就绪检查
+repi smoke --json           # 产品冒烟栈
+repi reverse-smoke all      # 多域 CAP 刷新
+repi reverse-proof          # 证明审计
+repi reverse-complete       # 完成度审计
+repi reverse-gate core      # proof + complete + e2e 编排
+repi reverse-sticky-smoke   # 多轮 sticky inject 冒烟
+```
+
+运行时数据目录：`~/.repi/agent`（与 `pi` / `~/.pi` 隔离）。
+
+---
 
 ## 系统要求
 
-- Linux / macOS / WSL
-- Node.js `>= 22.19.0`
-- Git
+- **OS**：Linux / macOS / WSL（推荐 Linux 宿主做完整 reverse CAP）
+- **Node.js**：`>= 22.19.0`
+- **Git**
+- 按任务按需安装宿主工具：`gdb`、`rizin/radare2`、`tshark`、`binwalk`、`frida`、`jadx`、`apktool`、`yara`、`volatility3`、`one_gadget`、`seccomp-tools` 等
 
-推荐使用 `nvm` 安装 Node.js：
+纯 Python 路径可作为宿主缺失时的 **诚实补强**（带 `pure_python=` 标签），不伪装成宿主成功。
 
-```bash
-nvm install 22
-nvm use 22
-```
+---
 
-## 安装
-
-### 一键安装
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/pi-recon-agent/main/install.sh | bash
-```
-
-安装完成后会把 `repi` 加入 PATH。若当前 shell 未刷新，执行安装器提示的命令，例如：
-
-```bash
-source ~/.bashrc
-# 或
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-安装成功输出示例：
+## 架构一览
 
 ```text
-INFO: Downloading REPI source into ~/.repi-src
-■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100%
-INFO: Installing REPI launcher
-■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100%
-INFO: Verifying offline startup
-■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 100%
-
-Successfully added repi to $PATH in ~/.bashrc
-
-REPI 0.1.3 installed successfully, to start:
-
-source ~/.bashrc  # Load new PATH (or open a new terminal)
-cd <project>      # Open directory
-repi              # Run command
+CLI (repi)
+  → coding-agent / recon profile
+    → reverse-runtime / web-runtime / runtime-adapter
+      → 工具输出 + structuredSummary
+        → proof 字段 / bind / completion 审计
+          → reverseDomainCaptureNextCommands
+            → 证据与下一跳
 ```
 
-### 从源码安装
+产品原则（摘要）：
 
-```bash
-git clone https://github.com/multi-zhangyang/pi-recon-agent.git
-cd pi-recon-agent
-bash install.sh
-```
+1. **独立 reverse/pentest 产品**，不做成泛安全闲聊或通用 coding 壳。
+2. **证明优先于叙事**：catalog technique ≠ 运行时 capture。
+3. **宿主优先、pure 补强**，禁止虚假 `ok=1`。
+4. **Memory 产品面已移除**（doctor：`memory:product-removed`）；勿再引入 `settings.memory` 默认自动沉淀。
+5. **模型仅 env / models.json / registerProvider**，无内置上游模型大全。
 
-常用参数：
+更多运行时说明见：
 
-```bash
-bash install.sh --prefix ~/.repi-src
-bash install.sh --bin-dir ~/.local/bin
-bash install.sh --branch main
-bash install.sh --skip-npm
-```
+- `docs/reverse-agent/README.md`
+- `docs/reverse-agent/repi-runtime-configuration.md`
+- `docs/reverse-agent/harness-gap-analysis.md`
 
-### 从 Release tarball 安装
+---
 
-从 [Releases](https://github.com/multi-zhangyang/pi-recon-agent/releases) 下载同版本 4 个包后一起安装：
-
-```bash
-npm install -g \
-  pi-recon-repi-ai-0.1.3.tgz \
-  pi-recon-repi-agent-core-0.1.3.tgz \
-  pi-recon-repi-tui-0.1.3.tgz \
-  pi-recon-repi-coding-agent-0.1.3.tgz
-
-repi doctor
-```
-
-## 模型配置
-
-REPI 默认使用 Claude Code 风格的环境变量配置模型。常规使用只需要设置 `REPI_*`。
-
-```bash
-export REPI_AUTH_TOKEN="sk-xxxxx"
-export REPI_BASE_URL="https://api.example.com/v1"
-export REPI_PROVIDER="my-provider"           # 可选，footer/provider id，默认 repi-env
-export REPI_MODEL="provider/model-id"
-export REPI_MODEL_API="openai-compatible"
-export REPI_CONTEXT_WINDOW=262144
-export REPI_AUTO_COMPACT_WINDOW=262144
-export REPI_MAX_TOKENS=16384
-export REPI_SUBAGENT_MODEL="provider/worker-model"
-
-repi model status
-repi
-```
-
-`REPI_MODEL_API` 支持：
-
-| 值 | 协议 |
-|---|---|
-| `openai-compatible` / `openai-completions` | OpenAI Chat Completions |
-| `openai-responses` / `response` | OpenAI Responses |
-| `anthropic` / `anthropic-messages` | Anthropic Messages |
-
-示例：
-
-```bash
-export REPI_AUTH_TOKEN="sk-xxxxx"
-export REPI_BASE_URL="https://api.example.com/v1"
-export REPI_PROVIDER="gateway"
-export REPI_MODEL="vendor/model-id"
-export REPI_MODEL_API="openai-compatible"
-export REPI_CONTEXT_WINDOW=262144
-export REPI_AUTO_COMPACT_WINDOW=262144
-
-repi model status
-repi
-```
-
-检查模型解析：
-
-```bash
-repi --offline --list-models
-repi model list
-repi model doctor
-repi model test
-```
-
-## 常用命令
-
-```bash
-repi                              # 交互式启动
-repi -p "分析 ./target"           # 一次性任务
-repi --offline --help             # 离线帮助
-repi doctor                       # 安装与运行环境检查
-repi selfcheck --deep             # 深度自检和工具探测
-repi smoke --json                 # 快速 smoke
-repi bugreport --stdout           # 脱敏诊断报告
-repi update                       # 更新当前安装
-repi uninstall                    # 卸载预览
-repi uninstall --apply            # 执行卸载
-```
-
-## Goal Mode
-
-交互会话中使用：
+## 仓库结构（简）
 
 ```text
-/goal --tokens 100k 完成目标描述
-/goal status
-/goal pause
-/goal resume
-/goal clear
+repi/
+├── packages/
+│   ├── coding-agent/     # REPI 产品内核、CLI、reverse/web runtime
+│   ├── agent/            # agent harness
+│   ├── ai/               # 模型/provider 层
+│   └── tui/              # 终端 UI
+├── scripts/reverse-agent/  # smoke / contract / fixtures / gate
+├── docs/reverse-agent/     # 宿主 CAP 证据与设计说明
+├── repi / repi-test.sh     # 启动包装
+└── package.json            # monorepo 工作区
 ```
 
-完成条件由内置 `goal_complete` 工具确认；目标未完成时 footer 会持续显示当前状态。
+---
 
-## 逆向工具链
-
-安装常用安全工具：
+## 开发
 
 ```bash
-repi bootstrap
-repi bootstrap --dry-run
-repi bootstrap --only gdb,pwntools,binwalk,tshark
-repi bootstrap --list
+npm install --ignore-scripts
+npm run check                 # 类型/静态检查（改代码后）
+# 测试：仓库约定优先 ./test.sh 或单测路径，勿默认全量 e2e 扫真实 endpoint
+node scripts/reverse-agent/repi-product-contract.mjs /path/to/repi
 ```
 
-生成本机工具索引：
+贡献约定见 `CONTRIBUTING.md`、`AGENTS.md`。
 
-```bash
-repi selfcheck --deep
-```
+---
 
-## 子代理
+## 安全与合规说明
 
-可在任务中显式要求委派专家：
+- REPI 用于 **授权范围内的** 安全研究、攻防演练与工程验证。
+- 不在产品中内置「越狱 / 绝对服从」类行为。
+- 不将真实密钥、cookie、私钥写入仓库；示例一律占位符。
+- Cloud / IMDS / STS 等路径区分 **fixture / mock / scaffold**，避免假成功。
 
-```bash
-repi -p "委派 reverser 专家分析 ./vuln，生成 PoC 并给出复现证据"
-```
+---
 
-子代理运行记录位于：
+## 版本与许可
 
-```text
-~/.repi/agent/recon/agent-threads/
-```
+- 当前 monorepo 版本见根 `package.json`（lockstep 工作区）
+- License：**MIT**
 
-## 扩展
+---
 
-安装扩展：
+## 链接
 
-```bash
-repi install npm:pi-web-access
-repi list
-```
+- 仓库：<https://github.com/multi-zhangyang/repi>
+- 议题：<https://github.com/multi-zhangyang/repi/issues>
 
-REPI 已内置 Goal Mode；安装 `@narumitw/pi-goal` 时会以内置实现为准，避免命令冲突。
+---
 
-```bash
-repi install npm:@narumitw/pi-goal
-```
+## 与旧仓库的关系
 
-## MCP
-
-配置文件：
-
-```text
-~/.repi/agent/mcp.json
-<project>/.repi/mcp.json
-```
-
-示例：
-
-```json
-{
-  "mcpServers": {
-    "browser-tools": {
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "some-mcp-server"],
-      "env": { "EXAMPLE_TOKEN": "$EXAMPLE_TOKEN" },
-      "autoRegisterTools": true,
-      "deferToolSchemas": true
-    }
-  }
-}
-```
-
-常用命令：
-
-```bash
-repi mcp status
-repi mcp list
-repi mcp probe browser-tools
-repi mcp search browser-tools browser
-repi mcp call browser-tools call_tool '{"name":"browser_status","args":{}}'
-```
-
-## 目录结构
-
-```text
-packages/coding-agent/      REPI CLI 和 agent runtime
-packages/agent/             agent core
-packages/ai/                LLM API runtime
-packages/tui/               terminal UI
-scripts/reverse-agent/      install / doctor / smoke / selfcheck / bootstrap
-repi-profile/               默认 REPI profile
-install.sh                  安装入口
-```
-
-## 本地验证
-
-```bash
-npm run check
-npm run smoke:install-path -- --json
-npm run smoke:release -- . --json
-npm run smoke:extensions -- --json
-```
-
-## 隐私
-
-不要提交 API key、cookie、session、HAR、浏览器 profile、`~/.repi/agent/auth.json` 或私有目标数据。
-
-## License
-
-MIT
+本仓库由 reverse/pentest 方向的深度改造演进而来（历史远程可能仍指向 `repi`）。  
+**产品名、CLI、运行目录与文档一律以 REPI / `repi` / `~/.repi` 为准**；Pi 仅作为内部 harness 能力参考与兼容层，不是产品对外身份。

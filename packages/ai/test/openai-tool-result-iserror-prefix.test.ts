@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { describe, expect, it } from "vitest";
 import { getModel } from "../src/models.ts";
 import { convertMessages } from "../src/providers/openai-completions.ts";
@@ -41,7 +42,7 @@ const compat: Required<OpenAICompletionsCompat> = {
 };
 
 function buildAssistant(toolCallId: string, now: number): AssistantMessage {
-	const model = getModel("openai", "gpt-4o-mini");
+	const model = getModel("openai", "gpt-4o-mini")!;
 	return {
 		role: "assistant",
 		content: [{ type: "toolCall", id: toolCallId, name: "edit", arguments: { path: "x.ts" } }],
@@ -67,7 +68,7 @@ function buildToolResult(toolCallId: string, text: string, isError: boolean, now
 
 describe("openai-completions tool result isError prefix", () => {
 	it("prefixes [tool error] when isError is true so a failed tool is not mistaken for success", () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
 		const model: Model<"openai-completions"> = { ...baseModel, api: "openai-completions", input: ["text"] };
 		const now = Date.now();
 		const context: Context = {
@@ -86,7 +87,7 @@ describe("openai-completions tool result isError prefix", () => {
 	});
 
 	it("does not prefix a successful tool result", () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini");
+		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
 		const model: Model<"openai-completions"> = { ...baseModel, api: "openai-completions", input: ["text"] };
 		const now = Date.now();
 		const context: Context = {
@@ -106,7 +107,7 @@ describe("openai-completions tool result isError prefix", () => {
 
 describe("openai-responses tool result isError prefix", () => {
 	it("prefixes [tool error] on function_call_output when isError is true", () => {
-		const model = getModel("openai-codex", "gpt-5.5");
+		const model = getModel("openai-codex", "gpt-5.5")!;
 		const now = Date.now();
 		const assistant: AssistantMessage = {
 			role: "assistant",
@@ -141,7 +142,7 @@ describe("openai-responses tool result isError prefix", () => {
 	});
 
 	it("does not prefix a successful responses tool result", () => {
-		const model = getModel("openai-codex", "gpt-5.5");
+		const model = getModel("openai-codex", "gpt-5.5")!;
 		const now = Date.now();
 		const assistant: AssistantMessage = {
 			role: "assistant",

@@ -29,7 +29,7 @@ const { appendMemoryEventTransaction } = await import("../../src/core/recon-prof
 const { readCaseMemoryRows } = await import("../../src/core/repi/case-memory.ts");
 const { memoryEventHashChainOk } = await import("../../src/core/repi/memory-event.ts");
 const { invalidateMemoryStoreVerificationCache, rotateMemoryEventsLedgerIfNeeded, verifyMemoryStore } = await import(
-	"../../src/core/repi/memory-store.ts"
+	"../../src/core/repi/memory-stubs.ts"
 );
 const { readMemoryEvents } = await import("../../src/core/repi/memory-search.ts");
 const { memoryEventsPath } = await import("../../src/core/repi/storage.ts");

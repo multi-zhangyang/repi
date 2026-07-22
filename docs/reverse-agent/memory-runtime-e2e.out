@@ -1,0 +1,317 @@
+
+==== TARGET /tmp/repi-mem-smoke.bin ====
+[adapter-memory-target] adapter=adapter-memory-forensics-runner: target=/tmp/repi-mem-smoke.bin mode=native
+[mem-env] file=/usr/bin/file strings=/usr/bin/strings sha256sum=/usr/bin/sha256sum volatility3= vol=/root/.local/bin/vol python=/usr/bin/python3
+[mem-image] target=/tmp/repi-mem-smoke.bin
+[mem-image] file=MS-DOS executable, MZ for MS-DOS
+[mem-image] sha256=e59a6b88ef10c077464a2fc333040802fc2b32f4b0ed0de353f217b0fe9e7fc2
+[mem-image] sample_sha256=e59a6b88ef10c077464a2fc333040802fc2b32f4b0ed0de353f217b0fe9e7fc2 sample_bytes=16384 path=/tmp/repi-mem-smoke.bin
+[mem-process] signal=lsass
+[mem-process] signal=cmd.exe
+[mem-process] signal=powershell
+[mem-process] signal=explorer.exe
+[mem-process] signal=/bin/bash
+[mem-process] signal=sshd
+[mem-process] signal=python3
+[mem-process] signal=lsass
+[mem-process] signal=cmd.exe
+[mem-process] signal=powershell
+[mem-process] signal=explorer.exe
+[mem-process] signal=/bin/bash
+[mem-process] signal=sshd
+[mem-process] signal=python3
+[mem-process] network=https://
+[mem-process] network=https://
+[mem-credential] signal=lsass
+[mem-credential] signal=password
+[mem-credential] signal=secret
+[mem-credential] signal=mimikatz
+[mem-credential] signal=lsass
+[mem-credential] signal=password
+[mem-credential] signal=secret
+[mem-credential] signal=mimikatz
+[mem-process] process_signals=14 network_signals=2
+[mem-credential] credential_signals=8
+[mem-timeline] sample_window_bytes=16384 note=host-string-timeline
+[mem-carve] signal=injection_or_malfind_string
+[mem-image] profile_hint=windows
+[mem-header] pe=1 dos_stub=1 note=pe-like-image
+[mem-header] pe_e_lfanew=128
+[mem-carve] pure_python_header_probe=1
+[mem-deep] path=/tmp/repi-mem-smoke.bin bytes=16384
+[mem-module] pe_offset=0x1800 e_lfanew=128
+[mem-module] pe_headers=1 elf_headers=0
+[mem-pool] tag=ProcessMemory
+[mem-pool] tag=Thread
+[mem-process] path=C:\Windows\System32\lsass.exe
+[mem-process] path=C:\Windows\System32\cmd.exe
+[mem-process] path=C:\Windows\System32\powershell.exe
+[mem-process] path=C:\Windows\explorer.exe
+[mem-process] path=C:\Windows\Temp
+[mem-process] path_hits=5
+summary.mem_path=1
+[mem-process] windows_system_procs=1
+[mem-deep] pure_python_module_scan=1 ok=1
+[mem-extra] path=/tmp/repi-mem-smoke.bin bytes=16384
+[mem-pslist] name=\windows\system32\lsass.exe hits=1
+[mem-pslist] name=\windows\system32\cmd.exe hits=1
+[mem-pslist] name=\windows\system32\powershell.exe hits=1
+[mem-pslist] name=\windows\explorer.exe hits=1
+[mem-pslist] name=bash hits=1
+[mem-pslist] name=sshd hits=1
+[mem-pslist] name=busybox hits=1
+[mem-pslist] name=python3 hits=1
+[mem-pslist] unique=8
+[mem-pslist-surrogate] windows_pslist=1 pure_python=1 count=4
+summary.mem_windows_pslist_surrogate=1
+[mem-pslist-surrogate] linux_pslist=1 pure_python=1 count=4
+summary.mem_linux_pslist_surrogate=1
+[mem-pslist-surrogate] note=pure_python_path_scan_not_vol_dump
+[mem-net] url=https://c2.example/beacon
+[mem-net] ip_unique=0 url_hits=1
+[mem-yara-lite] rule=cred_dump hits=4 sample=lsass.exe
+[mem-yara-lite] rule=inject hits=3 sample=VirtualAllocEx
+[mem-yara-lite] rule=persist hits=2 sample=CurrentVersion\Run
+[mem-yara-lite] rule=c2 hits=2 sample=https://
+[mem-yara-lite] rule=crypto hits=1 sample=rsa
+[mem-yara-lite] matched=5 list=cred_dump,inject,persist,c2,crypto
+[mem-timeline] iso=2024-07-21T10:15:30
+[mem-timeline] iso=2024-07-21 11:22:33
+[mem-timeline] iso=2025-01-02T03:04:05
+[mem-timeline] iso_hits=3
+summary.mem_iso=1
+[mem-extra] ok=1 pslist=8 yara=5 net=1
+[mem-malfind] path=/tmp/repi-mem-smoke.bin bytes=16384 pure_python=1
+[mem-malfind] pe_image offset=0x1800 e_lfanew=0x80
+[mem-malfind] mz_hits=2 pe_images=1
+[mem-malfind] inject_api=CreateRemoteThread
+[mem-malfind] inject_api=PAGE_EXECUTE_READWRITE
+[mem-malfind] inject_api=VirtualAllocEx
+[mem-malfind] inject_api=WriteProcessMemory
+[mem-malfind] inject_api_hits=4 rwx_string_hits=1
+[mem-malfind] ok=1 pure_python=1 note=not_vol_malfind
+summary.mem_malfind=1
+[mem-handles] path=/tmp/repi-mem-smoke.bin bytes=16384 pure_python=1
+[mem-registry] key=hklm\software\microsoft\windows\currentversion\run hkcu\software\microsoft\windows\currentversion\run path hits=1
+[mem-registry] unique=1
+summary.mem_registry=1
+[mem-env] name=PATH value=/usr/bin:/bin
+[mem-env] name=APPDATA value=C:\Users\repi\AppData\Roaming
+[mem-env] name=TEMP value=C:\Windows\Temp
+[mem-env] hits=3
+summary.mem_env=1
+[mem-handles] path=C:\Windows\System32\lsass.exe C hits=1
+[mem-handles] path=C:\Windows\System32\powershell.exe C hits=1
+[mem-handles] path=/usr/bin/bash hits=1
+[mem-handles] path=/usr/sbin/sshd hits=1
+[mem-handles] path=/usr/bin/python3 hits=1
+[mem-handles] path=/usr/bin hits=1
+[mem-handles] path=C:\Users\repi\AppData\Roaming TEMP hits=1
+[mem-handles] path=C:\Windows\Temp  hits=1
+[mem-handles] path=/home/repi/.ssh/id_rsa hits=1
+[mem-handles] path=/tmp/repi-mem-artifact.bin hits=1
+[mem-handles] unique=10 pure_python=1
+summary.mem_handles=1
+[mem-handles] ok=1 registry=1 env=3 paths=10
+[mem-strings] C:\Windows\System32\lsass.exe C:\Windows\System32\cmd.exe C:\Windows\System32\powershell.exe C:\Windows\explorer.exe /usr/bin/bash /usr/sbin/sshd /bin/busybox /usr/bin/python3 HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run HKCU\Software\Microsoft\Windows\CurrentVersion\Run PATH=/usr/bin:/bin APPDATA=C:\Users\repi\AppData\Roaming TEMP=C:\Windows\Temp /home/repi/.ssh/id_rsa /tmp/repi-mem-artifact.bin https://c2.example/beacon password=secret 2024-07-21T10:15:30 2024-07-21 11:22:33 2025-01-02T03:04:05 mimikatz sekurlsa wdigest 
+[mem-strings-host] ok=1 lines=5
+[mem-yara-host] host=1 bin=/usr/bin/yara
+[mem-yara-host] Pi_RECON_Mem_Cred_Surface /tmp/repi-mem-smoke.bin
+[mem-yara-host] 0x94:$a: lsass
+[mem-yara-host] 0x230:$b: password
+[mem-yara-host] 0x285:$c: sekurlsa
+[mem-yara-host] 0x28e:$d: wdigest
+[mem-yara-host] 0x27c:$e: mimikatz
+[mem-yara-host] Pi_RECON_Mem_Shell_Surface /tmp/repi-mem-smoke.bin
+[mem-yara-host] 0xb2:$a: cmd.exe
+[mem-yara-host] 0xce:$b: powershell
+[mem-yara-host] 0xfe:$d: bash
+[mem-yara-host] Pi_RECON_Mem_C2_Beaconish /tmp/repi-mem-smoke.bin
+[mem-yara-host] 0x216:$b: https://
+[mem-yara-host] ok=1 rules_hit=3 file=/tmp/repi-mem-hunts.yar
+[mem-vol] host=1 bin=/root/.local/bin/vol
+[mem-vol-info] Volatility 3 Framework 2.28.0
+[mem-vol-info] 
+[mem-vol-info] Data
+[mem-vol-info] 
+[mem-vol-info] Automagic
+[mem-vol-info] * ConstructionMagic
+[mem-vol-info] * LayerStacker
+[mem-vol-info] * SymbolCacheMagic
+[mem-vol-info] * WinSwapLayers
+[mem-vol-info] * SymbolFinder
+[mem-vol-info] * LinuxSymbolFinder
+[mem-vol-info] * MacSymbolFinder
+[mem-vol-info] * KernelModule
+[mem-vol-info] * KernelPDBScanner
+[mem-vol-info] Requirement
+[mem-vol-info] * SimpleTypeRequirement
+[mem-vol-info] * BooleanRequirement
+[mem-vol-info] * IntRequirement
+[mem-vol-info] * StringRequirement
+[mem-vol-info] * URIRequirement
+[mem-vol-info] * BytesRequirement
+[mem-vol-info] * ClassRequirement
+[mem-vol-info] * ConstructableRequirementInterface
+[mem-vol-info] * TranslationLayerRequirement
+[mem-vol-info] * SymbolTableRequirement
+[mem-vol-info] * ModuleRequirement
+[mem-vol-info] * ConfigurableRequirementInterface
+[mem-vol-info] * ComplexListRequirement
+[mem-vol-info] * LayerListRequirement
+[mem-vol-info] * TranslationLayerRequirement
+[mem-vol-info] * SymbolTableRequirement
+[mem-vol-info] * ModuleRequirement
+[mem-vol-info] * MultiRequirement
+[mem-vol-info] * ComplexListRequirement
+[mem-vol-info] * LayerListRequirement
+[mem-vol-info] * ListRequirement
+[mem-vol-info] * ChoiceRequirement
+[mem-vol-info] * VersionRequirement
+[mem-vol-info] * PluginRequirement
+[mem-vol-info] Layer
+[mem-vol-info] Progress:  100.00		Reconstruction finishedProgress:  100.00		PDB scanning finished  Traceback (most recent call last):
+[mem-vol-info]   File "/root/.local/bin/vol", line 6, in <module>
+[mem-vol-info]     sys.exit(main())
+[mem-vol-banner] Volatility 3 Framework 2.28.0
+[mem-vol-banner] 
+[mem-vol-banner] Offset	Banner
+[mem-vol-banner] 
+[mem-vol-isf] Volatility 3 Framework 2.28.0
+[mem-vol-isf] 
+[mem-vol-isf] URI	Valid	Number of base_types	Number of types	Number of symbols	Number of enums	Identifying information
+[mem-vol-isf] 
+[mem-vol-plugins] 79:    linux.bash.Bash     Recovers bash command history from memory.
+[mem-vol-plugins] 80:    linux.boottime.Boottime
+[mem-vol-plugins] 82:    linux.capabilities.Capabilities
+[mem-vol-plugins] 84:    linux.check_afinfo.Check_afinfo
+[mem-vol-plugins] 87:    linux.check_creds.Check_creds
+[mem-vol-plugins] 90:    linux.check_idt.Check_idt
+[mem-vol-plugins] 92:    linux.check_modules.Check_modules
+[mem-vol-plugins] 95:    linux.check_syscall.Check_syscall
+[mem-vol-plugins] 97:    linux.ebpf.EBPF     Enumerate eBPF programs
+[mem-vol-plugins] 98:    linux.elfs.Elfs     Lists all memory mapped ELF files for all processes.
+[mem-vol-plugins] 99:    linux.envars.Envars
+[mem-vol-plugins] 101:    linux.graphics.fbdev.Fbdev
+[mem-vol-plugins] 103:    linux.hidden_modules.Hidden_modules
+[mem-vol-plugins] 106:    linux.iomem.IOMem   Generates an output similar to /proc/iomem on a
+[mem-vol-plugins] 108:    linux.ip.Addr       Lists network interface information for all devices
+[mem-vol-plugins] 109:    linux.ip.Link       Lists information about network interfaces similar to
+[mem-vol-plugins] 111:    linux.kallsyms.Kallsyms
+[mem-vol-plugins] 113:    linux.keyboard_notifiers.Keyboard_notifiers
+[mem-vol-plugins] 115:    linux.kmsg.Kmsg     Kernel log buffer reader
+[mem-vol-plugins] 116:    linux.kthreads.Kthreads
+[mem-vol-plugins] 118:    linux.library_list.LibraryList
+[mem-vol-plugins] 120:    linux.lsmod.Lsmod   Lists loaded kernel modules.
+[mem-vol-plugins] 121:    linux.lsof.Lsof     Lists open files for each processes.
+[mem-vol-plugins] 122:    linux.malfind.Malfind
+[mem-vol-plugins] 125:    linux.malware.check_afinfo.Check_afinfo
+[mem-vol-plugins] 128:    linux.malware.check_creds.Check_creds
+[mem-vol-plugins] 131:    linux.malware.check_idt.Check_idt
+[mem-vol-plugins] 133:    linux.malware.check_modules.Check_modules
+[mem-vol-plugins] 135:    linux.malware.check_syscall.Check_syscall
+[mem-vol-plugins] 137:    linux.malware.hidden_modules.Hidden_modules
+[mem-vol-plugins] 139:    linux.malware.keyboard_notifiers.Keyboard_notifiers
+[mem-vol-plugins] 141:    linux.malware.malfind.Malfind
+[mem-vol-plugins] 144:    linux.malware.modxview.Modxview
+[mem-vol-plugins] 148:    linux.malware.netfilter.Netfilter
+[mem-vol-plugins] 150:    linux.malware.process_spoofing.ProcessSpoofing
+[mem-vol-plugins] 153:    linux.malware.tty_check.Tty_Check
+[mem-vol-plugins] 155:    linux.module_extract.ModuleExtract
+[mem-vol-plugins] 158:    linux.modxview.Modxview
+[mem-vol-plugins] 162:    linux.mountinfo.MountInfo
+[mem-vol-plugins] 164:    linux.netfilter.Netfilter
+[mem-vol-plugins] count=185
+[mem-vol-banner] Volatility 3 Framework 2.28.0
+[mem-vol-banner] 
+[mem-vol-banner] Offset	Banner
+[mem-vol-banner] 
+[mem-vol-pslist] Volatility 3 Framework 2.28.0
+[mem-vol-pslist] 
+[mem-vol-pslist] Unsatisfied requirement plugins.PsList.kernel.layer_name: 
+[mem-vol-pslist] Unsatisfied requirement plugins.PsList.kernel.symbol_table_name: 
+[mem-vol-pslist] 
+[mem-vol-pslist] A translation layer requirement was not fulfilled.  Please verify that:
+[mem-vol-pslist] 	A file was provided to create this layer (by -f, --single-location or by config)
+[mem-vol-pslist] 	The file exists and is readable
+[mem-vol-pslist] 	The file is a valid memory image and was acquired cleanly
+[mem-vol-pslist] 
+[mem-vol-pslist] A symbol table requirement was not fulfilled.  Please verify that:
+[mem-vol-pslist] 	The associated translation layer requirement was fulfilled
+[mem-vol-pslist] 	You have the correct symbol file for the requirement
+[mem-vol-pslist] 	The symbol file is under the correct directory or zip file
+[mem-vol-pslist] 	The symbol file is named appropriately or contains the correct banner
+[mem-vol-pslist] 
+[mem-vol-netscan] Volatility 3 Framework 2.28.0
+[mem-vol-netscan] 
+[mem-vol-netscan] Unsatisfied requirement plugins.NetScan.kernel.layer_name: 
+[mem-vol-netscan] Unsatisfied requirement plugins.NetScan.kernel.symbol_table_name: 
+[mem-vol-netscan] 
+[mem-vol-netscan] A translation layer requirement was not fulfilled.  Please verify that:
+[mem-vol-netscan] 	A file was provided to create this layer (by -f, --single-location or by config)
+[mem-vol-netscan] 	The file exists and is readable
+[mem-vol-netscan] 	The file is a valid memory image and was acquired cleanly
+[mem-vol-netscan] 
+[mem-vol-netscan] A symbol table requirement was not fulfilled.  Please verify that:
+[mem-vol-netscan] 	The associated translation layer requirement was fulfilled
+[mem-vol-netscan] 	You have the correct symbol file for the requirement
+[mem-vol-netscan] 	The symbol file is under the correct directory or zip file
+[mem-vol-netscan] 	The symbol file is named appropriately or contains the correct banner
+[mem-vol-netscan] 
+[mem-vol-linux-pslist] Volatility 3 Framework 2.28.0
+[mem-vol-linux-pslist] 
+[mem-vol-linux-pslist] Unsatisfied requirement plugins.PsList.kernel.layer_name: 
+[mem-vol-linux-pslist] Unsatisfied requirement plugins.PsList.kernel.symbol_table_name: 
+[mem-vol-linux-pslist] 
+[mem-vol-linux-pslist] A translation layer requirement was not fulfilled.  Please verify that:
+[mem-vol-linux-pslist] 	A file was provided to create this layer (by -f, --single-location or by config)
+[mem-vol-linux-pslist] 	The file exists and is readable
+[mem-vol-linux-pslist] 	The file is a valid memory image and was acquired cleanly
+[mem-vol-linux-pslist] 
+[mem-vol-linux-pslist] A symbol table requirement was not fulfilled.  Please verify that:
+[mem-vol-linux-pslist] 	The associated translation layer requirement was fulfilled
+[mem-vol-linux-pslist] 	You have the correct symbol file for the requirement
+[mem-vol-linux-pslist] 	The symbol file is under the correct directory or zip file
+[mem-vol-linux-pslist] 	The symbol file is named appropriately or contains the correct banner
+[mem-vol-linux-pslist] 
+[mem-vol-linux-bash] Volatility 3 Framework 2.28.0
+[mem-vol-linux-bash] 
+[mem-vol-linux-bash] Unsatisfied requirement plugins.Bash.kernel.layer_name: 
+[mem-vol-linux-bash] Unsatisfied requirement plugins.Bash.kernel.symbol_table_name: 
+[mem-vol-linux-bash] 
+[mem-vol-linux-bash] A translation layer requirement was not fulfilled.  Please verify that:
+[mem-vol-linux-bash] 	A file was provided to create this layer (by -f, --single-location or by config)
+[mem-vol-linux-bash] 	The file exists and is readable
+[mem-vol-linux-bash] 	The file is a valid memory image and was acquired cleanly
+[mem-vol-linux-bash] 
+[mem-vol-linux-bash] A symbol table requirement was not fulfilled.  Please verify that:
+[mem-vol-linux-bash] 	The associated translation layer requirement was fulfilled
+[mem-vol-linux-bash] 	You have the correct symbol file for the requirement
+[mem-vol-linux-bash] 	The symbol file is under the correct directory or zip file
+[mem-vol-linux-bash] 	The symbol file is named appropriately or contains the correct banner
+[mem-vol-linux-bash] 
+[mem-vol-linux-maps] Volatility 3 Framework 2.28.0
+[mem-vol-linux-maps] 
+[mem-vol-linux-maps] Unsatisfied requirement plugins.Maps.kernel.layer_name: 
+[mem-vol-linux-maps] Unsatisfied requirement plugins.Maps.kernel.symbol_table_name: 
+[mem-vol-linux-maps] 
+[mem-vol-linux-maps] A translation layer requirement was not fulfilled.  Please verify that:
+[mem-vol-linux-maps] 	A file was provided to create this layer (by -f, --single-location or by config)
+[mem-vol-linux-maps] 	The file exists and is readable
+[mem-vol-linux-maps] 	The file is a valid memory image and was acquired cleanly
+[mem-vol-linux-maps] 
+[mem-vol-linux-maps] A symbol table requirement was not fulfilled.  Please verify that:
+[mem-vol-linux-maps] 	The associated translation layer requirement was fulfilled
+[mem-vol-linux-maps] 	You have the correct symbol file for the requirement
+[mem-vol-linux-maps] 	The symbol file is under the correct directory or zip file
+[mem-vol-linux-maps] 	The symbol file is named appropriately or contains the correct banner
+[mem-vol] ok=1 framework=1 banners=1 linux_probe=1 windows_probe=1
+[mem-vol] detail framework=1 banners=1 plugins=185 windows_pslist=0 linux_pslist=0
+[mem-vol] pslist_dump=0 note=non_dump_fixture_or_missing_symbols pure_python_surrogate_expected=1
+[memory-proof-capture] domain=memory-forensics image=1 process=1 cred=1 timeline=1 vol=1 header=1 yara=1
+[memory-proof-capture] proof.exit=runtime_capture_strong bind_ready=true note=image+process-or-cred+vol-host-preferred+yara-host+extra
+[memory-proof-capture] next=re_domain_proof_exit_show,re_complete_audit,re_runtime_adapter_run,re_lane_plan_process-network
+summary.mem_yara=1
+summary.mem_vol=1
+[runtime-technique] mem-image-profile | mem-process-network | mem-credential-carve
+

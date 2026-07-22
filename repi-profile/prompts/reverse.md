@@ -10,4 +10,4 @@ REPI reverse task: $ARGUMENTS
 3. 选择一个最小路径：关键函数、比较点、解密链、VM loop、loader stage 或 anti-debug branch。
 4. 运行至少一个验证命令或脚本。
 5. 输出：结果 → 关键证据 → 验证 → 下一步。
-6. 如有可复用经验，调用 re_memory append 或写 `~/.repi/agent/recon/memory/field-journal.md`。
+6. 如有可复用经验，调用 re_note append 或写 `~/.repi/agent/recon/evidence/ (memory removed) /field-journal.md`。

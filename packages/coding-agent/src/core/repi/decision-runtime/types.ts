@@ -1,0 +1,50 @@
+/** Decision-runtime types. */
+export type DecisionCoreArtifact = {
+	timestamp: string;
+	missionId?: string;
+	route?: string;
+	target?: string;
+	mode: "plan" | "tick" | "run";
+	activeLane?: string;
+	objectiveStack: string[];
+	checkPressure: string[];
+	evidencePriority: string[];
+	toolPosture: string[];
+	artifactPosture: string[];
+	decisionRules: string[];
+	operatorQueue: string[];
+	executed: any[];
+	blocked: string[];
+	nextActions: string[];
+	stopConditions: string[];
+	sourceArtifacts: string[];
+};
+
+export type DecisionRuntimeDeps = {
+	activeLane: (...args: any[]) => any;
+	appendEvidence: (...args: any[]) => any;
+	bootstrapCatalogFor: (...args: any[]) => any;
+	commandTarget: (...args: any[]) => any;
+	contextArtifactIndex: (...args: any[]) => any;
+	decisionOperatorSteps?: (...args: any[]) => any;
+	executeOperatorStep: (...args: any[]) => any;
+	latestAutofixArtifactPath: (...args: any[]) => any;
+	latestCompilerArtifactPath: (...args: any[]) => any;
+	latestContextPackArtifactPath: (...args: any[]) => any;
+	latestKernelArtifactPath: (...args: any[]) => any;
+	latestKnowledgeGraphArtifactPath: (...args: any[]) => any;
+	latestOperatorArtifactPath: (...args: any[]) => any;
+	latestProofLoopArtifactPath: (...args: any[]) => any;
+	latestReplayerArtifactPath: (...args: any[]) => any;
+	latestScopedMarkdownArtifact: (...args: any[]) => any;
+	latestVerifierArtifactPath: (...args: any[]) => any;
+	looksLikeNaturalLanguageTarget: (...args: any[]) => any;
+	parseToolIndex: (...args: any[]) => any;
+	recommendedToolsForRoute: (...args: any[]) => any;
+	sanitizeTargetForCommand: (...args: any[]) => any;
+	toolIndexPath: (...args: any[]) => any;
+	updateMissionCheckpoint: (...args: any[]) => any;
+	operatorCommandConcrete?: (...args: any[]) => any;
+	operatorStepPriority?: (...args: any[]) => any;
+	memoryPath?: (...args: any[]) => any;
+};

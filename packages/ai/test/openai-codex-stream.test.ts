@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

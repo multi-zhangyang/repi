@@ -322,5 +322,5 @@ ${SOURCE_COMMAND:+$SOURCE_COMMAND
 }cd <project>  # Open directory
 repi          # Run command
 
-For more information visit https://github.com/multi-zhangyang/pi-recon-agent
+For more information visit https://github.com/multi-zhangyang/repi
 MSG

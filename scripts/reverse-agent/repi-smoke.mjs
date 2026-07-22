@@ -74,6 +74,13 @@ const steps = [
 	// those probes can take ~15-20s each; keep smoke fast but do not make the
 	// aggregate doctor step race its own internal 45s probe budget.
 	{ id: "doctor", cmd: "node", args: [script("repi-doctor.mjs"), root], timeout: 90_000 },
+	// Offline reverse proof gate: all required host-capture smokes must be partial|strong + bind_ready.
+	{ id: "reverse-proof-audit", cmd: "node", args: [script("repi-reverse-proof-audit.mjs"), root, "--json"], timeout: 60_000, expectOutput: ['"ok": true', '"kind": "repi-reverse-proof-audit-report"'] },
+	{ id: "reverse-complete-audit", cmd: "node", args: [script("repi-reverse-complete-audit.mjs"), root, "--json"], timeout: 120_000, expectOutput: ['"ok": true', '"kind": "repi-reverse-complete-audit-report"'] },
+	// One-shot reverse gate (proof+complete+e2e core) — full all remains reverse-runtime-e2e step.
+	{ id: "reverse-gate-core", cmd: "node", args: [script("repi-reverse-gate.mjs"), root, "core", "--json"], timeout: 240_000, expectOutput: ['"ok": true', '"kind": "repi-reverse-gate-report"'] },
+	{ id: "sticky-inject-smoke", cmd: "node", args: [script("repi-sticky-inject-smoke.mjs"), root, "--json"], timeout: 60_000, expectOutput: ['"ok": true', '"kind": "repi-sticky-inject-smoke-report"', '"t2_sticky": true'] },
+	{ id: "reverse-runtime-e2e", cmd: "node", args: [script("repi-reverse-runtime-e2e.mjs"), root, "all", "--json"], timeout: 420_000, expectOutput: ['"ok": true', '"kind": "repi-reverse-runtime-e2e-report"', '"proof_exit": "runtime_capture_strong"'] },
 	{ id: "memory-status", cmd: "node", args: [script("memory-inspect.mjs"), root, "status", "--json"] },
 	{ id: "model-doctor", cmd: "node", args: [script("model-inspect.mjs"), root, "doctor", "--json"] },
 	{

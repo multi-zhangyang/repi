@@ -1,5 +1,20 @@
 # REPI 运行时配置速查
 
+
+## Model sources (no built-in catalog)
+
+REPI does **not** ship Pi's hundreds of default providers/models.
+
+Configure models via:
+
+1. **Env (preferred for one gateway)**  
+   `REPI_AUTH_TOKEN` / `REPI_API_KEY`, `REPI_BASE_URL`, `REPI_MODEL`, optional `REPI_PROVIDER`, `REPI_MODEL_API`
+2. **File** `~/.repi/agent/models.json` (see `docs/reverse-agent/models.example.json`)
+3. **Extension** `registerProvider(...)`
+
+`npm run generate-models` writes an empty catalog unless `REPI_KEEP_UPSTREAM_MODEL_CATALOG=1`.
+
+
 marker: `model_provider_configuration_runtime`
 
 这份文档给两类读者用：
@@ -36,6 +51,11 @@ export REPI_CONTEXT_WINDOW=128000
 # export REPI_AUTO_COMPACT_WINDOW=128000
 export REPI_MAX_TOKENS=16384
 export REPI_SUBAGENT_MODEL=provider/smaller-or-worker-model
+export REPI_COST_INPUT=2.0                    # USD / million input tokens (env models)
+export REPI_COST_OUTPUT=10.0                  # USD / million output tokens
+export REPI_COST_CACHE_READ=0.2               # optional cache read
+export REPI_COST_CACHE_WRITE=2.5              # optional cache write
+
 
 IS_SANDBOX=1 repi --approve --thinking off -p "Reply exactly: REPI_OK"
 ```

@@ -4,7 +4,7 @@
 
 Extensions and custom tools can render custom TUI components for interactive user interfaces. This page covers the component system and available building blocks.
 
-**Source:** [`@pi-recon/repi-tui`](https://github.com/multi-zhangyang/pi-recon-agent/tree/main/packages/tui)
+**Source:** [`@pi-recon/repi-tui`](https://github.com/multi-zhangyang/repi/tree/main/packages/tui)
 
 ## Component Interface
 

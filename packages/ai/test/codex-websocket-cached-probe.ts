@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 /**
  * Live probe for OpenAI Codex Responses websocket-cached mode.
  *

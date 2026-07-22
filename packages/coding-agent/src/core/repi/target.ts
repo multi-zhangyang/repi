@@ -24,7 +24,7 @@ export const REPI_POISON_PATTERNS = [
 
 export function containsRepiPoison(value?: string): boolean {
 	const text = value?.trim();
-	return Boolean(text && REPI_POISON_PATTERNS.some((pattern) => pattern.test(text)));
+	return Boolean(text && REPI_POISON_PATTERNS.some((pattern: any) => pattern.test(text)));
 }
 
 export function containsEmoji(value: string): boolean {

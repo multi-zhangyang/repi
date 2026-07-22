@@ -1,0 +1,53 @@
+/** Mission checkpoints: native/pwn/exploit/ctf/malware/firmware. */
+export const MISSION_CHECKPOINTS_NATIVE: Record<string, string[]> = {
+	"Native reverse": [
+		"reverse_proof_exit_ready",
+		"native_runtime_ready",
+		"verifier_matrix_ready",
+		"compiler_ready",
+		"replay_ready",
+		"proof_loop_ready",
+	],
+	"Pwn / exploit": [
+		"reverse_proof_exit_ready",
+		"native_runtime_ready",
+		"exploit_lab_ready",
+		"exploit_chain_ready",
+		"verifier_matrix_ready",
+		"compiler_ready",
+		"replay_ready",
+		"proof_loop_ready",
+	],
+	"Exploit reliability": [
+		"reverse_proof_exit_ready",
+		"exploit_lab_ready",
+		"exploit_chain_ready",
+		"verifier_matrix_ready",
+		"replay_ready",
+		"proof_loop_ready",
+	],
+	"CTF / sandbox": [
+		"reverse_proof_exit_ready",
+		"native_runtime_ready",
+		"exploit_lab_ready",
+		"verifier_matrix_ready",
+		"compiler_ready",
+		"replay_ready",
+	],
+	"Malware analysis": [
+		"reverse_proof_exit_ready",
+		"native_runtime_ready",
+		"attack_graph_ready",
+		"verifier_matrix_ready",
+		"compiler_ready",
+		"replay_ready",
+	],
+	"Firmware / IoT": [
+		"reverse_proof_exit_ready",
+		"native_runtime_ready",
+		"attack_graph_ready",
+		"operation_queue_ready",
+		"verifier_matrix_ready",
+		"compiler_ready",
+	],
+};

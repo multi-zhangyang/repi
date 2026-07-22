@@ -55,7 +55,7 @@ describe("Copilot Claude via Anthropic Messages", () => {
 	};
 
 	it("uses Bearer auth, Copilot headers, and valid Anthropic Messages payload", async () => {
-		const model = getModel("github-copilot", "claude-sonnet-4.6");
+		const model = getModel("github-copilot", "claude-sonnet-4.6")! as any;
 		expect(model.api).toBe("anthropic-messages");
 
 		const s = streamAnthropic(model, context, { apiKey: "tid_copilot_session_test_token" });
@@ -92,7 +92,7 @@ describe("Copilot Claude via Anthropic Messages", () => {
 	});
 
 	it("omits interleaved-thinking beta for adaptive-thinking models", async () => {
-		const model = getModel("github-copilot", "claude-sonnet-4.6");
+		const model = getModel("github-copilot", "claude-sonnet-4.6")! as any;
 		const s = streamAnthropic(model, context, {
 			apiKey: "tid_copilot_session_test_token",
 			interleavedThinking: true,

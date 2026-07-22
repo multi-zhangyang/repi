@@ -1,12 +1,12 @@
 # Development
 
-See [AGENTS.md](https://github.com/multi-zhangyang/pi-recon-agent/blob/main/AGENTS.md) for additional guidelines.
+See [AGENTS.md](https://github.com/multi-zhangyang/repi/blob/main/AGENTS.md) for additional guidelines.
 
 ## Setup
 
 ```bash
-git clone https://github.com/multi-zhangyang/pi-recon-agent.git
-cd pi-recon-agent
+git clone https://github.com/multi-zhangyang/repi.git
+cd repi
 npm install
 npm run build
 ```
@@ -14,7 +14,7 @@ npm run build
 Run from source:
 
 ```bash
-/path/to/pi-recon-agent/repi
+/path/to/repi/repi
 ```
 
 The source launcher can be run from any directory. REPI keeps the caller's current working directory.

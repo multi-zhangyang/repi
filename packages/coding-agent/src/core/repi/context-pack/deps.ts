@@ -1,0 +1,43 @@
+/** Context-pack DI deps and passthrough stubs. */
+export type { ContextPackDeps } from "./deps-core.ts";
+export { configureContextPack, d } from "./deps-core.ts";
+export {
+	buildContextMemoryTail,
+	buildMemoryActiveKernelReport,
+	buildMemoryDepositionReport,
+	buildMemoryDistillPromotionReport,
+	buildMemoryExperienceReport,
+	buildMemoryMaturationRuntimeReport,
+	buildMemoryOrchestratorReport,
+	buildMemoryQualityLedgerReport,
+	buildMemoryReplayEvaluatorReport,
+	buildMemorySkillCapsuleReport,
+	buildMemoryStrategyCapsuleReport,
+	caseMemoryOperatorCommands,
+	currentCaseMemoryLanePlan,
+	memoryOrchestratorPhaseCommand,
+} from "./deps-memory.ts";
+export {
+	activeLane,
+	appendCompactResumeTransition,
+	appendEvidence,
+	artifactScopeInferTarget,
+	autonomousExecutionBudget,
+	buildCompactResumeLedgerV2Report,
+	buildContextEvidenceTail,
+	buildEvidenceDigest,
+	buildToolDigest,
+	contextBranchId,
+	contextCompactionLedger,
+	contextSessionId,
+	formatCompactResumeLedgerV2,
+	formatCompletionAudit,
+	formatMission,
+	latestScopedMarkdownArtifact,
+	latestSwarmRetryQueue,
+	parseReflectionArtifact,
+	parseSupervisorArtifact,
+	rotateCompactionResumeLedgerIfNeeded,
+	updateMissionCheckpoint,
+	verifyContextPackResume,
+} from "./deps-runtime.ts";

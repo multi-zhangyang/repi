@@ -595,11 +595,16 @@ function buildReport() {
 		activeRecall: memory.activeRecall ?? null,
 		maxInjectedTokens: memory.maxInjectedTokens ?? null,
 	};
-	const pollutionGuardOk =
-		posture.mode === "scoped" &&
-		posture.rawAutoInject === false &&
-		posture.autoInject === false &&
-		posture.includeGlobalMemoryInContextPack === false;
+	// Product surface removed settings.memory entirely (doctor: memory:product-removed).
+	// Absent/empty memory config is pollution-safe: no auto-inject surface exists.
+	// When memory config is present, require scoped + inject-off posture.
+	const memoryConfigPresent = Boolean(settings.memory) && typeof settings.memory === "object" && Object.keys(memory).length > 0;
+	const pollutionGuardOk = memoryConfigPresent
+		? posture.mode === "scoped" &&
+			posture.rawAutoInject === false &&
+			posture.autoInject === false &&
+			posture.includeGlobalMemoryInContextPack === false
+		: true;
 	return {
 		kind: "repi-memory-inspection",
 		schemaVersion: 1,

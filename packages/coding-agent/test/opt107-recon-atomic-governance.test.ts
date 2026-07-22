@@ -8,7 +8,7 @@ import {
 	isMemoryGovernanceLedgerRow,
 	rotateGovernanceLedgerIfNeeded,
 } from "../src/core/repi/memory-search.ts";
-import { writeFileAtomic } from "../src/core/repi/memory-store.ts";
+import { writeFileAtomic } from "../src/core/repi/storage/io/atomic-write-sync.ts";
 import { appendPrivateTextFile, ensureRepiStorage, memoryGovernanceLedgerPath } from "../src/core/repi/storage.ts";
 
 // opt #107: two REPI state-machinery fixes.

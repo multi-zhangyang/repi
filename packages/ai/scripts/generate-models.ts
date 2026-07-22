@@ -1299,6 +1299,22 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 }
 
 async function generateModels() {
+	// REPI product default: ship an empty built-in catalog.
+	// Set REPI_KEEP_UPSTREAM_MODEL_CATALOG=1 to regenerate the upstream catalog intentionally.
+	if (process.env.REPI_KEEP_UPSTREAM_MODEL_CATALOG !== "1") {
+		const empty = `// REPI: empty built-in model catalog.
+// Runtime models come from REPI_* env vars, ~/.repi/agent/models.json, or extension registerProvider.
+// Set REPI_KEEP_UPSTREAM_MODEL_CATALOG=1 when running this script to rebuild upstream catalog.
+
+import type { Model } from "./types.ts";
+
+export const MODELS = {} as const satisfies Record<string, Record<string, Model<any>>>;
+`;
+		writeFileSync(join(packageRoot, "src/models.generated.ts"), empty);
+		console.log("Generated empty src/models.generated.ts (REPI default)");
+		return;
+	}
+
 	// Fetch models from both sources
 	// models.dev: Anthropic, Google, OpenAI, Groq, Cerebras
 	// OpenRouter: xAI and other providers (excluding Anthropic, Google, OpenAI)

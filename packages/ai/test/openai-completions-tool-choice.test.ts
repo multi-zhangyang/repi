@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getModel, getModels } from "../src/models.ts";
@@ -886,8 +887,8 @@ describe("openai-completions tool_choice", () => {
 
 	it("keeps developer messages for OpenAI and Anthropic OpenRouter reasoning model instructions", async () => {
 		for (const baseModel of [
-			getModel("openrouter", "openai/gpt-5.2-codex"),
-			getModel("openrouter", "anthropic/claude-sonnet-4.5"),
+			getModel("openrouter", "openai/gpt-5.2-codex")!,
+			getModel("openrouter", "anthropic/claude-sonnet-4.5")!,
 		]) {
 			expect(baseModel).toBeDefined();
 			const model = {

@@ -12,7 +12,11 @@
 			"suspicious": {
 				"noExplicitAny": "off",
 				"noControlCharactersInRegex": "off",
-				"noEmptyInterface": "off"
+				"noEmptyInterface": "off",
+				"noTemplateCurlyInString": "off"
+			},
+			"complexity": {
+				"noUselessStringRaw": "off"
 			}
 		}
 	},

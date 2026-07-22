@@ -13,9 +13,8 @@ import { atomicWriteFileSync } from "./core/tools/atomic-write.ts";
 import { stripJsonComments } from "./utils/json.ts";
 
 const MIGRATION_GUIDE_URL =
-	"https://github.com/multi-zhangyang/pi-recon-agent/blob/main/packages/coding-agent/docs/extensions.md";
-const EXTENSIONS_DOC_URL =
-	"https://github.com/multi-zhangyang/pi-recon-agent/blob/main/packages/coding-agent/docs/extensions.md";
+	"https://github.com/multi-zhangyang/repi/blob/main/packages/coding-agent/docs/extensions.md";
+const EXTENSIONS_DOC_URL = "https://github.com/multi-zhangyang/repi/blob/main/packages/coding-agent/docs/extensions.md";
 
 /**
  * Migrate legacy oauth.json and settings.json apiKeys to auth.json.
@@ -238,7 +237,7 @@ function migrateExplicitEnvVarConfigValues(): void {
  * ~/.repi/agent/sessions/<encoded-cwd>/. This migration moves them
  * to the correct location based on the cwd in their session header.
  *
- * See: https://github.com/multi-zhangyang/pi-recon-agent/issues/320
+ * See: https://github.com/multi-zhangyang/repi/issues/320
  */
 export function migrateSessionsFromAgentRoot(dir: string = getAgentDir()): void {
 	const agentDir = dir;

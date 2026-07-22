@@ -1,0 +1,19 @@
+{
+  "providers": {
+    "gateway": {
+      "baseUrl": "https://gateway.example/v1",
+      "api": "openai-completions",
+      "apiKey": "$REPI_AUTH_TOKEN",
+      "models": [
+        {
+          "id": "vendor/model-id",
+          "name": "My Model",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 262144,
+          "maxTokens": 16384
+        }
+      ]
+    }
+  }
+}

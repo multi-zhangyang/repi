@@ -2,7 +2,7 @@
 # REPI installer.
 #
 # One-line (curl|bash) — clones from GitHub, installs deps, wires the launcher:
-#   curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/pi-recon-agent/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/repi/main/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --prefix /opt/repi --system
 #
 # Local refresh — run inside an existing checkout (idempotent, no clone):
@@ -19,7 +19,7 @@
 #   -h, --help       Show this help.
 set -euo pipefail
 
-REPO="https://github.com/multi-zhangyang/pi-recon-agent.git"
+REPO="https://github.com/multi-zhangyang/repi.git"
 BRANCH="main"
 PREFIX=""
 BIN_ARGS=()
@@ -27,7 +27,7 @@ SKIP_NPM=0
 
 usage() {
   sed -n '2,20p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || cat <<'MSG'
-REPI installer. See https://github.com/multi-zhangyang/pi-recon-agent#install
+REPI installer. See https://github.com/multi-zhangyang/repi#install
 MSG
 }
 
@@ -226,5 +226,5 @@ ${SOURCE_COMMAND:+$SOURCE_COMMAND
 }cd <project>  # Open directory
 repi          # Run command
 
-For more information visit https://github.com/multi-zhangyang/pi-recon-agent
+For more information visit https://github.com/multi-zhangyang/repi
 MSG

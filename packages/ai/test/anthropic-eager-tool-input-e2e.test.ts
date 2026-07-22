@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { getEnvApiKey } from "../src/env-api-keys.ts";

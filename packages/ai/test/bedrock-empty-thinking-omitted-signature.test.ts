@@ -42,7 +42,7 @@ import type { AssistantMessage, Context, Message } from "../src/types.ts";
 // reasoning degradation. The fix preserves the signature-bearing block for
 // Anthropic-Claude models (which support reasoningText.signature).
 
-const baseModel = getModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")!;
+const baseModel = (getModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")! as any)!;
 
 function makeAssistant(thinking: string, thinkingSignature: string): AssistantMessage {
 	return {

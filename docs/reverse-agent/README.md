@@ -19,7 +19,8 @@ Release workflow 在上传 GitHub Release tarball 前会跑 `npm run smoke:relea
 核心文档：
 
 - `mainline-overhaul.md`：REPI 主线大改方向、产品边界和迁移顺序。
+- `harness-gap-analysis.md`：对照 Claude Code harness 与最新 Pi 0.80.x 的缺口与重构优先级。
 - `model-provider-formats.md`：模型 provider、价格、缓存和兼容接口配置。
 - `repi-runtime-configuration.md`：运行时配置、compact、profile、模型与诊断。
 
-REPI 的原则是：按正常安装、正常模型配置、正常 `repi` 命令运行；不要依赖某台机器、某个私有 provider、某个特定 MCP 或一批特制测试脚本。
+REPI 的原则是：按正常安装、正常模型配置、正常 `repi` 命令运行；不要依赖某台机器、某个私有 provider、某个特定 MCP 或一批特制测试脚本。Harness 优先对齐 Claude Code 的 plan/permission/冷启动与 Pi 的 dynamic tools，而不是继续膨胀 re_* 叙事层。

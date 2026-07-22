@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { describe, expect, it } from "vitest";
 import { getModel } from "../src/models.ts";
 import { type BedrockOptions, streamBedrock } from "../src/providers/amazon-bedrock.ts";
@@ -54,12 +55,12 @@ async function capturePayload(
 
 describe("Bedrock thinking payload", () => {
 	it("uses adaptive thinking for Claude Opus 4.8 when reasoning is enabled", async () => {
-		const baseModel = getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
+		const baseModel = (getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1")! as any)!;
 		const model: Model<"bedrock-converse-stream"> = {
 			...baseModel,
 			id: "global.anthropic.claude-opus-4-8-v1",
 			name: "Claude Opus 4.8 (Global)",
-		};
+		} as any;
 
 		const payload = await capturePayload(model);
 
@@ -69,12 +70,12 @@ describe("Bedrock thinking payload", () => {
 	});
 
 	it("maps xhigh reasoning to effort=xhigh for Claude Opus 4.8", async () => {
-		const baseModel = getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
+		const baseModel = (getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1")! as any)!;
 		const model: Model<"bedrock-converse-stream"> = {
 			...baseModel,
 			id: "global.anthropic.claude-opus-4-8-v1",
 			name: "Claude Opus 4.8 (Global)",
-		};
+		} as any;
 
 		const payload = await capturePayload(model, { reasoning: "xhigh" });
 
@@ -84,12 +85,12 @@ describe("Bedrock thinking payload", () => {
 	});
 
 	it("omits display for GovCloud model ids on non-adaptive Claude thinking", async () => {
-		const baseModel = getModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-5-20250929-v1:0");
+		const baseModel = (getModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")! as any)!;
 		const model: Model<"bedrock-converse-stream"> = {
 			...baseModel,
 			id: "us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0",
 			name: "Claude Sonnet 4.5 (GovCloud)",
-		};
+		} as any;
 
 		const payload = await capturePayload(model);
 
@@ -98,12 +99,12 @@ describe("Bedrock thinking payload", () => {
 	});
 
 	it("omits display for GovCloud regions on adaptive Claude thinking", async () => {
-		const baseModel = getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
+		const baseModel = (getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1")! as any)!;
 		const model: Model<"bedrock-converse-stream"> = {
 			...baseModel,
 			id: "global.anthropic.claude-opus-4-8-v1",
 			name: "Claude Opus 4.8 (Global)",
-		};
+		} as any;
 
 		const payload = await capturePayload(model, { region: "us-gov-west-1" });
 
@@ -118,11 +119,11 @@ describe.skipIf(!hasBedrockCredentials())("Bedrock Claude max tokens E2E", () =>
 		"uses the model maxTokens cap instead of Bedrock's 4096-token default for adaptive Claude models",
 		{ retry: 2, timeout: 180000 },
 		async () => {
-			const baseModel = getModel("amazon-bedrock", "global.anthropic.claude-sonnet-4-6");
+			const baseModel = (getModel("amazon-bedrock", "global.anthropic.claude-sonnet-4-6")! as any)!;
 			const model: Model<"bedrock-converse-stream"> = {
 				...baseModel,
 				maxTokens: 6000,
-			};
+			} as any;
 
 			const response = await streamBedrock(
 				model,
@@ -148,12 +149,12 @@ describe.skipIf(!hasBedrockCredentials())("Bedrock Claude max tokens E2E", () =>
 
 describe("Application inference profile support", () => {
 	it("uses adaptive thinking when model.name contains the model name but ARN does not", async () => {
-		const baseModel = getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
+		const baseModel = (getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1")! as any)!;
 		const model: Model<"bedrock-converse-stream"> = {
 			...baseModel,
 			id: "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/my-profile",
 			name: "Claude Opus 4.6",
-		};
+		} as any;
 
 		const payload = await capturePayload(model);
 
@@ -162,12 +163,12 @@ describe("Application inference profile support", () => {
 	});
 
 	it("injects cache points when model.name identifies a supported Claude model", async () => {
-		const baseModel = getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
+		const baseModel = (getModel("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1")! as any)!;
 		const model: Model<"bedrock-converse-stream"> = {
 			...baseModel,
 			id: "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/my-profile",
 			name: "Claude Sonnet 4.6",
-		};
+		} as any;
 
 		let capturedPayload: any;
 		const s = streamBedrock(
@@ -199,12 +200,12 @@ describe("Application inference profile support", () => {
 	});
 
 	it("falls back to fixed-budget thinking for non-adaptive Claude via model.name", async () => {
-		const baseModel = getModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-5-20250929-v1:0");
+		const baseModel = (getModel("amazon-bedrock", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")! as any)!;
 		const model: Model<"bedrock-converse-stream"> = {
 			...baseModel,
 			id: "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/my-profile",
 			name: "Claude Sonnet 4.5",
-		};
+		} as any;
 
 		const payload = await capturePayload(model);
 

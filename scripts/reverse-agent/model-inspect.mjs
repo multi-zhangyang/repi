@@ -842,6 +842,24 @@ function envBool(names, fallback = false) {
 	return fallback;
 }
 
+/** USD per million tokens for env-only models. */
+function envCostNumber(names, fallback = 0) {
+	const value = firstEnv(names);
+	if (!value) return fallback;
+	const parsed = Number.parseFloat(value);
+	if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+	return parsed;
+}
+
+function envModelCost() {
+	return {
+		input: envCostNumber(["REPI_COST_INPUT", "REPI_MODEL_COST_INPUT"], 0),
+		output: envCostNumber(["REPI_COST_OUTPUT", "REPI_MODEL_COST_OUTPUT"], 0),
+		cacheRead: envCostNumber(["REPI_COST_CACHE_READ", "REPI_MODEL_COST_CACHE_READ"], 0),
+		cacheWrite: envCostNumber(["REPI_COST_CACHE_WRITE", "REPI_MODEL_COST_CACHE_WRITE"], 0),
+	};
+}
+
 function envOnlyProviderConfig() {
 	const baseUrl = firstEnv(["REPI_BASE_URL", "REPI_MODEL_BASE_URL"]);
 	const model = firstEnv(["REPI_MODEL", "REPI_MODEL_ID"]);
@@ -861,7 +879,7 @@ function envOnlyProviderConfig() {
 			id,
 			name: id === model ? firstEnv(["REPI_MODEL_NAME"]) || id : firstEnv(["REPI_SUBAGENT_MODEL_NAME"]) || id,
 			input: inputList(firstEnv(["REPI_MODEL_INPUT", "REPI_INPUT"]) || "text"),
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			cost: envModelCost(),
 			contextWindow: envInt(["REPI_CONTEXT_WINDOW", "REPI_MODEL_CONTEXT_WINDOW", "REPI_AUTO_COMPACT_WINDOW", "REPI_MODEL_AUTO_COMPACT_WINDOW"], 262144, 1024, 1048576),
 			maxTokens: envInt(["REPI_MAX_TOKENS", "REPI_MODEL_MAX_TOKENS", "REPI_MAX_OUTPUT_TOKENS"], 16384, 64, 131072),
 			reasoning: envBool(["REPI_MODEL_REASONING", "REPI_REASONING"], false),

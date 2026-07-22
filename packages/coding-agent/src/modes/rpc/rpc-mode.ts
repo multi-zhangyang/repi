@@ -662,6 +662,53 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			}
 
 			// =================================================================
+			// Session tree / entries (Pi 0.80-aligned; swarm/debug)
+			// =================================================================
+
+			case "get_entries": {
+				const entries = session.sessionManager.getEntries().map((entry) => ({
+					id: entry.id,
+					parentId: entry.parentId ?? null,
+					type: entry.type,
+					timestamp: "timestamp" in entry ? (entry as { timestamp?: string }).timestamp : undefined,
+					label: session.sessionManager.getLabel(entry.id),
+				}));
+				return success(id, "get_entries", {
+					leafId: session.sessionManager.getLeafId(),
+					sessionId: session.sessionId,
+					entries,
+				});
+			}
+
+			case "get_tree": {
+				const mapNode = (node: {
+					entry: { id: string; parentId?: string | null; type: string; timestamp?: string };
+					children: any[];
+					label?: string;
+				}): {
+					id: string;
+					parentId: string | null;
+					type: string;
+					timestamp?: string;
+					label?: string;
+					children: any[];
+				} => ({
+					id: node.entry.id,
+					parentId: node.entry.parentId ?? null,
+					type: node.entry.type,
+					timestamp: node.entry.timestamp,
+					label: node.label,
+					children: (node.children ?? []).map(mapNode),
+				});
+				const roots = session.sessionManager.getTree().map(mapNode);
+				return success(id, "get_tree", {
+					leafId: session.sessionManager.getLeafId(),
+					sessionId: session.sessionId,
+					roots,
+				});
+			}
+
+			// =================================================================
 			// Commands (available for invocation via prompt)
 			// =================================================================
 

@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { once } from "node:events";
 import http from "node:http";
 import type { AddressInfo } from "node:net";

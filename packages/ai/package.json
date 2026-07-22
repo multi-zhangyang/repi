@@ -1,7 +1,7 @@
 {
 	"name": "@pi-recon/repi-ai",
 	"version": "0.1.3",
-	"description": "Unified LLM API with automatic model discovery and provider configuration",
+	"description": "REPI LLM API runtime: stream providers + empty built-in catalog; models from REPI_* env / models.json / registerProvider",
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -96,7 +96,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/multi-zhangyang/pi-recon-agent.git",
+		"url": "git+https://github.com/multi-zhangyang/repi.git",
 		"directory": "packages/ai"
 	},
 	"engines": {

@@ -70,7 +70,7 @@ const ROUTES = [
 		prompt: "agent-boundary",
 		match: /\b(prompt injection|indirect prompt|tool injection|function call|tool-call|mcp|model context protocol|rag|retrieval|memory poisoning|jailbreak)\b|agent\s*安全|llm\s*安全|记忆投毒|工具滥用|越狱/i,
 		workflow: ["prompt/tool surface", "memory/RAG boundary", "injection replay", "tool-call trace", "delegation proof"],
-		tools: ["rg", "jq", "re_mission", "re_tool_trace", "re_memory", "re_verifier"],
+		tools: ["rg", "jq", "re_mission", "re_tool_trace", "re_note", "re_verifier"],
 		evidence: ["untrusted content flow", "tool schema boundary", "replay transcript", "memory hit/miss", "capability drift edge"],
 	},
 	{

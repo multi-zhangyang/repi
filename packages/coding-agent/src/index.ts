@@ -15,6 +15,14 @@ export {
 	parseSkillBlock,
 	type SessionStats,
 } from "./core/agent-session.ts";
+export {
+	type AgentSettledStatus,
+	type AgentSettledTarget,
+	agentSettledTargetFromContext,
+	agentSettledTargetFromSession,
+	type WaitForAgentSettledOptions,
+	waitForAgentSettled,
+} from "./core/agent-settled.ts";
 // Auth and model registry
 export {
 	type ApiKeyCredential,
@@ -151,6 +159,7 @@ export {
 export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.ts";
 export { convertToLlm } from "./core/messages.ts";
 export { ModelRegistry } from "./core/model-registry.ts";
+export { ModelRuntime, type ModelRuntimeCreateOptions } from "./core/model-runtime.ts";
 export type {
 	PackageManager,
 	PathMetadata,

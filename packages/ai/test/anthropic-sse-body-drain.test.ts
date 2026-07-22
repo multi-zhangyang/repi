@@ -77,7 +77,7 @@ describe("streamAnthropic cancels the SSE body on a mid-stream error event (opt 
 			headers: { "content-type": "text/event-stream" },
 		});
 
-		const model = getModel("anthropic", "claude-haiku-4-5");
+		const model = getModel("anthropic", "claude-haiku-4-5")! as any;
 		const context: Context = {
 			messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
 		};

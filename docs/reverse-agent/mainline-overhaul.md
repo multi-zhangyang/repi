@@ -9,6 +9,15 @@ REPI 的主线目标是独立逆向渗透 agent。后续大改以功能扩张为
 - Supporting surfaces: model/provider config, MCP, memory, doctor, smoke, bugreport, and session management exist to support the reverse/pentest workflow. They do not define the product by themselves.
 - Non-goals: generic security chatbot, generic coding assistant, broad AI safety assistant, private research control-plane framework, and compatibility-preserving rewrite of old drift.
 
+## Current Modular Kernel (2026-07 refactor)
+
+- Assembly shim: `packages/coding-agent/src/core/recon-profile.ts`
+- Product runtime: `packages/coding-agent/src/core/repi/kernel/profile-runtime.ts`
+- Specialist packs: `packages/coding-agent/src/core/repi/lanes/specialist-packs.ts`
+- Harness modes: `packages/coding-agent/src/core/repi/kernel/harness-modes.ts` (`/plan`, `/permission`, route-based dynamic tools)
+- Legacy file extension `repi-profile/extensions/reverse-pentest-core.ts` is a no-op compatibility shim
+- See `harness-gap-analysis.md` for Claude Code / Pi 0.80.x gap matrix
+
 ## Engineering Direction
 
 Prefer mature runtime mechanisms:

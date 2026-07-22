@@ -118,6 +118,19 @@ ${providerEntries}
 }
 
 async function main(): Promise<void> {
+	// REPI product default: empty image catalog.
+	if (process.env.REPI_KEEP_UPSTREAM_MODEL_CATALOG !== "1") {
+		const empty = `// REPI: empty built-in image model catalog.
+
+import type { ImagesApi, ImagesModel } from "./types.ts";
+
+export const IMAGE_MODELS = {} as const satisfies Record<string, Record<string, ImagesModel<ImagesApi>>>;
+`;
+		const outputPath = join(packageRoot, "src", "image-models.generated.ts");
+		writeFileSync(outputPath, empty, "utf-8");
+		console.log(`Generated empty ${outputPath} (REPI default)`);
+		return;
+	}
 	const models = await fetchOpenRouterImageModels();
 	const output = generateImageModelsFile(models);
 	const outputPath = join(packageRoot, "src", "image-models.generated.ts");

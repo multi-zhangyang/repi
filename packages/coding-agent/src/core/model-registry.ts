@@ -294,6 +294,24 @@ function envBool(names: string[], fallback = false): boolean {
 	return fallback;
 }
 
+/** USD per million tokens for env-only models. */
+function envCostNumber(names: string[], fallback = 0): number {
+	const value = firstEnvValue(names);
+	if (!value) return fallback;
+	const parsed = Number.parseFloat(value);
+	if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+	return parsed;
+}
+
+function envModelCost(): { input: number; output: number; cacheRead: number; cacheWrite: number } {
+	return {
+		input: envCostNumber(["REPI_COST_INPUT", "REPI_MODEL_COST_INPUT"], 0),
+		output: envCostNumber(["REPI_COST_OUTPUT", "REPI_MODEL_COST_OUTPUT"], 0),
+		cacheRead: envCostNumber(["REPI_COST_CACHE_READ", "REPI_MODEL_COST_CACHE_READ"], 0),
+		cacheWrite: envCostNumber(["REPI_COST_CACHE_WRITE", "REPI_MODEL_COST_CACHE_WRITE"], 0),
+	};
+}
+
 function envInputList(value: string | undefined): ("text" | "image")[] {
 	const items = (value || "text")
 		.split(",")
@@ -359,7 +377,7 @@ function repiEnvProviderConfig(): { providerName: string; config: ProviderConfig
 						: (firstEnvValue(["REPI_SUBAGENT_MODEL_NAME"]) ?? id),
 				reasoning,
 				input,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				cost: envModelCost(),
 				contextWindow,
 				maxTokens,
 			})),

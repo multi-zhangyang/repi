@@ -94,7 +94,7 @@ describe("opt #204: terminal-turn proactive-compaction resume crash", () => {
 		tempDir = join(tmpdir(), `pi-opt204-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(tempDir, { recursive: true });
 
-		model = getModel("anthropic", "claude-sonnet-4-5")!;
+		model = getModel("anthropic", "claude-sonnet-4-5")! as any;
 		const agent = new Agent({ initialState: { model, systemPrompt: "Test", tools: [] } });
 
 		const sessionManager = SessionManager.inMemory();

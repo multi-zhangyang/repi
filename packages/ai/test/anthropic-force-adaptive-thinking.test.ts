@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { describe, expect, it } from "vitest";
 import { getModel } from "../src/models.ts";
 import { streamSimple } from "../src/stream.ts";
@@ -85,7 +86,7 @@ describe("Anthropic forceAdaptiveThinking compat override", () => {
 
 	it("allows built-in adaptive models to opt out with compat.forceAdaptiveThinking false", async () => {
 		const model: Model<"anthropic-messages"> = {
-			...getModel("anthropic", "claude-opus-4-8"),
+			...(getModel("anthropic", "claude-opus-4-8")! as any),
 			compat: { forceAdaptiveThinking: false },
 		};
 		const payload = await capturePayload(model, { reasoning: "medium" });

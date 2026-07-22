@@ -1,0 +1,121 @@
+/** Specialist pack matrix data (early domains). */
+import type { ReLaneSpecialistDomainPackV1 } from "./specialist-pack-matrix-types.ts";
+
+export const RE_LANE_SPECIALIST_COMMAND_PACK_MATRIX_EARLY: ReLaneSpecialistDomainPackV1[] = [
+	{
+		domainId: "web-api",
+		routeMatchers: ["Web / API pentest", "auth/session", "IDOR/BOLA", "XHR/WS"],
+		laneSeeds: ["surface", "state", "authz", "replay"],
+		commandPackMarkers: ["re_live_browser run", "re_web_authz_state run", "curl -i", "route-auth-map"],
+		analyzerAnchors: [
+			"browser/XHR/WS runtime anchors",
+			"browser route graph anchors",
+			"browser auth matrix anchors",
+			"browser authz object ownership anchors",
+		],
+		selfHealCommands: [
+			"re_live_browser run <target>",
+			"re_web_authz_state run <target>",
+			"re_domain_proof_exit show",
+		],
+		proofExitBridge: ["principal matrix", "object ownership", "state rollback", "signed replay divergence"],
+	},
+	{
+		domainId: "web-scan",
+		routeMatchers: ["Web pentest scanning", "nuclei", "ffuf", "content discovery"],
+		laneSeeds: ["scope", "crawl", "template", "verify"],
+		commandPackMarkers: [
+			"web scanner scope",
+			"web scanner crawl",
+			"web scanner template",
+			"web scanner manual replay",
+		],
+		analyzerAnchors: [
+			"web scanner scope anchors",
+			"web scanner crawl corpus anchors",
+			"web scanner finding queue anchors",
+			"manual replay verifier anchors",
+		],
+		selfHealCommands: ["re_lane plan scope <target>", "re_replayer run", "re_verifier matrix"],
+		proofExitBridge: ["scope baseline", "crawl corpus", "scanner finding queue", "manual replay verifier"],
+	},
+	{
+		domainId: "frontend-js",
+		routeMatchers: ["Frontend JS reverse", "crypto.subtle", "sign", "WebSocket"],
+		laneSeeds: ["observe", "rebuild", "divergence", "replay"],
+		commandPackMarkers: ["js-network-surface", "source-map-search", "js signing rebuild", "js first-divergence"],
+		analyzerAnchors: [
+			"JS signing rebuild anchors",
+			"crypto.subtle operation anchors",
+			"JS signing normalized artifact anchors",
+			"JS first-divergence anchors",
+		],
+		selfHealCommands: ["re_js_signing run <target>", "re_live_browser run <target>", "re_domain_proof_exit show"],
+		proofExitBridge: ["observed normalizer", "first divergence", "signed replay harness"],
+	},
+	{
+		domainId: "rev-native",
+		routeMatchers: ["Native reverse", "ELF", "Mach-O", "headers/imports"],
+		laneSeeds: ["triage", "control", "runtime", "patch"],
+		commandPackMarkers: ["headers-imports", "strings-interesting", "r2-xrefs", "objdump-control"],
+		analyzerAnchors: [
+			"Native deep symbol/import/string anchors",
+			"Native decompiler/control-flow anchors",
+			"Native compare trace anchors",
+			"Native patch hypothesis anchors",
+		],
+		selfHealCommands: ["re_native_runtime run <target>", "re_domain_proof_exit show", "re_complete audit"],
+		proofExitBridge: ["symbol/import map", "comparison sink", "runtime trace", "patch/replay proof"],
+	},
+	{
+		domainId: "pwn",
+		routeMatchers: ["Pwn / exploit", "mitigations", "crash", "ROP/libc"],
+		laneSeeds: ["triage", "primitive", "leak", "verify"],
+		commandPackMarkers: ["pwn-mitigations", "crash-seed", "cyclic", "ROP/libc"],
+		analyzerAnchors: [
+			"pwn primitive crash/control anchors",
+			"pwn cyclic offset anchors",
+			"pwn gadget anchors",
+			"pwn ROP/libc chain anchors",
+		],
+		selfHealCommands: [
+			"re_native_runtime run <target>",
+			"re_exploit_lab run <target> 3",
+			"re_proof_loop run <target> 4 2",
+		],
+		proofExitBridge: ["offset", "leak source", "controllable bytes", "local verifier"],
+	},
+	{
+		domainId: "mobile",
+		routeMatchers: ["Mobile / Android", "APK", "Frida", "jadx"],
+		laneSeeds: ["manifest", "control", "runtime", "hook"],
+		commandPackMarkers: ["apk-manifest", "jadx-keyword-map", "frida-hook-scaffold", "native-lib-map"],
+		analyzerAnchors: [
+			"mobile APK manifest anchors",
+			"Frida/GDB trace anchors",
+			"Java crypto hooks",
+			"native compare hooks",
+		],
+		selfHealCommands: ["re_mobile_runtime run <target>", "re_domain_proof_exit show", "re_complete audit"],
+		proofExitBridge: ["manifest/package map", "Java/native hook", "anti-debug evidence", "runtime anchors"],
+	},
+	{
+		domainId: "mobile-ios",
+		routeMatchers: ["Mobile / iOS", "iOS IPA", "Info.plist", "Keychain"],
+		laneSeeds: ["ipa-inventory", "macho", "hook", "network"],
+		commandPackMarkers: [
+			"ios-ipa-inventory-scaffold",
+			"ios-macho-class-map",
+			"ios-frida-hook-template",
+			"ios-network-keychain-replay",
+		],
+		analyzerAnchors: [
+			"iOS IPA anchors",
+			"Mach-O/class map anchors",
+			"iOS Frida/objection hook anchors",
+			"keychain/network replay anchors",
+		],
+		selfHealCommands: ["re_lane plan ipa-inventory <target>", "re_mobile_runtime run <target>", "re_replayer run"],
+		proofExitBridge: ["IPA inventory", "Mach-O/class map", "Frida/objection hook", "network/keychain replay"],
+	},
+];

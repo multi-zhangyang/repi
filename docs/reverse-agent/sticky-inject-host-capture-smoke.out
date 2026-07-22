@@ -1,0 +1,24 @@
+[sticky-helper] same_route=1
+[sticky-helper] cont_continue=1
+[sticky-helper] cont_long=0
+[sticky-t1] has_result=1
+[sticky-t1] cold_lean=1
+[sticky-t1] sticky_v1=0
+[sticky-t1] mission_cold=1
+[sticky-t1] inject_entry=1
+[sticky-t1] mission_id=sticky-smoke-native-1gde
+[sticky-t2] has_result=1
+[sticky-t2] cold_lean=0
+[sticky-t2] sticky_v1=1
+[sticky-t2] self_review=1
+[sticky-t2] mission_id=sticky-smoke-native-1gde
+[sticky-line] ## REPI Runtime (sticky) | repi_inject: sticky-v1 | route.domain=native lane=static | mission_id: sticky-smoke-native-1gde | session_stats: tool_calls=12 failures=0 | active_tools: bash, read | policy: reuse sticky mission; progressive disclosure; do not re-dump manuals/memory/evidence tails | next: continue live proof path → re_domain_proof_exit show → re_complete audit when runtime capture is partial|strong
+[sticky-line] landmark=1
+[sticky-t3] domain_change_cold=1
+[sticky-t3] route=mobile
+[sticky-proof-capture] domain=sticky-inject t1_cold=1 t2_sticky=1 cont=1 line=1
+[sticky-proof-capture] proof.exit=runtime_capture_strong bind_ready=true
+[sticky-proof-capture] next=re_domain_proof_exit_show,re_complete_audit,continue_sticky_mission
+summary.sticky_inject=1
+summary.sticky_t1_cold=1
+summary.sticky_t2=1

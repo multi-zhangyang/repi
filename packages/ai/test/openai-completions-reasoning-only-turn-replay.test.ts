@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { describe, expect, it } from "vitest";
 import { convertMessages } from "../src/providers/openai-completions.ts";
 import type { AssistantMessage, Context, Model, OpenAICompletionsCompat } from "../src/types.ts";

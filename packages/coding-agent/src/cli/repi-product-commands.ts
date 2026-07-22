@@ -10,6 +10,12 @@ type ProductCommandSpec = {
 
 const PRODUCT_COMMANDS = new Set([
 	"health",
+	"reverse-smoke",
+	"reverse-proof",
+	"reverse-e2e",
+	"reverse-complete",
+	"reverse-gate",
+	"reverse-sticky-smoke",
 	"status",
 	"doctor",
 	"smoke",
@@ -72,6 +78,18 @@ function commandSpec(command: string, args: string[]): ProductCommandSpec | unde
 			return { script: "repi-doctor.mjs", normalizeArgs: (rest) => rest };
 		case "smoke":
 			return { script: "repi-smoke.mjs", normalizeArgs: (rest) => rest };
+		case "reverse-smoke":
+			return { script: "repi-reverse-host-smoke.mjs", normalizeArgs: (rest) => rest };
+		case "reverse-proof":
+			return { script: "repi-reverse-proof-audit.mjs", normalizeArgs: (rest) => rest };
+		case "reverse-e2e":
+			return { script: "repi-reverse-runtime-e2e.mjs", normalizeArgs: (rest) => rest };
+		case "reverse-complete":
+			return { script: "repi-reverse-complete-audit.mjs", normalizeArgs: (rest) => rest };
+		case "reverse-gate":
+			return { script: "repi-reverse-gate.mjs", normalizeArgs: (rest) => rest };
+		case "reverse-sticky-smoke":
+			return { script: "repi-sticky-inject-smoke.mjs", normalizeArgs: (rest) => rest };
 		case "selfcheck":
 		case "dogfood":
 			return { script: "repi-selfcheck.mjs", normalizeArgs: (rest) => rest };

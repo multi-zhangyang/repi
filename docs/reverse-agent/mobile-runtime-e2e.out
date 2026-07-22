@@ -1,0 +1,267 @@
+[mobile-env] adb=/usr/bin/adb frida=/root/.local/bin/frida frida_ps=/root/.local/bin/frida-ps aapt=/usr/bin/aapt jadx=/usr/local/bin/jadx apktool=/usr/bin/apktool unzip=/usr/bin/unzip gdb=/usr/bin/gdb
+[mobile-apk] target=/tmp/repi-mobile-smoke.apk bytes=6357 sha256=2bd192c87932a2de6197521fcf4243a0e52de8c3fc8ef32126f240c073516858 file=Android package (APK), with MANIFEST.MF and resources.arsc
+[mobile-jadx] host=1 bin=/usr/local/bin/jadx out=/tmp/repi-jadx-repi-mobile-smoke.apk_
+[mobile-jadx] rc=0 java=2 kt=0 sources=2
+[mobile-jadx-class] path=com/repi/smoke/R.java
+[mobile-jadx-class] path=com/repi/smoke/MainActivity.java
+[mobile-jadx-code] /tmp/repi-jadx-repi-mobile-smoke.apk_/sources/com/repi/smoke/R.java:1:package com.repi.smoke;
+[mobile-jadx-code] /tmp/repi-jadx-repi-mobile-smoke.apk_/sources/com/repi/smoke/R.java:12:        public static final int secret = 0x7f030001;
+[mobile-jadx-code] /tmp/repi-jadx-repi-mobile-smoke.apk_/sources/com/repi/smoke/MainActivity.java:1:package com.repi.smoke;
+[mobile-jadx] ok=1 decompiled=1
+[mobile-static-command] apktool d -f -o /tmp/repi-apktool /tmp/repi-mobile-smoke.apk
+[mobile-device] List of devices attached
+[mobile-device] 
+[mobile-frida-hook-template] /tmp/repi-mobile-frida-hooks.js hooks=Java.crypto,String.equals,Debug.isDebuggerConnected,native.strcmp,memcmp
+[mobile-sdk] root=/usr/lib/android-sdk present=1
+[mobile-sdk] platform_tools=1 build_tools=1 emulator_dir=0 platforms=0 system_images=0 cmdline_tools=0
+[mobile-sdk-build-tools] debian
+[mobile-sdk] adb_bin=/usr/lib/android-sdk/platform-tools/adb
+[mobile-sdk-avd-home] path=/root/.android/avd present=0
+[mobile-sdk] ok=1
+summary.mobile_sdk=1
+[mobile-device-host] adb=/usr/lib/android-sdk/platform-tools/adb
+[mobile-device-host] Android Debug Bridge version 1.0.41
+[mobile-device-host] Version 34.0.4-debian
+[mobile-device-host] Installed as /usr/lib/android-sdk/platform-tools/adb
+[mobile-device-list] List of devices attached
+[mobile-device-list] 
+[mobile-device-host] serials=0
+[mobile-device-host] ok=1 attached=0 note=no_device_use_emulator_or_usb
+[mobile-emulator] host=0 pure_python=0 note=emulator_binary_missing_install_sdk_emulator sdk_root=/usr/lib/android-sdk
+[mobile-emulator-next] install=sdkmanager --install emulator system-images;avdmanager create avd
+[mobile-emulator-pure] sdk_root=/usr/lib/android-sdk exists=True
+[mobile-emulator-pure] component=platform-tools present=1
+[mobile-emulator-pure] component=build-tools present=1
+[mobile-emulator-pure] component=platforms present=0
+[mobile-emulator-pure] component=system-images present=0
+[mobile-emulator-pure] component=cmdline-tools present=0
+[mobile-emulator-pure] component=emulator present=0
+[mobile-emulator-pure] component=licenses present=0
+[mobile-emulator-pure] path=/usr/lib/android-sdk/platform-tools/adb
+[mobile-emulator-pure] ok=1 pure_python=1 note=sdk_map_not_emulator_binary
+[mobile-aapt] host=1 bin=/usr/bin/aapt
+[mobile-aapt] package: name='com.repi.smoke' versionCode='1' versionName='1.0' platformBuildVersionName='13.0.0' platformBuildVersionCode='33' compileSdkVersion='33' compileSdkVersionCodename='13.0.0'
+[mobile-aapt] sdkVersion:'21'
+[mobile-aapt] targetSdkVersion:'30'
+[mobile-aapt] uses-permission: name='android.permission.INTERNET'
+[mobile-aapt] uses-permission: name='android.permission.READ_EXTERNAL_STORAGE'
+[mobile-aapt] uses-permission: name='android.permission.ACCESS_NETWORK_STATE'
+[mobile-aapt] application-label:'RepiSmoke'
+[mobile-aapt] application: label='RepiSmoke' icon=''
+[mobile-aapt] launchable-activity: name='com.repi.smoke.MainActivity'  label='' icon=''
+[mobile-aapt] feature-group: label=''
+[mobile-aapt]   uses-feature: name='android.hardware.faketouch'
+[mobile-aapt]   uses-implied-feature: name='android.hardware.faketouch' reason='default feature for all apps'
+[mobile-aapt] main
+[mobile-aapt] supports-screens: 'small' 'normal' 'large' 'xlarge'
+[mobile-aapt] supports-any-density: 'true'
+[mobile-aapt] locales: '--_--'
+[mobile-aapt] densities: '160'
+[mobile-aapt] native-code: 'arm64-v8a'
+[mobile-aapt-pkg] package=com.repi.smoke version=1.0 sdk=21
+[mobile-aapt-meta] uses-permission: name='android.permission.INTERNET'
+[mobile-aapt-meta] uses-permission: name='android.permission.READ_EXTERNAL_STORAGE'
+[mobile-aapt-meta] uses-permission: name='android.permission.ACCESS_NETWORK_STATE'
+[mobile-aapt-meta] application-label:'RepiSmoke'
+[mobile-aapt-meta] launchable-activity: name='com.repi.smoke.MainActivity'  label='' icon=''
+[mobile-aapt-perm] name=android.permission.INTERNET
+[mobile-aapt-perm] name=android.permission.READ_EXTERNAL_STORAGE
+[mobile-aapt-perm] name=android.permission.ACCESS_NETWORK_STATE
+[mobile-aapt] permissions=3 ok=1
+[mobile-aapt-fallback] path=/tmp/repi-mobile-smoke.apk
+[mobile-aapt-fallback] entries=9
+[mobile-aapt-pkg] package=com.repi.smoke source=zip-strings
+[mobile-aapt-pkg] package=com.repi.smoke.MainActivity source=zip-strings
+[mobile-aapt-fallback] ok=1 packages=2 permissions=0
+[mobile-ssl-pinning] ##res/xml/network_security_config.xml
+[mobile-ssl-pinning] network_security_config
+[mobile-ssl-pinning] res/xml/network_security_config.xml
+[mobile-ssl-pinning] res/xml/network_security_config.xmlPK
+[mobile-ssl-pinning] TrustManager
+[mobile-ssl-pinning] CertificatePinner
+[mobile-ssl-pinning] ssl pinning
+[mobile-ssl-pinning] OkHttpClient
+[mobile-root-bypass-signal] isDebuggerConnected
+[mobile-root-bypass-signal] magisk
+[mobile-root-bypass-signal] frida
+[mobile-apk-deep] path=/tmp/repi-mobile-smoke.apk bytes=6357 sha256=2bd192c87932a2de
+[mobile-apk-deep] zip=1
+[mobile-apk-deep] entries=9
+[mobile-apk-entry] name=AndroidManifest.xml present=1
+[mobile-apk-entry] name=classes.dex present=1
+[mobile-apk-entry] name=resources.arsc present=1
+[mobile-apk-entry] name=META-INF/MANIFEST.MF present=1
+[mobile-apk-signing] meta_entries=3 cert_like=3
+[mobile-apk-signing] entry=META-INF/MANIFEST.MF
+[mobile-apk-signing] entry=META-INF/REPI.RSA
+[mobile-apk-signing] entry=META-INF/REPI.SF
+[mobile-apk-signing] v1=1 pure_python=1
+summary.mobile_signing_v1=1
+[mobile-apk-deep] dex_count=1 so_count=1
+[mobile-dex] path=classes.dex size=1184
+[mobile-native-lib] path=lib/arm64-v8a/libnative.so
+[mobile-ssl-pinning] member=META-INF/MANIFEST.MF
+[mobile-ssl-pinning] member=META-INF/REPI.SF
+[mobile-ssl-pinning] member=resources.arsc
+[mobile-nsc] member=res/xml/network_security_config.xml cleartext_or_nsc=1
+summary.mobile_nsc=1
+[mobile-ssl-pinning] member=classes.dex
+[mobile-root-bypass-signal] member=classes.dex
+[mobile-ssl-pinning] member=assets/markers.txt
+[mobile-root-bypass-signal] member=assets/markers.txt
+[mobile-package-candidate] name=17.0.19
+[mobile-package-candidate] name=javax.crypto.Cipher
+[mobile-package-candidate] name=com.repi.smoke
+[mobile-package-candidate] name=com.repi.smoke.MainActivity
+[mobile-manifest-string] com.repi.smoke
+[mobile-aapt] package=com.repi.smoke source=axml-strings
+[mobile-manifest-string] 13.0.0
+[mobile-aapt] package=13.0.0 source=axml-strings
+[mobile-manifest-string] android.permission.INTERNET
+[mobile-aapt] package=android.permission.INTERNET source=axml-strings
+[mobile-manifest-string] android.intent.action.MAIN
+[mobile-aapt] package=android.intent.action.MAIN source=axml-strings
+[mobile-manifest] binary_xml=1 size=2544 strings=34
+[mobile-package-candidate] name=com.repi.smoke source=package_attr
+[mobile-package-candidate] name=com.repi.smoke source=package_attr
+[mobile-apk-deep] ok=1 ssl_members=5 root_members=2 package_hits=6
+summary.mobile_package=1
+summary.mobile_ssl=1
+[mobile-deeplink] ok=1 pure_python=1 source=zip_strings
+summary.mobile_deeplink=1
+[mobile-deeplink] scheme=repi pure_python=1
+[mobile-exported] hits=1 pure_python=1 source=zip_strings
+summary.mobile_exported=1
+[mobile-dex-extra] path=/tmp/repi-mobile-smoke.apk bytes=6357
+[mobile-dex-extra] dex_files=1 so_files=1
+[mobile-dex-header] file=classes.dex magic=dex
+ size=1184
+[mobile-dex-header] format=dex
+[mobile-so] path=lib/arm64-v8a/libnative.so elf=1 interesting=1
+[mobile-so-symbol] name=lib/arm64-v8a/libnative.so sample=JNI_OnLoad strcmp strncmp memcmp pthread_create SSL_read crypto Java_com_repi_sm
+[mobile-dex-string] sample=iCertificatePinner TrustManager OkHttpClient ssl-pinning isDebuggerConnected magisk xposed frida TracerPid
+[mobile-dex-string] sample=#Cipher.doFinal AES/CBC/PKCS5Padding
+[mobile-dex-string] sample=Landroid/app/Activity;
+[mobile-dex-string] sample=Landroid/os/Bundle;
+[mobile-dex-string] sample=Lcom/repi/smoke/MainActivity;
+[mobile-dex-string] sample=)javax.crypto.Cipher AES MessageDigest Mac
+[mobile-dex-string] sample=method:decryptPayload([B)[B
+[mobile-dex-string] sample=method:encryptPayload([B)[B
+[mobile-dex-string] sample=%method:onCreate(Landroid/os/Bundle;)V
+[mobile-dex-string] sample=method:onResume()V
+[mobile-dex-class] name=Landroid/app/Activity;
+[mobile-dex-class] name=Landroid/os/Bundle;
+[mobile-dex-class] name=Lcom/repi/smoke/MainActivity;
+[mobile-dex-method] sig=decryptPayload
+[mobile-dex-method] sig=encryptPayload
+[mobile-dex-method] sig=method:decryptPayload([B)[B
+[mobile-dex-method] sig=method:encryptPayload([B)[B
+[mobile-dex-method] sig=method:onResume()V
+[mobile-dex-method] sig=onCreate
+[mobile-dex-method] sig=onResume
+[mobile-dex-extra] ok=1 strings=10 classes=3 methods=7 ssl=1 crypto=2 root=1
+summary.mobile_dex_methods=1
+summary.mobile_crypto=1
+summary.mobile_so=1
+[mobile-frida-host] version=17.15.5 host=1 bin=/root/.local/bin/frida
+[mobile-frida-ps]     PID  Name
+[mobile-frida-ps] -------  ---------------------------------------
+[mobile-frida-ps]  722001  (sd-pam)                               
+[mobile-frida-ps]  722160  -bash                                  
+[mobile-frida-ps]  787103  -bash                                  
+[mobile-frida-ps] 2290709  -bash                                  
+[mobile-frida-ps] 2290660  6                                      
+[mobile-frida-ps]     867  @dbus-daemon                           
+[mobile-frida-ps] 1123078  adb                                    
+[mobile-frida-ps]     966  agetty                                 
+[mobile-frida-ps]    1011  agetty                                 
+[mobile-frida-ps]  750605  at-spi-bus-launcher                    
+[mobile-frida-ps] 1232096  at-spi-bus-launcher                    
+[mobile-frida-ps] 1250067  at-spi-bus-launcher                    
+[mobile-frida-ps] 1298789  at-spi-bus-launcher                    
+[mobile-frida-ps] 1302168  at-spi-bus-launcher                    
+[mobile-frida-ps] 1308749  at-spi-bus-launcher                    
+[mobile-frida-ps] 1315957  at-spi-bus-launcher                    
+[mobile-frida-ps] 1320970  at-spi-bus-launcher                    
+[mobile-frida-ps] 1323209  at-spi-bus-launcher                    
+[mobile-frida-ps] 1324135  at-spi-bus-launcher                    
+[mobile-frida-ps] 1325909  at-spi-bus-launcher                    
+[mobile-frida-ps] 1509681  at-spi-bus-launcher                    
+[mobile-frida-ps] 1510366  at-spi-bus-launcher                    
+[mobile-frida-ps] 1607786  at-spi-bus-launcher                    
+[mobile-frida-ps] 1609853  at-spi-bus-launcher                    
+[mobile-frida-ps] 1612142  at-spi-bus-launcher                    
+[mobile-frida-ps] 1616380  at-spi-bus-launcher                    
+[mobile-frida-ps] 1692798  at-spi-bus-launcher                    
+[mobile-frida-ps] 1697670  at-spi-bus-launcher                    
+[mobile-frida-ps] 1704436  at-spi-bus-launcher                    
+[mobile-frida-ps] 1911186  at-spi-bus-launcher                    
+[mobile-frida-ps] 1911906  at-spi-bus-launcher                    
+[mobile-frida-ps] 1913843  at-spi-bus-launcher                    
+[mobile-frida-ps] 1984112  at-spi-bus-launcher                    
+[mobile-frida-ps] 1985261  at-spi-bus-launcher                    
+[mobile-frida-ps] 1985490  at-spi-bus-launcher                    
+[mobile-frida-ps] 2033169  at-spi-bus-launcher                    
+[mobile-frida-ps] 2079463  at-spi-bus-launcher                    
+[mobile-frida-ps] 2080489  at-spi-bus-launcher                    
+[mobile-frida-ps] ok=1 rows=38 mode=local
+[mobile-frida-compile] ok=1 out=/tmp/repi-frida-compile/hooks.compiled.js bytes=2442
+[mobile-frida-host] deepen=1 attach_default=0 note=set_REPI_MOBILE_ATTACH=1_for_device
+[mobile-frida-local] pid=2563530 target=python-sleep
+[mobile-frida-local] [mobile-frida-local-attach] script-loaded
+[mobile-frida-local] [mobile-frida-local-attach] pid=2563530 arch=x64 platform=linux
+[mobile-frida-local] [mobile-frida-local-attach] modules=8 first=python3.12
+[mobile-frida-local] [mobile-frida-local-attach] rx_ranges=3
+[mobile-frida-local] [mobile-frida-local-attach] libc=libc.so.6@0x7b89fd800000
+[mobile-frida-local] [mobile-frida-local-attach] libc_exports=8
+[mobile-frida-local] [mobile-frida-local-attach] threads=1
+[mobile-frida-local] [mobile-frida-local-hook] interceptor=clock_nanosleep
+[mobile-frida-local] [mobile-frida-local-hook] hooked=1
+[mobile-frida-local] [mobile-frida-local-hook] hit fn=clock_nanosleep n=1
+[mobile-frida-local] [mobile-frida-local-attach] ok=1
+[mobile-frida-local] [mobile-frida-local-hook] hit fn=clock_nanosleep n=2
+[mobile-frida-local] ok=1 attach=1 mode=host-process interceptor=1 hits=1
+[mobile-frida-surface] hook=java_perform count=2
+[mobile-frida-surface] hook=cipher count=4
+[mobile-frida-surface] hook=digest count=6
+[mobile-frida-surface] hook=mac count=4
+[mobile-frida-surface] hook=string_eq count=3
+[mobile-frida-surface] hook=debug count=3
+[mobile-frida-surface] hook=interceptor count=1
+[mobile-frida-surface] hook=export count=1
+[mobile-frida-surface] total_hook_kinds=8 bytes=3426
+[mobile-frida-surface] inventory=java_perform=2,cipher=4,digest=6,mac=4,string_eq=3,debug=3,interceptor=1,export=1
+[mobile-frida-surface] dual_surface=java+native
+[mobile-frida-map] surface=ssl_pin hits=7 sample=CertificatePinner
+[mobile-frida-map] surface=crypto hits=7 sample=Cipher
+[mobile-frida-map] surface=root hits=8 sample=isDebuggerConnected
+[mobile-frida-map] surface=native_cmp hits=3 sample=strcmp
+[mobile-frida-map] ok=1
+[mobile-proof-capture] apk=1 aapt=1 jadx=1 ssl_pin=1 root=1 frida=1 device=0 hooks=1 attach=1 local_attach=1 deep=1 dex=1
+[mobile-proof-capture] proof.exit=runtime_capture_strong bind_ready=true
+summary.proof_exit=runtime_capture_strong
+summary.bind_ready=true
+summary.local_attach=1
+[runtime-technique] mobile-apk-triage-frida-bridge | mobile-ssl-pinning-bypass | mobile-root-bypass
+[mobile-hook-line] 12:  Java.perform(function () {
+[mobile-hook-line] 13:    console.log('[mobile-crypto-hook] Java.perform ready');
+[mobile-hook-line] 26:        console.log('[mobile-compare-hook] String.equals self=' + safe(this) + ' other=' + safe(other) + ' ret=' + ret);
+[mobile-hook-line] 29:    } catch (e) { console.log('[mobile-hook-miss] java.lang.String.equals ' + e); }
+[mobile-hook-line] 32:      Cipher.doFinal.overload('[B').implementation = function (input) {
+[mobile-hook-line] 33:        console.log('[mobile-crypto-hook] Cipher.doFinal in=' + hex(input, 48));
+[mobile-hook-line] 35:        console.log('[mobile-crypto-hook] Cipher.doFinal out=' + hex(out, 48));
+[mobile-hook-line] 38:    } catch (e) { console.log('[mobile-hook-miss] javax.crypto.Cipher.doFinal ' + e); }
+[mobile-hook-line] 40:      const MessageDigest = Java.use('java.security.MessageDigest');
+[mobile-hook-line] 41:      MessageDigest.digest.overload('[B').implementation = function (input) {
+[mobile-hook-line] 42:        console.log('[mobile-crypto-hook] MessageDigest.digest alg=' + this.getAlgorithm() + ' in=' + hex(input, 48));
+[mobile-hook-line] 44:        console.log('[mobile-crypto-hook] MessageDigest.digest out=' + hex(out, 48));
+[mobile-hook-line] 47:    } catch (e) { console.log('[mobile-hook-miss] MessageDigest.digest ' + e); }
+[mobile-hook-line] 50:      Mac.doFinal.overload('[B').implementation = function (input) {
+[mobile-hook-line] 51:        console.log('[mobile-crypto-hook] Mac.doFinal alg=' + this.getAlgorithm() + ' in=' + hex(input, 48));
+[mobile-hook-line] 53:        console.log('[mobile-crypto-hook] Mac.doFinal out=' + hex(out, 48));
+[mobile-hook-line] 56:    } catch (e) { console.log('[mobile-hook-miss] Mac.doFinal ' + e); }
+[mobile-hook-line] 62:  const ptr = Module.findExportByName(null, name);
+[mobile-hook-line] 64:  Interceptor.attach(ptr, {
+[mobile-runtime-blocked] reason=usb_attach_skipped_local_attach_ok pkg=com.repi.smoke set_REPI_MOBILE_ATTACH=1_for_usb_device
+
+

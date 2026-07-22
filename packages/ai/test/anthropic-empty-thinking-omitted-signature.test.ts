@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { describe, expect, it } from "vitest";
 import { convertMessages } from "../src/providers/anthropic.ts";
 import type { AssistantMessage, Message, Model } from "../src/types.ts";

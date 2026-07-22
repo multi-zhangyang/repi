@@ -1,58 +1,34 @@
+/** Knowledge-scope isolation for graph reuse filtering. */
+
 import {
-	type ArtifactScopeEvent,
 	artifactScopeMatchForSource,
 	artifactScopeVerdictPriority,
 	knowledgeScopePathKey,
-} from "./artifact-scope.ts";
+} from "./artifact-scope-pure.ts";
 import type {
-	MemoryScopeIsolationReportV1,
-	MemoryScopeIsolationRowV1,
-	RepiMemoryScope,
-	RepiScopeVerdict,
-} from "./memory-scope.ts";
+	KnowledgeScopeIsolationBuildOptions,
+	KnowledgeScopeIsolationSourceV1,
+	KnowledgeScopeIsolationV1,
+	KnowledgeScopeSource,
+} from "./knowledge-scope-types.ts";
+import type { MemoryScopeIsolationRowV1 } from "./memory-stubs.ts";
 
-export type KnowledgeScopeSource = {
-	kind: string;
-	path: string;
-	text: string;
-};
-
-export type KnowledgeScopeIsolationSourceV1 = {
-	path: string;
-	kind: string;
-	eventId?: string;
-	caseSignature?: string;
-	verdict: RepiScopeVerdict;
-	reasons: string[];
-	blocksKnowledgeReuse: boolean;
-};
-
-export type KnowledgeScopeIsolationV1 = {
-	kind: "repi-knowledge-scope-isolation";
-	schemaVersion: 1;
-	MemoryScopeIsolationV1: true;
-	scope_filter_by_mission_session_workspace_target: true;
-	reportPath: string;
-	currentScope: RepiMemoryScope;
-	checkedSourceCount: number;
-	blockedSourceCount: number;
-	warnSourceCount: number;
-	allowedSourceCount: number;
-	blockedEventIds: string[];
-	warnEventIds: string[];
-	allowedEventIds: string[];
-	quarantinedSourceArtifacts: string[];
-	warnSourceArtifacts: string[];
-	allowedSourceArtifacts: string[];
-	sourceRows: KnowledgeScopeIsolationSourceV1[];
-	requiredChecks: string[];
-};
-
-export type KnowledgeScopeIsolationBuildOptions = {
-	sources: KnowledgeScopeSource[];
-	events: ArtifactScopeEvent[];
-	memoryScopeReport: MemoryScopeIsolationReportV1;
-};
+export {
+	buildCurrentMemoryScope,
+	buildMemoryScopeIsolationReport,
+	currentMemoryScope,
+	formatMemoryScopeIsolation,
+	type MemoryScopeV1,
+	memoryRouteMatches,
+	memoryScopeIsolationRow,
+	memoryTargetScope,
+} from "./knowledge-scope-memory-stubs.ts";
+export type {
+	KnowledgeScopeIsolationBuildOptions,
+	KnowledgeScopeIsolationSourceV1,
+	KnowledgeScopeIsolationV1,
+	KnowledgeScopeSource,
+} from "./knowledge-scope-types.ts";
 
 export function knowledgeScopeRowForSource(
 	source: KnowledgeScopeSource,
@@ -61,9 +37,8 @@ export function knowledgeScopeRowForSource(
 ): MemoryScopeIsolationRowV1 | undefined {
 	return artifactScopeMatchForSource(source, rows, byArtifactPath).row;
 }
-
 export function buildKnowledgeScopeIsolation(options: KnowledgeScopeIsolationBuildOptions): KnowledgeScopeIsolationV1 {
-	const rowsByEvent = new Map(options.memoryScopeReport.rows.map((row) => [row.eventId, row]));
+	const rowsByEvent = new Map(options.memoryScopeReport.rows.map((row: any) => [row.eventId, row]));
 	const byArtifactPath = new Map<string, MemoryScopeIsolationRowV1>();
 	for (const event of options.events) {
 		const row = rowsByEvent.get(event.id);
@@ -71,7 +46,10 @@ export function buildKnowledgeScopeIsolation(options: KnowledgeScopeIsolationBui
 		for (const artifact of event.artifactHashes) {
 			const key = knowledgeScopePathKey(artifact.path);
 			const existing = byArtifactPath.get(key);
-			if (!existing || artifactScopeVerdictPriority(row.verdict) > artifactScopeVerdictPriority(existing.verdict)) {
+			if (
+				!existing ||
+				artifactScopeVerdictPriority((row as any).verdict) > artifactScopeVerdictPriority((existing as any).verdict)
+			) {
 				byArtifactPath.set(key, row);
 			}
 		}
@@ -98,15 +76,19 @@ export function buildKnowledgeScopeIsolation(options: KnowledgeScopeIsolationBui
 		reportPath: options.memoryScopeReport.scopeIsolationReportPath,
 		currentScope: options.memoryScopeReport.currentScope,
 		checkedSourceCount: sourceRows.length,
-		blockedSourceCount: sourceRows.filter((row) => row.verdict === "block").length,
-		warnSourceCount: sourceRows.filter((row) => row.verdict === "warn").length,
-		allowedSourceCount: sourceRows.filter((row) => row.verdict === "allow").length,
+		blockedSourceCount: sourceRows.filter((row: any) => (row as any).verdict === "block").length,
+		warnSourceCount: sourceRows.filter((row: any) => (row as any).verdict === "warn").length,
+		allowedSourceCount: sourceRows.filter((row: any) => (row as any).verdict === "allow").length,
 		blockedEventIds: options.memoryScopeReport.blockedEventIds,
 		warnEventIds: options.memoryScopeReport.warnEventIds,
 		allowedEventIds: options.memoryScopeReport.allowedEventIds,
-		quarantinedSourceArtifacts: sourceRows.filter((row) => row.verdict === "block").map((row) => row.path),
-		warnSourceArtifacts: sourceRows.filter((row) => row.verdict === "warn").map((row) => row.path),
-		allowedSourceArtifacts: sourceRows.filter((row) => row.verdict === "allow").map((row) => row.path),
+		quarantinedSourceArtifacts: sourceRows
+			.filter((row: any) => (row as any).verdict === "block")
+			.map((row: any) => row.path),
+		warnSourceArtifacts: sourceRows.filter((row: any) => (row as any).verdict === "warn").map((row: any) => row.path),
+		allowedSourceArtifacts: sourceRows
+			.filter((row: any) => (row as any).verdict === "allow")
+			.map((row: any) => row.path),
 		sourceRows,
 		requiredChecks: [
 			"KnowledgeScopeIsolationV1",

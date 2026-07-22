@@ -4,7 +4,7 @@ import { getBundledInteractiveAssetPath } from "../../../config.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 
-const BLOG_URL = "https://github.com/multi-zhangyang/pi-recon-agent";
+const BLOG_URL = "https://github.com/multi-zhangyang/repi";
 const IMAGE_FILENAME = "clankolas.png";
 
 let cachedImageBase64: string | undefined;

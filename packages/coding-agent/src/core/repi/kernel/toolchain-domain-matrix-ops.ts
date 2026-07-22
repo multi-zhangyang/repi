@@ -1,0 +1,65 @@
+/** Toolchain domain matrix: dfir/crypto/cloud/agent. */
+import type { ToolchainDomainSpec } from "./toolchain-domain-types.ts";
+
+export const TOOLCHAIN_DOMAIN_MATRIX_OPS: readonly ToolchainDomainSpec[] = [
+	{
+		id: "pcap-dfir",
+		label: "PCAP/DFIR: flow rank, stream follow, objects, secret timeline",
+		requiredAny: ["file", "strings"],
+		preferred: ["tshark", "capinfos", "tcpdump", "zeek", "foremost", "exiftool"],
+		fallbacks: ["strings", "file", "python3", "binwalk", "foremost"],
+		playbookMarkers: ["tcp.stream", "HTTP object", "DNS/TLS", "credential timeline", "transform-chain"],
+		commandScaffolds: ["re_lane", "re_knowledge_graph", "re_verifier", "re_replayer"],
+		proofExit: ["flow conversation", "follow-stream", "carved object", "timeline evidence"],
+	},
+	{
+		id: "memory-forensics",
+		label: "Memory forensics: image profile, process/network, credentials, timeline/carve",
+		requiredAny: ["file", "strings", "python3"],
+		preferred: ["volatility3", "yara", "foremost"],
+		fallbacks: ["file", "strings", "python3", "yara"],
+		playbookMarkers: [
+			"memory forensics image",
+			"memory forensics process",
+			"memory forensics credential",
+			"memory forensics timeline",
+		],
+		commandScaffolds: ["re_lane", "re_knowledge_graph", "re_verifier", "re_replayer"],
+		proofExit: ["image profile", "process/network map", "credential/artifact proof", "timeline/carve evidence"],
+	},
+	{
+		id: "crypto",
+		label: "Crypto/stego: transform chain, oracle, solver, parameter recovery",
+		requiredAny: ["python3"],
+		preferred: ["sage", "z3", "openssl", "hashcat", "john", "zsteg"],
+		fallbacks: ["python3", "openssl", "jq"],
+		playbookMarkers: ["oracle", "params", "modulus", "lattice", "Z3/Sage", "transform chain"],
+		commandScaffolds: ["re_lane", "re_replayer", "re_verifier", "re_proof_loop"],
+		proofExit: ["parameter derivation", "solver script", "known-answer test", "transform replay"],
+	},
+	{
+		id: "cloud-identity",
+		label: "Cloud/K8s/AD identity: config, credential usability, graph edge proof",
+		requiredAny: ["python3", "curl", "jq"],
+		preferred: ["kubectl", "aws", "az", "gcloud", "ldapsearch", "nxc", "certipy", "bloodhound-python"],
+		fallbacks: ["python3", "curl", "jq", "rg"],
+		playbookMarkers: ["Cloud/K8s", "metadata", "privilege edge", "credential usability", "AD graph"],
+		commandScaffolds: ["re_lane", "re_campaign", "re_operation", "re_supervisor"],
+		proofExit: ["token source", "credential usability", "privilege edge", "graph/path evidence"],
+	},
+	{
+		id: "agent-security",
+		label: "Agent/LLM boundary: prompt/tool/memory/delegation replay",
+		requiredAny: ["rg", "python3", "node"],
+		preferred: ["jq", "mitmproxy", "playwright"],
+		fallbacks: ["rg", "python3", "node", "grep"],
+		playbookMarkers: [
+			"Agent prompt surface anchors",
+			"Agent tool boundary anchors",
+			"Agent memory poisoning anchors",
+			"Agent injection replay anchors",
+		],
+		commandScaffolds: ["re_lane", "re_replayer", "re_verifier", "re_proof_loop"],
+		proofExit: ["prompt surface map", "tool boundary proof", "memory poisoning proof", "injection replay proof"],
+	},
+];

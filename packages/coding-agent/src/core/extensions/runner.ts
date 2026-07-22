@@ -14,6 +14,7 @@ import type { BuildSystemPromptOptions } from "../system-prompt.ts";
 import type {
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
+	BeforeProviderHeadersEvent,
 	BeforeProviderRequestEvent,
 	CompactOptions,
 	ContextEvent,
@@ -1000,6 +1001,59 @@ export class ExtensionRunner {
 		}
 
 		return currentPayload;
+	}
+
+	/**
+	 * Pi-aligned provider header hook: extensions can inject gateway/tenant/signing headers.
+	 * Returns merged headers (base + handler contributions). Handler errors are logged, not fatal.
+	 */
+	async emitBeforeProviderHeaders(input: {
+		provider: string;
+		modelId?: string;
+		sessionId?: string;
+		headers?: Record<string, string>;
+	}): Promise<Record<string, string>> {
+		const ctx = this.createContext();
+		const headers: Record<string, string> = { ...(input.headers ?? {}) };
+
+		for (const ext of this.extensions) {
+			const handlers = ext.handlers.get("before_provider_headers");
+			if (!handlers || handlers.length === 0) continue;
+
+			for (const handler of handlers) {
+				try {
+					const event: BeforeProviderHeadersEvent = {
+						type: "before_provider_headers",
+						provider: input.provider,
+						modelId: input.modelId,
+						sessionId: input.sessionId,
+						headers: { ...headers },
+					};
+					const handlerResult = await handler(event, ctx);
+					if (!handlerResult) continue;
+					const extra =
+						typeof handlerResult === "object" && handlerResult !== null && "headers" in handlerResult
+							? (handlerResult as { headers?: Record<string, string> }).headers
+							: (handlerResult as Record<string, string>);
+					if (extra && typeof extra === "object") {
+						for (const [k, v] of Object.entries(extra)) {
+							if (typeof v === "string" && k.trim()) headers[k] = v;
+						}
+					}
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					const stack = err instanceof Error ? err.stack : undefined;
+					this.emitError({
+						extensionPath: ext.path,
+						event: "before_provider_headers",
+						error: message,
+						stack,
+					});
+				}
+			}
+		}
+
+		return headers;
 	}
 
 	async emitBeforeAgentStart(

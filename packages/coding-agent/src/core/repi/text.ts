@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { safeHeadEnd, safeTailStart } from "../tools/truncate.ts";
-
 export function truncateMiddle(text: string, limit: number): string {
 	if (text.length <= limit) return text;
 	const head = Math.floor(limit * 0.55);
@@ -10,19 +9,16 @@ export function truncateMiddle(text: string, limit: number): string {
 	const tailStart = safeTailStart(text, text.length - tail);
 	return `${text.slice(0, headEnd)}\n...<truncated ${text.length - limit} chars>...\n${text.slice(tailStart)}`;
 }
-
 export function metadataValue(text: string, key: string): string | undefined {
 	const match = new RegExp(`^${key}:\\s*(.+)$`, "im").exec(text);
 	return match?.[1]?.trim();
 }
-
 export function numericMetadataValue(text: string, key: string): number | undefined {
 	const value = metadataValue(text, key);
 	if (!value) return undefined;
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : undefined;
 }
-
 export function slug(value: string): string {
 	return (
 		value
@@ -31,7 +27,6 @@ export function slug(value: string): string {
 			.slice(0, 80) || "item"
 	);
 }
-
 export function uniqueMatches(text: string, pattern: RegExp, limit: number): string[] {
 	const seen = new Set<string>();
 	for (const match of text.matchAll(pattern)) {
@@ -42,19 +37,16 @@ export function uniqueMatches(text: string, pattern: RegExp, limit: number): str
 	}
 	return Array.from(seen);
 }
-
 export function interestingLines(text: string, pattern: RegExp, limit: number): string[] {
 	return text
 		.split(/\r?\n/)
-		.map((line) => line.trim())
-		.filter((line) => line && pattern.test(line))
+		.map((line: any) => line.trim())
+		.filter((line: any) => line && pattern.test(line))
 		.slice(0, limit);
 }
-
 export function sha256Text(text: string): string {
 	return createHash("sha256").update(text).digest("hex");
 }
-
 // opt #159 (moved from recon-profile.ts #158): hash an artifact file's FULL
 // contents without loading it whole. createHash("sha256").update(readFileSync
 // (path)) read the ENTIRE file into memory — a multi-GB artifact (memory dump,
@@ -95,12 +87,10 @@ export function hashFileSha256(path: string): string {
 		}
 	}
 }
-
 export function clamp01(value: number | undefined, fallback: number): number {
 	if (!Number.isFinite(value)) return fallback;
 	return Math.max(0, Math.min(1, Number(value)));
 }
-
 export function envBoolean(name: string): boolean | undefined {
 	const raw = process.env[name];
 	if (raw === undefined) return undefined;
@@ -108,7 +98,6 @@ export function envBoolean(name: string): boolean | undefined {
 	if (/^(?:0|false|no|off)$/i.test(raw.trim())) return false;
 	return undefined;
 }
-
 export function uniqueNonEmpty(values: Array<string | undefined>, limit = 80): string[] {
 	const seen = new Set<string>();
 	const out: string[] = [];

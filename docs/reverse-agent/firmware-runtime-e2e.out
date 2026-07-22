@@ -1,0 +1,231 @@
+
+==== TARGET /tmp/repi-firmware-rootfs-dir ====
+[adapter-firmware] adapter=adapter-firmware-rootfs-service-map-runner: target=/tmp/repi-firmware-rootfs-dir mode=native
+[adapter-rootfs-target] target=/tmp/repi-firmware-rootfs-dir mode=native
+[firmware-file] /tmp/repi-firmware-rootfs-dir: directory
+[firmware-binwalk] host=1 tool=/usr/bin/binwalk note=dir_image_probe image=/tmp/repi-firmware-rootfs-dir/images/fw.bin
+[firmware-binwalk] 
+[firmware-binwalk] DECIMAL       HEXADECIMAL     DESCRIPTION
+[firmware-binwalk] --------------------------------------------------------------------------------
+[firmware-binwalk] 4247          0x1097          Squashfs filesystem, little endian, version 4.0, compression:gzip, size: 642 bytes, 14 inodes, blocksize: 131072 bytes, created: 2026-07-21 07:51:54
+[firmware-binwalk] 8343          0x2097          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8471          0x2117          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8599          0x2197          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8727          0x2217          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8855          0x2297          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8983          0x2317          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9111          0x2397          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9239          0x2417          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9367          0x2497          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9495          0x2517          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9623          0x2597          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9751          0x2617          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] hits=13 image=/tmp/repi-firmware-rootfs-dir/images/fw.bin
+[firmware-binwalk] ok=1 cap=1 dir_probe=1
+[firmware-deep] path=/tmp/repi-firmware-rootfs-dir bytes=8687 mode=dir
+[firmware-deep-sig] name=ELF offset=0x0
+[firmware-deep-sig] name=ELF offset=0x418
+[firmware-deep-sig] name=ELF offset=0x2181
+[firmware-deep-sig] name=SQUASHFS offset=0x1218
+[firmware-deep-sig] total=5 unique=2
+[firmware-entropy] high_windows=0
+[firmware-version] sample=BusyBox v1.35.0BusyBox v1.35.0 (OpenWrt)
+[firmware-version] sample=Linux version 5.10.176
+[firmware-version] sample=dropbear_2022.83
+[firmware-version] sample=OpenWrt"
+[firmware-version] sample=DISTRIB_RELEASE="22.03.5"
+[firmware-version] sample=OpenWrt 22.03.5"
+[firmware-version] sample=OpenWrt 22.03.5 Linux version 5.10.176 BusyBox v1.35.0 multi-call binary U-Boot 2022.01
+[firmware-version] sample=dropbear_2022.83 httpd uhttpd dropbear telnetd dnsmasq hostapd
+[firmware-version] sample=dropbear_2022.83ELF
+[firmware-version] hits=9
+[firmware-service-map] hits=11 unique=dnsmasq,dropbear,hostapd,httpd,telnetd,uhttpd
+[firmware-deep] fs_candidates=1
+[firmware-deep] ok=1
+[rootfs-account] path=/etc/passwd line=root:x:0:0:root:/root:/bin/sh
+[rootfs-account] path=/etc/passwd line=nobody:x:65534:65534:nobody:/nonexistent:/bin/false
+[rootfs-account] path=/etc/shadow present=true
+[rootfs-service] path=etc/init.d/httpd name=httpd
+[rootfs-service] path=etc/init.d/dropbear name=dropbear
+[rootfs-binary] path=bin/busybox name=busybox
+[rootfs-binary] path=sbin/httpd name=httpd
+[rootfs-binary] path=sbin/dropbear name=dropbear
+[rootfs-config-secret] /tmp/repi-firmware-rootfs-dir/etc/init.d/httpd:2:# uhttpd
+[rootfs-config-secret] /tmp/repi-firmware-rootfs-dir/etc/init.d/dropbear:2:# dropbear_2022.83
+[firmware-env] file=/usr/bin/file binwalk=/usr/bin/binwalk strings=/usr/bin/strings
+[firmware-proof-capture] domain=firmware extract=1 account=1 service=1 config=1 elf=1 binwalk=1 image=1
+[firmware-proof-capture] proof.exit=runtime_capture_strong bind_ready=true note=host-tool-or-rootfs-map+deep+binwalk+extract
+[firmware-proof-capture] next=re_domain_proof_exit_show,re_complete_audit,re_runtime_adapter_run,re_lane_plan_extract
+[runtime-technique] fw-rootfs-extract | fw-busybox-cred-dump | fw-service-surface-map
+
+
+==== TARGET /tmp/repi-firmware-image.bin ====
+[adapter-firmware] adapter=adapter-firmware-rootfs-service-map-runner: target=/tmp/repi-firmware-image.bin mode=native
+[adapter-rootfs-target] target=/tmp/repi-firmware-image.bin mode=native
+[firmware-file] /tmp/repi-firmware-image.bin: data
+[firmware-binwalk] host=1 tool=/usr/bin/binwalk
+[firmware-binwalk] 
+[firmware-binwalk] DECIMAL       HEXADECIMAL     DESCRIPTION
+[firmware-binwalk] --------------------------------------------------------------------------------
+[firmware-binwalk] 4247          0x1097          Squashfs filesystem, little endian, version 4.0, compression:gzip, size: 642 bytes, 14 inodes, blocksize: 131072 bytes, created: 2026-07-21 07:51:54
+[firmware-binwalk] 8343          0x2097          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8471          0x2117          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8599          0x2197          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8727          0x2217          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8855          0x2297          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 8983          0x2317          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9111          0x2397          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9239          0x2417          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9367          0x2497          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9495          0x2517          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9623          0x2597          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk] 9751          0x2617          Flattened device tree, size: 128 bytes, version: 17
+[firmware-binwalk-type] kind=flattened count=12
+[firmware-binwalk-type] kind=squashfs count=1
+[firmware-binwalk] hits=13
+[firmware-binwalk-entropy] 
+[firmware-binwalk-entropy] DECIMAL       HEXADECIMAL     ENTROPY
+[firmware-binwalk-entropy] --------------------------------------------------------------------------------
+[firmware-binwalk-entropy] 0             0x0             Falling entropy edge (0.169577)
+[firmware-binwalk-entropy] 
+[firmware-binwalk-entropy] ok=1
+[firmware-binwalk-magic] name=ELF offset=0x297
+[firmware-binwalk-magic] name=SQUASHFS offset=0x1097
+[firmware-binwalk-magic] ok=1
+[firmware-binwalk] ok=1 cap=1
+[firmware-extract-host] root=/tmp/repi-fw-extract-repi-firmware-image.bin_ target=/tmp/repi-firmware-image.bin
+[firmware-extract-host] binwalk=/usr/bin/binwalk
+[firmware-extract] 
+[firmware-extract] Scan Time:     2026-07-22 10:33:16
+[firmware-extract] Target File:   /tmp/repi-firmware-image.bin
+[firmware-extract] MD5 Checksum:  84b4c5be514fbc9d6ad68e2d48d33af6
+[firmware-extract] Signatures:    411
+[firmware-extract] 
+[firmware-extract] DECIMAL       HEXADECIMAL     DESCRIPTION
+[firmware-extract] --------------------------------------------------------------------------------
+[firmware-extract] 4247          0x1097          Squashfs filesystem, little endian, version 4.0, compression:gzip, size: 642 bytes, 14 inodes, blocksize: 131072 bytes, created: 2026-07-21 07:51:54
+[firmware-extract] 8343          0x2097          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 8471          0x2117          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 8599          0x2197          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 8727          0x2217          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 8855          0x2297          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 8983          0x2317          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 9111          0x2397          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 9239          0x2417          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 9367          0x2497          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 9495          0x2517          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 9623          0x2597          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 9751          0x2617          Flattened device tree, size: 128 bytes, version: 17
+[firmware-extract] 
+[firmware-unsquash] host=1 bin=/usr/bin/unsquashfs input=/tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-0.extracted/1000.squashfs
+[firmware-unsquash] Parallel unsquashfs: Using 2 processors
+[firmware-unsquash] 8 inodes (8 blocks) to write
+[firmware-unsquash] 
+[firmware-unsquash] [=================================================================|] 16/16 100%
+[firmware-unsquash] 
+[firmware-unsquash] created 8 files
+[firmware-unsquash] created 6 directories
+[firmware-unsquash] created 0 symlinks
+[firmware-unsquash] created 0 devices
+[firmware-unsquash] created 0 fifos
+[firmware-unsquash] created 0 sockets
+[firmware-unsquash] created 0 hardlinks
+[firmware-rootfs-file] /tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_/rootfs/sbin/httpd
+[firmware-rootfs-file] /tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_/rootfs/sbin/dropbear
+[firmware-rootfs-file] /tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_/rootfs/etc/shadow
+[firmware-rootfs-file] /tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_/rootfs/etc/passwd
+[firmware-rootfs-file] /tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_/rootfs/etc/init.d/httpd
+[firmware-rootfs-file] /tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_/rootfs/etc/init.d/dropbear
+[firmware-rootfs-file] /tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_/rootfs/bin/busybox
+[rootfs-account] path=/etc/passwd line=root:x:0:0:root:/root:/bin/sh
+[rootfs-account] path=/etc/passwd line=nobody:x:65534:65534:nobody:/nonexistent:/bin/false
+[rootfs-service] path=etc/init.d/httpd name=httpd
+[rootfs-service] path=etc/init.d/dropbear name=dropbear
+[firmware-unsquash] ok=1 rootfs=/tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_/rootfs
+[firmware-extract-host] ok=1 dirs=393 files=503
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-0.extracted
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-0.extracted/squashfs-root
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-42.extracted
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-42.extracted/squashfs-root
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin.extracted
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin.extracted/squashfs-root
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/unsquash-1000.squashfs_/rootfs
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-10.extracted
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-10.extracted/squashfs-root
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-13.extracted
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-13.extracted/squashfs-root
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-23.extracted
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-23.extracted/squashfs-root
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-21.extracted
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-21.extracted/squashfs-root
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-2.extracted
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-2.extracted/squashfs-root
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-4.extracted
+[firmware-rootfs-dir] /tmp/repi-fw-extract-repi-firmware-image.bin_/_repi-firmware-image.bin-4.extracted/squashfs-root
+[firmware-file-type] data
+[firmware-7z] host=1 bin=/usr/bin/7z
+[firmware-7z] 2026-07-21 07:51:54 D....                            bin
+[firmware-7z] 2026-07-21 07:51:54 D....                            etc
+[firmware-7z] 2026-07-21 07:51:54 D....                            sbin
+[firmware-7z] 2026-07-21 07:51:54 .....           36          146  bin/busybox
+[firmware-7z] 2026-07-21 07:51:54 D....                            etc/config
+[firmware-7z] 2026-07-21 07:51:54 D....                            etc/init.d
+[firmware-7z] 2026-07-21 07:51:54 .....           82            0  etc/passwd
+[firmware-7z] 2026-07-21 07:51:54 .....           22            0  etc/shadow
+[firmware-7z] 2026-07-21 07:51:54 .....           38            0  etc/config/system
+[firmware-7z] 2026-07-21 07:51:54 .....           21            0  etc/init.d/dropbear
+[firmware-7z] 2026-07-21 07:51:54 .....           18            0  etc/init.d/httpd
+[firmware-7z] 2026-07-21 07:51:54 .....           20            0  sbin/dropbear
+[firmware-7z] 2026-07-21 07:51:54 .....           20            0  sbin/httpd
+[firmware-7z] ok=1 entries=13
+[firmware-strings-cred] OpenWrt 22.03.5 Linux version 5.10.176 BusyBox v1.35.0 multi-call binary U-Boot 2022.01 dropbear_2022.83 httpd uhttpd dropbear telnetd dnsmasq hostapd
+[firmware-config] OpenWrt 22.03.5 Linux version 5.10.176 BusyBox v1.35.0 multi-call binary U-Boot 2022.01 dropbear_2022.83 httpd uhttpd dropbear telnetd dnsmasq hostapd
+[firmware-image] path=/tmp/repi-firmware-image.bin bytes=9879
+[firmware-extract] offset=663 magic=7f454c46 name=ELF
+[firmware-image] signature=ELF offset=663
+[firmware-extract] offset=4247 magic=68737173 name=SQUASHFS
+[firmware-image] signature=SQUASHFS offset=4247
+[firmware-extract] offset=8343 magic=d00dfeed name=DTB
+[firmware-image] signature=DTB offset=8343
+[firmware-config] offset=39 sample=BusyBox
+[firmware-config] offset=88 sample=dropbear
+[firmware-config] offset=105 sample=httpd
+[firmware-config] offset=111 sample=uhttpd
+[firmware-config] offset=118 sample=dropbear
+[firmware-config] offset=127 sample=telnetd
+[firmware-image] pure_python_map=1 signatures=3
+[firmware-extract] pure_python_map=1 count=3
+[firmware-dtb] path=/tmp/repi-firmware-image.bin bytes=9879
+[firmware-dtb] offset=0x2097 totalsize=128 version=17 off_struct=0x38 off_strings=0x6c pure_python=1
+[firmware-dtb] nodes=1 props_seen=0
+[firmware-dtb] offset=0x2117 totalsize=128 version=17 off_struct=0x38 off_strings=0x6c pure_python=1
+[firmware-dtb] nodes=1 props_seen=0
+[firmware-dtb] offset=0x2197 totalsize=128 version=17 off_struct=0x38 off_strings=0x6c pure_python=1
+[firmware-dtb] nodes=1 props_seen=0
+[firmware-dtb] count=3
+[firmware-dtb] ok=1 pure_python=1
+summary.firmware_dtb=1
+[firmware-deep] path=/tmp/repi-firmware-image.bin bytes=9879 mode=file
+[firmware-deep-sig] name=ELF offset=0x297
+[firmware-deep-sig] name=SQUASHFS offset=0x1097
+[firmware-deep-sig] name=DTB offset=0x2097
+[firmware-deep-sig] name=DTB offset=0x2117
+[firmware-deep-sig] name=DTB offset=0x2197
+[firmware-deep-sig] total=14 unique=3
+[firmware-entropy] high_windows=0
+[firmware-version] sample=OpenWrt 22.03.5 Linux version 5.10.176 BusyBox v1.35.0 multi-call binary U-Boot 2022.01
+[firmware-version] sample=dropbear_2022.83 httpd uhttpd dropbear telnetd dnsmasq hostapd
+[firmware-version] hits=2
+[firmware-service-map] hits=7 unique=dnsmasq,dropbear,hostapd,httpd,telnetd,uhttpd
+[firmware-deep] fs_candidates=1
+[firmware-deep] ok=1
+[firmware-service-promote] OpenWrt 22.03.5 Linux version 5.10.176 BusyBox v1.35.0 multi-call binary U-Boot 2022.01 dropbear_2022.83 httpd uhttpd dropbear telnetd dnsmasq hostapd
+[firmware-config-promote] OpenWrt 22.03.5 Linux version 5.10.176 BusyBox v1.35.0 multi-call binary U-Boot 2022.01 dropbear_2022.83 httpd uhttpd dropbear telnetd dnsmasq hostapd
+[firmware-elf-promote] via=magic
+[firmware-env] file=/usr/bin/file binwalk=/usr/bin/binwalk strings=/usr/bin/strings
+[firmware-proof-capture] domain=firmware extract=1 account=1 service=1 config=1 elf=1 binwalk=1 image=1
+[firmware-proof-capture] proof.exit=runtime_capture_strong bind_ready=true note=host-tool-or-rootfs-map+deep+binwalk+extract
+[firmware-proof-capture] next=re_domain_proof_exit_show,re_complete_audit,re_runtime_adapter_run,re_lane_plan_extract
+[runtime-technique] fw-rootfs-extract | fw-busybox-cred-dump | fw-service-surface-map
+

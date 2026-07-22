@@ -117,7 +117,7 @@ exit 0
 			"INFO: Verifying offline startup",
 			"Successfully linked repi",
 			`REPI ${expectedVersion} installed successfully, to start:`,
-			"For more information visit https://github.com/multi-zhangyang/pi-recon-agent",
+			"For more information visit https://github.com/multi-zhangyang/repi",
 		],
 		rejectOutput: ["launcher: /usr/local/bin/repi", "launcher: ~/.local/bin/repi"],
 		timeout: 180_000,
@@ -218,7 +218,7 @@ exit 0
 			`REPI ${expectedVersion} installed successfully, to start:`,
 			"cd <project>  # Open directory",
 			"repi          # Run command",
-			"For more information visit https://github.com/multi-zhangyang/pi-recon-agent",
+			"For more information visit https://github.com/multi-zhangyang/repi",
 		],
 		timeout: 180_000,
 	});

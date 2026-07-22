@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { describe, expect, it, vi } from "vitest";
 import type { Context, Model } from "../src/types.ts";
 

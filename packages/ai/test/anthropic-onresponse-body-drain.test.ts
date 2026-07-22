@@ -69,7 +69,7 @@ describe("streamAnthropic cancels the body when onResponse throws (opt #122)", (
 			headers: { "content-type": "text/event-stream" },
 		});
 
-		const model = getModel("anthropic", "claude-haiku-4-5");
+		const model = getModel("anthropic", "claude-haiku-4-5")! as any;
 		const context: Context = {
 			messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
 		};

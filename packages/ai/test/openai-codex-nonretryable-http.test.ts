@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 /**
  * Foundational opt #257 — openai-codex-responses must NOT retry non-retryable
  * HTTP statuses (400/401/403/422).

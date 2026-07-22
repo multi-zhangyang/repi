@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/multi-zhangyang/pi-recon-agent">
+  <a href="https://github.com/multi-zhangyang/repi">
     <img alt="repi logo" src="docs/images/repi-logo.svg" width="128">
   </a>
 </p>
@@ -46,14 +46,14 @@ The npm/bin entry boots straight into the REPI kernel: reverse/pentest prompts, 
 Recommended source installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/pi-recon-agent/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/repi/main/install.sh | bash
 ```
 
 Local checkout refresh:
 
 ```bash
-git clone https://github.com/multi-zhangyang/pi-recon-agent.git
-cd pi-recon-agent
+git clone https://github.com/multi-zhangyang/repi.git
+cd repi
 npm install --ignore-scripts
 bash install.sh
 ```

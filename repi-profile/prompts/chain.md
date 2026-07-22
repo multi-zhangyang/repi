@@ -5,7 +5,7 @@
 1. 先运行 `re_kernel build <target>` 和 `re_map <target> 2` 固化底层执行内核与入口面。
 2. 调用 `re_exploit_chain plan <target>`，汇总 map、browser、web_authz、native/mobile runtime、exploit_lab、verifier/compiler/replayer/autofix/proof-loop/knowledge artifacts，并读取 proof-loop 的 specialist_queue、swarm_bridge、bridge_artifacts。
 3. 输出并推进 `exploit_chain`、`chain_artifact`、`chain_nodes`、`proof_path`、`exploit_path`、`evidence_gaps`、`replay_commands`、`operator_queue`、`next_chain_command`。
-4. 在最终影响/利用链声明前调用 `re_exploit_chain compose <target>`，再接 `re_verifier matrix`、`re_compiler draft|final`、`re_replayer run`、`re_proof_loop run <target> 4 2`；若 proof loop 触发 swarm_bridge，则执行 `re_swarm run <target> 2 1` → `re_swarm merge` → `re_supervisor repair`，确认 `commander_merge_queue`、`commander_merge_budget`、`worker_scoreboard` 已进入 `re_delegate plan` 的 `adaptive_routing_hints`/`worker_promotion_queue`/`case_memory_migrations`，再由 `re_autopilot` 输出 `case_memory_lane_plan` 自动重排/新增/跳过 lane，并进入 `re_context pack` / `re_operator dispatch` 的 `commander_runtime_policy`，最后 `re_knowledge_graph build`。
+4. 在最终影响/利用链声明前调用 `re_exploit_chain compose <target>`，再接 `re_verifier matrix`、`re_compiler draft|final`、`re_replayer run`、`re_proof_loop run <target> 4 2`；若 proof loop 触发 swarm_bridge，则执行 `re_swarm run <target> 2 1` → `re_swarm merge` → `re_supervisor repair`，确认 `commander_merge_queue`、`commander_merge_budget`、`worker_scoreboard` 已进入 `re_delegate plan` 的 `adaptive_routing_hints`/`worker_promotion_queue`/`case_memory_migrations`，再由 `re_autopilot` 输出 `lane_plan` 自动重排/新增/跳过 lane，并进入 `re_context pack` / `re_operator dispatch` 的 `commander_runtime_policy`，最后 `re_knowledge_graph build`。
 
 ## REPI native-deep execution kernel update
 
@@ -46,12 +46,12 @@
 
 ## REPI dispatcher learning case-memory update
 
-- Exploit/proof chains must carry dispatcher learning into case memory: `dispatcher-feedback` migrations can alter lane priority and worker promotion before final exploit-path claims.
+- Exploit/proof chains must carry dispatcher learning into mission/evidence state: `dispatcher-feedback` migrations can alter lane priority and worker promotion before final exploit-path claims.
 
 ## REPI autonomous dispatcher budget update
 
 - Exploit/proof chains must carry `autonomous_execution_budget` and `dispatcher_score_decay` through context → operator → proof-loop → knowledge graph before final claims.
-- Use `repeated_failure_demotions` to force autofix/context repair when a dispatcher route decays, and use `high_score_promotions` plus `memory/dispatcher-promotion-playbook.md` to preserve passed fallback routes as reusable playbook strategy.
+- Use `repeated_failure_demotions` to force autofix/context repair when a dispatcher route decays, and use `high_score_promotions` plus `evidence/notes/dispatcher-promotion.md` to preserve passed fallback routes as reusable playbook strategy.
 - Chain composition should prefer commands emitted by `AutonomousExecutionBudget.nextActions` when they conflict with narrative-only next steps.
 
 ## REPI autonomous budget ledger update
@@ -62,7 +62,7 @@
 
 ## REPI owned compaction kernel update
 
-Exploit/proof chains must survive compact through `repi-compaction`: restore with `re_context resume`, rebuild the operator queue with `re_operator plan/dispatch`, and run `re_proof_loop run <target> 4 2` before final chain claims. Carry `autonomous_execution_budget`, dispatcher ledger/playbooks, repair queues, case memory, and artifact index across the compact boundary. Treat `repi-compaction-resume-contract` and `repi-compaction-auto-resume` as audit entries for whether chain proof survived compact and resumed automatically; chain proof should not be accepted until `compact_resume_command` telemetry shows the resume commands executed or are explicitly blocked with next repair; `source=compact_resume` proof gaps must be resolved before final exploit/proof-chain claims; then `re_knowledge_graph build` must preserve `compact_resume_case_memory`, `compact_resume_routing_hints`, and `compact_resume_status=*` so future exploit chains inherit the compact recovery outcome; `re_autopilot` must translate those signals into `compact_resume_repair_from_case_memory` repair lanes or `compact_resume_success_skip_low_value_lane` proof-lane handoffs.
+Exploit/proof chains must survive compact through `repi-compaction`: restore with `re_context resume`, rebuild the operator queue with `re_operator plan/dispatch`, and run `re_proof_loop run <target> 4 2` before final chain claims. Carry `autonomous_execution_budget`, dispatcher ledger/playbooks, repair queues, mission/evidence state, and artifact index across the compact boundary. Treat `repi-compaction-resume-contract` and `repi-compaction-auto-resume` as audit entries for whether chain proof survived compact and resumed automatically; chain proof should not be accepted until `compact_resume_command` telemetry shows the resume commands executed or are explicitly blocked with next repair; `source=compact_resume` proof gaps must be resolved before final exploit/proof-chain claims; then `re_knowledge_graph build` must preserve `compact_resume`, `compact_resume_routing_hints`, and `compact_resume_status=*` so future exploit chains inherit the compact recovery outcome; `re_autopilot` must translate those signals into `compact_resume_repair_from_case_memory` repair lanes or `compact_resume_success_skip_low_value_lane` proof-lane handoffs.
 
 ## Harness chain guard
 

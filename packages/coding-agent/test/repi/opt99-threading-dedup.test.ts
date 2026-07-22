@@ -26,7 +26,7 @@ afterEach(() => {
 
 describe("opt #99 threading dedup — sub-builder param reuse", () => {
 	it("PERF-1: buildMemoryDepositionReport reuses a passed store verdict (no re-verify)", async () => {
-		const storeMod = await import("../../src/core/repi/memory-store.ts");
+		const storeMod = await import("../../src/core/repi/memory-stubs.ts");
 		const depositionMod = await import("../../src/core/repi/memory-deposition.ts");
 		const store = storeMod.verifyMemoryStore();
 		// Spy AFTER building the store so we can detect if deposition re-calls verifyMemoryStore
@@ -38,7 +38,7 @@ describe("opt #99 threading dedup — sub-builder param reuse", () => {
 	});
 
 	it("PERF-1: superviseMemoryLifecycle reuses a passed store verdict", async () => {
-		const storeMod = await import("../../src/core/repi/memory-store.ts");
+		const storeMod = await import("../../src/core/repi/memory-stubs.ts");
 		const supervisorMod = await import("../../src/core/repi/memory-supervisor.ts");
 		const store = storeMod.verifyMemoryStore();
 		const spy = vi.spyOn(storeMod, "verifyMemoryStore");

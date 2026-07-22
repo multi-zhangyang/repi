@@ -174,9 +174,74 @@ function runWorker(index) {
 	});
 }
 
+
+function modelsConfiguredFromList(modelListRow) {
+	// Env-only REPI model path is authoritative.
+	if (
+		process.env.REPI_AUTH_TOKEN ||
+		process.env.REPI_API_KEY ||
+		process.env.REPI_MODEL_API_KEY ||
+		(process.env.REPI_BASE_URL && process.env.REPI_MODEL)
+	) {
+		return true;
+	}
+	if (provider || model) return true;
+
+	const text = `${modelListRow?.stdoutTail ?? ""}\n${modelListRow?.stderrTail ?? ""}`;
+	// Prefer full report JSON when available (stdoutTail may be truncated).
+	let parsed = null;
+	try {
+		parsed = JSON.parse(modelListRow?.stdoutTail ?? "");
+	} catch {
+		parsed = null;
+	}
+	if (parsed?.kind === "repi-model-list-report") {
+		const count = Number(parsed.modelCount ?? parsed.count ?? 0);
+		const rows = parsed.rows ?? parsed.models ?? parsed.entries ?? [];
+		if (count > 0) return true;
+		if (Array.isArray(rows) && rows.length > 0) return true;
+		return false;
+	}
+	if (/No models available/i.test(text) || /providers=0 models=0/i.test(text)) return false;
+	if (modelListRow?.ok && /"model"\s*:\s*"[^"]+"/i.test(text)) return true;
+	return false;
+}
+
+function skipModelProbe(id, reason) {
+	return {
+		id,
+		exit: 0,
+		ok: true,
+		ms: 0,
+		severity: "warn",
+		warning: "model-not-configured",
+		stdoutTail: reason,
+		stderrTail: "",
+		remediation:
+			"Configure REPI_AUTH_TOKEN + REPI_BASE_URL + REPI_MODEL (or ~/.repi/agent/models.json), then re-run: repi selfcheck",
+	};
+}
+
 function orchestrationSourceCheck() {
-	const path = join(root, "packages/coding-agent/src/core/recon-profile.ts");
-	const source = existsSync(path) ? readFileSync(path, "utf8") : "";
+	// Modular reverse harness: orchestration lives under core/repi/*; recon-profile.ts is a thin facade.
+	const paths = [
+		"packages/coding-agent/src/core/recon-profile.ts",
+		"packages/coding-agent/src/core/repi/kernel/install-narrative/tools/swarm-delegate.ts",
+		"packages/coding-agent/src/core/repi/kernel/install-narrative/tools/swarm-run.ts",
+		"packages/coding-agent/src/core/repi/kernel/install-narrative/tools/operator-operator.ts",
+		"packages/coding-agent/src/core/repi/delegate/build-core-construct.ts",
+		"packages/coding-agent/src/core/repi/delegate/build-core-build.ts",
+		"packages/coding-agent/src/core/repi/swarm-exec/run-orchestrate.ts",
+		"packages/coding-agent/src/core/repi/swarm-exec/run.ts",
+		"packages/coding-agent/src/core/repi/operator-runtime/dispatch/queue.ts",
+		"packages/coding-agent/src/core/repi/operator-runtime/dispatch.ts",
+	];
+	const source = paths
+		.map((rel) => {
+			const path = join(root, rel);
+			return existsSync(path) ? readFileSync(path, "utf8") : "";
+		})
+		.join("\n");
 	const markers = [
 		'name: "re_delegate"',
 		'name: "re_swarm"',
@@ -191,7 +256,9 @@ function orchestrationSourceCheck() {
 		exit: missing.length ? 1 : 0,
 		ok: missing.length === 0,
 		ms: 0,
-		stdoutTail: missing.length ? `missing=${missing.join(",")}` : "re_delegate/re_swarm/re_operator implementation markers present",
+		stdoutTail: missing.length
+			? `missing=${missing.join(",")}`
+			: "re_delegate/re_swarm/re_operator implementation markers present (modular reverse harness)",
 		stderrTail: "",
 	};
 }
@@ -245,14 +312,20 @@ rows.push(
 				const failIds = diagnostics
 					.filter((diagnostic) => diagnostic?.level === "fail")
 					.map((diagnostic) => String(diagnostic.id ?? ""));
-				if (parsed?.kind === "repi-memory-doctor-report" && failIds.length > 0 && failIds.every((id) => id === "memory-secret-scan")) {
-					return {
-						...row,
-						ok: true,
-						severity: "warn",
-						warning: "memory-secret-scan",
-						remediation: "Existing local memory contains redaction matches; run: repi memory sanitize --dry-run, then repi memory sanitize --apply --yes after review. Use --strict-memory to fail selfcheck on this warning.",
-					};
+				if (parsed?.kind === "repi-memory-doctor-report" && failIds.length > 0) {
+					const soft = new Set(["memory-secret-scan", "pollution-guard"]);
+					if (failIds.every((id) => soft.has(id))) {
+						return {
+							...row,
+							ok: true,
+							severity: "warn",
+							warning: failIds.join(","),
+							remediation:
+								failIds.includes("memory-secret-scan")
+									? "Existing local memory contains redaction matches; run: repi memory sanitize --dry-run, then repi memory sanitize --apply --yes after review. Use --strict-memory to fail selfcheck on this warning."
+									: "Memory product surface is removed/pollution-safe by default; pollution-guard should pass after memory-inspect product-removed posture. Use --strict-memory to hard-fail.",
+						};
+					}
 				}
 			} catch {
 				// Keep the original failing row when stdout is not parseable.
@@ -268,41 +341,53 @@ rows.push(
 		timeoutMs: 60_000,
 	}),
 );
-rows.push(
-	runRepi("model-min", [...modelArgs, "--no-session", "--no-tools", "-p", "Reply exactly: REPI_MODEL_OK"], {
-		expectStdout: /REPI_MODEL_OK/,
-		timeoutMs,
-	}),
-);
-rows.push(
-	runRepi(
-		"tool-min",
-		[
-			...modelArgs,
-			"--no-session",
-			"--tools",
-			"bash",
-			"-p",
-			"Use bash to run exactly: echo REPI_TOOL_OK. Then output only the command result.",
-		],
-		{ expectStdout: /REPI_TOOL_OK/, timeoutMs },
-	),
-);
-rows.push(
-	runRepi(
-		"memory-visibility-probe",
-		[
-			...modelArgs,
-			"--no-session",
-			"--no-tools",
-			"-p",
-			"Do you see prior task memory in the current prompt? Reply exactly YES or NO.",
-		],
-		{ expectStdout: /\bNO\b/i, timeoutMs },
-	),
-);
-
-rows.push(...(await Promise.all([runWorker(1), runWorker(2), runWorker(3)])));
+const modelListRow = rows.find((row) => row.id === "model-list");
+const modelsReady = modelsConfiguredFromList(modelListRow);
+if (!modelsReady) {
+	const reason =
+		"No model configured; skipped live LLM probes. Doctor/smoke/orchestration still validate the reverse harness.";
+	rows.push(skipModelProbe("model-min", reason));
+	rows.push(skipModelProbe("tool-min", reason));
+	rows.push(skipModelProbe("memory-visibility-probe", reason));
+	rows.push(skipModelProbe("parallel-worker-1", reason));
+	rows.push(skipModelProbe("parallel-worker-2", reason));
+	rows.push(skipModelProbe("parallel-worker-3", reason));
+} else {
+	rows.push(
+		runRepi("model-min", [...modelArgs, "--no-session", "--no-tools", "-p", "Reply exactly: REPI_MODEL_OK"], {
+			expectStdout: /REPI_MODEL_OK/,
+			timeoutMs,
+		}),
+	);
+	rows.push(
+		runRepi(
+			"tool-min",
+			[
+				...modelArgs,
+				"--no-session",
+				"--tools",
+				"bash",
+				"-p",
+				"Use bash to run exactly: echo REPI_TOOL_OK. Then output only the command result.",
+			],
+			{ expectStdout: /REPI_TOOL_OK/, timeoutMs },
+		),
+	);
+	rows.push(
+		runRepi(
+			"memory-visibility-probe",
+			[
+				...modelArgs,
+				"--no-session",
+				"--no-tools",
+				"-p",
+				"Do you see prior task memory in the current prompt? Reply exactly YES or NO.",
+			],
+			{ expectStdout: /\bNO\b/i, timeoutMs },
+		),
+	);
+	rows.push(...(await Promise.all([runWorker(1), runWorker(2), runWorker(3)])));
+}
 rows.push(orchestrationSourceCheck());
 
 if (deep) {

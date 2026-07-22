@@ -1,0 +1,167 @@
+
+==== TARGET /root/repi-build ====
+[adapter-cloud-target] adapter=adapter-cloud-identity-runner: target=/root/repi-build mode=native
+[cloud-env] python=/usr/bin/python3 aws=/root/.local/bin/aws kubectl=/usr/local/bin/kubectl az= gcloud=
+[cloud-identity] env=KUBECONFIG len=20 sha256=901c6db929a6d817
+[cloud-identity] path=/tmp/repi-kubeconfig bytes=276 sha256=a486bc9fa0c377f4
+[cloud-identity] inventory_ok=1
+[cloud-runtime-config] manifests=0
+[cloud-privilege-edge] file=/root/repi-build/repi-profile/SYSTEM.md hits=secret_ref
+[cloud-privilege-edge] file=/root/repi-build/repi-profile/APPEND_SYSTEM.md hits=secret_ref
+[cloud-privilege-edge] file=/root/repi-build/packages/ai/test/bedrock-thinking-payload.test.ts hits=aws_arn
+[cloud-privilege-edge] edges=3
+[cloud-metadata] provider=aws-imds-root status=200 body_sha=7ecb6132942f mock=1
+[cloud-metadata] provider=gcp-metadata status=200 body_sha=4f495988a26a mock=1
+[cloud-metadata] provider=azure-imds status=200 body_sha=499a1838f645 mock=1
+[cloud-metadata] reachable=3 mock_base=http://127.0.0.1:36827
+[ad-principal] note=host-scaffold domain=<unset>
+[cloud-host] curl=/usr/bin/curl jq=/usr/bin/jq docker_sock=1
+[cloud-imds-http] mock_base=http://127.0.0.1:36827 label=aws-imds
+[cloud-imds-http] label=aws-imds url=http://127.0.0.1:36827/latest/meta-data/ http=200
+[cloud-imds-http] mock_base=http://127.0.0.1:36827 label=aws-imds-iam
+[cloud-imds-http] label=aws-imds-iam url=http://127.0.0.1:36827/latest/meta-data/iam/security-credentials/ http=200
+[cloud-imds-http] mock_base=http://127.0.0.1:36827 label=azure-imds
+[cloud-imds-http] label=azure-imds url=http://127.0.0.1:36827/metadata/instance?api-version=2021-02-01 http=200
+[cloud-imds-http] mock_base=http://127.0.0.1:36827 label=gcp-metadata
+[cloud-imds-http] label=gcp-metadata url=http://127.0.0.1:36827/computeMetadata/v1/ http=200
+[cloud-imds-http] ok=1 mock=1
+summary.cloud_imds_mock=1
+[cloud-imdsv2] token_len=25 fixture=1
+[cloud-imdsv2] meta_http=200
+[cloud-imdsv2] ok=1
+summary.cloud_imdsv2=1
+[cloud-docker-host] sock=1 http=200
+[cloud-docker-host] version=29.1.3 api=1.52
+[cloud-host-env] key=CLOUDSDK_CORE_DISABLE_PROMPTS set=1
+[cloud-host-env] key=AWS_PAGER set=0
+[cloud-host-env] key=KUBECONFIG set=1
+[cloud-host-file] path=/root/.aws/credentials present=0
+[cloud-host-file] path=/root/.aws/config present=0
+[cloud-host-file] path=/root/.kube/config present=0
+[cloud-host-file] path=/tmp/repi-kubeconfig present=1 bytes=276
+[cloud-docker-containers] http=200
+[cloud-docker-containers] id=de71aab40bc8 image=ghcr.io/deeix-ai/deeix-chat:latest names=/deeix-chat-app
+[cloud-docker-containers] id=402154baa8e3 image=fyadr:latest names=/fyadr
+[cloud-docker-containers] id=8cb72717dc44 image=redis:7 names=/deeix-chat-redis
+[cloud-docker-containers] id=d3191a0908ef image=pgvector/pgvector:pg16 names=/deeix-chat-postgres
+[cloud-docker-containers] ok=1 count=4
+[cloud-host] ok=1
+[cloud-k8s-sa] present=1 root=/tmp/repi-k8s-sa
+[cloud-k8s-sa] namespace=repi-smoke
+[cloud-k8s-sa] file=ca.crt present=1 bytes=64
+[cloud-k8s-sa] file=service-ca.crt present=0
+[cloud-k8s-sa] file=token present=1 bytes=475 redacted=1
+[cloud-k8s-sa] ok=1
+summary.cloud_k8s_sa=1
+[cloud-docker-images] http=200
+[cloud-docker-images] id=sha256:0d1bb tags=
+[cloud-docker-images] id=sha256:df3d6 tags=
+[cloud-docker-images] id=sha256:db9f1 tags=ghcr.io/deeix-ai/deeix-chat:latest
+[cloud-docker-images] id=sha256:f8d72 tags=fyadr:latest
+[cloud-docker-images] id=sha256:b1a37 tags=fyadr:rollback-20260718-161331
+[cloud-docker-images] id=sha256:2b0ec tags=fyadr:rollback-pre-release
+[cloud-docker-images] id=sha256:15fce tags=fyadr:backend-implementation
+[cloud-docker-images] id=sha256:0325b tags=fyadr:audit
+[cloud-docker-images] id=sha256:b1899 tags=python:3.11-slim-bookworm
+[cloud-docker-images] id=sha256:a8f08 tags=redis:7
+[cloud-docker-images] id=sha256:1d533 tags=pgvector/pgvector:pg16
+[cloud-docker-images] id=sha256:1eeac tags=eclipse-temurin:21-jdk
+[cloud-docker-images] id=sha256:2cf06 tags=node:20-bookworm-slim
+[cloud-docker-images] ok=1 count=13
+[cloud-aws-cli] host=1 bin=/root/.local/bin/aws
+[cloud-aws-cli] aws-cli/1.45.52 Python/3.12.3 Linux/6.8.0-124-generic botocore/1.43.52
+[cloud-aws-config-list] name=profile value=<not_set> type=None location=None
+[cloud-aws-config-list] name=access_key value=<not_set> type=None location=None
+[cloud-aws-config-list] name=secret_key value=<not_set> type=None location=None
+[cloud-aws-config-list] name=region value=<not_set> type=None location=None
+[cloud-aws-config-list] ok=1
+[cloud-aws-sts] account=123456789012 arn=arn:aws:iam::123456789012:user/repi-smoke user=AIDAEXAMPLE
+[cloud-aws-sts] ok=1 fixture=1 path=/tmp/repi-aws-sts-fixture.json
+summary.cloud_aws_sts_fixture=1
+[cloud-aws-cli] region=unset profile=default
+[cloud-aws-cli] ok=1
+[cloud-kubectl] host=1 bin=/usr/local/bin/kubectl
+[cloud-kubectl] Client Version: v1.36.2
+[cloud-kubectl] Kustomize Version: v5.8.1
+[cloud-kubectl] config=/tmp/repi-kubeconfig present=1
+[cloud-kubectl-context] repi-smoke
+[cloud-kubectl-current] repi-smoke
+[cloud-kubectl] config_ok=1
+[cloud-kubectl-cluster-info] 
+[cloud-kubectl-cluster-info] To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+[cloud-kubectl-cluster-info] E0722 10:33:55.564992 2565119 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:6443/api?timeout=32s\": dial tcp 127.0.0.1:6443: connect: connection refused"
+[cloud-kubectl-cluster-info] E0722 10:33:55.565249 2565119 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:6443/api?timeout=32s\": dial tcp 127.0.0.1:6443: connect: connection refused"
+[cloud-kubectl-cluster-info] E0722 10:33:55.566699 2565119 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:6443/api?timeout=32s\": dial tcp 127.0.0.1:6443: connect: connection refused"
+[cloud-kubectl] ok=1
+[cloud-docker-networks] http=200
+[cloud-docker-networks] id=413f351c9efb name=fyadr_default driver=bridge
+[cloud-docker-networks] id=c002facc509d name=none driver=null
+[cloud-docker-networks] id=156c3167f93e name=host driver=host
+[cloud-docker-networks] id=094b706aab8e name=bridge driver=bridge
+[cloud-docker-networks] id=8157405c9e4e name=deeix-chat-network driver=bridge
+[cloud-docker-networks] ok=1 count=5
+[cloud-docker-info] http=200
+[cloud-docker-info] id=1b3c341d-7c0 name=AI server=29.1.3 os=Ubuntu 24.04.4 LTS arch=x86_64 driver=overlayfs ncpu=2 mem=8327671808
+[cloud-docker-info] security=name=apparmor
+[cloud-docker-info] security=name=seccomp,profile=builtin
+[cloud-docker-info] security=name=cgroupns
+[cloud-docker-info] ok=1
+[cloud-k8s-sa] probe_root=/tmp/repi-k8s-sa exists=1
+[cloud-k8s-sa] file=/tmp/repi-k8s-sa/token bytes=475 sha256=34a8903f532133c4
+[cloud-k8s-sa] token_present=1 jwt_dots=2
+[cloud-k8s-jwt] alg=RS256 typ=JWT
+[cloud-k8s-jwt] claim=iss value=https://kubernetes.default.svc.cluster.local
+[cloud-k8s-jwt] claim=sub value=system:serviceaccount:repi-smoke:repi-sa
+[cloud-k8s-jwt] claim=aud value=['https://kubernetes.default.svc.cluster.local']
+[cloud-k8s-jwt] claim=exp value=2000000000
+[cloud-k8s-jwt] claim=iat value=1700000000
+[cloud-k8s-jwt] claim=kubernetes.io value={'namespace': 'repi-smoke', 'serviceaccount': {'name': 'repi-sa', 'uid': '00000000-0000-0000-0000-000000000001'}}
+[cloud-k8s-jwt] ns=repi-smoke sa=repi-sa
+[cloud-k8s-jwt] ok=1 pure_python=1
+summary.cloud_k8s_jwt=1
+[cloud-k8s-sa] file=/tmp/repi-k8s-sa/namespace bytes=11 sha256=44790851bfc2a021
+[cloud-k8s-sa] namespace=repi-smoke
+[cloud-k8s-sa] file=/tmp/repi-k8s-sa/ca.crt bytes=64 sha256=5dc6bfdb6d1f0522
+[cloud-k8s-sa] probe=1
+[cloud-runtime] socket=/var/run/docker.sock exists=1
+[cloud-runtime] socket=/run/containerd/containerd.sock exists=1
+[cloud-aws-file] kind=credentials present=0
+[cloud-aws-file] kind=config present=0
+[cloud-kubeconfig] present=1 contexts=2 sha256=a486bc9fa0c377f4
+[cloud-kubeconfig] auth_surface=1
+[cloud-iam-policy] docs=0
+[cloud-imds-chain] mock_base=http://127.0.0.1:36827
+[cloud-imds-chain] next=curl http://127.0.0.1:36827/latest/meta-data/
+[cloud-identity-deep] ok=1
+[cloud-extra] start=1
+[cloud-env-identity] key=CLOUDSDK_CORE_DISABLE_PROMPTS value=<set>
+[cloud-env-identity] key=AWS_PAGER value=<empty>
+[cloud-env-identity] key=KUBECONFIG value=<set>
+[cloud-env-identity] key=REPI_AWS_STS_FIXTURE value=<set>
+[cloud-env-identity] hits=4
+[cloud-imds-reach] label=aws-imds host=169.254.169.254 reachable=1
+[cloud-imds-reach] label=azure-imds host=169.254.169.254 reachable=1
+[cloud-imds-reach] label=gcp-metadata host=metadata.google.internal reachable=0 err=gaierror
+[cloud-instance-file] path=/etc/cloud/cloud.cfg present=1 sample=# The top level settings are used as module # and base configuration.  # A set of users which may be applied and/or used
+[cloud-instance-file] path=/run/cloud-init/instance-data.json present=1 sample={  "base64_encoded_keys": [],  "ds": {   "_doc": "EXPERIMENTAL: The structure and format of content scoped under the 'ds
+[cloud-instance-file] path=/var/lib/cloud/instance/datasource present=1 sample=DataSourceConfigDrive: DataSourceConfigDrive [net,ver=2][source=/dev/vdb] 
+[cloud-instance-file] path=/sys/class/dmi/id/product_uuid present=1 sample=340ec138-acca-46f4-9eb0-8a197d328ab5 
+[cloud-instance-file] path=/sys/class/dmi/id/sys_vendor present=1 sample=DigitalOcean 
+[cloud-runtime-extra] source=/proc/self/mountinfo signal=1
+[cloud-extra] ok=1
+[cloud-iam] start=1
+[cloud-iam-local] path=/root/.aws/credentials present=0
+[cloud-iam-local] path=/root/.aws/config present=0
+[cloud-iam-local] path=/root/.azure present=0
+[cloud-iam-local] path=/root/.config/gcloud present=0
+[cloud-iam-local] path=/root/.kube/config present=0
+[cloud-iam-policy] files=0
+[cloud-iam-k8s] present=0
+[cloud-iam-env] key=AWS_PAGER set=0
+[cloud-iam-env] key=KUBECONFIG set=1
+[cloud-iam] ok=1 hits=2
+[cloud-proof-capture] domain=cloud-identity identity=1 runtime=1 meta=1 priv=1 ad=1 k8s=1 aws_file=1 imds_scaffold=0 imds_mock=1 aws_cli=1 kubectl_cli=1
+[cloud-proof-capture] proof.exit=runtime_capture_strong bind_ready=true note=identity+runtime-or-priv+host+cli+deep+extra+iam
+[cloud-proof-capture] next=re_domain_proof_exit_show,re_complete_audit,re_runtime_adapter_run,re_lane_plan_privilege
+[runtime-technique] cloud-imds-ssrf-chain | cloud-k8s-sa-token-abuse | identity-kerberoast-asrep
+

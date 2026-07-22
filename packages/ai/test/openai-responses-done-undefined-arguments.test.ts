@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 /**
  * Foundational opt #259 — openai-responses `response.function_call_arguments.done`
  * with `arguments` undefined threw TypeError.

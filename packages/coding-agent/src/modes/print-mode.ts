@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import type { AssistantMessage, ImageContent } from "@pi-recon/repi-ai";
 import type { AgentSessionEvent } from "../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
+import { agentSettledTargetFromSession, waitForAgentSettled } from "../core/agent-settled.ts";
 import type { ExtensionUIContext } from "../core/extensions/types.ts";
 import { flushRawStdout, writeRawStdout } from "../core/output-guard.ts";
 import { killTrackedDetachedChildren } from "../utils/shell.ts";
@@ -534,12 +535,8 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 	const flushAssistantText = async (settleMs = 5000): Promise<boolean> => {
 		if (mode !== "text") return false;
 		try {
-			const idle = session.agent.waitForIdle();
-			const settle = new Promise<void>((resolve) => {
-				const t = setTimeout(resolve, settleMs);
-				t.unref?.();
-			});
-			await Promise.race([idle, settle]);
+			// Pi-aligned agent_settled: wait for agent_end listeners via waitForIdle, with timeout.
+			await waitForAgentSettled(agentSettledTargetFromSession(session), { timeoutMs: settleMs });
 		} catch {
 			// Best-effort flush; never let settlement errors suppress output.
 		}

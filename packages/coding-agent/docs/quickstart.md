@@ -9,8 +9,8 @@ This page gets you from install to a useful first repi session.
 Use this path when working from the open-source repository:
 
 ```bash
-git clone https://github.com/multi-zhangyang/pi-recon-agent.git
-cd pi-recon-agent
+git clone https://github.com/multi-zhangyang/repi.git
+cd repi
 npm install
 npm run install:repi
 ```

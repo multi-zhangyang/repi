@@ -1,0 +1,60 @@
+/** Memory orchestrator report formatter (product-lean report surface). */
+import { buildMemoryOrchestratorReport } from "./memory-stubs.ts";
+
+export function formatMemoryOrchestrator(report = buildMemoryOrchestratorReport()): string {
+	return [
+		"memory_orchestrator_v6:",
+		`MemoryOrchestratorV6=${report.MemoryOrchestratorV6}`,
+		`mandatory_memory_control_loop=${report.mandatory_memory_control_loop}`,
+		`phase=${report.phase}`,
+		`query=${report.query}`,
+		`route=${report.route ?? "none"}`,
+		`target=${report.target ?? "none"}`,
+		`store_grade=${report.storeGrade}`,
+		`hash_chain_ok=${report.hashChainOk}`,
+		`retrieval_hits=${report.retrievalHitIds.length}`,
+		`vector_hits=${report.vectorHitIds.length}`,
+		`scope_blocked=${report.scopeBlockedEventIds.length}`,
+		`artifact_scope_blocked=${report.artifactScopeBlockedArtifacts.length}`,
+		`injection_events=${report.injectionEventIds.length}`,
+		`feedback_pending=${report.feedbackPendingEventIds.length}`,
+		`promotion_events=${report.promotionEventIds.length}`,
+		`demotion_events=${report.demotionEventIds.length}`,
+		`compact_resume_status=${report.compactResumeStatus}`,
+		`compact_resume_ledger_v2=${report.compactResumeLedgerV2Status}:${report.compactResumeLedgerV2State}`,
+		`compact_resume_ledger_v2_invalid=${report.compactResumeLedgerV2InvalidTransitions.length}`,
+		`compact_resume_ledger_v2_report=${report.compactResumeLedgerV2ReportPath}`,
+		`memory_deposition_v7=${report.memoryDepositionStatus} events=${report.memoryDepositionRuntimeEventCount} pending=${report.memoryDepositionPendingWritebacks}`,
+		`memory_deposition_report=${report.memoryDepositionReportPath}`,
+		`memory_experience_v8=${report.memoryExperienceStatus} episodes=${report.memoryExperienceEpisodeCount} claims=${report.memoryExperienceClaimCount} lessons=${report.memoryExperienceLessonCount} promoted=${report.memoryExperiencePromotedClaims} conflicted=${report.memoryExperienceConflictedClaims}`,
+		`memory_experience_report=${report.memoryExperienceReportPath}`,
+		`memory_skill_capsule_v9=${report.memorySkillCapsuleStatus} capsules=${report.memorySkillCapsuleCount} promoted=${report.memorySkillCapsulePromoted} candidates=${report.memorySkillCapsuleCandidates}`,
+		`memory_skill_capsule_report=${report.memorySkillCapsuleReportPath}`,
+		`memory_distill_promotion_v10=${report.memoryDistillPromotionStatus} candidates=${report.memoryDistillPromotionCandidateCount} promoted=${report.memoryDistillPromotionPromoted} retained=${report.memoryDistillPromotionRetained}`,
+		`memory_distill_promotion_report=${report.memoryDistillPromotionReportPath}`,
+		`memory_quality_ledger_v11=${report.memoryQualityStatus} rows=${report.memoryQualityRowCount} promoted=${report.memoryQualityPromoted} demoted=${report.memoryQualityDemoted} required_feedback=${report.memoryQualityRequiredFeedback}`,
+		`memory_quality_report=${report.memoryQualityReportPath}`,
+		`memory_replay_evaluator_v12=${report.memoryReplayStatus} scenarios=${report.memoryReplayScenarioCount} improved=${report.memoryReplayImproved} regressed=${report.memoryReplayRegressed}`,
+		`memory_replay_report=${report.memoryReplayReportPath}`,
+		`memory_strategy_capsule_v13=${report.memoryStrategyStatus} capsules=${report.memoryStrategyCapsuleCount} promoted=${report.memoryStrategyPromoted} demoted=${report.memoryStrategyDemoted}`,
+		`memory_strategy_report=${report.memoryStrategyReportPath}`,
+		`memory_active_kernel_v14=${report.memoryActiveKernelStatus} decisions=${report.memoryActiveKernelDecisionCount} active=${report.memoryActiveKernelInject} avoid=${report.memoryActiveKernelAvoid}`,
+		`memory_active_kernel_report=${report.memoryActiveKernelReportPath}`,
+		`memory_maturation_runtime_v15=${report.memoryMaturationStatus} rows=${report.memoryMaturationRowCount} promoted=${report.memoryMaturationPromoted} pending=${report.memoryMaturationPending}`,
+		`memory_maturation_report=${report.memoryMaturationReportPath}`,
+		`report=${report.reportPath}`,
+		"steps:",
+		...report.steps.map(
+			(step: any) =>
+				`- id=${step.id} phase=${step.phase} status=${step.status} blocking=${step.blocking} command=${step.command} reason=${step.reason}`,
+		),
+		"injection_commands:",
+		...(report.injectionCommands.length
+			? report.injectionCommands.slice(0, 12).map((command: any) => `- ${command}`)
+			: ["- none"]),
+		"next_commands:",
+		...(report.nextCommands.length ? report.nextCommands.map((command: any) => `- ${command}`) : ["- none"]),
+		"required_checks:",
+		...report.requiredChecks.map((checkpoint: any) => `- ${checkpoint}`),
+	].join("\n");
+}

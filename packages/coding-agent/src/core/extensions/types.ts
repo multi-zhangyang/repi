@@ -625,6 +625,29 @@ export interface BeforeProviderRequestEvent {
 	payload: unknown;
 }
 
+/**
+ * Fired when outbound provider HTTP headers are assembled (Pi 0.80-aligned).
+ * Handlers may return additional headers for gateway/tenant/signing injection.
+ * Existing headers from auth + attribution are already merged into `headers`.
+ */
+export interface BeforeProviderHeadersEvent {
+	type: "before_provider_headers";
+	/** Provider id (e.g. anthropic, openrouter). */
+	provider: string;
+	/** Model id when known. */
+	modelId?: string;
+	/** Session id when available. */
+	sessionId?: string;
+	/** Headers already assembled (auth + attribution + model headers). */
+	headers: Record<string, string>;
+}
+
+/** Result from before_provider_headers: merge returned headers into outbound request. */
+export type BeforeProviderHeadersEventResult =
+	| Record<string, string>
+	| { headers?: Record<string, string> }
+	| undefined;
+
 /** Fired after a provider response is received and before the response stream is consumed. */
 export interface AfterProviderResponseEvent {
 	type: "after_provider_response";
@@ -966,6 +989,7 @@ export type ExtensionEvent =
 	| SessionEvent
 	| ContextEvent
 	| BeforeProviderRequestEvent
+	| BeforeProviderHeadersEvent
 	| AfterProviderResponseEvent
 	| BeforeAgentStartEvent
 	| AgentStartEvent
@@ -1119,6 +1143,10 @@ export interface ExtensionAPI {
 	on(
 		event: "before_provider_request",
 		handler: ExtensionHandler<BeforeProviderRequestEvent, BeforeProviderRequestEventResult>,
+	): void;
+	on(
+		event: "before_provider_headers",
+		handler: ExtensionHandler<BeforeProviderHeadersEvent, BeforeProviderHeadersEventResult>,
 	): void;
 	on(event: "after_provider_response", handler: ExtensionHandler<AfterProviderResponseEvent>): void;
 	on(event: "before_agent_start", handler: ExtensionHandler<BeforeAgentStartEvent, BeforeAgentStartEventResult>): void;

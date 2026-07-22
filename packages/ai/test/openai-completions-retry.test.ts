@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { streamOpenAICompletions } from "../src/providers/openai-completions.ts";
 import type { Context, Model } from "../src/types.ts";

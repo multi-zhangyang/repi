@@ -70,7 +70,6 @@ export function initializeRepiProfile(options: { repoRoot?: string; verbose?: bo
 	// playbooks dir would orphan (scoped agent uses projects/<cwd>/playbooks via
 	// memoryPlaybooksDir()). The scoped playbooks dir is created on demand by
 	// ensureRepiStorage when the recon extension inits with the cwd scope set.
-	mkdir(join(agentDir, "recon", "memory"));
 	mkdir(join(agentDir, "recon", "mission"));
 	mkdir(join(agentDir, "recon", "tools"));
 	for (const sub of [
@@ -105,7 +104,6 @@ export function initializeRepiProfile(options: { repoRoot?: string; verbose?: bo
 		agentDir,
 		join(agentDir, "sessions"),
 		join(agentDir, "recon"),
-		join(agentDir, "recon", "memory"),
 		join(agentDir, "recon", "evidence"),
 		join(agentDir, "recon", "mission"),
 		join(agentDir, "recon", "tools"),
@@ -145,39 +143,8 @@ export function initializeRepiProfile(options: { repoRoot?: string; verbose?: bo
 		reserveTokens: migratedLegacyReserveTokens ?? 16384,
 		keepRecentTokens: existingCompaction.keepRecentTokens ?? 36000,
 	};
-	const existingMemory =
-		settings.memory && typeof settings.memory === "object" && !Array.isArray(settings.memory)
-			? (settings.memory as Record<string, unknown>)
-			: {};
-	const migrateMemoryV1 = Number(existingMemory.schemaVersion ?? 0) < 2;
-	const legacyAutoDeposit =
-		migrateMemoryV1 && existingMemory.autoDeposit === false ? "high-value" : existingMemory.autoDeposit;
-	const legacyStartupDigest =
-		migrateMemoryV1 && existingMemory.startupDigest === "status" ? "scoped" : existingMemory.startupDigest;
-	const legacyScopePolicy =
-		migrateMemoryV1 && existingMemory.scopePolicy === "session"
-			? "mission+workspace+target"
-			: existingMemory.scopePolicy;
-	settings.memory = {
-		...existingMemory,
-		schemaVersion: 2,
-		mode: existingMemory.mode ?? "scoped",
-		autoRecall: existingMemory.autoRecall ?? true,
-		autoInject: existingMemory.autoInject ?? false,
-		rawAutoInject: existingMemory.rawAutoInject ?? false,
-		autoDeposit: legacyAutoDeposit ?? "high-value",
-		startupDigest: legacyStartupDigest ?? "scoped",
-		scopePolicy: legacyScopePolicy ?? "mission+workspace+target",
-		contextMemoryMode: existingMemory.contextMemoryMode ?? "scoped",
-		includeGlobalMemoryInContextPack: existingMemory.includeGlobalMemoryInContextPack ?? false,
-		activeRecall: existingMemory.activeRecall ?? false,
-		maxInjectedTokens: existingMemory.maxInjectedTokens ?? 1200,
-		startupBudgetTokens: existingMemory.startupBudgetTokens ?? 800,
-		contextPackBudgetTokens: existingMemory.contextPackBudgetTokens ?? 1200,
-		maxStartupItems: existingMemory.maxStartupItems ?? 5,
-		minRecallScore: existingMemory.minRecallScore ?? 0.35,
-		rawTranscriptRetention: existingMemory.rawTranscriptRetention ?? "external-only",
-	};
+	// Memory product subsystem removed — do not reintroduce settings.memory.
+	delete (settings as any).memory;
 	settings.branchSummary = {
 		reserveTokens: 24576,
 		skipPrompt: true,

@@ -6,6 +6,7 @@ import { resolvePath } from "../utils/paths.ts";
 import { AuthStorage } from "./auth-storage.ts";
 import type { SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { ModelRegistry } from "./model-registry.ts";
+import { ModelRuntime } from "./model-runtime.ts";
 import { DefaultResourceLoader, type DefaultResourceLoaderOptions, type ResourceLoader } from "./resource-loader.ts";
 import { type CreateAgentSessionOptions, type CreateAgentSessionResult, createAgentSession } from "./sdk.ts";
 import type { SessionManager } from "./session-manager.ts";
@@ -33,6 +34,8 @@ export interface AgentSessionRuntimeDiagnostic {
 export interface CreateAgentSessionServicesOptions {
 	cwd: string;
 	agentDir?: string;
+	/** Preferred Pi-aligned model/auth runtime. When set, drives authStorage+modelRegistry. */
+	modelRuntime?: ModelRuntime;
 	authStorage?: AuthStorage;
 	settingsManager?: SettingsManager;
 	modelRegistry?: ModelRegistry;
@@ -68,6 +71,8 @@ export interface CreateAgentSessionFromServicesOptions {
 export interface AgentSessionServices {
 	cwd: string;
 	agentDir: string;
+	/** Pi-aligned facade; preferred for new call sites. */
+	modelRuntime: ModelRuntime;
 	authStorage: AuthStorage;
 	settingsManager: SettingsManager;
 	modelRegistry: ModelRegistry;
@@ -133,9 +138,17 @@ export async function createAgentSessionServices(
 ): Promise<AgentSessionServices> {
 	const cwd = resolvePath(options.cwd);
 	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getAgentDir();
-	const authStorage = options.authStorage ?? AuthStorage.create(join(agentDir, "auth.json"));
 	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
-	const modelRegistry = options.modelRegistry ?? ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+	// Pi-aligned ModelRuntime is the preferred construction path; legacy options still work.
+	let modelRuntime = options.modelRuntime;
+	if (!modelRuntime) {
+		const authStorageSeed = options.authStorage ?? AuthStorage.create(join(agentDir, "auth.json"));
+		const modelRegistrySeed =
+			options.modelRegistry ?? ModelRegistry.create(authStorageSeed, join(agentDir, "models.json"));
+		modelRuntime = ModelRuntime.from(authStorageSeed, modelRegistrySeed);
+	}
+	const authStorage = modelRuntime.authStorage;
+	const modelRegistry = modelRuntime.modelRegistry;
 	const resourceLoader = new DefaultResourceLoader({
 		...(options.resourceLoaderOptions ?? {}),
 		cwd,
@@ -163,6 +176,7 @@ export async function createAgentSessionServices(
 	return {
 		cwd,
 		agentDir,
+		modelRuntime,
 		authStorage,
 		settingsManager,
 		modelRegistry,

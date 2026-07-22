@@ -87,7 +87,7 @@ describe("opt #217: silent-overflow terminal assistant gets a continuation steer
 		tempDir = join(tmpdir(), `pi-opt217-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(tempDir, { recursive: true });
 
-		model = getModel("anthropic", "claude-sonnet-4-5")!;
+		model = getModel("anthropic", "claude-sonnet-4-5")! as any;
 		const agent = new Agent({ initialState: { model, systemPrompt: "Test", tools: [] } });
 
 		sessionManager = SessionManager.inMemory();

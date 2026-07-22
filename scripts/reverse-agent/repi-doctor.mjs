@@ -669,14 +669,15 @@ const launchReadinessOk =
 const savedDefaultProvider = typeof settings?.defaultProvider === "string" ? settings.defaultProvider : undefined;
 const savedDefaultModel = typeof settings?.defaultModel === "string" ? settings.defaultModel : undefined;
 const legacyExtensions = legacyExtensionLayout();
-const scopedMemoryDefaultsOk =
-	memory.schemaVersion === 2 &&
-	memory.mode === "scoped" &&
-	memory.autoRecall === true &&
-	memory.autoDeposit === "high-value" &&
-	memory.startupDigest === "scoped" &&
-	memory.rawAutoInject === false;
-const globalMemoryLazyOk = scopedMemoryDefaultsOk;
+// Product memory subsystem removed: settings.memory must stay absent.
+const memoryProductRemovedOk =
+	memory == null ||
+	(typeof memory === "object" && Object.keys(memory).length === 0) ||
+	memory.enabled === false ||
+	memory.mode === "off" ||
+	memory.mode === "removed";
+const scopedMemoryDefaultsOk = memoryProductRemovedOk;
+const globalMemoryLazyOk = memoryProductRemovedOk;
 
 const checks = [
 	check("repo:root", existsSync(join(root, "package.json")) && existsSync(repiBin), `root=${root}`),
@@ -704,35 +705,12 @@ const checks = [
 	check("runtime:agent-dir", existsSync(agentDir), `agentDir=${agentDir}`, "run npm run install:repi"),
 	check("runtime:settings", Boolean(settings), `settings=${join(agentDir, "settings.json")}`, "run npm run install:repi"),
 	check(
-		"memory:scoped-defaults",
-		scopedMemoryDefaultsOk,
-		`memory=${JSON.stringify({ schemaVersion: memory.schemaVersion, mode: memory.mode, autoRecall: memory.autoRecall, autoDeposit: memory.autoDeposit, startupDigest: memory.startupDigest, rawAutoInject: memory.rawAutoInject })}`,
-		"run npm run install:repi or edit ~/.repi/agent/settings.json",
+		"memory:product-removed",
+		memoryProductRemovedOk,
+		`memory=${JSON.stringify(memory ?? null)} product=removed`,
+		"delete settings.memory; do not reintroduce the memory product subsystem",
 	),
-	check(
-		"memory:core-file",
-		existsSync(join(runtimeMemory, "core-memory.md")) || globalMemoryLazyOk,
-		`path=${join(runtimeMemory, "core-memory.md")} lazyScoped=${globalMemoryLazyOk}`,
-		"run npm run install:repi",
-	),
-	check(
-		"memory:project-file",
-		existsSync(join(runtimeMemory, "project-memory.md")) || globalMemoryLazyOk,
-		`path=${join(runtimeMemory, "project-memory.md")} lazyScoped=${globalMemoryLazyOk}`,
-		"run npm run install:repi",
-	),
-	check(
-		"memory:procedural-file",
-		existsSync(join(runtimeMemory, "procedural-memory.md")) || globalMemoryLazyOk,
-		`path=${join(runtimeMemory, "procedural-memory.md")} lazyScoped=${globalMemoryLazyOk}`,
-		"run npm run install:repi",
-	),
-	check(
-		"memory:event-store",
-		existsSync(join(runtimeMemory, "events.jsonl")) || globalMemoryLazyOk,
-		`events=${lineCount(join(runtimeMemory, "events.jsonl"))} lazyScoped=${globalMemoryLazyOk}`,
-		"run repi doctor --fix",
-	),
+	// memory product files are intentionally not required (product surface removed)
 	check(
 		"runtime:legacy-extension-layout",
 		legacyExtensions.clean,

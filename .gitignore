@@ -48,3 +48,6 @@ collect.sh
 packages/coding-agent/auth.json
 packages/coding-agent/settings.json
 packages/coding-agent/recon/
+
+# local agent temp
+.repi-tmp/

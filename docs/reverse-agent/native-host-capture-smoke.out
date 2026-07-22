@@ -1,0 +1,494 @@
+[repi-workdir] /root/.repi/agent/recon/runtime/native-runtime
+[native-env] file=/usr/bin/file readelf=/usr/bin/readelf objdump=/usr/bin/objdump gdb=/usr/bin/gdb checksec=/usr/bin/checksec r2=/usr/bin/r2 frida=/root/.local/bin/frida ldd=/usr/bin/ldd strings=/usr/bin/strings ROPgadget=/usr/local/bin/ROPgadget ropper= patchelf=
+[native-binary] target=/tmp/repi-vuln bytes=15992 sha256=9cf316894872f3e1e1283b69cd1861a878d8cdb2a162e48266ad3cd3af9f4c94 mode=755 file=ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=2b58c38e9e406d7cb7bf0d1a3cfaad77286f40c4, for GNU/Linux 3.2.0, not stripped
+[native-checksec] RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH	Symbols		FORTIFY	Fortified	Fortifiable	FILE
+[native-checksec] [33mPartial RELRO[m   [31mNo canary found[m   [31mNX disabled[m   [31mNo PIE       [m   [32mNo RPATH [m  [32mNo RUNPATH [m  [31m37 Symbols	[m  [31mNo[m	0		1		/tmp/repi-vuln
+[native-rop-pure] path=/tmp/repi-vuln bytes=15992 pure_python=1
+[native-rop-pure] gadget=ret count=10 first=0x37a
+[native-rop-pure] gadget=pop_rax_ret count=1 first=0x379
+[native-rop-pure] gadget=leave_ret count=1 first=0x1179
+[native-rop-pure] ret=10 pop_star=1
+[native-rop-pure] ok=1 pure_python=1
+summary.native_rop_pure=1
+[native-objdump-rop] pure_python=1 ret=10 note=byte_pattern_scan
+[native-rabin-info] arch     x86
+[native-rabin-info] baddr    0x400000
+[native-rabin-info] binsz    14008
+[native-rabin-info] bintype  elf
+[native-rabin-info] bits     64
+[native-rabin-info] canary   false
+[native-rabin-info] class    ELF64
+[native-rabin-info] compiler GCC: (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+[native-rabin-info] crypto   false
+[native-rabin-info] endian   little
+[native-rabin-info] havecode true
+[native-rabin-info] intrp    /lib64/ld-linux-x86-64.so.2
+[native-rabin-info] laddr    0x0
+[native-rabin-info] lang     c
+[native-rabin-info] linenum  true
+[native-rabin-info] lsyms    true
+[native-rabin-info] machine  AMD x86-64 architecture
+[native-rabin-info] nx       false
+[native-rabin-info] os       linux
+[native-rabin-info] pic      false
+[native-rabin-info] relocs   true
+[native-rabin-info] relro    partial
+[native-rabin-info] rpath    NONE
+[native-rabin-info] sanitize false
+[native-rabin-info] static   false
+[native-rabin-info] stripped false
+[native-rabin-info] subsys   linux
+[native-rabin-info] va       true
+[native-rabin-imports] [Imports]
+[native-rabin-imports] nth vaddr      bind   type   lib name
+[native-rabin-imports] ―――――――――――――――――――――――――――――――――――――
+[native-rabin-imports] 1   0x00000000 GLOBAL FUNC       __libc_start_main
+[native-rabin-imports] 2   0x00401050 GLOBAL FUNC       read
+[native-rabin-imports] 3   0x00000000 WEAK   NOTYPE     __gmon_start__
+[native-rabin-imports] 4   0x00401060 GLOBAL FUNC       setvbuf
+[native-rabin-imports] 
+[native-ropgadget] Gadgets information
+[native-ropgadget] ============================================================
+[native-ropgadget] 0x000000000040113d : pop rbp ; ret
+[native-ropgadget] 0x000000000040101a : ret
+[native-ropgadget] 
+[native-ropgadget] Unique gadgets found: 2
+[native-readelf-header] ELF Header:
+[native-readelf-header]   Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 
+[native-readelf-header]   Class:                             ELF64
+[native-readelf-header]   Data:                              2's complement, little endian
+[native-readelf-header]   Version:                           1 (current)
+[native-readelf-header]   OS/ABI:                            UNIX - System V
+[native-readelf-header]   ABI Version:                       0
+[native-readelf-header]   Type:                              EXEC (Executable file)
+[native-readelf-header]   Machine:                           Advanced Micro Devices X86-64
+[native-readelf-header]   Version:                           0x1
+[native-readelf-header]   Entry point address:               0x401070
+[native-readelf-header]   Start of program headers:          64 (bytes into file)
+[native-readelf-header]   Start of section headers:          14008 (bytes into file)
+[native-readelf-header]   Flags:                             0x0
+[native-readelf-header]   Size of this header:               64 (bytes)
+[native-readelf-header]   Size of program headers:           56 (bytes)
+[native-readelf-header]   Number of program headers:         13
+[native-readelf-header]   Size of section headers:           64 (bytes)
+[native-readelf-header]   Number of section headers:         31
+[native-readelf-header]   Section header string table index: 30
+[native-readelf-program]   INTERP         0x000318 0x0000000000400318 0x0000000000400318 0x00001c 0x00001c R   0x1
+[native-readelf-program]   LOAD           0x000000 0x0000000000400000 0x0000000000400000 0x000578 0x000578 R   0x1000
+[native-readelf-program]   LOAD           0x001000 0x0000000000401000 0x0000000000401000 0x0001bd 0x0001bd R E 0x1000
+[native-readelf-program]   LOAD           0x002000 0x0000000000402000 0x0000000000402000 0x000104 0x000104 R   0x1000
+[native-readelf-program]   LOAD           0x002df8 0x0000000000403df8 0x0000000000403df8 0x000228 0x000238 RW  0x1000
+[native-readelf-program]   GNU_STACK      0x000000 0x0000000000000000 0x0000000000000000 0x000000 0x000000 RWE 0x10
+[native-readelf-program]   GNU_RELRO      0x002df8 0x0000000000403df8 0x0000000000403df8 0x000208 0x000208 R   0x1
+[native-readelf-dynamic]  0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+[native-symbol] 0000000000000000      DF *UND*	0000000000000000 (GLIBC_2.2.5) read
+[native-disasm] 124:0000000000401156 <vuln>:
+[native-disasm] 138:000000000040117b <main>:
+[native-disasm] 148:  4011a1:	e8 b0 ff ff ff       	call   401156 <vuln>
+[native-ldd] 	linux-vdso.so.1 (0x00007ffdbcfee000)
+[native-ldd] 	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000075fa93200000)
+[native-ldd] 	/lib64/ld-linux-x86-64.so.2 (0x000075fa934fa000)
+[native-one-gadget] host=1 bin=/usr/local/bin/one_gadget
+[native-one-gadget] libc=/lib/x86_64-linux-gnu/libc.so.6
+[native-one-gadget] 0x583ec posix_spawn(rsp+0xc, "/bin/sh", 0, rbx, rsp+0x50, environ)
+[native-one-gadget] constraints:
+[native-one-gadget]   address rsp+0x68 is writable
+[native-one-gadget]   rsp & 0xf == 0
+[native-one-gadget]   rax == NULL || {"sh", rax, rip+0x17301e, r12, ...} is a valid argv
+[native-one-gadget]   rbx == NULL || (u16)[rbx] == NULL
+[native-one-gadget] 
+[native-one-gadget] 0x583f3 posix_spawn(rsp+0xc, "/bin/sh", 0, rbx, rsp+0x50, environ)
+[native-one-gadget] constraints:
+[native-one-gadget]   address rsp+0x68 is writable
+[native-one-gadget]   rsp & 0xf == 0
+[native-one-gadget]   rcx == NULL || {rcx, rax, rip+0x17301e, r12, ...} is a valid argv
+[native-one-gadget]   rbx == NULL || (u16)[rbx] == NULL
+[native-one-gadget] 
+[native-one-gadget] 0xef4ce execve("/bin/sh", rbp-0x50, r12)
+[native-one-gadget] constraints:
+[native-one-gadget]   address rbp-0x48 is writable
+[native-one-gadget]   rbx == NULL || {"/bin/sh", rbx, NULL} is a valid argv
+[native-one-gadget]   [r12] == NULL || r12 == NULL || r12 is a valid envp
+[native-one-gadget] 
+[native-one-gadget] 0xef52b execve("/bin/sh", rbp-0x50, [rbp-0x78])
+[native-one-gadget] constraints:
+[native-one-gadget]   address rbp-0x50 is writable
+[native-one-gadget]   rax == NULL || {"/bin/sh", rax, NULL} is a valid argv
+[native-one-gadget]   [[rbp-0x78]] == NULL || [rbp-0x78] == NULL || [rbp-0x78] is a valid envp
+[native-one-gadget] ok=1 gadgets_or_notes=6
+[native-seccomp] host=1 bin=/usr/local/bin/seccomp-tools
+[native-seccomp-disasm]  line  CODE  JT   JF      K
+[native-seccomp-disasm] =================================
+[native-seccomp-disasm]  0000: 0x20 0x00 0x00 0x00000004  A = arch
+[native-seccomp-disasm]  0001: 0x15 0x00 0x07 0xc000003e  if (A != ARCH_X86_64) goto 0009
+[native-seccomp-disasm]  0002: 0x20 0x00 0x00 0x00000000  A = sys_number
+[native-seccomp-disasm]  0003: 0x15 0x04 0x00 0x00000002  if (A == open) goto 0008
+[native-seccomp-disasm]  0004: 0x15 0x03 0x00 0x00000000  if (A == read) goto 0008
+[native-seccomp-disasm]  0005: 0x15 0x02 0x00 0x00000001  if (A == write) goto 0008
+[native-seccomp-disasm]  0006: 0x15 0x01 0x00 0x000000e7  if (A == exit_group) goto 0008
+[native-seccomp-disasm]  0007: 0x06 0x00 0x00 0x00050001  return ERRNO(1)
+[native-seccomp-disasm]  0008: 0x06 0x00 0x00 0x7fff0000  return ALLOW
+[native-seccomp-disasm]  0009: 0x06 0x00 0x00 0x00000000  return KILL
+[native-seccomp-emu] allow_open= 0009: 0x06 0x00 0x00 0x00000000  return KILL
+[native-seccomp-emu] allow_open=
+[native-seccomp-emu] allow_open=return ALLOW at line 0008
+[native-seccomp-emu] deny_execve= 0009: 0x06 0x00 0x00 0x00000000  return KILL
+[native-seccomp-emu] deny_execve=
+[native-seccomp-emu] deny_execve=return ERRNO(1) at line 0007
+[native-seccomp] ok=1 mode=asm-disasm-emu rules=open,read,write,exit_group
+summary.seccomp_filter=1
+[native-symbolic] path=/tmp/repi-vuln bytes=15992
+[native-symbolic] unicorn=1
+[native-symbolic] elf64=1 entry=0x401070 loads=4 text_va=0x401000 text_off=0x1000 text_sz=445
+[native-symbolic] surface branches=6 cmp_ish=8 calls=4
+[native-symbolic] pure_python_surface=1
+[native-symbolic] unicorn_emu=1 entry=0x401070 stop_rip=0x401083 mapped_pages=5
+[native-symbolic] ok=1 mode=unicorn+surface
+[native-symbolic-r2] host=1 bin=/usr/bin/r2
+[native-symbolic-r2] 12
+[native-symbolic-r2] address            size  nbbs edges    cc cost          min bound range max bound          calls locals args xref frame name
+[native-symbolic-r2] ================== ==== ===== ===== ===== ==== ================== ===== ================== ===== ====== ==== ==== ===== ====
+[native-symbolic-r2] 0x0000000000401070   38     1     0     1   16 0x0000000000401070    38 0x0000000000401096     1    0      1    0     8 entry0
+[native-symbolic-r2] 0x00000000004010b0   31     4     4     4   14 0x00000000004010b0    33 0x00000000004010d1     0    0      0    1     0 sym.deregister_tm_clones
+[native-symbolic-r2] 0x00000000004010e0   49     4     4     4   19 0x00000000004010e0    49 0x0000000000401111     0    0      0    1     0 sym.register_tm_clones
+[native-symbolic-r2] 0x0000000000401120   32     3     2     3   17 0x0000000000401120    33 0x0000000000401141     1    0      0    0     8 sym.__do_global_dtors_aux
+[native-symbolic-r2] 0x0000000000401150    6     1     1     0    3 0x0000000000401150     6 0x0000000000401156     0    0      0    0     0 entry.init0
+[native-symbolic-r2] 0x0000000000401156   37     1     0     1   16 0x0000000000401156    37 0x000000000040117b     1    1      0    1    72 sym.vuln
+[native-symbolic-r2] 0x0000000000401050   10     1     0     1    4 0x0000000000401050    10 0x000000000040105a     0    0      0    1     0 sym.imp.read
+[native-symbolic-r2] 0x00000000004011b0   13     1     0     1    6 0x00000000004011b0    13 0x00000000004011bd     0    0      0    0     8 sym._fini
+[native-symbolic-r2] 0x00000000004010a0    5     1     0     1    4 0x00000000004010a0     5 0x00000000004010a5     0    0      0    0     0 sym._dl_relocate_static_pie
+[native-symbolic-r2] 0x000000000040117b   50     1     0     1   19 0x000000000040117b    50 0x00000000004011ad     2    0      0    1     8 main
+[native-symbolic-r2] 0x0000000000401060   10     1     0     1    4 0x0000000000401060    10 0x000000000040106a     0    0      0    1     0 sym.imp.setvbuf
+[native-symbolic-r2] 0x0000000000401000   27     3     3     2   13 0x0000000000401000    27 0x000000000040101b     0    0      0    0     8 sym._init
+[native-symbolic-r2] funcs=12 bbs=14 edges=20 max_cc=19
+[native-symbolic-r2-sym] 11  ---------- 0x00000000 LOCAL  FILE   0        repi-vuln.c
+[native-symbolic-r2-sym] 21  0x00001156 0x00401156 GLOBAL FUNC   37       vuln
+[native-symbolic-r2-sym] 33  0x0000117b 0x0040117b GLOBAL FUNC   50       main
+[native-symbolic-r2-sym] 1   ---------- 0x00000000 GLOBAL FUNC   16       imp.__libc_start_main
+[native-symbolic-r2-pdf]             ; DATA XREF from entry0 @ 0x401088
+[native-symbolic-r2-pdf] ┌ 50: int main (int argc, char **argv, char **envp);
+[native-symbolic-r2-pdf] │           0x0040117b      f30f1efa       endbr64
+[native-symbolic-r2-pdf] │           0x0040117f      55             push rbp
+[native-symbolic-r2-pdf] │           0x00401180      4889e5         mov rbp, rsp
+[native-symbolic-r2-pdf] │           0x00401183      488b05962e00.  mov rax, qword [obj.stdout] ; obj.__TMC_END__
+[native-symbolic-r2-pdf] │                                                                      ; [0x404020:8]=0
+[native-symbolic-r2-pdf] │           0x0040118a      b900000000     mov ecx, 0                  ; size_t size
+[native-symbolic-r2-pdf] │           0x0040118f      ba02000000     mov edx, 2                  ; int mode
+[native-symbolic-r2-pdf] │           0x00401194      be00000000     mov esi, 0                  ; char *buf
+[native-symbolic-r2-pdf] │           0x00401199      4889c7         mov rdi, rax                ; FILE*stream
+[native-symbolic-r2-pdf] │           0x0040119c      e8bffeffff     call sym.imp.setvbuf        ; int setvbuf(FILE*stream, char *buf, int mode, size_t size)
+[native-symbolic-r2-pdf] │           0x004011a1      e8b0ffffff     call sym.vuln
+[native-symbolic-r2-pdf] │           0x004011a6      b800000000     mov eax, 0
+[native-symbolic-r2-pdf] │           0x004011ab      5d             pop rbp
+[native-symbolic-r2-pdf] └           0x004011ac      c3             ret
+[native-symbolic-r2] pdf_fn=main branchish_or_call_lines=2
+[native-symbolic-r2] ok=1
+[native-symbolic-z3] ok=1 sat=1 x=2863313168
+[native-symbolic-angr] host=1 python=/opt/repi-tools/angr-venv/bin/python
+[native-symbolic-angr] path=/tmp/repi-vuln bytes=15992
+[native-symbolic-angr] version=9.2.123
+[native-symbolic-angr] unicorn_plugin=1 version=2.0.1
+[native-symbolic-angr] entry=0x401070 arch=<Arch AMD64 (LE)>
+[native-symbolic-angr] cfg_funcs=30
+[native-symbolic-angr-func] name=_init addr=0x401000 size=27
+[native-symbolic-angr-func] name=sub_401020 addr=0x401020 size=12
+[native-symbolic-angr-func] name=sub_40102c addr=0x40102c size=4
+[native-symbolic-angr-func] name=sub_401030 addr=0x401030 size=14
+[native-symbolic-angr-func] name=sub_40103e addr=0x40103e size=2
+[native-symbolic-angr-func] name=sub_401040 addr=0x401040 size=14
+[native-symbolic-angr-func] name=sub_40104e addr=0x40104e size=2
+[native-symbolic-angr-func] name=read addr=0x401050 size=10
+[native-symbolic-angr-func] name=vuln addr=0x401156 size=37
+[native-symbolic-angr-func] name=main addr=0x40117b size=50
+[native-symbolic-angr-func] name=__libc_start_main addr=0x500000 size=0
+[native-symbolic-angr-func] name=read addr=0x500010 size=0
+[native-symbolic-angr] step_active=1 deadended=0 errored=0
+[native-symbolic-angr] claripy_sat=1 sample=2863313168
+[native-symbolic-angr] ok=1
+[native-symbolic-qiling] host=1 python=/opt/repi-tools/qiling-venv/bin/python
+[native-symbolic-qiling] path=/tmp/repi-vuln bytes=15992
+[native-symbolic-qiling] version=1.4.6
+[native-symbolic-qiling] arch=102 os=201 entry=0x401070
+[native-symbolic-qiling] emu=1 start=0x401070 stop_pc=0x401083 count=8
+[native-symbolic-qiling-map] (196608, 200704, 'rwx', '[GDT]', '')
+[native-symbolic-qiling-map] (4194304, 4198400, 'r--', 'repi-vuln', '/tmp/repi-vuln')
+[native-symbolic-qiling-map] (4198400, 4202496, 'r-x', 'repi-vuln', '/tmp/repi-vuln')
+[native-symbolic-qiling-map] (4202496, 4206592, 'r--', 'repi-vuln', '/tmp/repi-vuln')
+[native-symbolic-qiling-map] (4206592, 4214784, 'rw-', 'repi-vuln', '/tmp/repi-vuln')
+[native-symbolic-qiling-map] (4214784, 4222976, 'rwx', '[hook_mem]', '')
+[native-symbolic-qiling-map] (140737351864320, 140737351868416, 'r--', 'ld-linux-x86-64.so.2', '/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2')
+[native-symbolic-qiling-map] (140737351868416, 140737352044544, 'r-x', 'ld-linux-x86-64.so.2', '/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2')
+[native-symbolic-qiling-map] (140737352044544, 140737352085504, 'r--', 'ld-linux-x86-64.so.2', '/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2')
+[native-symbolic-qiling-map] (140737352085504, 140737352101888, 'rw-', 'ld-linux-x86-64.so.2', '/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2')
+[native-symbolic-qiling-map] (140737488216064, 140737488412672, 'rwx', '[stack]', '')
+[native-symbolic-qiling-map] (18446744073699065856, 18446744073699069952, 'rwx', '[vsyscall]', '')
+[native-symbolic-qiling] maps=12
+[native-symbolic-qiling] ok=1
+[native-rizin] host=1 bin=/opt/repi-tools/rizin/rz-bin
+[native-rizin] rz-bin 0.7.4 @ linux-x86-64
+[native-rizin-info] [Info]
+[native-rizin-info] arch     x86
+[native-rizin-info] cpu      N/A
+[native-rizin-info] baddr    0x00400000
+[native-rizin-info] binsz    0x000036b8
+[native-rizin-info] bintype  elf
+[native-rizin-info] bits     64
+[native-rizin-info] class    ELF64
+[native-rizin-info] compiler GCC: (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+[native-rizin-info] dbg_file N/A
+[native-rizin-info] endian   LE
+[native-rizin-info] hdr.csum N/A
+[native-rizin-info] guid     N/A
+[native-rizin-info] intrp    /lib64/ld-linux-x86-64.so.2
+[native-rizin-info] laddr    0x00000000
+[native-rizin-info] lang     c
+[native-rizin-info] machine  AMD x86-64 architecture
+[native-rizin-info] maxopsz  16
+[native-rizin-info] minopsz  1
+[native-rizin-info] os       linux
+[native-rizin-info] cc       N/A
+[native-rizin-info] pcalign  0
+[native-rizin-info] relro    partial
+[native-rizin-info] rpath    NONE
+[native-rizin-info] subsys   linux
+[native-rizin-info] stripped false
+[native-rizin-info] crypto   false
+[native-rizin-info] havecode true
+[native-rizin-info] va       true
+[native-rizin-info] sanitiz  false
+[native-rizin-info] static   false
+[native-rizin-info] linenum  true
+[native-rizin-info] lsyms    true
+[native-rizin-info] canary   false
+[native-rizin-info] PIE      false
+[native-rizin-info] RELROCS  true
+[native-rizin-info] NX       false
+[native-rizin-info] 
+[native-rizin-exports] [Entries]
+[native-rizin-exports] vaddr      paddr      hvaddr     haddr      type    
+[native-rizin-exports] ----------------------------------------------------
+[native-rizin-exports] 0x00401070 0x00001070 0x00400018 0x00000018 program
+[native-rizin-exports] 
+[native-rizin-imports] [Imports]
+[native-rizin-imports] nth vaddr      bind   type   lib name              
+[native-rizin-imports] ---------------------------------------------------
+[native-rizin-imports] 1   ---------- GLOBAL FUNC       __libc_start_main
+[native-rizin-imports] 2   0x00401050 GLOBAL FUNC       read
+[native-rizin-imports] 3   ---------- WEAK   NOTYPE     __gmon_start__
+[native-rizin-imports] 4   0x00401060 GLOBAL FUNC       setvbuf
+[native-rizin-imports] 
+[native-rizin-strings] [Strings]
+[native-rizin-strings] nth paddr vaddr len size section type string 
+[native-rizin-strings] ---------------------------------------------
+[native-rizin-strings] 
+[native-rizin-sections] [Sections]
+[native-rizin-sections] paddr      size  vaddr      vsize align perm name               type       flags         
+[native-rizin-sections] -----------------------------------------------------------------------------------------
+[native-rizin-sections] 0x00000000 0x0   ---------- 0x0   0x0   ----                    NULL       
+[native-rizin-sections] 0x00000318 0x1c  0x00400318 0x1c  0x0   -r-- .interp            PROGBITS   alloc
+[native-rizin-sections] 0x00000338 0x30  0x00400338 0x30  0x0   -r-- .note.gnu.property NOTE       alloc
+[native-rizin-sections] 0x00000368 0x24  0x00400368 0x24  0x0   -r-- .note.gnu.build-id NOTE       alloc
+[native-rizin-sections] 0x0000038c 0x20  0x0040038c 0x20  0x0   -r-- .note.ABI-tag      NOTE       alloc
+[native-rizin-sections] 0x000003b0 0x24  0x004003b0 0x24  0x0   -r-- .gnu.hash          GNU_HASH   alloc
+[native-rizin-sections] 0x000003d8 0x90  0x004003d8 0x90  0x0   -r-- .dynsym            DYNSYM     alloc
+[native-rizin-sections] 0x00000468 0x57  0x00400468 0x57  0x0   -r-- .dynstr            STRTAB     alloc
+[native-rizin-sections] 0x000004c0 0xc   0x004004c0 0xc   0x0   -r-- .gnu.version       VERSYM     alloc
+[native-rizin-sections] 0x000004d0 0x30  0x004004d0 0x30  0x0   -r-- .gnu.version_r     VERNEED    alloc
+[native-rizin-sections] 0x00000500 0x48  0x00400500 0x48  0x0   -r-- .rela.dyn          RELA       alloc
+[native-rizin-sections] 0x00000548 0x30  0x00400548 0x30  0x0   -r-- .rela.plt          RELA       alloc,info
+[native-rizin-sections] 0x00001000 0x1b  0x00401000 0x1b  0x0   -r-x .init              PROGBITS   alloc,execute
+[native-rizin-sections] 0x00001020 0x30  0x00401020 0x30  0x0   -r-x .plt               PROGBITS   alloc,execute
+[native-rizin-sections] 0x00001050 0x20  0x00401050 0x20  0x0   -r-x .plt.sec           PROGBITS   alloc,execute
+[native-rizin-sections] 0x00001070 0x13d 0x00401070 0x13d 0x0   -r-x .text              PROGBITS   alloc,execute
+[native-rizin-sections] 0x000011b0 0xd   0x004011b0 0xd   0x0   -r-x .fini              PROGBITS   alloc,execute
+[native-rizin-sections] 0x00002000 0x4   0x00402000 0x4   0x0   -r-- .rodata            PROGBITS   alloc,merge
+[native-rizin-sections] 0x00002004 0x3c  0x00402004 0x3c  0x0   -r-- .eh_frame_hdr      PROGBITS   alloc
+[native-rizin-sections] 0x00002040 0xc4  0x00402040 0xc4  0x0   -r-- .eh_frame          PROGBITS   alloc
+[native-rizin-sections] 0x00002df8 0x8   0x00403df8 0x8   0x0   -rw- .init_array        INIT_ARRAY write,alloc
+[native-rizin-sections] 0x00002e00 0x8   0x00403e00 0x8   0x0   -rw- .fini_array        FINI_ARRAY write,alloc
+[native-rizin-sections] 0x00002e08 0x1d0 0x00403e08 0x1d0 0x0   -rw- .dynamic           DYNAMIC    write,alloc
+[native-rizin-sections] 0x00002fd8 0x10  0x00403fd8 0x10  0x0   -rw- .got               PROGBITS   write,alloc
+[native-rizin-sections] 0x00002fe8 0x28  0x00403fe8 0x28  0x0   -rw- .got.plt           PROGBITS   write,alloc
+[native-rizin-sections] 0x00003010 0x10  0x00404010 0x10  0x0   -rw- .data              PROGBITS   write,alloc
+[native-rizin-sections] 0x00003020 0x0   0x00404020 0x10  0x0   -rw- .bss               NOBITS     write,alloc
+[native-rizin-libs] [Libs]
+[native-rizin-libs] library   
+[native-rizin-libs] ----------
+[native-rizin-libs] libc.so.6
+[native-rizin-libs] 
+[native-rizin-mitigation] relro=partial
+[native-rizin-mitigation] static=false
+[native-rizin-mitigation] canary=false
+[native-rizin] ok=1
+[native-rizin-find] host=1 bin=/opt/repi-tools/rizin/rz-find
+[native-rizin-find] symbol=main paddr: 0x0000117b vaddr: 0x0040117b type: FUNC main
+[native-rizin-find] symbol=_start paddr: 0x00001070 vaddr: 0x00401070 type: FUNC _start
+[native-rizin-find] import=read ordinal: 2 read
+[native-rizin-find] string setvbuf
+[native-rizin-find] string __libc_start_main
+[native-rizin-find] string libc.so.6
+[native-rizin-find] string GLIBC_2.2.5
+[native-rizin-find] string GLIBC_2.34
+[native-rizin-find] string __libc_start_main@GLIBC_2.34
+[native-rizin-find] string stdout@GLIBC_2.2.5
+[native-rizin-find] string read@GLIBC_2.2.5
+[native-rizin-find] string setvbuf@GLIBC_2.2.5
+[native-rizin-find] ok=1 pure_python=0
+[native-rizin-asm] host=1 bin=/opt/repi-tools/rizin/rz-asm
+[native-rizin-asm] assemble=90c3
+[native-rizin-asm] disasm=nop;ret;
+[native-rizin-asm] ok=1 pure_python=0
+[native-rizin-hash] host=1 bin=/opt/repi-tools/rizin/rz-hash
+[native-rizin-hash] /tmp/repi-vuln: 0x00000000-0x00003e78 md5: 5d93401981cc90c824fe136072e052c2
+[native-rizin-hash] /tmp/repi-vuln: 0x00000000-0x00003e78 sha1: 9d3f0d1bdbe453c68e3428a572db8f99c50ea352
+[native-rizin-hash] /tmp/repi-vuln: 0x00000000-0x00003e78 sha256: 9cf316894872f3e1e1283b69cd1861a878d8cdb2a162e48266ad3cd3af9f4c94
+[native-rizin-hash] ok=1 pure_python=0
+[native-rizin-suite] ok=1 find=1 asm=1 hash=1 pure_python=0
+[repi-workdir] /root/.repi/agent/recon/runtime/native-runtime
+[native-gdb-script] /root/.repi/agent/recon/runtime/native-runtime/native.gdb breakpoints=main,strcmp,strncmp,memcmp,strstr run_env=REPI_NATIVE_RUN
+[native-gdb-info] Symbols from "/tmp/repi-vuln".
+[native-gdb-info] Local exec file:
+[native-gdb-info] 	`/tmp/repi-vuln', file type elf64-x86-64.
+[native-gdb-info] 	Entry point: 0x401070
+[native-gdb-info] 	0x0000000000400318 - 0x0000000000400334 is .interp
+[native-gdb-info] 	0x0000000000400338 - 0x0000000000400368 is .note.gnu.property
+[native-gdb-info] 	0x0000000000400368 - 0x000000000040038c is .note.gnu.build-id
+[native-gdb-info] 	0x000000000040038c - 0x00000000004003ac is .note.ABI-tag
+[native-gdb-info] 	0x00000000004003b0 - 0x00000000004003d4 is .gnu.hash
+[native-gdb-info] 	0x00000000004003d8 - 0x0000000000400468 is .dynsym
+[native-gdb-info] 	0x0000000000400468 - 0x00000000004004bf is .dynstr
+[native-gdb-info] 	0x00000000004004c0 - 0x00000000004004cc is .gnu.version
+[native-gdb-info] 	0x00000000004004d0 - 0x0000000000400500 is .gnu.version_r
+[native-gdb-info] 	0x0000000000400500 - 0x0000000000400548 is .rela.dyn
+[native-gdb-info] 	0x0000000000400548 - 0x0000000000400578 is .rela.plt
+[native-gdb-info] 	0x0000000000401000 - 0x000000000040101b is .init
+[native-gdb-info] 	0x0000000000401020 - 0x0000000000401050 is .plt
+[native-gdb-info] 	0x0000000000401050 - 0x0000000000401070 is .plt.sec
+[native-gdb-info] 	0x0000000000401070 - 0x00000000004011ad is .text
+[native-gdb-info] 	0x00000000004011b0 - 0x00000000004011bd is .fini
+[native-gdb-info] 	0x0000000000402000 - 0x0000000000402004 is .rodata
+[native-gdb-info] 	0x0000000000402004 - 0x0000000000402040 is .eh_frame_hdr
+[native-gdb-info] 	0x0000000000402040 - 0x0000000000402104 is .eh_frame
+[native-gdb-info] 	0x0000000000403df8 - 0x0000000000403e00 is .init_array
+[native-gdb-info] 	0x0000000000403e00 - 0x0000000000403e08 is .fini_array
+[native-gdb-info] 	0x0000000000403e08 - 0x0000000000403fd8 is .dynamic
+[native-gdb-info] 	0x0000000000403fd8 - 0x0000000000403fe8 is .got
+[native-gdb-info] 	0x0000000000403fe8 - 0x0000000000404010 is .got.plt
+[native-gdb-info] 	0x0000000000404010 - 0x0000000000404020 is .data
+[native-gdb-info] 	0x0000000000404020 - 0x0000000000404030 is .bss
+[native-gdb-info] All functions matching regular expression "main":
+[native-gdb-info] 
+[native-gdb-info] Non-debugging symbols:
+[native-gdb-info] 0x000000000040117b  main
+[native-gdb-info] All functions matching regular expression "strcmp":
+[native-gdb-info] All functions matching regular expression "system":
+[native-gdb-info] Dump of assembler code for function main:
+[native-gdb-info]    0x000000000040117b <+0>:	endbr64
+[native-gdb-info]    0x000000000040117f <+4>:	push   %rbp
+[native-gdb-info]    0x0000000000401180 <+5>:	mov    %rsp,%rbp
+[native-gdb-info]    0x0000000000401183 <+8>:	mov    0x2e96(%rip),%rax        # 0x404020 <stdout@GLIBC_2.2.5>
+[native-gdb-info]    0x000000000040118a <+15>:	mov    $0x0,%ecx
+[native-gdb-info]    0x000000000040118f <+20>:	mov    $0x2,%edx
+[native-gdb-info]    0x0000000000401194 <+25>:	mov    $0x0,%esi
+[native-gdb-info]    0x0000000000401199 <+30>:	mov    %rax,%rdi
+[native-gdb-info]    0x000000000040119c <+33>:	call   0x401060 <setvbuf@plt>
+[native-gdb-info]    0x00000000004011a1 <+38>:	call   0x401156 <vuln>
+[native-gdb-info]    0x00000000004011a6 <+43>:	mov    $0x0,%eax
+[native-gdb-info]    0x00000000004011ab <+48>:	pop    %rbp
+[native-gdb-info]    0x00000000004011ac <+49>:	ret
+[native-gdb-info] End of assembler dump.
+[native-gdb-info] host=1 static_batch=1 no_run=1
+[native-gdb] host=1 static_info=1 note=run_gated set_REPI_NATIVE_RUN=1 target=/tmp/repi-vuln
+[native-pwn-scaffold] /root/.repi/agent/recon/runtime/native-runtime/pwn-scaffold.py target=/tmp/repi-vuln cyclic=240 rop=leak-libc-verifier
+[native-r2] arch     x86
+[native-r2] baddr    0x400000
+[native-r2] binsz    14008
+[native-r2] bintype  elf
+[native-r2] bits     64
+[native-r2] canary   false
+[native-r2] class    ELF64
+[native-r2] compiler GCC: (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+[native-r2] crypto   false
+[native-r2] endian   little
+[native-r2] havecode true
+[native-r2] intrp    /lib64/ld-linux-x86-64.so.2
+[native-r2] laddr    0x0
+[native-r2] lang     c
+[native-r2] linenum  true
+[native-r2] lsyms    true
+[native-r2] machine  AMD x86-64 architecture
+[native-r2] nx       false
+[native-r2] os       linux
+[native-r2] pic      false
+[native-r2] relocs   true
+[native-r2] relro    partial
+[native-r2] rpath    NONE
+[native-r2] sanitize false
+[native-r2] static   false
+[native-r2] stripped false
+[native-r2] subsys   linux
+[native-r2] va       true
+[native-r2-mitigation] nx=false
+[native-r2-mitigation] pie=false
+[native-r2-mitigation] canary=false
+[native-r2-mitigation] relro=partial
+[native-objdump-rop]   40101a:	c3                   	ret
+[native-objdump-rop]   401079:	5e                   	pop    %rsi
+[native-objdump-rop]   4010a4:	c3                   	ret
+[native-objdump-rop]   4010d0:	c3                   	ret
+[native-objdump-rop]   401110:	c3                   	ret
+[native-objdump-rop]   40113d:	5d                   	pop    %rbp
+[native-objdump-rop]   40113e:	c3                   	ret
+[native-objdump-rop]   401140:	c3                   	ret
+[native-objdump-rop]   40117a:	c3                   	ret
+[native-objdump-rop]   4011ab:	5d                   	pop    %rbp
+[native-objdump-rop]   4011ac:	c3                   	ret
+[native-objdump-rop]   4011bc:	c3                   	ret
+[native-ropgadget] Gadgets information
+[native-ropgadget] ============================================================
+[native-ropgadget] 0x000000000040113d : pop rbp ; ret
+[native-ropgadget] 0x000000000040101a : ret
+[native-ropgadget] 
+[native-ropgadget] Unique gadgets found: 2
+[native-frida] host=1 version=17.15.5
+[native-frida-target] /tmp/repi-vuln: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=2b58c38e9e406d7cb7bf0d1a3cfaad77286f40c4, for GNU/Linux 3.2.0, not stripped
+[native-dyn-probe] exit=139 timeout_or_signal=signal_11 cyclic_len=240
+[native-dyn-output] timeout: the monitored command dumped core
+[native-dyn-probe] crash=1
+[native-dyn-gdb] Program received signal SIGSEGV, Segmentation fault.
+[native-dyn-gdb] [native-dyn-stack] RSP0=0x3931303038313030
+[native-dyn-gdb] 0x7fffffffd588:	0x3931303038313030	0x3132303030323030
+[native-dyn-offset] exact=72 method=gdb-rsp0-le reg=0x3931303038313030
+summary.dyn_exact_offset=72
+[native-dyn-probe] ok=1 dyn=1 crash=1 gdb=1
+[native-proof-capture] binary=1 checksec=1 rop=1 symbols=1 r2=1 gdb=1 gdb_info=1 one_gadget=1 seccomp=1 frida=1 dyn=1 crash=1 symbolic=1 unicorn=1 unicorn_emu=1 z3=1 angr=1 qiling=1 rizin_suite=1
+[native-proof-capture] proof.exit=runtime_capture_strong bind_ready=true
+summary.proof_exit=runtime_capture_strong
+summary.bind_ready=true
+summary.frida_host=1
+summary.dyn_probe=1
+summary.dyn_crash=1
+summary.symbolic=1
+summary.unicorn=1
+summary.unicorn_emu=1
+summary.z3=1
+summary.angr=1
+summary.qiling=1
+summary.rizin_suite=1
+[native-technique] re_techniques show rev-checksec-fingerprint-first | rev-rop-chain-ret2csu | pwn-orw-seccomp-bypass | native-angr-symbolic-branch
+[native-pwn-scaffold] [native-pwn-scaffold] arch=amd64 entry=0x401070 bits=64 path=/tmp/repi-vuln
+[native-pwn-scaffold] [native-pwn-scaffold] checksec nx=None pie=False canary=False relro=Partial
+[native-pwn-scaffold] [native-pwn-scaffold] cyclic_pattern=6161616162616161636161616461616165616161666161616761616168616161696161616a6161616b6161616c6161616d6161616e6161616f616161
+[native-pwn-scaffold] [native-pwn-scaffold] symbol main=0x40117b
+[native-pwn-scaffold] [native-pwn-scaffold] symbol read=0x401054
+[native-pwn-scaffold] [native-pwn-scaffold] symbol __libc_start_main=0x403fd8
+[native-pwn-scaffold] [native-pwn-scaffold] gadget 0x401017 ['add esp, 8', 'ret']
+[native-pwn-scaffold] [native-pwn-scaffold] gadget 0x401016 ['add rsp, 8', 'ret']
+[native-pwn-scaffold] [native-pwn-scaffold] gadget 0x401179 ['leave', 'ret']
+[native-pwn-scaffold] [native-pwn-scaffold] gadget 0x40113d ['pop rbp', 'ret']
+[native-pwn-scaffold] [native-pwn-scaffold] gadget 0x40101a ['ret']
+[native-pwn-scaffold] [native-pwn-scaffold] next=crash_offset_from_cyclic -> leak_libc_via_puts/write -> ret2csu/one_gadget/ORW -> local verifier
+[native-pwn-scaffold] [native-ret2-plan] ret2csu=1 one_gadget=1 ret2libc=1 pure_python_note=1
+[native-pwn-scaffold] [native-pwn-scaffold] technique_hints=rev-checksec-fingerprint-first|rev-rop-chain-ret2csu|pwn-orw-seccomp-bypass|native-angr-symbolic-branch|native-ret2libc-or-one-gadget
+
+

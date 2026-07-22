@@ -1,0 +1,10 @@
+/** REPI tool bootstrap catalog: general. */
+import { REPI_TOOL_BOOTSTRAP_CATALOG_GENERAL_CORE } from "./general-core.ts";
+import { REPI_TOOL_BOOTSTRAP_CATALOG_GENERAL_IDENTITY } from "./general-identity.ts";
+import { REPI_TOOL_BOOTSTRAP_CATALOG_GENERAL_WEB } from "./general-web.ts";
+
+export const REPI_TOOL_BOOTSTRAP_CATALOG_GENERAL = [
+	...REPI_TOOL_BOOTSTRAP_CATALOG_GENERAL_CORE,
+	...REPI_TOOL_BOOTSTRAP_CATALOG_GENERAL_IDENTITY,
+	...REPI_TOOL_BOOTSTRAP_CATALOG_GENERAL_WEB,
+] as const;

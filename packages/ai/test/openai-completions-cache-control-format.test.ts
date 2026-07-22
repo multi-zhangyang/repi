@@ -1,3 +1,4 @@
+// @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getModel } from "../src/models.ts";
@@ -153,7 +154,7 @@ describe("openai-completions cacheControlFormat", () => {
 	});
 
 	it("does not infer Anthropic-style cache markers from OpenRouter model ids", async () => {
-		const model = getModel("openrouter", "anthropic/claude-sonnet-4");
+		const model = getModel("openrouter", "anthropic/claude-sonnet-4")!;
 		const params = await capturePayload(model);
 		const instructionMessage = getInstructionMessage(params);
 
@@ -164,7 +165,7 @@ describe("openai-completions cacheControlFormat", () => {
 
 	it("applies Anthropic-style cache markers for OpenRouter models when compat opts in", async () => {
 		const model = {
-			...getModel("openrouter", "anthropic/claude-sonnet-4"),
+			...getModel("openrouter", "anthropic/claude-sonnet-4")!,
 			compat: {
 				cacheControlFormat: "anthropic" as const,
 			},

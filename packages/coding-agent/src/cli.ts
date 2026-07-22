@@ -104,13 +104,13 @@ async function runFastMetadataCommand(cliArgs: string[]): Promise<boolean> {
 		return true;
 	}
 	if (parsed.listModels !== undefined) {
-		const [{ listModels }, { AuthStorage }, { ModelRegistry }] = await Promise.all([
+		const [{ listModels }, { ModelRuntime }] = await Promise.all([
 			import("./cli/list-models.ts"),
-			import("./core/auth-storage.ts"),
-			import("./core/model-registry.ts"),
+			import("./core/model-runtime.ts"),
 		]);
 		const searchPattern = typeof parsed.listModels === "string" ? parsed.listModels : undefined;
-		await listModels(ModelRegistry.create(AuthStorage.create()), searchPattern);
+		// Pi-aligned ModelRuntime facade; listModels still consumes ModelRegistry.
+		await listModels(ModelRuntime.create().getRegistry(), searchPattern);
 		return true;
 	}
 	return false;

@@ -1,0 +1,59 @@
+[web-authz-env] node=/usr/bin/node curl=/usr/bin/curl jq=/usr/bin/jq python3=/usr/bin/python3 timeout=15s
+[web-authz-script] /tmp/repi-web-authz-e2e/repi-web-authz-state.mjs artifact=/tmp/repi-web-authz-e2e/repi-web-authz-state.json principals=anon,A,B
+[web-authz-run] [web-authz-warn] missing_env=AUTH_A purpose=optional principal credential; branch may be skipped or share anon state
+[web-authz-run] [web-authz-warn] missing_env=AUTH_B purpose=optional principal credential; branch may be skipped or share anon state
+[web-authz-run] [web-authz-state] principal=anon route=/ method=GET status=200 bytes=32 hash=ea66e2601939ceb6 cookie=0 auth=0 set_cookie=1
+[web-authz-run] [web-authz-state] principal=A route=/ method=GET status=200 bytes=37 hash=0d20b6ce964093b9 cookie=1 auth=0 set_cookie=1
+[web-authz-run] [web-authz-state] principal=B route=/ method=GET status=200 bytes=37 hash=ab837d48f76d0927 cookie=1 auth=0 set_cookie=1
+[web-authz-run] [web-authz-matrix] route=/ principals=anon,A,B states=3 same_status=true unique_bodies=3 vector=anon:200:ea66e2601939ceb6,A:200:0d20b6ce964093b9,B:200:ab837d48f76d0927
+[web-authz-run] [web-authz-cookie-diff] principals=anon,A,B session_surface=1 differential=1 vector=anon:cookie=0:auth=0:set=1:hash=ea66e2601939ceb6,A:cookie=1:auth=0:set=1:hash=0d20b6ce964093b9,B:cookie=1:auth=0:set=1:hash=ab837d48f76d0927
+[web-authz-run] [web-authz-method] principal=anon method=GET status=200 hash=21cfe2d89782bc46 cookie=0 auth=0
+[web-authz-run] [web-authz-method] principal=anon method=HEAD status=200 hash=e3b0c44298fc1c14 cookie=0 auth=0
+[web-authz-run] [web-authz-method] principal=anon method=OPTIONS status=204 hash=e3b0c44298fc1c14 cookie=0 auth=0
+[web-authz-run] [web-authz-method] principal=anon method=POST status=200 hash=21cfe2d89782bc46 cookie=0 auth=0
+[web-authz-run] [web-authz-method] principal=A method=GET status=200 hash=2ca736ffa662948e cookie=1 auth=0
+[web-authz-run] [web-authz-method] principal=A method=HEAD status=200 hash=e3b0c44298fc1c14 cookie=1 auth=0
+[web-authz-run] [web-authz-method] principal=A method=OPTIONS status=204 hash=e3b0c44298fc1c14 cookie=1 auth=0
+[web-authz-run] [web-authz-method] principal=A method=POST status=200 hash=2ca736ffa662948e cookie=1 auth=0
+[web-authz-run] [web-authz-method] principal=B method=GET status=200 hash=80cadc10027676f9 cookie=1 auth=0
+[web-authz-run] [web-authz-method] principal=B method=HEAD status=200 hash=e3b0c44298fc1c14 cookie=1 auth=0
+[web-authz-run] [web-authz-method] principal=B method=OPTIONS status=204 hash=e3b0c44298fc1c14 cookie=1 auth=0
+[web-authz-run] [web-authz-method] principal=B method=POST status=200 hash=80cadc10027676f9 cookie=1 auth=0
+[web-authz-run] [web-authz-method-diff] method=GET a_status=200 b_status=200 same_hash=false potential_authz_gap=true
+[web-authz-run] [web-authz-method-diff] method=POST a_status=200 b_status=200 same_hash=false potential_authz_gap=true
+[web-authz-run] [web-authz-method-matrix] methods=GET,HEAD,OPTIONS,POST rows=12 diffs=2
+[web-authz-run] [web-authz-csrf-surface] anon_post=200 a_post=200 gap=true
+[web-authz-run] [web-authz-deep] ok=1 method_rows=12 method_diffs=2
+[web-authz-run] [web-authz-object] route=/api/users/1 owner=A principal_a_status=200 principal_b_status=200 same_body_ab=false alt_status=200 potential_bola=true probe=default_object_path
+[web-authz-run] [web-authz-sequence] principal=A steps=1 statuses=200 hashes=0d20b6ce964093b9
+[web-authz-run] [web-authz-sequence] principal=B steps=1 statuses=200 hashes=ab837d48f76d0927
+[web-authz-run] [web-authz-rollback] route=/api/profile method=PATCH before=103fd498412e0c6c mutate=878908cdb9fb13d2 after=e71b70d88ea45b0b restored=true content_restored=true
+[web-authz-run] [web-authz-artifact] /tmp/repi-web-authz-e2e/repi-web-authz-state.json
+[web-authz-run] [web-authz-proof-capture] route=1 principals=1 objects=1 sequence=1 rollback=1 idor=1 cookie_diff=1 method_matrix=1 states=3
+[web-authz-run] [web-authz-proof-capture] proof.exit=runtime_capture_strong bind_ready=true note=principal-matrix-or-object-probe
+[web-authz-run] summary.proof_exit=runtime_capture_strong
+[web-authz-run] summary.capture.route=1
+[web-authz-run] summary.capture.principals=1
+[web-authz-run] summary.capture.objects=1
+[web-authz-run] summary.capture.sequence=1
+[web-authz-run] summary.capture.rollback=1
+[web-authz-run] summary.capture.idor=1
+[web-authz-run] summary.capture.cookie_diff=1
+[web-authz-run] summary.capture.method_matrix=1
+[web-authz-host] curl=/usr/bin/curl url=http://127.0.0.1:40233/
+[web-authz-host] probe_url=http://127.0.0.1:40233/api/users/1
+[web-authz-host-csrf] mode=no-origin status_size=200|37
+[web-authz-host-csrf] mode=evil-origin status_size=200|37
+[web-authz-host-csrf] mode=match-origin status_size=200|37
+[web-authz-host-cors] preflight_status=204
+[web-authz-host-cors] Access-Control-Allow-Origin: https://evil.example
+[web-authz-host-cors] Access-Control-Allow-Credentials: true
+[web-authz-host-cors] Access-Control-Allow-Methods: GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD
+[web-authz-host-cookie] principal=A status_size=200|38
+[web-authz-host-cookie] principal=B status_size=200|38
+[web-authz-host-csrf] gap=1 note=evil_origin_same_as_baseline
+[web-authz-host] ok=1 csrf=1 cors=1
+[web-authz-host] node=/usr/bin/node work=/tmp/repi-web-authz-e2e
+[runtime-technique] web-authz-bola-matrix | web-session-cookie-diff | web-browser-state-capture
+
+
