@@ -1,6 +1,5 @@
 /** Operation step: re_techniques show/index/playbook. */
 import {
-	type ADVANCED_TECHNIQUES,
 	formatTechniqueIndex,
 	formatTechniquePlaybook,
 	resolveTechniqueDomain,
@@ -15,7 +14,7 @@ export function buildTechniquesOperationOutput(command: string, missionDomain?: 
 	const intent = /(?:^|\s)intent[=\s]+(.+)$/i.exec(raw)?.[1]?.trim();
 	const wantsIndex = /\bindex\b/i.test(raw) && !id && !domainArg;
 	if (wantsIndex || (!raw && !missionDomain)) return formatTechniqueIndex();
-	const entries: (typeof ADVANCED_TECHNIQUES)[number][] = [];
+	const entries: ReturnType<typeof techniquesForDomain> = [];
 	if (id) {
 		const entry = techniqueById(id);
 		if (entry) entries.push(entry);

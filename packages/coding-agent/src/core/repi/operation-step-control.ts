@@ -1,9 +1,11 @@
 /** Operation step handlers: decision/lane/map/kernel control plane. */
 import type { ExtensionAPI } from "../extensions/types.ts";
 import { buildEvidenceDigest } from "./evidence/ledger-digest.ts";
+import { formatMission } from "./mission/io-format.ts";
 import { d } from "./operation-step-deps.ts";
 import { buildTechniquesOperationOutput } from "./operation-step-techniques.ts";
 import type { OperationExecution } from "./operator-step.ts";
+import { buildProfileCheckOutput } from "./profile-check/build-format.ts";
 
 type Done = (output: string) => OperationExecution;
 type Blocked = (output: string) => OperationExecution;
@@ -66,6 +68,16 @@ export async function tryExecuteOperationControlStep(
 		const q = command.replace(/^re[-_]evidence\s+(?:show|search|append)?\s*/i, "").trim();
 		// append is not fully reconstructed here; show/search digest is the operator-safe path
 		return done(buildEvidenceDigest(q || undefined));
+	}
+	if (/^re[-_]mission\b/i.test(command)) {
+		const mission = d().readCurrentMission();
+		if (!mission) return done("mission: none — next: re_route <task>");
+		return done(formatMission(mission));
+	}
+	if (/^re[-_]profile[-_]check\b/i.test(command)) {
+		const m = /^re[-_]profile[-_]check\s+(quick|full|install|show)?\b/i.exec(command);
+		const action = (m?.[1] as "quick" | "full" | "install" | "show" | undefined) ?? "quick";
+		return done(buildProfileCheckOutput(action));
 	}
 	return undefined;
 }
