@@ -40,6 +40,8 @@ function syncSoftFill(pending: Set<string>, target: string | undefined, filled: 
 		"compiler_ready",
 		"replay_ready",
 		"proof_loop_ready",
+		"mobile_runtime_ready",
+		"native_runtime_ready",
 	]) {
 		if (pending.has(name)) markOptional(name, markNote, filled);
 	}

@@ -1,6 +1,7 @@
 /** Reverse install tools: runtime adapter / domain proof / toolchain. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { auditCompletion } from "../../completion-audit.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseAdapterTools(
@@ -69,6 +70,30 @@ export function registerRepiReverseAdapterTools(
 				raw === "run" || raw === "show" || raw === "plan" || raw === "refresh" ? raw : hasTarget ? "run" : "show";
 			if (action === "refresh") await deps.refreshToolIndex(pi);
 			if (action === "run") {
+				// After reverse proof is already ready, further adapter thrash wastes wall clock.
+				try {
+					const audit = auditCompletion();
+					if (audit?.ready) {
+						const text = [
+							"runtime_adapter:",
+							"status: reverse_ready_stop",
+							"note: reverse_runtime_gate already satisfied; do not re-run adapters without a real blocker",
+							"next: write HARNESS_BUGS/PROOF only",
+						].join("\n");
+						return {
+							content: [{ type: "text" as const, text }],
+							details: {
+								action,
+								skipped: true,
+								reason: "reverse_ready_stop",
+								adapter: params.adapter,
+								target: params.target,
+							} as Record<string, unknown>,
+						};
+					}
+				} catch {
+					/* optional */
+				}
 				const text = await deps.runRuntimeAdapterExecution(pi, {
 					adapter: params.adapter,
 					target: params.target,
