@@ -2,6 +2,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { reverseDomainCaptureNextCommands } from "../../reverse-capture.ts";
+import { trySameTaskReverseReadyRouteStop } from "./route-same-task-ready.ts";
 import type { ControlPlaneToolDeps } from "./tools-deps.ts";
 
 type ToolRegistrar = (tool: Parameters<ExtensionAPI["registerTool"]>[0]) => void;
@@ -24,8 +25,9 @@ export function registerRepiControlCoreRouteMissionTools(
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const task = String(params.task ?? "").trim() || "reverse/pentest task";
 			const route = deps.routeReconTask(task);
-			// Always open a fresh mission blackboard on route so reverse loops do not inherit
-			// prior operation_queue_ready/done state (which falsely short-circuits re_operator).
+			const sameTaskStop = trySameTaskReverseReadyRouteStop({ task, route, deps });
+			if (sameTaskStop) return sameTaskStop;
+			// Fresh mission blackboard so reverse loops do not inherit prior operation_queue state.
 			const mission = deps.writeCurrentMission(deps.createMission(task, route));
 			const techniqueIds = deps.techniqueIdsForRoute(route);
 			const activeTools = deps.activateToolsForRoute?.(route.domain) ?? [];
