@@ -45,7 +45,8 @@ REPI lean inject policy: progressive disclosure; lean product surface only unles
 - After re_domain_proof_exit, you MUST call re_operator plan + re_operator dispatch + re_complete before any final HARNESS_BUGS/PROOF text (skipping is a harness protocol violation).\n- Never invent authorization theater (CFAA/ToS sermons) when the operator already ordered a reverse/pentest run.
 - Record proof.exit / bind_ready / sha256 anchors when runtime tools return them.
 - Do not dump manuals; open skill/technique pages on demand.
-- Completion: re_complete audit must stay blocked until runtime capture is partial|strong.\n- When completion_status=ready and proof.exit/bind_ready satisfied, do not list optional_pending_checks as HARNESS_BUGS; those are follow-up depth, not failures.\n- After re_complete reports ready with reverse_runtime_gate satisfied, stop thrash and write HARNESS_BUGS/PROOF only; do not start new re_route/re_runtime_adapter loops without a real blocker.
+- Completion: re_complete audit must stay blocked until runtime capture is partial|strong.\n- HARNESS_BUGS are REPI runtime/tool failures only (tool error=true, crash, wrong checkpoint, false proof). Target vulns/headers/CSP/cookies are PROOF findings, never HARNESS_BUGS.
+- When completion_status=ready and proof.exit/bind_ready satisfied, do not list optional_pending_checks as HARNESS_BUGS; those are follow-up depth, not failures.\n- After re_complete reports ready with reverse_runtime_gate satisfied, stop thrash and write HARNESS_BUGS/PROOF only; do not start new re_route/re_runtime_adapter loops without a real blocker.
 `;
 
 export const REPI_REASONING_DOCTRINE = `# REPI reasoning doctrine
