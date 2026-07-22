@@ -51,3 +51,8 @@ packages/coding-agent/recon/
 
 # local agent temp
 .repi-tmp/
+
+# python cache / accidental dumps
+__pycache__/
+*.pyc
+primary.raw
