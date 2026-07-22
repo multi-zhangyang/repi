@@ -20,11 +20,12 @@ export function registerRepiReverseAdapterTools(
 			"Use the bridge nextRuntimeCommands to drive re_live_browser, re_mobile_runtime, re_exploit_lab, re_replayer, and re_domain_proof_exit.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("show"), Type.Literal("refresh")]),
+			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("refresh")])),
 			bridge: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			if (params.action === "refresh") await deps.refreshToolIndex(pi);
+			const action = params.action ?? "show";
+			if (action === "refresh") await deps.refreshToolIndex(pi);
 			const report = deps.buildProfessionalRuntimeBridgesGate(params.bridge);
 			const path = deps.writeProfessionalRuntimeBridgesArtifact(report);
 			return {
@@ -34,10 +35,7 @@ export function registerRepiReverseAdapterTools(
 						text: deps.truncateMiddle(deps.formatProfessionalRuntimeBridgesGate(report, path), 22000),
 					},
 				],
-				details: { action: params.action, bridge: params.bridge, path, closure: report.closure } as Record<
-					string,
-					unknown
-				>,
+				details: { action, bridge: params.bridge, path, closure: report.closure } as Record<string, unknown>,
 			};
 		},
 	});
@@ -53,14 +51,17 @@ export function registerRepiReverseAdapterTools(
 			"Call re_runtime_adapter run only with an explicit target and bounded timeout; then feed the artifact to re_verifier and re_domain_proof_exit.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("show"), Type.Literal("plan"), Type.Literal("run"), Type.Literal("refresh")]),
+			action: Type.Optional(
+				Type.Union([Type.Literal("show"), Type.Literal("plan"), Type.Literal("run"), Type.Literal("refresh")]),
+			),
 			adapter: Type.Optional(Type.String()),
 			target: Type.Optional(Type.String()),
 			timeoutMs: Type.Optional(Type.Number()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			if (params.action === "refresh") await deps.refreshToolIndex(pi);
-			if (params.action === "run") {
+			const action = params.action ?? "show";
+			if (action === "refresh") await deps.refreshToolIndex(pi);
+			if (action === "run") {
 				const text = await deps.runRuntimeAdapterExecution(pi, {
 					adapter: params.adapter,
 					target: params.target,
@@ -68,10 +69,7 @@ export function registerRepiReverseAdapterTools(
 				});
 				return {
 					content: [{ type: "text" as const, text: deps.truncateMiddle(text, 24000) }],
-					details: { action: params.action, adapter: params.adapter, target: params.target } as Record<
-						string,
-						unknown
-					>,
+					details: { action, adapter: params.adapter, target: params.target } as Record<string, unknown>,
 				};
 			}
 			const report = deps.buildRuntimeAdapterExecutionGate(params.adapter ?? params.target);
@@ -83,10 +81,7 @@ export function registerRepiReverseAdapterTools(
 						text: deps.truncateMiddle(deps.formatRuntimeAdapterExecutionGate(report, path), 24000),
 					},
 				],
-				details: { action: params.action, adapter: params.adapter, path, closure: report.closure } as Record<
-					string,
-					unknown
-				>,
+				details: { action, adapter: params.adapter, path, closure: report.closure } as Record<string, unknown>,
 			};
 		},
 	});
@@ -139,11 +134,12 @@ export function registerRepiReverseAdapterTools(
 			"Use domain nextRuntimeCommands and recommendedInstallHints to drive re_lane/re_bootstrap rather than narrative-only advice.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("show"), Type.Literal("refresh")]),
+			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("refresh")])),
 			domain: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			if (params.action === "refresh") await deps.refreshToolIndex(pi);
+			const action = params.action ?? "show";
+			if (action === "refresh") await deps.refreshToolIndex(pi);
 			const report = deps.buildToolchainDomainCapability(params.domain);
 			const path = deps.writeToolchainDomainCapabilityArtifact(report);
 			return {
@@ -153,10 +149,7 @@ export function registerRepiReverseAdapterTools(
 						text: deps.truncateMiddle(deps.formatToolchainDomainCapability(report, path), 20000),
 					},
 				],
-				details: { action: params.action, domain: params.domain, path, coverage: report.coverage } as Record<
-					string,
-					unknown
-				>,
+				details: { action, domain: params.domain, path, coverage: report.coverage } as Record<string, unknown>,
 			};
 		},
 	});

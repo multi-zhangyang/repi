@@ -20,7 +20,7 @@ export function registerRepiCompleteBootstrapTools(
 			"Only call re_bootstrap install for tools required by the active mission lane.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("show"), Type.Literal("plan"), Type.Literal("install")]),
+			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("plan"), Type.Literal("install")])),
 			tools: Type.Optional(Type.Array(Type.String())),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {

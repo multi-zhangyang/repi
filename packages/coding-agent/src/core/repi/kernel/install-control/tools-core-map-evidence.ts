@@ -45,7 +45,7 @@ export function registerRepiControlCoreMapEvidenceTools(
 			"Reverse claims stay blocked until proof.exit=partial_runtime_capture|runtime_capture_strong.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("show"), Type.Literal("append"), Type.Literal("search")]),
+			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("append"), Type.Literal("search")])),
 			kind: Type.Optional(
 				Type.Union([
 					Type.Literal("runtime"),
@@ -68,7 +68,8 @@ export function registerRepiControlCoreMapEvidenceTools(
 			query: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			if (params.action === "append") {
+			const action = params.action ?? "show";
+			if (action === "append") {
 				const evidence = deps.appendEvidence({
 					kind: params.kind ?? "note",
 					title: params.title ?? "agent evidence",
@@ -94,10 +95,10 @@ export function registerRepiControlCoreMapEvidenceTools(
 				content: [
 					{
 						type: "text" as const,
-						text: deps.buildEvidenceDigest(params.action === "search" ? params.query : undefined),
+						text: deps.buildEvidenceDigest(action === "search" ? params.query : undefined),
 					},
 				],
-				details: { path: deps.evidenceLedgerPath(), action: params.action },
+				details: { path: deps.evidenceLedgerPath(), action },
 			};
 		},
 	});

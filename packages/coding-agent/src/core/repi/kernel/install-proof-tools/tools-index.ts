@@ -10,13 +10,14 @@ export function registerRepiIndexTools(registerTool: ToolRegistrar, pi: Extensio
 		description: "Show or refresh the REPI tool index so tool paths are evidence-based instead of guessed.",
 		promptSnippet: "Show or refresh reverse/pentest tool availability.",
 		promptGuidelines: ["Do not guess security tool paths; use re_tool_index or REPI tool memory."],
-		parameters: Type.Object({ action: Type.Union([Type.Literal("show"), Type.Literal("refresh")]) }),
+		parameters: Type.Object({ action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("refresh")])) }),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const text = params.action === "refresh" ? await deps.refreshToolIndex(pi) : deps.buildToolDigest();
-			deps.updateMissionCheckpoint("tool_index_checked", "done", params.action);
+			const action = params.action ?? "show";
+			const text = action === "refresh" ? await deps.refreshToolIndex(pi) : deps.buildToolDigest();
+			deps.updateMissionCheckpoint("tool_index_checked", "done", action);
 			return {
 				content: [{ type: "text" as const, text: deps.truncateMiddle(text, 12000) }],
-				details: { path: deps.toolIndexPath(), action: params.action },
+				details: { path: deps.toolIndexPath(), action },
 			};
 		},
 	});
