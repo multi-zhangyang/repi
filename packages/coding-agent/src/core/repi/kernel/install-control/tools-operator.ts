@@ -1,6 +1,7 @@
 /** Control-plane lean tool: re_operator (bounded plan/dispatch/verify). */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { auditCompletion } from "../../completion-audit.ts";
 
 type ToolRegistrar = (tool: Parameters<ExtensionAPI["registerTool"]>[0]) => void;
 
@@ -42,6 +43,33 @@ export function registerRepiControlOperatorTool(
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const action = params.action ?? (params.target ? "dispatch" : "plan");
+			// After reverse proof is ready, further plan/dispatch thrash is wasted — steer to final report.
+			try {
+				const audit = auditCompletion();
+				if (
+					audit?.ready &&
+					(action === "plan" || action === "dispatch" || action === "verify" || action === "escalate")
+				) {
+					const text = [
+						"operator_queue:",
+						"status: reverse_ready_stop",
+						"completion_status: ready",
+						"note: reverse_runtime_gate already satisfied; do not plan/dispatch more steps",
+						"next: write HARNESS_BUGS/PROOF only (or re_complete scaffold if report needed)",
+					].join("\n");
+					return {
+						content: [{ type: "text" as const, text }],
+						details: {
+							action,
+							skipped: true,
+							reason: "reverse_ready_stop",
+							target: params.target,
+						} as Record<string, unknown>,
+					};
+				}
+			} catch {
+				/* audit optional */
+			}
 			const text =
 				action === "dispatch"
 					? await deps.dispatchOperatorQueue(pi, {

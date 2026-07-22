@@ -100,6 +100,9 @@ export function registerRepiCompleteBootstrapTools(
 							softFilled.length ? `soft_fill_optional: ${softFilled.join(",")}` : undefined,
 							memoryEvent ? `\ncompletion_memory_event: ${memoryEvent.id}` : undefined,
 							reverseFooter || undefined,
+							ready
+								? "completion_stop: ready\nnext: write HARNESS_BUGS/PROOF only — do not call re_operator/re_route/re_runtime_adapter without a real blocker"
+								: undefined,
 						]
 							.filter(Boolean)
 							.join("\n"),
