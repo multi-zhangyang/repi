@@ -3,6 +3,7 @@ export {
 	bootstrapCatalogFor,
 	buildToolDigest,
 	createBootstrapPlan,
+	ensureToolIndexMaterialized,
 	formatBootstrapPlan,
 	parseToolIndex,
 } from "./catalog-core.ts";

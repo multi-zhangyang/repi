@@ -16,7 +16,8 @@ import type {
 export function buildArtifactScopeFilterReport<T extends ArtifactScopeMemoryRow>(
 	options: ArtifactScopeReportBuildOptions<T>,
 ): ArtifactScopeFilterReportV1 {
-	const rowsByEvent = new Map(options.memoryReport.rows.map((row: any) => [row.eventId, row]));
+	const memoryRows = options.memoryReport?.rows ?? [];
+	const rowsByEvent = new Map(memoryRows.map((row: any) => [row.eventId, row]));
 	const byArtifactPath = new Map<string, T>();
 	for (const event of options.events) {
 		const row = rowsByEvent.get(event.id);
@@ -29,7 +30,7 @@ export function buildArtifactScopeFilterReport<T extends ArtifactScopeMemoryRow>
 		}
 	}
 	const decisions = options.artifacts.map((artifact): ArtifactScopeFilterDecisionV1 => {
-		const match = artifactScopeMatchForSource(artifact, options.memoryReport.rows, byArtifactPath);
+		const match = artifactScopeMatchForSource(artifact, memoryRows, byArtifactPath);
 		const row = match.row;
 		const explicitTarget = artifactExplicitTarget(artifact, {
 			sanitizeTarget: options.sanitizeTarget,
@@ -71,7 +72,7 @@ export function buildArtifactScopeFilterReport<T extends ArtifactScopeMemoryRow>
 		latest_artifact_side_channel_scope_filter: true,
 		reportPath: options.reportPath,
 		requestedBy: options.requestedBy,
-		currentScope: options.memoryReport.currentScope,
+		currentScope: options.memoryReport?.currentScope ?? {},
 		checkedArtifactCount: decisions.length,
 		blockedArtifactCount: decisions.filter((row: any) => row.verdict === "block").length,
 		warnArtifactCount: decisions.filter((row: any) => row.verdict === "warn").length,

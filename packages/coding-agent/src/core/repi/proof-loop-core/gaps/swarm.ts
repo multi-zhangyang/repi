@@ -33,7 +33,7 @@ export function proofLoopSwarmBridgeFromItems(items: ProofLoopGapItem[], target?
 	const grouped = new Map<DelegateWorker, ProofLoopGapItem[]>();
 	for (const item of items) grouped.set(item.worker, [...(grouped.get(item.worker) ?? []), item]);
 	const rows = [...grouped.entries()].map(([worker, items]) => {
-		const contracts = delegateEvidenceContract(worker).join(" | ");
+		const contracts = (delegateEvidenceContract(worker) ?? []).join(" | ");
 		const sources = Array.from(new Set(items.flatMap((item: any) => item.sourceArtifacts))).slice(0, 5);
 		return `${worker}: gaps=${items.length} delegate="re_delegate plan${suffix}" swarm="re_swarm run${suffix} 2 1" swarm_merge="re_swarm merge" supervisor="re_supervisor repair${suffix}" evidence_contract=${contracts} sources=${sources.join(" | ") || "none"}`;
 	});

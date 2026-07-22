@@ -10,12 +10,12 @@ export function formatContextPackMemoryQueueSections(pack: ContextPackFormatView
 		`- idempotent_multi_compact_replay=${pack.compactResumeLedgerV2?.idempotent_multi_compact_replay ?? false}`,
 		`- auto_resume_budget_enforced=${pack.compactResumeLedgerV2?.auto_resume_budget_enforced ?? false}`,
 		`- current_state=${pack.compactResumeLedgerV2?.currentState ?? "unknown"}`,
-		`- transitions=${pack.compactResumeLedgerV2?.transitions.length ?? 0}`,
-		`- invalid_transitions=${pack.compactResumeLedgerV2?.invalidTransitions.length ?? 0}`,
+		`- transitions=${pack.compactResumeLedgerV2?.transitions?.length ?? 0}`,
+		`- invalid_transitions=${pack.compactResumeLedgerV2?.invalidTransitions?.length ?? 0}`,
 		`- report=${pack.compactResumeLedgerV2?.reportPath ?? "none"}`,
 		`- transition_path=${pack.compactResumeLedgerV2?.transitionPath ?? "none"}`,
 		"repair_queue:",
-		...(pack.repairQueue.length ? pack.repairQueue.map((item: any) => `- ${item}`) : ["- none"]),
+		...((pack.repairQueue?.length ?? 0) ? (pack.repairQueue ?? []).map((item: any) => `- ${item}`) : ["- none"]),
 		"commander_merge_budget:",
 		...(pack.commanderMergeBudget?.length ? pack.commanderMergeBudget.map((item: any) => `- ${item}`) : ["- none"]),
 		"worker_scoreboard:",
@@ -37,11 +37,17 @@ export function formatContextPackMemoryQueueSections(pack: ContextPackFormatView
 		"case_memory_next_commands:",
 		"- removed",
 		"reflection_reuse_rules:",
-		...(pack.reflectionReuseRules.length ? pack.reflectionReuseRules.map((item: any) => `- ${item}`) : ["- none"]),
+		...((pack.reflectionReuseRules?.length ?? 0)
+			? (pack.reflectionReuseRules ?? []).map((item: any) => `- ${item}`)
+			: ["- none"]),
 		"next_operator_commands:",
-		...(pack.nextCommands.length ? pack.nextCommands.map((item: any) => `- ${item}`) : ["- re_mission show"]),
+		...((pack.nextCommands?.length ?? 0)
+			? (pack.nextCommands ?? []).map((item: any) => `- ${item}`)
+			: ["- re_mission show"]),
 		`next_context_command: ${pack.mode === "resume" ? "re_context pack" : "re_context resume"}`,
 		"source_artifacts:",
-		...(pack.sourceArtifacts.length ? pack.sourceArtifacts.map((item: any) => `- ${item}`) : ["- none"]),
+		...((pack.sourceArtifacts?.length ?? 0)
+			? (pack.sourceArtifacts ?? []).map((item: any) => `- ${item}`)
+			: ["- none"]),
 	];
 }

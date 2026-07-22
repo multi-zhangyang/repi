@@ -23,7 +23,7 @@ export async function runProofLoopRepairPhases(
 	};
 	if (
 		(proof.verdict === "needs_repair" || proof.verdict === "partial") &&
-		proof.caseMemoryLanePlan?.migrations.length &&
+		(proof.caseMemoryLanePlan?.migrations?.length ?? 0) > 0 &&
 		helpers.remaining > 0
 	) {
 		await runPhase((item: any) => item.phase === "case-memory", 1);

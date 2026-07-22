@@ -18,7 +18,9 @@ export function d(): OperatorRuntimeDeps {
 }
 
 export function latestReplayerArtifactPath(...args: any[]): any {
-	return (d() as any).latestReplayerArtifactPath(...args);
+	const fn = (d() as any).latestReplayerArtifactPath;
+	if (typeof fn === "function") return fn(...args);
+	return undefined;
 }
 
 export function writeDispatcherPromotionPlaybook(...args: any[]): any {

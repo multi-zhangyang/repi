@@ -21,7 +21,7 @@ export function writeContextPackArtifact(pack: ContextPackArtifact): string {
 	pack.contextSha256 = contextPackSha256(pack);
 	if (pack.resumeContract) pack.resumeContract.contextSha256 = pack.contextSha256;
 	writePrivateTextFile(path, buildContextPackMarkdown(pack, path));
-	if (pack.compactionLedger) {
+	if (pack.compactionLedger?.path) {
 		appendPrivateTextFile(
 			pack.compactionLedger.path,
 			`${JSON.stringify({
@@ -40,7 +40,7 @@ export function writeContextPackArtifact(pack: ContextPackArtifact): string {
 	appendEvidence({
 		kind: "artifact",
 		title: `context-pack-${pack.mode} ${pack.missionId ?? "no-mission"}`,
-		fact: `Context pack captured ${pack.artifactIndex.length} artifact(s), ${pack.repairQueue.length} repair item(s), ${pack.nextCommands.length} next command(s), context_sha256=${pack.contextSha256 ?? "missing"}, artifact_scope_blocked=${pack.artifactScopeFilter?.blockedArtifactCount ?? 0}, memory_orchestrator=${pack.memoryOrchestrator?.phase ?? "missing"}`,
+		fact: `Context pack captured ${pack.artifactIndex?.length ?? 0} artifact(s), ${pack.repairQueue?.length ?? 0} repair item(s), ${pack.nextCommands?.length ?? 0} next command(s), context_sha256=${pack.contextSha256 ?? "missing"}, artifact_scope_blocked=${pack.artifactScopeFilter?.blockedArtifactCount ?? 0}, memory_orchestrator=${pack.memoryOrchestrator?.phase ?? "missing"}`,
 		command: `re_context ${pack.mode}`,
 		path,
 		verify: `cat ${path}`,

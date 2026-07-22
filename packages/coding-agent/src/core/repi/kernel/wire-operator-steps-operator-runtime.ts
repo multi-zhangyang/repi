@@ -33,6 +33,7 @@ import {
 } from "../operator-runtime.ts";
 import { executeOperatorStep } from "../operator-step.ts";
 import { caseMemoryLanePlanLines } from "../proof-loop-runtime.ts";
+import { latestReplayerArtifactPath } from "../replayer-runtime.ts";
 import { compactionResumeTelemetryPath } from "../storage.ts";
 import { latestSwarmRetryQueue } from "../swarm-runtime.ts";
 import type { PickFn } from "./wire-pick.ts";
@@ -67,6 +68,7 @@ export function wireOperatorStepRuntimeModules(pick: PickFn): void {
 		latestAutonomousBudgetLedger: pick("latestAutonomousBudgetLedger", latestAutonomousBudgetLedger),
 		latestOperatorFeedback: pick("latestOperatorFeedback", latestOperatorFeedback),
 		latestOrBuildContextPack: pick("latestOrBuildContextPack", latestOrBuildContextPack),
+		latestReplayerArtifactPath: pick("latestReplayerArtifactPath", latestReplayerArtifactPath),
 		latestReconCompactionResumeTelemetry: pick(
 			"latestReconCompactionResumeTelemetry",
 			latestReconCompactionResumeTelemetry,

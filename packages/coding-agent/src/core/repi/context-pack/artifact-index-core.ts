@@ -33,11 +33,18 @@ export function scopedContextArtifactIndex(options: ArtifactScopeFilterOptions =
 			text: truncateMiddle(readText(path), 7000),
 		})),
 	);
+	// Memory product removed: never require memoryReport.rows; empty rows allow.
 	const artifactScopeFilter = buildArtifactScopeFilterReport({
 		route: scope.route,
 		target: scope.target,
 		requestedBy: scope.requestedBy,
+		reportPath: "",
 		artifacts: candidateSources,
+		events: [],
+		memoryReport: { currentScope: {}, rows: [] },
+		memoryTargetScope: (target: string) => String(target),
+		readText,
+		sanitizeTarget: (target: string) => target,
 		write: scope.write,
 	} as any);
 	const decisions = artifactScopeDecisionMap(artifactScopeFilter);

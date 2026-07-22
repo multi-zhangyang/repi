@@ -9,6 +9,7 @@ export {
 	buildToolDigest,
 	commandKnownTools,
 	createBootstrapPlan,
+	ensureToolIndexMaterialized,
 	fallbackForMissingTools,
 	formatBootstrapPlan,
 	knownReconTool,

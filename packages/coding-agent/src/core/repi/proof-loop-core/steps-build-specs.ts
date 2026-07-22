@@ -51,7 +51,7 @@ export function buildProofLoopStepSpecs(target?: string): {
 		["completion", "re_complete audit"],
 	];
 	const caseMemoryPlan = currentCaseMemoryLanePlan(target);
-	if (caseMemoryPlan?.migrations.length) {
+	if ((caseMemoryPlan?.migrations?.length ?? 0) > 0) {
 		specs.push(["case-memory", `re_autopilot plan${suffix}`]);
 		if (caseMemoryPlan.action !== "none") specs.push(["case-memory", `re_autopilot run${suffix} 1`]);
 	}

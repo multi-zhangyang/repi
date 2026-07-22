@@ -28,7 +28,7 @@ export function formatCaseMemoryLanePlan(plan: CaseMemoryLanePlan): string {
 		plan.addedLane ? `added_lane: ${plan.addedLane}` : undefined,
 		plan.skippedLane ? `skipped_lane: ${plan.skippedLane}` : undefined,
 		"migrations:",
-		...(plan.migrations.length > 0 ? plan.migrations.map((item: any) => `- ${item}`) : ["- none"]),
+		...((plan.migrations?.length ?? 0) > 0 ? plan.migrations.map((item: any) => `- ${item}`) : ["- none"]),
 		"next:",
 		...(plan.next.length > 0 ? plan.next.map((item: any) => `- ${item}`) : ["- none"]),
 	]

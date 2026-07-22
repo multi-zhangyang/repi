@@ -1,18 +1,63 @@
 /** Tool-index digest/bootstrap plan pure helpers. */
+import { spawnSync } from "node:child_process";
+import { REPI_TOOL_INDEX_CANDIDATES as TOOL_INDEX_CANDIDATES } from "../profile.ts";
 import { ensureReconStorage } from "../resources.ts";
-import { readTextFile as readText, toolIndexPath } from "../storage.ts";
+import { readTextFile as readText, toolIndexPath, writePrivateTextFile } from "../storage.ts";
 import { truncateMiddle } from "../text.ts";
 import { REPI_TOOL_BOOTSTRAP_CATALOG as TOOL_BOOTSTRAP_CATALOG } from "../toolchain.ts";
 import type { BootstrapCatalogEntry, BootstrapPlan } from "./types.ts";
 
+/**
+ * Materialize tool-index from host PATH when missing/empty.
+ * Product sessions often never call re_tool_index refresh; empty index
+ * poisons digests and domain toolchain until host presence fallback was added.
+ * Sync scan is bounded and idempotent.
+ */
+export function ensureToolIndexMaterialized(): void {
+	ensureReconStorage();
+	const path = toolIndexPath();
+	const existing = readText(path).trim();
+	if (existing.includes("| yes |") || existing.includes("| no |")) return;
+	const rows: string[] = [];
+	const pathEnv = process.env.PATH ?? "";
+	for (const tool of TOOL_INDEX_CANDIDATES) {
+		if (!/^[A-Za-z0-9_.:+-]+$/.test(tool)) continue;
+		const probe = spawnSync("bash", ["-lc", 'command -v "$1"', "repi-tool-index", tool], {
+			encoding: "utf8",
+			timeout: 1500,
+			env: { ...process.env, PATH: pathEnv },
+		});
+		if (probe.status === 0) {
+			const p = (probe.stdout || "").trim().split("\n")[0] || "";
+			rows.push(`| ${tool} | yes | ${p} |  |`);
+		} else {
+			rows.push(`| ${tool} | no |  |  |`);
+		}
+	}
+	const body = [
+		"# REPI Tool Index",
+		"",
+		`Generated: ${new Date().toISOString()}`,
+		"Command exit: host-sync",
+		"",
+		"| Tool | Present | Path | Version probe |",
+		"|---|---:|---|---|",
+		...rows,
+		"",
+	].join("\n");
+	writePrivateTextFile(path, `${body}\n`);
+}
+
 export function buildToolDigest(): string {
 	ensureReconStorage();
+	ensureToolIndexMaterialized();
 	const text = readText(toolIndexPath()).trim();
 	return text ? truncateMiddle(text, 1600) : "工具索引为空；优先调用 re_tool_index refresh。";
 }
 
 export function parseToolIndex(): Map<string, { present: boolean; path?: string }> {
 	ensureReconStorage();
+	ensureToolIndexMaterialized();
 	const rows = new Map<string, { present: boolean; path?: string }>();
 	for (const line of readText(toolIndexPath()).split(/\r?\n/)) {
 		const match = /^\|\s*([^|]+?)\s*\|\s*(yes|no)\s*\|\s*([^|]*?)\s*\|/i.exec(line);

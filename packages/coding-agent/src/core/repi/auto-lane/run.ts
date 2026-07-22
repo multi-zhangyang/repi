@@ -40,7 +40,7 @@ export async function runAutoLaneChain(
 		if (!caseMemoryPlanApplied) {
 			const memoryPack = d().laneCommandPack(mission, lane, params.target);
 			const plan = d().applyCaseMemoryLanePlan({ mission, lane, pack: memoryPack });
-			if (plan.action !== "none" || plan.migrations.length > 0) {
+			if (plan.action !== "none" || (plan.migrations?.length ?? 0) > 0) {
 				outputs.push(`## case-memory-lane-plan step ${step + 1}\n${d().formatCaseMemoryLanePlan(plan)}`);
 				caseMemoryPlanApplied = true;
 				if (plan.action !== "none") {
