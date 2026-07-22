@@ -506,16 +506,31 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		// When live streaming is on, assistant text was already written to stdout
 		// as deltas (or via the message_end fallback). Skip the duplicate final write.
 		if (streamTextEnabled) return false;
+		// message_end already flushed non-streaming text for each assistant turn.
+		if (textOutputWritten) return true;
 		const state = session.state;
 		const lastMessage = state.messages[state.messages.length - 1];
 		if (lastMessage?.role !== "assistant") return false;
 
 		let wroteText = false;
-		for (const content of (lastMessage as AssistantMessage).content) {
+		const assistantMsg = lastMessage as AssistantMessage;
+		for (const content of assistantMsg.content) {
 			if (content.type === "text" && content.text.trim() !== "") {
 				writeRawStdout(`${content.text}\n`);
 				textOutputWritten = true;
 				wroteText = true;
+			}
+		}
+		// Some gateways put the only payload in thinking/reasoning blocks with empty text.
+		if (!wroteText) {
+			for (const content of assistantMsg.content as Array<{ type: string; thinking?: string; text?: string }>) {
+				const thinking =
+					content.type === "thinking" && typeof content.thinking === "string" ? content.thinking.trim() : "";
+				if (thinking) {
+					writeRawStdout(`${thinking}\n`);
+					textOutputWritten = true;
+					wroteText = true;
+				}
 			}
 		}
 		return wroteText;
@@ -617,6 +632,20 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 							}
 						}
 						streamedAssistantText = false;
+					} else if (mode === "text") {
+						// Non-streaming: flush TERMINAL assistant messages immediately so
+						// outer SIGTERM/timeout cannot race past post-prompt write and drop
+						// the final report. Skip tool-call turns (narration+tools).
+						const blocks = (event.message as AssistantMessage).content;
+						const hasToolCall = blocks.some((b) => b.type === "toolCall");
+						if (!hasToolCall) {
+							for (const block of blocks) {
+								if (block.type === "text" && block.text.trim() !== "") {
+									writeRawStdout(`${block.text}\n`);
+									textOutputWritten = true;
+								}
+							}
+						}
 					}
 				}
 				if (event.type === "message_update" && streamTextEnabled) {
@@ -642,6 +671,11 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 				}
 				if (event.type === "tool_execution_end") {
 					if (toolInProgress > 0) toolInProgress -= 1;
+				}
+				if (event.type === "agent_end" && mode === "text" && !streamTextEnabled) {
+					// Ensure final assistant text is on stdout before process teardown races.
+					writeLastAssistantText();
+					void flushRawStdout();
 				}
 				if (mode === "json") {
 					writeRawStdout(`${JSON.stringify(event)}\n`);
