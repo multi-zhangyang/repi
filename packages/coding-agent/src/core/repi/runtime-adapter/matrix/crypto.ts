@@ -35,13 +35,19 @@ export const RUNTIME_ADAPTER_CRYPTO_SPECS: RuntimeAdapterExecutionSpec[] = [
 				proofExitSignal: "solver script",
 			},
 			{
+				id: "parser-crypto-stego",
+				regex: "([crypto-stego]|stego_lsb_plane|CAP_LSB=1|shell_cap stego=1)",
+				evidenceRank: "runtime_artifact",
+				proofExitSignal: "stego lsb plane",
+			},
+			{
 				id: "parser-crypto-proof",
 				regex: "([crypto-proof-capture]|proof.exit=)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "proof.exit=partial_runtime_capture",
 			},
 		],
-		artifactKinds: ["crypto-param", "crypto-transform", "crypto-solver"],
+		artifactKinds: ["crypto-param", "crypto-transform", "crypto-solver", "crypto-stego"],
 		ingestTargets: ["evidence-ledger", "knowledge-graph"],
 		envRefs: [
 			"REPI_RUNTIME_ADAPTER_WORKDIR",
@@ -56,6 +62,7 @@ export const RUNTIME_ADAPTER_CRYPTO_SPECS: RuntimeAdapterExecutionSpec[] = [
 			"proof.exit=partial_runtime_capture",
 			"proof.exit=runtime_capture_strong",
 			"bind_ready=true",
+			"stego lsb plane",
 		],
 	},
 ];
