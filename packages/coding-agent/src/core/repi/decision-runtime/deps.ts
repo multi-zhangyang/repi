@@ -86,5 +86,10 @@ export function operatorStepPriority(...args: any[]): any {
 	return (d() as any).operatorStepPriority(...args);
 }
 export function memoryPath(...args: any[]): any {
-	return (d() as any).memoryPath(...args);
+	const fn = (d() as any).memoryPath;
+	if (typeof fn === "function") return fn(...args);
+	// Concrete fallback: memory product removed but path helper remains for journal/decision sources.
+	const name = String(args[0] ?? "");
+	const base = process.env.REPI_MEMORY_DIR || `${process.env.HOME || "/root"}/.repi/agent/recon/memory`;
+	return name ? `${base.replace(/\/$/, "")}/${name}` : base;
 }

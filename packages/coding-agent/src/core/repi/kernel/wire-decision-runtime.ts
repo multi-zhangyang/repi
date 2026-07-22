@@ -17,6 +17,7 @@ import { executeOperatorStep } from "../operator-step.ts";
 import { latestProofLoopArtifactPath } from "../proof-loop-runtime.ts";
 import { latestReplayerArtifactPath } from "../replayer-runtime.ts";
 import { toolIndexPath } from "../storage/paths/core.ts";
+import { memoryPath } from "../storage/paths/memory-core.ts";
 import { commandTarget, looksLikeNaturalLanguageTarget, sanitizeTargetForCommand } from "../target.ts";
 import { bootstrapCatalogFor, parseToolIndex } from "../tool-index/catalog-core.ts";
 import { recommendedToolsForRoute } from "../tool-index.ts";
@@ -48,5 +49,6 @@ export function wireDecisionRuntimeConfigure(pick: PickFn): void {
 		sanitizeTargetForCommand: pick("sanitizeTargetForCommand", sanitizeTargetForCommand),
 		toolIndexPath: pick("toolIndexPath", toolIndexPath),
 		updateMissionCheckpoint: pick("updateMissionCheckpoint", updateMissionCheckpoint),
+		memoryPath: pick("memoryPath", memoryPath),
 	});
 }
