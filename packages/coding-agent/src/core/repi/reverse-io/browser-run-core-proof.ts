@@ -4,14 +4,25 @@ import { formatLiveBrowser } from "../web-runtime.ts";
 import { browserRunReverseFooter } from "./browser-run-reverse.ts";
 
 export function extractBrowserProofExit(anchors: string[]): string {
-	return (
-		anchors.find((line: any) => /^proof\.exit=/.test(line))?.replace(/^proof\.exit=/, "") ||
-		anchors.find((line: any) => /^query\.proof_exit=/.test(line))?.replace(/^query\.proof_exit=/, "") ||
-		anchors
-			.find((line: any) => /^summary\.runtime_proof_exit=/.test(line))
-			?.replace(/^summary\.runtime_proof_exit=/, "") ||
-		"pending_runtime_capture"
-	);
+	const joined = anchors.join("\n");
+	const challengeOnly =
+		/summary\.challenge_interstitial=true|summary\.proof_honesty=challenge_surface_not_business_depth|note=challenge_surface_only/i.test(
+			joined,
+		) &&
+		!/summary\.organic_api=true|\[browser-organic-api\]|summary\.capture\.organic_api=1/i.test(joined) &&
+		!/summary\.capture\.sourcemap=1|\[browser-sourcemap\]/i.test(joined);
+	const exits = anchors
+		.map((line: any) => {
+			const m = /^(?:proof\.exit|query\.proof_exit|summary\.runtime_proof_exit)=(.+)$/i.exec(String(line));
+			return m?.[1]?.trim();
+		})
+		.filter(Boolean) as string[];
+	const preferred =
+		exits.find((e) => /partial_runtime_capture/i.test(e)) ||
+		exits.find((e) => /runtime_capture_strong/i.test(e)) ||
+		exits[0];
+	if (challengeOnly) return "partial_runtime_capture";
+	return preferred || "pending_runtime_capture";
 }
 
 export function formatBrowserRunOutputWithReverseFooter(params: {

@@ -46,9 +46,23 @@ export function applyWebDomainCapture(input: {
 			capture = "runtime_capture_strong";
 			signals.push("browser_explicit_strong");
 			confidence += 1;
-		} else if (has(/\[browser-proof-capture\][^\n]*proof\.exit=partial_runtime_capture/i) && capture === "none") {
+		} else if (has(/\[browser-proof-capture\][^\n]*proof\.exit=partial_runtime_capture/i)) {
+			// Explicit partial from capture script wins over heuristic strong when present.
+			if (capture === "runtime_capture_strong" || capture === "none") {
+				capture = "partial_runtime_capture";
+				signals.push("browser_explicit_partial");
+			}
+		}
+		// General honesty: captcha/challenge interstitials without organic business API are partial.
+		const challengeOnly =
+			has(
+				/summary\.challenge_interstitial=true|summary\.proof_honesty=challenge_surface_not_business_depth|\[browser-challenge\]|note=challenge_surface_only/i,
+			) &&
+			!has(/summary\.organic_api=true|\[browser-organic-api\]|summary\.capture\.organic_api=1/i) &&
+			!has(/\[browser-sourcemap\]|summary\.capture\.sourcemap=1/i);
+		if (challengeOnly && capture === "runtime_capture_strong") {
 			capture = "partial_runtime_capture";
-			signals.push("browser_explicit_partial");
+			signals.push("browser_challenge_surface_partial");
 		}
 		// JS signing / frontend crypto CAP path (static JS or live HTML fetch)
 		const jsCap = has(/\[js-signing-proof-capture\]/i) || has(/\[js-signing-crypto\]/i) || has(/\[repi-js-hook\]/i);

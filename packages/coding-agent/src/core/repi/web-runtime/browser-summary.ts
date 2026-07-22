@@ -21,6 +21,17 @@ export function liveBrowserStructuredSummary(stdout: string, stderr: string): st
 	if (url) lines.push(`summary.url=${truncateMiddle(url, 200)}`);
 	const title = /"title"\s*:\s*"([^"]+)"/.exec(text)?.[1];
 	if (title) lines.push(`summary.title=${truncateMiddle(title, 120)}`);
+	if (
+		/challenge_interstitial=true|\[browser-challenge\]|proof_honesty=challenge_surface/i.test(text) ||
+		(title && /captcha|verify|challenge|验证码|人机|安全验证/i.test(title))
+	) {
+		lines.push("summary.challenge_interstitial=true");
+	}
+	if (/organic_api=true|\[browser-organic-api\]/i.test(text)) lines.push("summary.organic_api=true");
+	else if (/organic_api=false|summary\.capture\.organic_api=0/i.test(text)) lines.push("summary.organic_api=false");
+	if (/proof_honesty=challenge_surface_not_business_depth/i.test(text)) {
+		lines.push("summary.proof_honesty=challenge_surface_not_business_depth");
+	}
 	if (/\[browser-websocket\]/i.test(text)) lines.push("summary.websocket=observed");
 	if (/\[browser-cookie\]|Set-Cookie|document\.cookie|localStorage|sessionStorage/i.test(text)) {
 		lines.push("summary.storage_or_cookie=observed");
