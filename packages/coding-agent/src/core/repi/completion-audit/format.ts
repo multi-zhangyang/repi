@@ -7,7 +7,7 @@ import { appendCompletionMemoryEvent } from "../memory-events-append.ts";
 import { appendEvidence } from "../reflection/types-config.ts";
 import { ensureReconStorage } from "../resources.ts";
 import { evidenceToolchainDir, reportDir, writePrivateTextFile } from "../storage.ts";
-import { truncateMiddle } from "../text.ts";
+import { slug, truncateMiddle } from "../text.ts";
 import { auditCompletion } from "./audit.ts";
 import type { CompletionAudit } from "./audit-claims.ts";
 import { buildEvidenceDigest, formatMission, readCurrentMission, updateMissionCheckpoint } from "./deps.ts";
@@ -78,9 +78,10 @@ export function writeReportScaffold(title?: string): string {
 
 export function writeDomainProofExitClosureArtifact(report: DomainProofExitClosureV1): string {
 	ensureReconStorage();
+	const domainToken = slug(String(report.domainId ?? "unmapped")).slice(0, 64) || "unmapped";
 	const path = join(
 		evidenceToolchainDir(),
-		`${report.generatedAt.replace(/[:.]/g, "-")}-${report.domainId ?? "unmapped"}-domain-proof-exit-closure.md`,
+		`${report.generatedAt.replace(/[:.]/g, "-")}-${domainToken}-domain-proof-exit-closure.md`,
 	);
 	writePrivateTextFile(
 		path,

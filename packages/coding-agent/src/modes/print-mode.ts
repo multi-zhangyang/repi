@@ -356,16 +356,12 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 						warnAtMs,
 						isFinished: () => finished,
 						inject: () => {
-							emitProgress(`timeout_warn leadMs=${timeoutWarnLeadMs} remainingMs=${timeoutWarnLeadMs}`);
-							// session.steer queues into the agent's stream with no streaming gate
-							// (delivered at the next turn boundary) — safe to call mid-flight.
-							void session
-								.steer(warning)
-								.catch((error) =>
-									console.error(
-										`[repi:print] timeout_warn_steer_error ${error instanceof Error ? error.message : String(error)}`,
-									),
-								);
+							// Progress-only: injecting a synthetic user/steer turn mid-flight
+							// derails reverse loops into bash thrash after tools already finished.
+							emitProgress(
+								`timeout_warn leadMs=${timeoutWarnLeadMs} remainingMs=${timeoutWarnLeadMs} note=persist_findings_no_steer`,
+							);
+							console.error(`[repi:print] ${warning}`);
 						},
 					});
 				}

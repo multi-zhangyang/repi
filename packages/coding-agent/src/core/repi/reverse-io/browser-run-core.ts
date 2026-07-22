@@ -19,7 +19,7 @@ export async function runLiveBrowser(
 ): Promise<string> {
 	const invalidUrl = liveBrowserInvalidUrlReason(options.target, options.url);
 	const url = invalidUrl ? undefined : (options.url ?? inferBrowserUrl(options.target));
-	const timeoutMs = Math.max(3000, Math.min(120000, Math.floor(options.timeoutMs ?? 15000)));
+	const timeoutMs = Math.max(3000, Math.min(120000, Math.floor(options.timeoutMs ?? 30000)));
 	if (invalidUrl || !url) {
 		const browser = buildLiveBrowserArtifact({ ...options, mode: "run", timeoutMs });
 		browser.executions.push({

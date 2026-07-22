@@ -14,9 +14,35 @@ import {
 } from "./pure.ts";
 import type { DomainProofExitClosureStatus, DomainProofExitRowV1 } from "./types.ts";
 
+function normalizeDomainProofFilter(domainFilter?: string, routeDomain?: string): string | undefined {
+	const raw = domainFilter?.trim();
+	if (!raw) return toolchainDomainIdForRoute(routeDomain);
+	// Models sometimes pass target URLs or free text as domain=; never use those as domain ids/paths.
+	if (/^https?:\/\//i.test(raw) || /[/\\:]/.test(raw) || raw.length > 48) {
+		return toolchainDomainIdForRoute(routeDomain);
+	}
+	const lower = raw.toLowerCase();
+	const aliases: Record<string, string> = {
+		web: "web-api",
+		"web-api": "web-api",
+		web_api: "web-api",
+		api: "web-api",
+		"frontend-js": "frontend-js",
+		js: "frontend-js",
+		native: "rev-native",
+		"rev-native": "rev-native",
+		pwn: "pwn",
+		mobile: "mobile",
+	};
+	if (aliases[lower]) return aliases[lower];
+	// Accept known-looking domain ids; otherwise fall back to route.
+	if (/^[a-z][a-z0-9-]{1,40}$/.test(lower)) return lower;
+	return toolchainDomainIdForRoute(routeDomain);
+}
+
 export function buildDomainProofExitClosure(mission = readCurrentMission(), domainFilter?: string): any {
 	const routeDomain = mission?.route.domain;
-	const domainId = domainFilter || toolchainDomainIdForRoute(routeDomain);
+	const domainId = normalizeDomainProofFilter(domainFilter, routeDomain);
 	const capability = domainId ? buildToolchainDomainCapability(domainId).domains[0] : undefined;
 	const corpus = domainProofExitArtifactCorpus(mission);
 	if (!mission || !domainId || !capability) {

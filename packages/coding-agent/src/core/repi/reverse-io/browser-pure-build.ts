@@ -28,7 +28,7 @@ export function buildLiveBrowserArtifact(options: {
 	const mission = readCurrentMission();
 	const invalidUrl = liveBrowserInvalidUrlReason(options.target, options.url);
 	const url = invalidUrl ? undefined : (options.url ?? inferBrowserUrl(options.target));
-	const timeoutMs = Math.max(3000, Math.min(120000, Math.floor(options.timeoutMs ?? 15000)));
+	const timeoutMs = Math.max(3000, Math.min(120000, Math.floor(options.timeoutMs ?? 30000)));
 	const captureCommand = url
 		? liveBrowserShellCommand(url, timeoutMs)
 		: invalidUrl
