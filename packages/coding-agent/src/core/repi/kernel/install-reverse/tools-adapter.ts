@@ -2,6 +2,7 @@
 
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { softFillOptionalOrchestrationWhenReverseReady } from "../../completion-audit/soft-fill-optional.ts";
 import { auditCompletion } from "../../completion-audit.ts";
 import { readCurrentMission } from "../../mission.ts";
 import { pickAdapterIdForRun, resolveAdapterRunTarget } from "./tools-adapter-target.ts";
@@ -193,6 +194,16 @@ export function registerRepiReverseAdapterTools(
 				const report = deps.buildDomainProofExitClosure(deps.readCurrentMission(), domain);
 				// Always persist so mission checkpoints update even when models omit action.
 				const path = deps.writeDomainProofExitClosureArtifact(report);
+				// If runtime proof already binds, soft-fill optional orchestration even when the
+				// model forgets re_complete (common free-model skip after operator verify).
+				if (report.status === "passed") {
+					try {
+						const audit = auditCompletion();
+						if (audit?.ready) softFillOptionalOrchestrationWhenReverseReady(audit as any);
+					} catch {
+						/* optional */
+					}
+				}
 				const format =
 					typeof deps.formatDomainProofExitClosure === "function"
 						? deps.formatDomainProofExitClosure
