@@ -20,6 +20,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = process.argv[2] && !process.argv[2].startsWith("-") ? process.argv[2] : join(here, "../..");
 const json = process.argv.includes("--json");
 const outPath = join(root, "docs/reverse-agent/sticky-inject-host-capture-smoke.out");
+const writeArtifact = process.argv.includes("--write") || process.env.REPI_STICKY_SMOKE_WRITE === "1";
 
 const runner = `
 import { writeFileSync } from "node:fs";
@@ -159,7 +160,7 @@ log("summary.sticky_inject=" + (ok ? 1 : 0));
 log("summary.sticky_t1_cold=" + (okT1 ? 1 : 0));
 log("summary.sticky_t2=" + (okT2 ? 1 : 0));
 
-writeFileSync(${JSON.stringify(outPath)}, lines.join("\\n") + "\\n");
+if (process.env.REPI_STICKY_SMOKE_WRITE === "1") writeFileSync(${JSON.stringify(outPath)}, lines.join("\\n") + "\\n");
 console.log(JSON.stringify({ ok, outPath: ${JSON.stringify(outPath)}, t1_cold: okT1, t2_sticky: okT2, cont: okCont, line: okLine, bytes: lines.join("\\n").length }));
 `;
 
@@ -171,6 +172,7 @@ const r = spawnSync(process.execPath, ["--import", "tsx", "-e", runner], {
 		PATH: `/usr/bin:/bin:${process.env.PATH || ""}`,
 		REPI_OFFLINE: "1",
 		REPI_SKIP_VERSION_CHECK: "1",
+		REPI_STICKY_SMOKE_WRITE: writeArtifact ? "1" : "0",
 	},
 	timeout: 60_000,
 	maxBuffer: 4 * 1024 * 1024,
@@ -187,8 +189,8 @@ try {
 }
 
 mkdirSync(dirname(outPath), { recursive: true });
-if (!report.ok) {
-	// still write diagnostic
+if (!report.ok && writeArtifact) {
+	// still write diagnostic when explicitly requested
 	writeFileSync(
 		outPath,
 		[

@@ -69,4 +69,7 @@ jobs:
       - name: No generated diff
         run: |
           git diff --check
+          # Host/runtime smoke artifacts may be refreshed by local tooling; CI offline
+          # smoke must not fail solely because mission_id/random tokens rewrite docs outputs.
+          git restore --worktree --source=HEAD --             'docs/reverse-agent/*-host-capture-smoke.out'             'docs/reverse-agent/*-runtime-e2e.out'             'docs/reverse-agent/sticky-inject-host-capture-smoke.out' || true
           git diff --exit-code
