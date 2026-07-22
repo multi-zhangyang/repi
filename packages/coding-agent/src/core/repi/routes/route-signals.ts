@@ -42,10 +42,14 @@ export function detectRouteSignals(text: string): RouteSignals {
 	const nativeReverseWord = /逆向|reverse[-_ ]?engineer/i.test(lower);
 	const nativeRouteSignal = nativeConcreteSignal || (nativeReverseWord && !webTargetSignal);
 	const memoryForensicsSignal =
-		/memory dump|memdump|mem\.raw|\.vmem|hiberfil|pagefile|volatility|内存取证|内存镜像|内存转储|lsass dump|crash dump/.test(
+		/memory dump|memdump|mem\.raw|\.vmem|hiberfil|pagefile|volatility|内存取证|内存镜像|内存转储|lsass dump|crash dump|memory forensics|pslist|malfind|\bvol(?:atility)?3?\b|mem\.dmp|\bmemory\s*image\b/.test(
 			lower,
 		);
-	const pcapDfirSignal = /\b(?:pcap|pcapng|tshark|wireshark|capinfos|dfir|forensic)\b|流量|取证/i.test(lower);
+	// Bare "forensic/取证" alone is not PCAP — memory forensics owns pure memory wording.
+	const pcapDfirSignal =
+		/\b(?:pcap|pcapng|tshark|wireshark|capinfos|dfir)\b|流量|网络取证|流量取证/i.test(lower) ||
+		(/\bforensic\b|取证/.test(lower) &&
+			/\b(?:pcap|pcapng|tshark|wireshark|packet|flow|http|dns|tls)\b|流量/.test(lower));
 	const nonAgentConcreteTargetSignal =
 		nativeRouteSignal ||
 		webTargetSignal ||

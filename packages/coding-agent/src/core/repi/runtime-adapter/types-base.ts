@@ -13,6 +13,8 @@ export type RuntimeAdapterTargetKind =
 	| "crypto-artifact"
 	| "cloud-identity"
 	| "agent-security"
+	| "memory-forensics"
+	| "js-signing"
 	| "unknown";
 
 export type RuntimeAdapterParserRuleV1 = {

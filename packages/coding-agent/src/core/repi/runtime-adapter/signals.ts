@@ -10,7 +10,9 @@ import type {
 
 export function materializeRuntimeAdapterCommand(template: string, target?: string): string {
 	const targetValue = target?.trim() || ".";
-	return template.replace(/^[^:]+:\s*/, "").replaceAll("<target>", shellQuote(targetValue));
+	// Only strip an optional first-line "adapter-id: " label — never strip shell `${var:-default}` colons.
+	const body = template.replace(/^([A-Za-z0-9_.-]+-adapter)\s*:\s*/i, "");
+	return body.replaceAll("<target>", shellQuote(targetValue)).replaceAll("\0", "");
 }
 
 export function parseRuntimeAdapterSignals(

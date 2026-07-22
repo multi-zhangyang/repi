@@ -34,7 +34,7 @@ export const MEMORY_EXTRA_SURROGATE_LINES = [
 	"    print('[mem-vol] pure_python_pslist windows_pslist=0 linux_pslist=%d note=not_vol_dump' % lin_n)",
 	"print('[mem-pslist-surrogate] note=pure_python_path_scan_not_vol_dump')",
 	"ips = collections.Counter(re.findall(r'\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b', text))",
-	"urls = [u.rstrip('\x00') for u in re.findall(r'https?://[w./:?#&=%+-]{4,120}', text, re.I)[:20]]",
+	"urls = [u.rstrip(chr(0)) for u in re.findall(r'https?://[w./:?#&=%+-]{4,120}', text, re.I)[:20]]",
 	"for ip, hits in ips.most_common(12):",
 	"  if ip.startswith('0.') or ip.startswith('255.'): continue",
 	"  print('[mem-net] ip=%s hits=%d' % (ip, hits))",

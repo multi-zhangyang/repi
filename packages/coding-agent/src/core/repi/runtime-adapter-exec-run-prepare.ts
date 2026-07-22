@@ -59,7 +59,21 @@ export function prepareRuntimeAdapterExecution(options: {
 		.replace(/\$\(\s*which\s+[A-Za-z0-9_.+-]+\s*(?:\|\|\s*true)?\s*\)/g, "")
 		.replace(/\bwhich\s+[A-Za-z0-9_.+-]+/g, "");
 	// Optional cloud CLIs are best-effort inventory probes; pure/host paths must still run.
-	const optionalInventoryCli = new Set(["aws", "az", "gcloud", "kubectl", "docker", "helm", "terraform"]);
+	const optionalInventoryCli = new Set([
+		"aws",
+		"az",
+		"gcloud",
+		"kubectl",
+		"docker",
+		"helm",
+		"terraform",
+		"volatility3",
+		"volatility",
+		"vol",
+		"frida",
+		"frida-ps",
+		"adb",
+	]);
 	const missingCommandTools = commandKnownTools(commandForToolProbe).filter((tool: any) => {
 		if (optionalInventoryCli.has(String(tool).toLowerCase())) return false;
 		return resolvedToolPresent(index, tool) === false;

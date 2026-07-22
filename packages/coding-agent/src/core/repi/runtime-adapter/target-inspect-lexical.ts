@@ -98,4 +98,16 @@ export function appendLexicalTargetSignals(
 			"runtime_artifact",
 		);
 	}
+	if (
+		/\b(?:memory forensics|memdump|volatility|pslist|malfind|hiberfil|pagefile|\bvol(?:atility)?3?\b|mem\.dmp|memory image|lsass dump)\b/i.test(
+			text,
+		)
+	) {
+		add(
+			"memory-forensics-host-adapter",
+			"memory-forensics",
+			"memory forensics host lexical signal",
+			"runtime_artifact",
+		);
+	}
 }
