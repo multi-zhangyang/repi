@@ -2,6 +2,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { truncateMiddle } from "../../text.ts";
+import { registerRepiReverseLiveBrowserTool } from "./tools-web-browser.ts";
 import { registerRepiReverseJsSigningTool } from "./tools-web-js.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
@@ -10,58 +11,7 @@ export function registerRepiReverseWebTools(
 	pi: ExtensionAPI,
 	deps: ReverseRuntimeToolDeps,
 ): void {
-	registerTool({
-		name: "re_live_browser",
-		label: "RE Live Browser",
-		description:
-			"Plan, show, or run browser/XHR/WebSocket runtime capture with Playwright-if-installed and node-fetch fallback, producing auth matrix, IDOR/BOLA probes, replay commands, and runtime anchors.",
-		promptSnippet:
-			"Use re_live_browser for Web/API/JS reverse/pentest tasks after re_map to capture rendered requests, responses, storage, WebSockets, and replay probes.",
-		promptGuidelines: [
-			"Call re_live_browser run for HTTP(S) targets before claiming route/auth/session behavior.",
-			"Call re_live_browser run with a concrete URL to capture request_response_log, runtime_anchors, storage, and WebSocket evidence.",
-		],
-		parameters: Type.Object(
-			{
-				action: Type.Optional(Type.String()),
-				target: Type.Optional(Type.String()),
-				url: Type.Optional(Type.String()),
-				timeoutMs: Type.Optional(Type.Number()),
-			},
-			{ additionalProperties: true },
-		),
-		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const hasHttpTarget = /^https?:\/\//i.test(String(params.url || params.target || "").trim());
-			const rawAction = String(params.action ?? (hasHttpTarget ? "run" : "plan")).toLowerCase();
-			const action =
-				rawAction === "run" || rawAction === "capture"
-					? "run"
-					: rawAction === "show"
-						? "show"
-						: rawAction === "plan"
-							? "plan"
-							: hasHttpTarget
-								? "run"
-								: "plan";
-			const text =
-				action === "run"
-					? await deps.runLiveBrowser(pi, { target: params.target, url: params.url, timeoutMs: params.timeoutMs })
-					: deps.buildLiveBrowserOutput(action, {
-							target: params.target,
-							url: params.url,
-							timeoutMs: params.timeoutMs,
-						});
-			return {
-				content: [{ type: "text" as const, text: truncateMiddle(text, 20000) }],
-				details: {
-					action,
-					path: deps.latestLiveBrowserArtifactPath(),
-					target: params.target,
-					url: params.url,
-				} as Record<string, unknown>,
-			};
-		},
-	});
+	registerRepiReverseLiveBrowserTool(registerTool, pi, deps);
 	registerTool({
 		name: "re_web_authz_state",
 		label: "RE Web Authz State",
