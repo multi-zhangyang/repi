@@ -1,7 +1,13 @@
-/** Same-adapter+target runtime adapter artifact reuse within TTL. */
+/** Same-adapter+target runtime adapter artifact reuse within TTL + in-flight coalesce. */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { evidenceToolchainDir } from "../../storage.ts";
+
+const inflight = new Map<string, Promise<string>>();
+
+export function adapterRunKey(adapterId?: string, target?: string): string {
+	return `${String(adapterId ?? "").trim()}::${String(target ?? "").trim() || "."}`;
+}
 
 export function tryReuseRecentRuntimeAdapterArtifact(params: {
 	adapterId?: string;
@@ -46,4 +52,24 @@ export function tryReuseRecentRuntimeAdapterArtifact(params: {
 		return undefined;
 	}
 	return { path: latest, ageMs, body: raw, adapterId };
+}
+
+/** Coalesce concurrent same adapter+target runs onto one execution promise. */
+export async function runRuntimeAdapterCoalesced(params: {
+	adapterId?: string;
+	target?: string;
+	run: () => Promise<string>;
+}): Promise<{ text: string; coalesced: boolean }> {
+	const key = adapterRunKey(params.adapterId, params.target);
+	const existing = inflight.get(key);
+	if (existing) {
+		const text = await existing;
+		return { text, coalesced: true };
+	}
+	const pending = params.run().finally(() => {
+		inflight.delete(key);
+	});
+	inflight.set(key, pending);
+	const text = await pending;
+	return { text, coalesced: false };
 }

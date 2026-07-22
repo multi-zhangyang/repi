@@ -5,7 +5,7 @@ import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { softFillOptionalOrchestrationWhenReverseReady } from "../../completion-audit/soft-fill-optional.ts";
 import { auditCompletion } from "../../completion-audit.ts";
 import { tryReverseReadyDomainProofStop, tryReverseReadyRuntimeAdapterStop } from "./tools-adapter-ready-stop.ts";
-import { tryReuseRecentRuntimeAdapterArtifact } from "./tools-adapter-reuse.ts";
+import { runRuntimeAdapterCoalesced, tryReuseRecentRuntimeAdapterArtifact } from "./tools-adapter-reuse.ts";
 import { pickAdapterIdForRun, resolveAdapterRunTarget } from "./tools-adapter-target.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
@@ -119,14 +119,34 @@ export function registerRepiReverseAdapterTools(
 				} catch {
 					/* optional */
 				}
-				const text = await deps.runRuntimeAdapterExecution(pi, {
-					adapter,
-					target: resolvedTarget,
-					timeoutMs: params.timeoutMs,
+				const { text, coalesced } = await runRuntimeAdapterCoalesced({
+					adapterId: adapter,
+					target: resolvedTarget ?? params.target,
+					run: () =>
+						deps.runRuntimeAdapterExecution(pi, {
+							adapter,
+							target: resolvedTarget,
+							timeoutMs: params.timeoutMs,
+						}),
 				});
 				return {
-					content: [{ type: "text" as const, text: deps.truncateMiddle(text, 24000) }],
-					details: { action, adapter: params.adapter, target: params.target } as Record<string, unknown>,
+					content: [
+						{
+							type: "text" as const,
+							text: deps.truncateMiddle(
+								coalesced
+									? `runtime_adapter:\nstatus: coalesce\nnote: joined in-flight same adapter+target run\n\n${text}`
+									: text,
+								24000,
+							),
+						},
+					],
+					details: {
+						action,
+						adapter: params.adapter,
+						target: params.target,
+						coalesced,
+					} as Record<string, unknown>,
 				};
 			}
 			const report = deps.buildRuntimeAdapterExecutionGate(params.adapter ?? params.target);
