@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { auditCompletion } from "../../completion-audit.ts";
 import { readCurrentMission } from "../../mission.ts";
+import { buildCompleteReadySkeleton } from "../install-proof-tools/complete-ready-skeleton.ts";
 
 type ToolRegistrar = (tool: Parameters<ExtensionAPI["registerTool"]>[0]) => void;
 
@@ -72,7 +73,9 @@ export function registerRepiControlOperatorTool(
 						"status: reverse_ready_stop",
 						"completion_status: ready",
 						"note: reverse_runtime_gate already satisfied; do not plan/dispatch more steps",
-						"next: write HARNESS_BUGS/PROOF only (or re_complete scaffold if report needed)",
+						"next: copy HARNESS_BUGS/PROOF skeleton below as final answer (optional re_complete audit)",
+						"",
+						buildCompleteReadySkeleton({ thrash: true }),
 					].join("\n");
 					return {
 						content: [{ type: "text" as const, text }],
