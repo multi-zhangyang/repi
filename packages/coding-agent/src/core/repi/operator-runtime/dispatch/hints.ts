@@ -1,17 +1,52 @@
 /** Worker/dispatcher adaptive routing hints and commander policy. */
+
+import { auditCompletion } from "../../completion-audit.ts";
 import type { ContextPackArtifact } from "../../context-pack.ts";
 import { delegateTools } from "../../delegate/pure.ts";
+import { readCurrentMission } from "../../mission.ts";
 import { commandTargetSuffix } from "../deps.ts";
 import { isCommanderRuntimeCommand } from "./budget.ts";
 import { latestDispatcherFeedbackBoard } from "./feedback-board.ts";
 
+function reverseGateReady(): boolean {
+	try {
+		const mission = readCurrentMission();
+		const reverseDone = Boolean(
+			mission?.checkpoints?.some(
+				(c: { name?: string; status?: string }) =>
+					(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
+			),
+		);
+		return reverseDone && Boolean(auditCompletion()?.ready);
+	} catch {
+		return false;
+	}
+}
+
+function reversePolicyLines(): string[] {
+	if (reverseGateReady()) {
+		return [
+			"reverse_rule=require proof.exit=partial_runtime_capture|runtime_capture_strong and bind_ready=true",
+			"reverse_status=ready",
+			"reverse_next=write HARNESS_BUGS/PROOF only",
+		];
+	}
+	return [
+		"reverse_rule=require proof.exit=partial_runtime_capture|runtime_capture_strong and bind_ready=true",
+		"reverse_next=re_domain_proof_exit show",
+		"reverse_next=re_runtime_adapter run",
+	];
+}
+
 export function workerAdaptiveRoutingHints(entries: any[], target?: string): string[] {
 	const suffix = commandTargetSuffix(target);
-	const reverseCmds = [
-		"re_domain_proof_exit show",
-		"re_runtime_adapter run",
-		"reverse capture gate: require proof.exit=partial_runtime_capture|runtime_capture_strong and bind_ready=true",
-	];
+	const reverseCmds = reverseGateReady()
+		? ["reverse_status=ready", "write HARNESS_BUGS/PROOF only"]
+		: [
+				"re_domain_proof_exit show",
+				"re_runtime_adapter run",
+				"reverse capture gate: require proof.exit=partial_runtime_capture|runtime_capture_strong and bind_ready=true",
+			];
 	const __hints = entries
 		.flatMap((entry: any) => {
 			if (entry.score >= 80 && /pass/i.test(entry.verdict)) return [];
@@ -30,11 +65,13 @@ export function workerAdaptiveRoutingHints(entries: any[], target?: string): str
 }
 export function dispatcherAdaptiveRoutingHints(target?: string): string[] {
 	const suffix = commandTargetSuffix(target);
-	const reverseCmds = [
-		"re_domain_proof_exit show",
-		"re_runtime_adapter run",
-		"reverse capture gate: require proof.exit=partial_runtime_capture|runtime_capture_strong and bind_ready=true",
-	];
+	const reverseCmds = reverseGateReady()
+		? ["reverse_status=ready", "write HARNESS_BUGS/PROOF only"]
+		: [
+				"re_domain_proof_exit show",
+				"re_runtime_adapter run",
+				"reverse capture gate: require proof.exit=partial_runtime_capture|runtime_capture_strong and bind_ready=true",
+			];
 	const __hints = latestDispatcherFeedbackBoard()
 		.hints.map((hint: any) => {
 			const score = Number(/\bscore=(\d+)/.exec(hint)?.[1] ?? 50);
@@ -56,10 +93,7 @@ export function commanderPolicyFromContext(context: ContextPackArtifact): string
 	const inheritedBudget = context.commanderMergeBudget ?? [];
 	return Array.from(
 		new Set([
-			"reverse_rule=require proof.exit=partial_runtime_capture|runtime_capture_strong and bind_ready=true",
-			"reverse_next=re_domain_proof_exit show",
-			"reverse_next=re_runtime_adapter run",
-
+			...reversePolicyLines(),
 			...inheritedBudget,
 			`context_commander_queue=${commanderQueueDepth}`,
 			`worker_score_rows=${context.workerScoreboard?.length ?? 0}`,
