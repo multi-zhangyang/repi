@@ -2,6 +2,7 @@
 import type { ExtensionAPI } from "../extensions/types.ts";
 import { d } from "./operation-step-deps.ts";
 import type { OperationExecution } from "./operator-step.ts";
+import { buildToolDigest } from "./tool-index/catalog-core.ts";
 
 type Done = (output: string) => OperationExecution;
 
@@ -35,10 +36,14 @@ export async function tryExecuteOperationReverseNativeStep(
 				: d().buildExploitLabOutput(action, { target: labTarget, runs, timeoutMs }),
 		);
 	}
-	if (/^re_tool_index\s+refresh$/i.test(command) || /^re-tools\s+refresh$/i.test(command)) {
-		return done(await d().refreshToolIndex(pi));
+	if (/^re[-_](?:tool[-_]index|tools)\b/i.test(command)) {
+		if (/\brefresh\b/i.test(command)) return done(await d().refreshToolIndex(pi));
+		return done(buildToolDigest());
 	}
-	if (/^re_graph\s+build$/i.test(command)) return done(d().buildAttackGraphOutput("build"));
+	if (/^re_graph\b/i.test(command)) {
+		const action = /\bshow\b/i.test(command) ? "show" : "build";
+		return done(d().buildAttackGraphOutput(action as "build" | "show"));
+	}
 	if (/^re[-_](?:exploit[-_])?chain\s+(plan|compose)\b/i.test(command)) {
 		const action = /^re[-_](?:exploit[-_])?chain\s+compose\b/i.test(command) ? "compose" : "plan";
 		const chainTarget = command.replace(/^re[-_](?:exploit[-_])?chain\s+(?:plan|compose)\b/i, "").trim() || target;
