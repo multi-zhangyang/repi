@@ -44,31 +44,47 @@ export function registerRepiControlCoreMapEvidenceTools(
 			"Prefer P1/P2 evidence over source names or comments when evidence conflicts.",
 			"Reverse claims stay blocked until proof.exit=partial_runtime_capture|runtime_capture_strong.",
 		],
-		parameters: Type.Object({
-			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("append"), Type.Literal("search")])),
-			kind: Type.Optional(
-				Type.Union([
-					Type.Literal("runtime"),
-					Type.Literal("traffic"),
-					Type.Literal("served_asset"),
-					Type.Literal("process_config"),
-					Type.Literal("artifact"),
-					Type.Literal("source"),
-					Type.Literal("note"),
-				]),
-			),
-			title: Type.Optional(Type.String()),
-			fact: Type.Optional(Type.String()),
-			command: Type.Optional(Type.String()),
-			path: Type.Optional(Type.String()),
-			offset: Type.Optional(Type.String()),
-			hash: Type.Optional(Type.String()),
-			verify: Type.Optional(Type.String()),
-			confidence: Type.Optional(Type.String()),
-			query: Type.Optional(Type.String()),
-		}),
+		parameters: Type.Object(
+			{
+				action: Type.Optional(Type.String()),
+				kind: Type.Optional(
+					Type.Union([
+						Type.Literal("runtime"),
+						Type.Literal("traffic"),
+						Type.Literal("served_asset"),
+						Type.Literal("process_config"),
+						Type.Literal("artifact"),
+						Type.Literal("source"),
+						Type.Literal("note"),
+					]),
+				),
+				title: Type.Optional(Type.String()),
+				fact: Type.Optional(Type.String()),
+				command: Type.Optional(Type.String()),
+				path: Type.Optional(Type.String()),
+				offset: Type.Optional(Type.String()),
+				hash: Type.Optional(Type.String()),
+				verify: Type.Optional(Type.String()),
+				confidence: Type.Optional(Type.String()),
+				query: Type.Optional(Type.String()),
+			},
+			{ additionalProperties: true },
+		),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const action = params.action ?? "show";
+			const rawAction = String(params.action ?? "")
+				.trim()
+				.toLowerCase();
+			const hasAppendPayload = Boolean(
+				params.fact || params.path || params.hash || params.command || params.title || params.verify,
+			);
+			const action =
+				rawAction === "append" || rawAction === "show" || rawAction === "search"
+					? rawAction
+					: hasAppendPayload
+						? "append"
+						: params.query
+							? "search"
+							: "show";
 			if (action === "append") {
 				const evidence = deps.appendEvidence({
 					kind: params.kind ?? "note",
