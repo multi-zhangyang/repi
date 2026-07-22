@@ -48,6 +48,9 @@ function syncSoftFill(pending: Set<string>, target: string | undefined, filled: 
 		"context_pack_ready",
 		"exploit_lab_ready",
 		"exploit_chain_ready",
+		"web_authz_ready",
+		"live_browser_ready",
+		"js_signing_ready",
 	]) {
 		if (pending.has(name)) markOptional(name, markNote, filled);
 	}

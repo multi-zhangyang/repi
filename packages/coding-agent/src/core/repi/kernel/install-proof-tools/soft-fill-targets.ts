@@ -11,6 +11,8 @@ export const COMPLETE_SOFT_FILL_TARGETS = new Set([
 	"report_or_writeup_ready",
 	"proof_loop_ready",
 	"web_authz_ready",
+	"js_signing_ready",
+	"live_browser_ready",
 	"mobile_runtime_ready",
 	"native_runtime_ready",
 	"delegation_packets_ready",
