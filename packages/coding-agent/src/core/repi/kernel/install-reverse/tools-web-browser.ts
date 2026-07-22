@@ -1,6 +1,7 @@
 /** Reverse install tool: re_live_browser. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { updateMissionCheckpoint } from "../../mission.ts";
 import { truncateMiddle } from "../../text.ts";
 import { tryReuseRecentLiveBrowserArtifact } from "./tools-web-browser-reuse.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
@@ -50,9 +51,12 @@ export function registerRepiReverseLiveBrowserTool(
 					latestPath: deps.latestLiveBrowserArtifactPath?.({ target: url }),
 				});
 				if (reused) {
-					const note = `browser_reuse: latest artifact within 120s for same URL (ageMs=${reused.ageMs})
-path: ${reused.path}
-`;
+					try {
+						updateMissionCheckpoint("live_browser_ready", "done", reused.path);
+					} catch {
+						/* mission optional */
+					}
+					const note = `browser_reuse: latest artifact within 120s for same URL (ageMs=${reused.ageMs})\npath: ${reused.path}\n`;
 					return {
 						content: [{ type: "text" as const, text: truncateMiddle(note + reused.body, 20000) }],
 						details: {

@@ -1,6 +1,7 @@
-/** Lean product control-plane tools group. */
+/** Lean product control-plane tools: re_map + re_evidence. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { updateMissionCheckpoint } from "../../mission.ts";
 import { truncateMiddle } from "../../text.ts";
 import type { ControlPlaneToolDeps } from "./tools-deps.ts";
 import { tryReuseRecentMapArtifact } from "./tools-map-reuse.ts";
@@ -15,13 +16,9 @@ export function registerRepiControlCoreMapEvidenceTools(
 	registerTool({
 		name: "re_map",
 		label: "RE Map",
-		description:
-			"Run a passive target/workspace mapper, write a map artifact, append evidence, and satisfy the passive_map_done checkpoint.",
-		promptSnippet: "Use re_map before broad exploitation to anchor files/routes/configs/binaries in evidence.",
-		promptGuidelines: [
-			"Call re_map early for reverse/pentest tasks to capture target stat, manifests, routes/auth strings, binary candidates, and HTTP baseline when applicable.",
-			"Use the generated map_artifact path as the source of truth for subsequent lane command packs.",
-		],
+		description: "Run passive target mapper; write map artifact, append evidence, set passive_map_done.",
+		promptSnippet: "Use re_map early to anchor routes/configs/binaries/HTTP baseline.",
+		promptGuidelines: ["Call re_map early for reverse/pentest tasks before broad exploitation."],
 		parameters: Type.Object({
 			target: Type.Optional(Type.String()),
 			depth: Type.Optional(Type.Number()),
@@ -31,14 +28,16 @@ export function registerRepiControlCoreMapEvidenceTools(
 			const mapsDir = deps.evidenceMapsDir();
 			const reused = tryReuseRecentMapArtifact({ target, mapsDir });
 			if (reused) {
+				try {
+					updateMissionCheckpoint("passive_map_done", "done", reused.path);
+					updateMissionCheckpoint("repro_commands_ready", "done", `map-artifact:${reused.path}`);
+				} catch {
+					/* mission optional */
+				}
 				const note = `map_reuse: latest artifact within 180s for same target (ageMs=${reused.ageMs})\npath: ${reused.path}\n`;
 				return {
 					content: [{ type: "text" as const, text: truncateMiddle(note + reused.body, 16000) }],
-					details: {
-						path: reused.path,
-						target: target ?? ".",
-						reused: true,
-					} as Record<string, unknown>,
+					details: { path: reused.path, target: target ?? ".", reused: true } as Record<string, unknown>,
 				};
 			}
 			const text = await deps.runPassiveMap(pi, { target: params.target, depth: params.depth });
@@ -52,13 +51,9 @@ export function registerRepiControlCoreMapEvidenceTools(
 		name: "re_evidence",
 		label: "RE Evidence",
 		description:
-			"Append, search, or show REPI evidence with runtime-first priority metadata. Requires reverse proof.exit=partial_runtime_capture|runtime_capture_strong and bind_ready=true before claim.",
-		promptSnippet: "Record decisive evidence in a ledger before making claims.",
-		promptGuidelines: [
-			"Use re_evidence append for runtime behavior, traffic, served assets, process config, artifacts, source, and operator notes.",
-			"Prefer P1/P2 evidence over source names or comments when evidence conflicts.",
-			"Reverse claims stay blocked until proof.exit=partial_runtime_capture|runtime_capture_strong.",
-		],
+			"Append/search/show REPI evidence. Reverse claims need proof.exit=partial_runtime_capture|runtime_capture_strong + bind_ready.",
+		promptSnippet: "Record decisive evidence before claims.",
+		promptGuidelines: ["Use re_evidence append for runtime/traffic/artifact facts."],
 		parameters: Type.Object(
 			{
 				action: Type.Optional(Type.String()),
