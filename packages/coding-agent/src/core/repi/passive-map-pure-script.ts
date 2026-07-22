@@ -37,7 +37,7 @@ export function passiveMapScript(target?: string, depth?: number): string {
 		'echo "## pcap-candidates"',
 		`find "$ROOT" -maxdepth ${maxDepth} -type f \\( -name '*.pcap' -o -name '*.pcapng' -o -name '*.cap' \\) -print 2>/dev/null | head -40`,
 		"fi",
-		'case "$TARGET" in http://*|https://*) echo "## http-baseline"; curl -k -sS -I --max-time 10 "$TARGET" 2>&1 | sed -n "1,80p"; curl -k -sS --max-time 10 "$TARGET/robots.txt" 2>&1 | sed "s/^/[robots] /" | head -40;; esac',
+		'case "$TARGET" in http://*|https://*) echo "## http-baseline"; curl -k -sS -D - -o /dev/null --max-time 12 -A "Mozilla/5.0 REPI-passive-map" "$TARGET" 2>&1 | sed -n "1,80p"; curl -k -sS -I --max-time 10 "$TARGET" 2>&1 | sed "s/^/[http-head] /" | sed -n "1,20p"; curl -k -sS --max-time 10 -A "Mozilla/5.0 REPI-passive-map" "$TARGET/robots.txt" 2>&1 | sed "s/^/[robots] /" | head -40;; esac',
 	].join("\n");
 }
 

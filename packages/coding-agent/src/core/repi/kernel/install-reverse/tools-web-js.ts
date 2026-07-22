@@ -1,6 +1,7 @@
 /** Reverse install tool: re_js_signing. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { truncateMiddle } from "../../text.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseJsSigningTool(
@@ -36,7 +37,7 @@ export function registerRepiReverseJsSigningTool(
 							timeoutMs: params.timeoutMs,
 						});
 			return {
-				content: [{ type: "text" as const, text }],
+				content: [{ type: "text" as const, text: truncateMiddle(text, 20000) }],
 				details: {
 					action,
 					path: deps.latestJsSigningArtifactPath(),

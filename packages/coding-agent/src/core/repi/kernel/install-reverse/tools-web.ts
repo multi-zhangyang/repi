@@ -1,6 +1,7 @@
 /** Reverse install tools: browser / authz / js-signing. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { truncateMiddle } from "../../text.ts";
 import { registerRepiReverseJsSigningTool } from "./tools-web-js.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
@@ -37,7 +38,7 @@ export function registerRepiReverseWebTools(
 							timeoutMs: params.timeoutMs,
 						});
 			return {
-				content: [{ type: "text" as const, text }],
+				content: [{ type: "text" as const, text: truncateMiddle(text, 20000) }],
 				details: {
 					action,
 					path: deps.latestLiveBrowserArtifactPath(),
@@ -79,7 +80,7 @@ export function registerRepiReverseWebTools(
 							timeoutMs: params.timeoutMs,
 						});
 			return {
-				content: [{ type: "text" as const, text }],
+				content: [{ type: "text" as const, text: truncateMiddle(text, 20000) }],
 				details: {
 					action,
 					path: deps.latestWebAuthzStateArtifactPath(),

@@ -12,7 +12,7 @@ import { ensureReconStorage, RECON_APPEND_SYSTEM_PROMPT, RECON_SYSTEM_PROMPT } f
 import { toolIndexPath } from "./storage/paths/core.ts";
 import { evidenceToolchainDir, writePrivateTextFile } from "./storage.ts";
 import { buildToolDigest, createBootstrapPlan, parseToolIndex } from "./tool-index.ts";
-import { repiIndexedToolPresent } from "./tool-presence.ts";
+import { repiResolvedToolPresent } from "./tool-presence.ts";
 
 export type ToolchainRuntimeDeps = {
 	appendEvidence: (...args: any[]) => any;
@@ -47,7 +47,7 @@ export function buildToolchainDomainCapability(domainFilter?: string): Toolchain
 		domainFilter,
 		toolIndexPath: toolIndexPath(),
 		sourceCorpus,
-		isToolPresent: (tool) => repiIndexedToolPresent(index, tool) === true,
+		isToolPresent: (tool) => repiResolvedToolPresent(index, tool) === true,
 		recommendInstall: (tools) =>
 			createBootstrapPlan(tools).map((item: any) =>
 				item.known ? `re_bootstrap plan ${item.tool}` : `manual_tool_review ${item.tool}`,

@@ -1,6 +1,7 @@
 /** Lean product control-plane tools group. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { truncateMiddle } from "../../text.ts";
 import type { ControlPlaneToolDeps } from "./tools-deps.ts";
 
 type ToolRegistrar = (tool: Parameters<ExtensionAPI["registerTool"]>[0]) => void;
@@ -27,7 +28,7 @@ export function registerRepiControlCoreMapEvidenceTools(
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const text = await deps.runPassiveMap(pi, { target: params.target, depth: params.depth });
 			return {
-				content: [{ type: "text" as const, text }],
+				content: [{ type: "text" as const, text: truncateMiddle(text, 16000) }],
 				details: { path: deps.evidenceMapsDir(), target: params.target ?? "." } as Record<string, unknown>,
 			};
 		},
