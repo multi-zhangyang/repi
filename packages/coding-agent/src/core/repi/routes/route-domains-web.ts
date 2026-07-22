@@ -7,11 +7,11 @@ export function routeRepiDomainWeb(lower: string, s: RouteSignals): RoutePlan | 
 	// Never match bare Chinese "格" (hits 格式/格局). Use multi-char lattice terms only.
 	// Do not let incidental crypto-looking tokens in long operator prompts hijack explicit web/URL tasks.
 	const strongCryptoArtifact =
-		/(?:\brsa\b|\baes\b|\bcbc\b|\becb\b|\bgcm\b|padding oracle|\blattice\b|\bsage\b|\bz3\b|hashcat|stego|隐写|密码题|格密码|格基|同余|椭圆曲线)/.test(
+		/(?:\brsa\b|\baes\b|\brc4\b|\bchacha(?:20)?\b|\bsalsa20\b|\bcbc\b|\becb\b|\bgcm\b|padding oracle|\blattice\b|\bsage\b|\bz3\b|hashcat|stego|隐写|密码题|格密码|格基|同余|椭圆曲线)/.test(
 			lower,
 		);
 	const cryptoIntent =
-		/(?:\bcrypto\b|cryptography|nonce|iv\b|oracle|john|xor|base64|base32|\bhex\b|modulus|exponent|elliptic|ecdsa)/.test(
+		/(?:\bcrypto\b|cryptography|nonce|iv\b|oracle|john|xor|base64|base32|\bhex\b|modulus|exponent|elliptic|ecdsa|\brc4\b|\bchacha)/.test(
 			lower,
 		);
 	if (strongCryptoArtifact || (cryptoIntent && !s.webTargetSignal)) {

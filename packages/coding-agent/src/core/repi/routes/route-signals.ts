@@ -20,8 +20,9 @@ export function detectRouteSignals(text: string): RouteSignals {
 		/https?:\/\/|www\.|\.(?:com|net|org|io|cn|app|dev|site|co|xyz|info|biz)\b|网站|站点|网页|接口|endpoint|\bhttp\b|登录|cookie|session|bearer|authorization|请求|响应|header|x-forwarded|user-agent/i.test(
 			lower,
 		);
+	// Do not treat bare "crypto" as frontend-JS — pure crypto/stego is a separate domain.
 	const jsSpecific =
-		/(?:\bjs\b|jsre|javascript|frontend|js\s*逆向|签名|加密参数|webpack|sourcemap|风控|crypto|subtle|\bsign\b|signature|nonce|timestamp|encrypt|decrypt)/.test(
+		/(?:\bjs\b|jsre|javascript|frontend|js\s*逆向|签名|加密参数|webpack|sourcemap|风控|webcrypto|subtle|\bsign\b|signature|timestamp|encrypt|decrypt)/.test(
 			lower,
 		) ||
 		(/(?:xhr|fetch|websocket)/.test(lower) &&

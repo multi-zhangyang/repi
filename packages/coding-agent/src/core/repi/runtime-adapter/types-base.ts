@@ -10,6 +10,7 @@ export type RuntimeAdapterTargetKind =
 	| "pcap-flow"
 	| "firmware-image"
 	| "firmware-rootfs"
+	| "crypto-artifact"
 	| "unknown";
 
 export type RuntimeAdapterParserRuleV1 = {

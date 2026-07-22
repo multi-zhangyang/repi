@@ -23,8 +23,18 @@ export function appendLexicalTargetSignals(
 	) {
 		add("web-cdp-network-adapter", "cdp-endpoint", "cdp/websocket endpoint target", "network");
 	}
-	if (/\b(?:xhr|websocket|cookie|authorization|graphql|api|signed request|nonce|timestamp)\b/i.test(text)) {
+	if (
+		/\b(?:xhr|websocket|cookie|authorization|graphql|api|signed request)\b/i.test(text) ||
+		(/\b(?:nonce|timestamp)\b/i.test(text) && /https?:\/\/|\b(?:xhr|fetch|header|cookie|session)\b/i.test(text))
+	) {
 		add("web-cdp-network-adapter", "web-url", "web api/replay lexical signal", "network");
+	}
+	if (
+		/\b(?:crypto|cryptography|rsa|aes|rc4|chacha(?:20)?|salsa20|cbc|ecb|gcm|padding oracle|lattice|sage|\bz3\b|hashcat|stego|xor|modulus|exponent|ecdsa|elliptic)\b/i.test(
+			text,
+		)
+	) {
+		add("crypto-param-transform-adapter", "crypto-artifact", "crypto/stego lexical signal", "runtime_artifact");
 	}
 	if (
 		targetKind !== "directory" &&
