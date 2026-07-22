@@ -2,6 +2,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { auditCompletion } from "../../completion-audit.ts";
+import { readCurrentMission } from "../../mission.ts";
 
 type ToolRegistrar = (tool: Parameters<ExtensionAPI["registerTool"]>[0]) => void;
 
@@ -46,8 +47,18 @@ export function registerRepiControlOperatorTool(
 			// After reverse proof is ready, further plan/dispatch thrash is wasted — steer to final report.
 			try {
 				const audit = auditCompletion();
+				const mission = readCurrentMission();
+				const queueDone = Boolean(
+					mission?.checkpoints?.some(
+						(c: { name?: string; status?: string }) =>
+							(c.name === "operation_queue_ready" || c.name === "operator_queue_ready") && c.status === "done",
+					),
+				);
+				// Only stop thrash after reverse is ready *and* an operator queue was already materialised.
+				// First plan/dispatch after map/browser/proof must still run.
 				if (
 					audit?.ready &&
+					queueDone &&
 					(action === "plan" || action === "dispatch" || action === "verify" || action === "escalate")
 				) {
 					const text = [
