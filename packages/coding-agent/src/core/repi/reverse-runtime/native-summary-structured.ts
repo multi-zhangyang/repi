@@ -1,6 +1,10 @@
 /** Native runtime structured summary + format with reverse proof fields. */
 
-import { reverseRuntimeCaptureProofFields, reverseStructuredProofFields } from "../reverse-capture.ts";
+import {
+	prioritizeReverseProofLines,
+	reverseRuntimeCaptureProofFields,
+	reverseStructuredProofFields,
+} from "../reverse-capture.ts";
 import { reverseRuntimeTechniqueAnchor } from "../reverse-evidence.ts";
 import { truncateMiddle } from "../text.ts";
 import { nativeSummaryMitigationAndCapture } from "./native-summary-mitigations.ts";
@@ -33,5 +37,6 @@ export function nativeRuntimeStructuredSummary(stdout: string, stderr: string): 
 	for (const cap of reverseRuntimeCaptureProofFields("native", text, lines)) {
 		if (!lines.includes(cap)) lines.push(cap);
 	}
-	return lines.slice(0, 40);
+	// Never drop proof/bind fields with a naive slice — product was stuck at pending.
+	return prioritizeReverseProofLines(lines, 48);
 }

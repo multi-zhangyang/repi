@@ -1,5 +1,6 @@
 import { readCurrentMission } from "../mission.ts";
 import { ensureReconStorage } from "../resources.ts";
+import { prioritizeReverseProofLines } from "../reverse-capture.ts";
 import {
 	type NativeRuntimeArtifact,
 	type NativeRuntimeExecution,
@@ -50,9 +51,19 @@ export function buildNativeRuntimeArtifact(options: {
 		replayCommands: plan.replayCommands,
 		executions: options.executions ?? [],
 		runtimeAnchors: options.runtimeAnchors ?? [],
-		structuredSummary: (options.runtimeAnchors ?? [])
-			.filter((line: any) => line.startsWith("summary.") || line.startsWith("[runtime-technique]"))
-			.slice(0, 40),
+		structuredSummary: prioritizeReverseProofLines(
+			(options.runtimeAnchors ?? []).filter(
+				(line: any) =>
+					typeof line === "string" &&
+					(line.startsWith("summary.") ||
+						line.startsWith("[runtime-technique]") ||
+						line.startsWith("proof.exit=") ||
+						line.startsWith("query.proof_exit=") ||
+						line.startsWith("bind_ready=") ||
+						line.startsWith("query.bind_ready=")),
+			),
+			48,
+		),
 		nextActions,
 		sourceArtifacts: [
 			recentMarkdownArtifacts(evidenceMapsDir(), 1)[0],

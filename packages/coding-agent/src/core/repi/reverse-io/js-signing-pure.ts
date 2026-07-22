@@ -1,6 +1,7 @@
 import type { ArtifactScopeFilterOptions } from "../artifact-scope.ts";
 import { readCurrentMission } from "../mission.ts";
 import { ensureReconStorage } from "../resources.ts";
+import { prioritizeReverseProofLines } from "../reverse-capture.ts";
 import { evidenceJsSigningDir } from "../storage.ts";
 import {
 	inferJsSigningTarget,
@@ -50,12 +51,19 @@ export function buildJsSigningArtifact(options: {
 		captureScript,
 		executions: options.executions ?? [],
 		runtimeAnchors,
-		structuredSummary: runtimeAnchors
-			.filter(
+		structuredSummary: prioritizeReverseProofLines(
+			runtimeAnchors.filter(
 				(line: any) =>
-					line.startsWith("summary.") || line.startsWith("[runtime-technique]") || line.startsWith("proof."),
-			)
-			.slice(0, 40),
+					typeof line === "string" &&
+					(line.startsWith("summary.") ||
+						line.startsWith("[runtime-technique]") ||
+						line.startsWith("proof.exit=") ||
+						line.startsWith("query.proof_exit=") ||
+						line.startsWith("bind_ready=") ||
+						line.startsWith("query.bind_ready=")),
+			),
+			48,
+		),
 		nextActions,
 	};
 }

@@ -11,4 +11,5 @@ export {
 } from "./reverse-capture/catalog.ts";
 export { reverseDomainCaptureNextCommands } from "./reverse-capture/next-commands.ts";
 export { reverseProofGateLines } from "./reverse-capture/next-commands-gates.ts";
+export { isReverseProofCriticalLine, prioritizeReverseProofLines } from "./reverse-capture/proof-priority.ts";
 export { reverseRuntimeCaptureProofFields } from "./reverse-capture/runtime-scoring.ts";

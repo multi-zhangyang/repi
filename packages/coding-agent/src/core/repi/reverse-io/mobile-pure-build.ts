@@ -1,3 +1,4 @@
+import { prioritizeReverseProofLines } from "../reverse-capture.ts";
 /** Build mobile runtime artifact (reverse plan/run). */
 
 import { readCurrentMission } from "../mission.ts";
@@ -38,9 +39,19 @@ export function buildMobileRuntimeArtifact(options: {
 		...plan,
 		executions: options.executions ?? [],
 		runtimeAnchors: options.runtimeAnchors ?? [],
-		structuredSummary: (options.runtimeAnchors ?? [])
-			.filter((line: string) => line.startsWith("summary.") || line.startsWith("[runtime-technique]"))
-			.slice(0, 40),
+		structuredSummary: prioritizeReverseProofLines(
+			(options.runtimeAnchors ?? []).filter(
+				(line: any) =>
+					typeof line === "string" &&
+					(line.startsWith("summary.") ||
+						line.startsWith("[runtime-technique]") ||
+						line.startsWith("proof.exit=") ||
+						line.startsWith("query.proof_exit=") ||
+						line.startsWith("bind_ready=") ||
+						line.startsWith("query.bind_ready=")),
+			),
+			48,
+		),
 		sourceArtifacts: [
 			recentMarkdownArtifacts(evidenceMapsDir(), 1)[0],
 			recentMarkdownArtifacts(evidenceRunsDir(), 1)[0],

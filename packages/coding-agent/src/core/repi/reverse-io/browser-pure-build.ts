@@ -3,7 +3,7 @@
 
 import { readCurrentMission } from "../mission.ts";
 import { ensureReconStorage } from "../resources.ts";
-import { reverseDomainCaptureNextCommands } from "../reverse-capture.ts";
+import { prioritizeReverseProofLines, reverseDomainCaptureNextCommands } from "../reverse-capture.ts";
 import { evidenceMapsDir, recentMarkdownArtifacts } from "../storage.ts";
 import { shellQuote } from "../target.ts";
 import {
@@ -81,9 +81,19 @@ export function buildLiveBrowserArtifact(options: {
 		executions: options.executions ?? [],
 		runtimeAnchors:
 			options.runtimeAnchors ?? (invalidUrl ? [`error:${invalidUrl}; pass an explicit http(s):// URL`] : []),
-		structuredSummary: (options.runtimeAnchors ?? [])
-			.filter((line: string) => line.startsWith("summary.") || line.startsWith("[runtime-technique]"))
-			.slice(0, 40),
+		structuredSummary: prioritizeReverseProofLines(
+			(options.runtimeAnchors ?? []).filter(
+				(line: any) =>
+					typeof line === "string" &&
+					(line.startsWith("summary.") ||
+						line.startsWith("[runtime-technique]") ||
+						line.startsWith("proof.exit=") ||
+						line.startsWith("query.proof_exit=") ||
+						line.startsWith("bind_ready=") ||
+						line.startsWith("query.bind_ready=")),
+			),
+			48,
+		),
 		nextActions,
 		sourceArtifacts: [
 			recentMarkdownArtifacts(evidenceMapsDir(), 1)[0],

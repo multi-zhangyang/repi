@@ -2,7 +2,7 @@
 
 import { readCurrentMission } from "../mission.ts";
 import { ensureReconStorage } from "../resources.ts";
-import { reverseDomainCaptureNextCommands } from "../reverse-capture.ts";
+import { prioritizeReverseProofLines, reverseDomainCaptureNextCommands } from "../reverse-capture.ts";
 import { evidenceMapsDir, evidenceRunsDir, recentMarkdownArtifacts } from "../storage.ts";
 import { type WebAuthzStateArtifact, type WebAuthzStateExecution, webAuthzStateShellCommand } from "../web-runtime.ts";
 import { webAuthzPlanMatrices } from "./authz-pure-build-matrices.ts";
@@ -70,9 +70,19 @@ export function buildWebAuthzStateArtifact(options: {
 		replayCommands,
 		executions: options.executions ?? [],
 		runtimeAnchors: options.runtimeAnchors ?? [],
-		structuredSummary: (options.runtimeAnchors ?? [])
-			.filter((line: string) => line.startsWith("summary.") || line.startsWith("[runtime-technique]"))
-			.slice(0, 40),
+		structuredSummary: prioritizeReverseProofLines(
+			(options.runtimeAnchors ?? []).filter(
+				(line: any) =>
+					typeof line === "string" &&
+					(line.startsWith("summary.") ||
+						line.startsWith("[runtime-technique]") ||
+						line.startsWith("proof.exit=") ||
+						line.startsWith("query.proof_exit=") ||
+						line.startsWith("bind_ready=") ||
+						line.startsWith("query.bind_ready=")),
+			),
+			48,
+		),
 		nextActions,
 		sourceArtifacts: [
 			latestLiveBrowserArtifactPath(),

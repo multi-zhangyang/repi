@@ -1,7 +1,11 @@
 /** Mobile runtime structured summary + reverse proof fields. */
 /** Mobile runtime anchors/summary/format with reverse proof fields. */
 
-import { reverseRuntimeCaptureProofFields, reverseStructuredProofFields } from "../reverse-capture.ts";
+import {
+	prioritizeReverseProofLines,
+	reverseRuntimeCaptureProofFields,
+	reverseStructuredProofFields,
+} from "../reverse-capture.ts";
 import { reverseRuntimeTechniqueAnchor } from "../reverse-evidence.ts";
 import { truncateMiddle } from "../text.ts";
 
@@ -65,5 +69,5 @@ export function mobileRuntimeStructuredSummary(stdout: string, stderr: string): 
 	for (const cap of reverseRuntimeCaptureProofFields("mobile", text, lines)) {
 		if (!lines.includes(cap)) lines.push(cap);
 	}
-	return lines.slice(0, 30);
+	return prioritizeReverseProofLines(lines, 48);
 }

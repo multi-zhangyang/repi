@@ -1,5 +1,9 @@
 /** JS signing anchors/summary/format with reverse proof fields. */
-import { reverseRuntimeCaptureProofFields, reverseStructuredProofFields } from "../reverse-capture.ts";
+import {
+	prioritizeReverseProofLines,
+	reverseRuntimeCaptureProofFields,
+	reverseStructuredProofFields,
+} from "../reverse-capture.ts";
 import { reverseRuntimeTechniqueAnchor } from "../reverse-evidence.ts";
 import { truncateMiddle } from "../text.ts";
 import type { JsSigningArtifact } from "./js-signing-types.ts";
@@ -63,7 +67,7 @@ export function jsSigningStructuredSummary(stdout: string, stderr: string): stri
 	for (const cap of reverseRuntimeCaptureProofFields("web", text, lines)) {
 		if (!lines.includes(cap)) lines.push(cap);
 	}
-	return lines.slice(0, 40);
+	return prioritizeReverseProofLines(lines, 48);
 }
 
 export function formatJsSigning(artifact: JsSigningArtifact, path?: string): string {

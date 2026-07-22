@@ -1,7 +1,11 @@
 /** Web authz structured summary + reverse proof fields. */
 /** Web authz anchors/format/summary with reverse proof fields. */
 
-import { reverseRuntimeCaptureProofFields, reverseStructuredProofFields } from "../reverse-capture.ts";
+import {
+	prioritizeReverseProofLines,
+	reverseRuntimeCaptureProofFields,
+	reverseStructuredProofFields,
+} from "../reverse-capture.ts";
 import { reverseRuntimeTechniqueAnchor } from "../reverse-evidence.ts";
 import { truncateMiddle } from "../text.ts";
 
@@ -40,5 +44,5 @@ export function webAuthzStructuredSummary(stdout: string, stderr: string): strin
 	for (const cap of reverseRuntimeCaptureProofFields("web_authz", text, lines)) {
 		if (!lines.includes(cap)) lines.push(cap);
 	}
-	return lines.slice(0, 40);
+	return prioritizeReverseProofLines(lines, 48);
 }
