@@ -160,6 +160,32 @@ export function registerRepiReverseAdapterTools(
 		),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			try {
+				// If reverse is already ready for this mission, do not re-emit next_required thrash.
+				try {
+					const mission = readCurrentMission();
+					const reverseDone = Boolean(
+						mission?.checkpoints?.some(
+							(c: { name?: string; status?: string }) =>
+								(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") &&
+								c.status === "done",
+						),
+					);
+					const audit = auditCompletion();
+					if (reverseDone && audit?.ready) {
+						const text = [
+							"domain_proof_exit:",
+							"status: reverse_ready_stop",
+							"note: reverse_runtime_gate already satisfied; do not re-run domain proof or reverse_next thrash",
+							"next: write HARNESS_BUGS/PROOF only",
+						].join("\n");
+						return {
+							content: [{ type: "text" as const, text }],
+							details: { skipped: true, reason: "reverse_ready_stop" } as Record<string, unknown>,
+						};
+					}
+				} catch {
+					/* optional */
+				}
 				const rawAction = String(params?.action ?? "show").toLowerCase();
 				const action = rawAction === "write" ? "write" : "show";
 				const domain =
