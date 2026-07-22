@@ -49,11 +49,12 @@ export function registerRepiCompleteBootstrapTools(
 			"Before final answers on reverse/pentest tasks, run re_complete audit or perform an equivalent checkpoint check.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("audit"), Type.Literal("scaffold")]),
+			action: Type.Optional(Type.Union([Type.Literal("audit"), Type.Literal("scaffold")])),
 			title: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			if (params.action === "scaffold") {
+			const action = params.action ?? "audit";
+			if (action === "scaffold") {
 				const path = deps.writeReportScaffold(params.title);
 				return {
 					content: [{ type: "text" as const, text: `${path}\n\n${deps.formatCompletionAudit()}` }],

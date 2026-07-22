@@ -102,10 +102,11 @@ export function registerRepiReverseAdapterTools(
 			"Treat domain_proof_exit_missing blockers as commands to run, not as narrative refusal.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("show"), Type.Literal("write")]),
+			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("write")])),
 			domain: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
+			const action = params.action ?? "show";
 			const report = deps.buildDomainProofExitClosure(deps.readCurrentMission(), params.domain);
 			// Always persist on show|write so mission checkpoints (minimal_path_proven / reverse proof) update.
 			const path = deps.writeDomainProofExitClosureArtifact(report);
@@ -117,7 +118,7 @@ export function registerRepiReverseAdapterTools(
 					},
 				],
 				details: {
-					action: params.action,
+					action,
 					domain: params.domain,
 					path,
 					status: report.status,

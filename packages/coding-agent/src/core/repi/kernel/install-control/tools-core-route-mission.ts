@@ -61,14 +61,15 @@ export function registerRepiControlCoreRouteMissionTools(
 			"Reverse-heavy missions require reverse_proof_exit_ready before claim promotion.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("show"), Type.Literal("new"), Type.Literal("checkpoint")]),
+			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("new"), Type.Literal("checkpoint")])),
 			task: Type.Optional(Type.String()),
 			check: Type.Optional(Type.String()),
 			status: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("done"), Type.Literal("blocked")])),
 			note: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			if (params.action === "new") {
+			const action = params.action ?? "show";
+			if (action === "new") {
 				const task = params.task ?? "reverse/pentest task";
 				const mission = deps.writeCurrentMission(deps.createMission(task, deps.routeReconTask(task)));
 				const activated = deps.activateToolsForRoute?.(mission.route?.domain) ?? [];
@@ -93,7 +94,7 @@ export function registerRepiControlCoreRouteMissionTools(
 					details: { ...(mission as unknown as Record<string, unknown>), activeTools: activated },
 				};
 			}
-			if (params.action === "checkpoint") {
+			if (action === "checkpoint") {
 				const mission = deps.updateMissionCheckpoint(
 					params.check ?? "manual_check",
 					params.status ?? "done",
