@@ -1,6 +1,7 @@
 /** Register REPI bootstrap/complete tools (reverse proof.exit gates). */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { softFillOptionalOrchestrationWhenReverseReady } from "../../completion-audit/soft-fill-optional.ts";
 import { reverseDomainCaptureNextCommands } from "../../reverse-capture.ts";
 import { REPI_TOOL_BOOTSTRAP_CATALOG as TOOL_BOOTSTRAP_CATALOG } from "../../toolchain.ts";
 import type { ProofLoopToolDeps, ToolRegistrar } from "./types.ts";
@@ -65,7 +66,11 @@ export function registerRepiCompleteBootstrapTools(
 					details: { path } as Record<string, unknown>,
 				};
 			}
-			const audit = deps.auditCompletion();
+			let audit = deps.auditCompletion();
+			// When reverse proof is ready, cheaply fill optional orchestration so residual
+			// kernel/decision/graph/operator/verifier/replay/report checks do not linger.
+			const softFilled = softFillOptionalOrchestrationWhenReverseReady(audit as any);
+			if (softFilled.length) audit = deps.auditCompletion();
 			const memoryEvent = deps.appendCompletionMemoryEvent(audit);
 			const refreshedAudit = memoryEvent ? deps.auditCompletion() : audit;
 			const auditText = typeof refreshedAudit === "string" ? refreshedAudit : JSON.stringify(refreshedAudit);
@@ -85,6 +90,7 @@ export function registerRepiCompleteBootstrapTools(
 						type: "text" as const,
 						text: [
 							deps.formatCompletionAuditFromAudit(refreshedAudit),
+							softFilled.length ? `soft_fill_optional: ${softFilled.join(",")}` : undefined,
 							memoryEvent ? `\ncompletion_memory_event: ${memoryEvent.id}` : undefined,
 							reverseFooter || undefined,
 						]

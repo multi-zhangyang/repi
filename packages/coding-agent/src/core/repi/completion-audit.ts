@@ -15,6 +15,7 @@ export {
 	formatCompletionAuditFromAudit,
 } from "./completion-audit/format.ts";
 export { auditReverseProofFromEvidence } from "./completion-audit/reverse.ts";
+export { softFillOptionalOrchestrationWhenReverseReady } from "./completion-audit/soft-fill-optional.ts";
 export {
 	writeDomainProofExitClosureArtifact,
 	writeReportScaffold,
