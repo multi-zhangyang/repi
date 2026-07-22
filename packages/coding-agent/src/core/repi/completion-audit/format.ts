@@ -18,7 +18,9 @@ export function formatCompletionAuditFromAudit(audit: CompletionAudit): string {
 		(w) =>
 			!optionalPending.includes(w) &&
 			!reverseSatisfied.includes(w) &&
-			!/reverse_anchor: reverse\.(proof_exit|bind_ready)=/i.test(w),
+			!/reverse_anchor: reverse\.(proof_exit|bind_ready)=/i.test(w) &&
+			!/domain_proof_exit_closure:.*status=passed/i.test(w) &&
+			!/compaction resume ledger verified/i.test(w),
 	);
 	return [
 		audit.ready ? "completion_status: ready" : "completion_status: blocked",

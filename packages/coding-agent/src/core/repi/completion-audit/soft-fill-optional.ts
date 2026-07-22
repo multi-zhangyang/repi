@@ -2,6 +2,7 @@
 import type { ExtensionAPI } from "../../extensions/types.ts";
 import { buildAttackGraphOutput } from "../attack-graph.ts";
 import { buildCompilerOutput } from "../compiler-runtime/build-core-format.ts";
+import { latestContextPackArtifactPath, parseContextPackArtifact, writeContextPackArtifact } from "../context-pack.ts";
 import { buildDecisionCoreOutput } from "../decision-runtime/build-run.ts";
 import { buildKernelOutput } from "../kernel-runtime/artifact-output.ts";
 import { readCurrentMission } from "../mission.ts";
@@ -17,6 +18,29 @@ function pendingCheckpointNames(): string[] {
 			?.checkpoints?.filter((checkpoint: { status?: string; name?: string }) => checkpoint.status !== "done")
 			.map((checkpoint) => String(checkpoint.name)) ?? []
 	);
+}
+
+function closeOpenContextPackIfReverseReady(filled: string[]): void {
+	try {
+		const contextPath = latestContextPackArtifactPath();
+		if (!contextPath) return;
+		const pack = parseContextPackArtifact(contextPath);
+		if (!pack || pack.mode === "resume" || pack.resumedFromContextPath) return;
+		if (pack.closure?.status !== "open") return;
+		pack.closure = {
+			...(pack.closure ?? {}),
+			status: "closed",
+			closedAt: new Date().toISOString(),
+			reason: "soft-fill: reverse proof ready",
+		};
+		if (pack.resumeContract?.closure) {
+			pack.resumeContract.closure = pack.closure;
+		}
+		writeContextPackArtifact(pack);
+		filled.push("context_pack_closed");
+	} catch {
+		/* optional */
+	}
 }
 
 function missionTarget(): string | undefined {
@@ -85,6 +109,7 @@ export function softFillOptionalOrchestrationWhenReverseReady(audit: {
 	const pending = new Set(pendingCheckpointNames());
 	if (pending.size === 0) return filled;
 	syncSoftFill(pending, missionTarget(), filled);
+	closeOpenContextPackIfReverseReady(filled);
 	return filled;
 }
 
@@ -94,6 +119,7 @@ export async function softFillOptionalOrchestrationWhenReverseReadyAsync(
 	pi?: ExtensionAPI,
 ): Promise<string[]> {
 	const filled = softFillOptionalOrchestrationWhenReverseReady(audit);
+	// softFill already closed open context packs when reverse ready
 	const pending = new Set(pendingCheckpointNames());
 	const target = missionTarget();
 	if (pi && pending.has("web_authz_ready") && target && /^https?:\/\//i.test(target)) {
