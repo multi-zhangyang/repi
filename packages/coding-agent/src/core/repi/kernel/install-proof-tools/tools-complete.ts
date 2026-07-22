@@ -74,9 +74,16 @@ export function registerRepiCompleteBootstrapTools(
 			const memoryEvent = deps.appendCompletionMemoryEvent(audit);
 			const refreshedAudit = memoryEvent ? deps.auditCompletion() : audit;
 			const auditText = typeof refreshedAudit === "string" ? refreshedAudit : JSON.stringify(refreshedAudit);
-			const reverseOpen =
-				/proof_exit|bind_ready|reverse_proof|pending_runtime_capture/i.test(auditText) &&
-				!/proof_exit\s*=\s*(partial_runtime_capture|runtime_capture_strong)/i.test(auditText);
+			const formattedAudit = deps.formatCompletionAuditFromAudit(refreshedAudit as any);
+			const ready =
+				Boolean((refreshedAudit as any)?.ready) ||
+				/completion_status:\s*ready|reverse_runtime_gate:\s*satisfied/i.test(formattedAudit);
+			const hasRuntimeProof =
+				/proof_exit\s*=\s*(partial_runtime_capture|runtime_capture_strong)|reverse\.proof_exit=(partial_runtime_capture|runtime_capture_strong)/i.test(
+					`${auditText}\n${formattedAudit}`,
+				);
+			// Only inject reverse_next when proof is still open — never after ready+bind (stops post-complete thrash).
+			const reverseOpen = !ready && !hasRuntimeProof;
 			const reverseFooter = reverseOpen
 				? "\n\nreverse_domain_next:\n" +
 					reverseDomainCaptureNextCommands({ routeOrBlob: auditText })
