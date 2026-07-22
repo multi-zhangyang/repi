@@ -77,10 +77,9 @@ const steps = [
 	// Offline reverse proof gate: all required host-capture smokes must be partial|strong + bind_ready.
 	{ id: "reverse-proof-audit", cmd: "node", args: [script("repi-reverse-proof-audit.mjs"), root, "--json"], timeout: 60_000, expectOutput: ['"ok": true', '"kind": "repi-reverse-proof-audit-report"'] },
 	{ id: "reverse-complete-audit", cmd: "node", args: [script("repi-reverse-complete-audit.mjs"), root, "--json"], timeout: 120_000, expectOutput: ['"ok": true', '"kind": "repi-reverse-complete-audit-report"'] },
-	// One-shot reverse gate (proof+complete+e2e core) — full all remains reverse-runtime-e2e step.
-	{ id: "reverse-gate-core", cmd: "node", args: [script("repi-reverse-gate.mjs"), root, "core", "--json"], timeout: 240_000, expectOutput: ['"ok": true', '"kind": "repi-reverse-gate-report"'] },
+	// One-shot reverse gate offline (proof+complete). Live reverse-e2e runs only with --full (host toolchains).
+	{ id: "reverse-gate-core", cmd: "node", args: [script("repi-reverse-gate.mjs"), root, "core", "--offline", "--json"], timeout: 240_000, expectOutput: ['"ok": true', '"kind": "repi-reverse-gate-report"'] },
 	{ id: "sticky-inject-smoke", cmd: "node", args: [script("repi-sticky-inject-smoke.mjs"), root, "--json"], timeout: 60_000, expectOutput: ['"ok": true', '"kind": "repi-sticky-inject-smoke-report"', '"t2_sticky": true'] },
-	{ id: "reverse-runtime-e2e", cmd: "node", args: [script("repi-reverse-runtime-e2e.mjs"), root, "all", "--json"], timeout: 420_000, expectOutput: ['"ok": true', '"kind": "repi-reverse-runtime-e2e-report"', '"proof_exit": "runtime_capture_strong"'] },
 	{ id: "memory-status", cmd: "node", args: [script("memory-inspect.mjs"), root, "status", "--json"] },
 	{ id: "model-doctor", cmd: "node", args: [script("model-inspect.mjs"), root, "doctor", "--json"] },
 	{
@@ -118,7 +117,16 @@ const steps = [
 		expectOutput: ['"name":"goal"', '"name":"goal_complete"', '"activeToolNames"'],
 	},
 ];
-if (full) steps.push({ id: "full-check", cmd: "npm", args: ["run", "check"], timeout: 180_000 });
+if (full) {
+	steps.push({
+		id: "reverse-runtime-e2e",
+		cmd: "node",
+		args: [script("repi-reverse-runtime-e2e.mjs"), root, "all", "--json"],
+		timeout: 420_000,
+		expectOutput: ['"ok": true', '"kind": "repi-reverse-runtime-e2e-report"', '"proof_exit": "runtime_capture_strong"'],
+	});
+	steps.push({ id: "full-check", cmd: "npm", args: ["run", "check"], timeout: 180_000 });
+}
 
 function runStep(step) {
 	const startedAt = Date.now();

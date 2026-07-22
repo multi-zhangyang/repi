@@ -16,7 +16,8 @@ import { fileURLToPath } from "node:url";
 
 const raw = process.argv.slice(2);
 const json = raw.includes("--json");
-const args = raw.filter((a) => a !== "--json");
+const offline = raw.includes("--offline");
+const args = raw.filter((a) => a !== "--json" && a !== "--offline");
 const rootArg = args[0] && !args[0].startsWith("-") && existsSync(args[0]) ? args.shift() : undefined;
 const scope = (args[0] && !args[0].startsWith("-") ? args.shift() : "core") || "core";
 const here = dirname(fileURLToPath(import.meta.url));
@@ -71,19 +72,34 @@ steps.push({
 	passed: complete.parsed?.passed ?? null,
 	failed: complete.parsed?.failed ?? null,
 });
-// 3) live multi-domain e2e
-const e2eTimeout = scope === "all" || scope === "adapters" ? 420000 : 180000;
-const e2e = runNode("repi-reverse-runtime-e2e.mjs", [scope], e2eTimeout);
-steps.push({
-	id: "reverse-e2e",
-	ok: e2e.ok,
-	exit: e2e.status,
-	scope,
-	passed: e2e.parsed?.passed ?? null,
-	failed: e2e.parsed?.failed ?? null,
-	proof_exit: e2e.parsed?.proof_exit ?? null,
-	exact_offset: e2e.parsed?.exact_offset ?? null,
-});
+// 3) live multi-domain e2e (optional on hermetic CI: --offline)
+if (!offline) {
+	const e2eTimeout = scope === "all" || scope === "adapters" ? 420000 : 180000;
+	const e2e = runNode("repi-reverse-runtime-e2e.mjs", [scope], e2eTimeout);
+	steps.push({
+		id: "reverse-e2e",
+		ok: e2e.ok,
+		exit: e2e.status,
+		scope,
+		passed: e2e.parsed?.passed ?? null,
+		failed: e2e.parsed?.failed ?? null,
+		proof_exit: e2e.parsed?.proof_exit ?? null,
+		exact_offset: e2e.parsed?.exact_offset ?? null,
+	});
+} else {
+	steps.push({
+		id: "reverse-e2e",
+		ok: true,
+		exit: 0,
+		scope,
+		passed: null,
+		failed: [],
+		proof_exit: "skipped_offline",
+		exact_offset: null,
+		skipped: true,
+		note: "offline gate: proof+complete only; run reverse-e2e on host toolchains",
+	});
+}
 
 const report = {
 	kind: "repi-reverse-gate-report",
@@ -91,6 +107,7 @@ const report = {
 	generatedAt: new Date().toISOString(),
 	root,
 	scope,
+	offline,
 	ok: steps.every((s) => s.ok),
 	steps,
 	next: steps.every((s) => s.ok)
