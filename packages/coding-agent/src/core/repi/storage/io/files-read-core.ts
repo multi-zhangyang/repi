@@ -1,6 +1,32 @@
 /** Read text file helpers. */
-import { readFileSync, statSync } from "node:fs";
+import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { resolveReadTextFileMaxBytes, warnOverCap } from "./files-read-cap.ts";
+
+const TAIL_CHUNK = 1024 * 1024;
+
+function readBoundedTail(path: string, size: number, cap: number): string {
+	const tailLen = Math.min(cap, size);
+	const fd = openSync(path, "r");
+	try {
+		const buf = Buffer.alloc(tailLen);
+		const start = size - tailLen;
+		let pos = 0;
+		while (pos < tailLen) {
+			const n = readSync(fd, buf, pos, Math.min(TAIL_CHUNK, tailLen - pos), start + pos);
+			if (n <= 0) break;
+			pos += n;
+		}
+		const body = buf.subarray(0, pos).toString("utf-8");
+		const dropped = size - pos;
+		return `[truncated ${dropped} bytes from head, showing last ${pos} bytes of ${size}]\n${body}`;
+	} finally {
+		try {
+			closeSync(fd);
+		} catch {
+			/* best-effort */
+		}
+	}
+}
 
 export function readTextFile(path: string, fallback = ""): string {
 	try {
@@ -8,7 +34,7 @@ export function readTextFile(path: string, fallback = ""): string {
 		const cap = resolveReadTextFileMaxBytes();
 		if (cap > 0 && size > cap) {
 			warnOverCap(path, size, cap);
-			return fallback;
+			return readBoundedTail(path, size, cap);
 		}
 		return readFileSync(path, "utf-8");
 	} catch {
@@ -29,11 +55,15 @@ export function readTextFileCached(path: string, fallback = ""): string {
 		const stat = statSync(path);
 		const mtimeMs = stat.mtimeMs;
 		const size = stat.size;
-		// opt #163 — same stat-first OOM guard as readTextFile.
 		const cap = resolveReadTextFileMaxBytes();
 		if (cap > 0 && size > cap) {
 			warnOverCap(path, size, cap);
-			return fallback;
+			// Cap path is not cached as full body; re-read tail if mtime/size change.
+			const cached = textFileCache.get(path);
+			if (cached && cached.mtimeMs === mtimeMs && cached.size === size) return cached.value;
+			const value = readBoundedTail(path, size, cap);
+			textFileCache.set(path, { mtimeMs, size, value });
+			return value;
 		}
 		const cached = textFileCache.get(path);
 		if (cached && cached.mtimeMs === mtimeMs && cached.size === size) {

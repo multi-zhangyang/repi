@@ -3,6 +3,7 @@
 import { memoryPath } from "../memory-stubs.ts";
 import { evidenceLedgerPath, readTextFile as readText } from "../storage.ts";
 import { latestReconCompactionResumeTelemetry, readCurrentMission } from "./deps.ts";
+import { readEvidenceLedgerTail } from "./evidence-ledger-tail.ts";
 import { auditReverseProofFromEvidence } from "./reverse.ts";
 
 export function auditCompletionEvidenceGates(): {
@@ -27,7 +28,7 @@ export function auditCompletionEvidenceGates(): {
 			earlyReturn: { ready: false, blockers, warnings },
 		};
 	}
-	const evidence = readText(evidenceLedgerPath()).trim();
+	const evidence = readEvidenceLedgerTail(evidenceLedgerPath());
 	const reverseAudit = auditReverseProofFromEvidence(evidence);
 	const reverseSignals = reverseAudit.reverseSignals ?? [];
 	const hasProofExit = Boolean((reverseAudit as any).hasRuntimeProofExit ?? (reverseAudit as any).hasProofExit);
