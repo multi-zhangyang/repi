@@ -45,7 +45,9 @@ export function classifyOperatorExecutionFeedback(
 			operatorArtifact,
 		});
 	}
-	if (/retry_queue|swarm_retry_queue|execution_audit|coverage_matrix|re_swarm run|worker=/i.test(text)) {
+	// Swarm/worker retry only when the *executed command* is swarm/delegate/supervisor — never because
+	// proof_loop/plan dumps embed recommended re_swarm / swarm_retry_queue lines.
+	if (/\bre_(?:swarm|delegate|supervisor)\b/i.test(cmd)) {
 		return operatorFeedbackRow({
 			category: execution.status === "blocked" ? "worker_retry_blocked" : "worker_retry_progress",
 			execution,
@@ -54,16 +56,17 @@ export function classifyOperatorExecutionFeedback(
 			operatorArtifact,
 		});
 	}
-	// Done steps are not runtime_failure just because output mentions "error=false" / HTML "failed".
-	const failedExit = /\bexit\s*=\s*(?:[1-9]\d*)\b/i.test(text) && !/\bexit\s*=\s*0\b/i.test(text);
+	// Nested proof_loop/graph dumps embed status=failed / exit=N / repair queues — not step failure.
+	// Done steps only hard-fail on explicit tool-level error/killed flags.
 	const hardFail =
 		execution.status === "blocked" ||
-		/\bkilled\s*=\s*true\b/i.test(text) ||
-		/\berror\s*=\s*true\b/i.test(text) ||
-		/\bstatus\s*=\s*(?:failed|blocked)\b/i.test(text) ||
-		failedExit ||
-		(/\b(?:command not found|traceback \(most recent call last\)|ENOENT|EACCES)\b/i.test(text) &&
-			execution.status !== "done");
+		(execution.status === "done" && (/\berror\s*=\s*true\b/i.test(text) || /\bkilled\s*=\s*true\b/i.test(text))) ||
+		(execution.status !== "done" &&
+			(/\bkilled\s*=\s*true\b/i.test(text) ||
+				/\berror\s*=\s*true\b/i.test(text) ||
+				/\bstatus\s*=\s*(?:failed|blocked)\b/i.test(text) ||
+				(/\bexit\s*=\s*(?:[1-9]\d*)\b/i.test(text) && !/\bexit\s*=\s*0\b/i.test(text)) ||
+				/\b(?:command not found|traceback \(most recent call last\)|ENOENT|EACCES)\b/i.test(text)));
 	if (hardFail) {
 		return operatorFeedbackRow({
 			category: "runtime_failure",
