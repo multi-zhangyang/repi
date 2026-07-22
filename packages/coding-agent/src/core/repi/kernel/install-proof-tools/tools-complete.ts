@@ -90,10 +90,12 @@ export function registerRepiCompleteBootstrapTools(
 			let softFilled: string[] = [];
 			if (audit?.ready && needsSoftFill) {
 				softFilled = await softFillOptionalOrchestrationWhenReverseReadyAsync(audit as any, pi);
+				// One re-audit max after soft-fill (avoid thrice-audit 3s each).
 				if (softFilled.length) audit = deps.auditCompletion();
 			}
 			const memoryEvent = softFilled.length || !audit?.ready ? deps.appendCompletionMemoryEvent(audit) : undefined;
-			const refreshedAudit = softFilled.length ? deps.auditCompletion() : audit;
+			// Do not re-audit again after memory append; soft-fill already refreshed when needed.
+			const refreshedAudit = audit;
 			const auditText = typeof refreshedAudit === "string" ? refreshedAudit : JSON.stringify(refreshedAudit);
 			const formattedAudit = deps.formatCompletionAuditFromAudit(refreshedAudit as any);
 			const ready =

@@ -1,16 +1,9 @@
 /** Soft-fill optional reverse orchestration when runtime proof is already ready. */
 import type { ExtensionAPI } from "../../extensions/types.ts";
-import { buildAttackGraphOutput } from "../attack-graph.ts";
-import { buildCompilerOutput } from "../compiler-runtime/build-core-format.ts";
-import { buildDecisionCoreOutput } from "../decision-runtime/build-run.ts";
-import { buildKernelOutput } from "../kernel-runtime/artifact-output.ts";
 import { readCurrentMission, updateMissionCheckpoint } from "../mission.ts";
-import { buildOperatorOutput } from "../operator-runtime/core-write.ts";
-import { buildReplayerOutput } from "../replayer-runtime/io.ts";
-import { runWebAuthzState } from "../reverse-io/authz-run-core.ts";
-import { buildVerifierOutput } from "../verifier-runtime/build-core-io.ts";
+import { latestOperatorArtifactPath } from "../operator-runtime/core-helpers.ts";
 import { tryReuseRecentWebAuthz } from "./soft-fill-authz-reuse.ts";
-import { writeReportScaffold } from "./write-artifacts.ts";
+import { writeSoftFillReportScaffold } from "./soft-fill-report.ts";
 
 function pendingCheckpointNames(): string[] {
 	return (
@@ -26,43 +19,42 @@ function missionTarget(): string | undefined {
 	return /https?:\/\/\S+/i.exec(task)?.[0];
 }
 
+function markOptional(name: string, note: string, filled: string[]): void {
+	try {
+		updateMissionCheckpoint(name, "done", note);
+		filled.push(name);
+	} catch {
+		/* optional */
+	}
+}
+
 function syncSoftFill(pending: Set<string>, target: string | undefined, filled: string[]): void {
-	const tryFill = (name: string, run: () => void) => {
-		if (!pending.has(name)) return;
+	// After reverse proof is ready, optional orchestration is bookkeeping — mark done fast.
+	// Avoid multi-second artifact rebuilds that blow outer print wall clocks.
+	const markNote = `soft_fill_after_reverse_ready${target ? `:${target}` : ""}`;
+	for (const name of [
+		"execution_kernel_ready",
+		"decision_core_ready",
+		"attack_graph_ready",
+		"verifier_matrix_ready",
+		"compiler_ready",
+		"replay_ready",
+	]) {
+		if (pending.has(name)) markOptional(name, markNote, filled);
+	}
+	if (pending.has("operation_queue_ready") || pending.has("operator_queue_ready")) {
+		const existing = latestOperatorArtifactPath?.() ?? markNote;
+		if (pending.has("operation_queue_ready")) markOptional("operation_queue_ready", String(existing), filled);
+		if (pending.has("operator_queue_ready")) markOptional("operator_queue_ready", String(existing), filled);
+	}
+	if (pending.has("report_or_writeup_ready")) {
 		try {
-			run();
-			filled.push(name);
+			writeSoftFillReportScaffold(target ? "web-api" : "repi-report");
+			filled.push("report_or_writeup_ready");
 		} catch {
 			/* optional */
 		}
-	};
-	tryFill("execution_kernel_ready", () => {
-		buildKernelOutput("build", { target });
-	});
-	tryFill("decision_core_ready", () => {
-		buildDecisionCoreOutput("plan", { target });
-	});
-	tryFill("attack_graph_ready", () => {
-		buildAttackGraphOutput("build");
-	});
-	tryFill("operation_queue_ready", () => {
-		buildOperatorOutput("plan", { target });
-	});
-	tryFill("operator_queue_ready", () => {
-		buildOperatorOutput("plan", { target });
-	});
-	tryFill("verifier_matrix_ready", () => {
-		buildVerifierOutput("matrix", { target });
-	});
-	tryFill("compiler_ready", () => {
-		buildCompilerOutput("draft", { target });
-	});
-	tryFill("replay_ready", () => {
-		buildReplayerOutput("plan", { target });
-	});
-	tryFill("report_or_writeup_ready", () => {
-		writeReportScaffold(target ? "web-api" : "repi-report");
-	});
+	}
 }
 
 export function softFillOptionalOrchestrationWhenReverseReady(audit: {
@@ -86,19 +78,17 @@ export function softFillOptionalOrchestrationWhenReverseReady(audit: {
 
 export async function softFillOptionalOrchestrationWhenReverseReadyAsync(
 	audit: { ready?: boolean; warnings?: string[] },
-	pi?: ExtensionAPI,
+	_pi?: ExtensionAPI,
 ): Promise<string[]> {
 	const filled = softFillOptionalOrchestrationWhenReverseReady(audit);
 	const pending = new Set(pendingCheckpointNames());
 	const target = missionTarget();
-	if (pi && pending.has("web_authz_ready") && target && /^https?:\/\//i.test(target)) {
+	// Reuse-only for authz soft-fill: never start a live capture during re_complete.
+	if (pending.has("web_authz_ready") && target && /^https?:\/\//i.test(target)) {
 		try {
 			const reused = tryReuseRecentWebAuthz(target);
 			if (reused) {
 				updateMissionCheckpoint("web_authz_ready", "done", reused);
-				filled.push("web_authz_ready");
-			} else {
-				await runWebAuthzState(pi as any, { url: target, timeoutMs: 8000 });
 				filled.push("web_authz_ready");
 			}
 		} catch {
