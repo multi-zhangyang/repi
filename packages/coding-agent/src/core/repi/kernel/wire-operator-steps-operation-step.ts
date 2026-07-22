@@ -31,11 +31,13 @@ import { buildProofLoopOutput, runProofLoop } from "../proof-loop-runtime.ts";
 import { buildReplayerOutput, runReplayer } from "../replayer-runtime.ts";
 import {
 	buildExploitLabOutput,
+	buildJsSigningOutput,
 	buildLiveBrowserOutput,
 	buildMobileRuntimeOutput,
 	buildNativeRuntimeOutput,
 	buildWebAuthzStateOutput,
 	runExploitLab,
+	runJsSigning,
 	runLiveBrowser,
 	runMobileRuntime,
 	runNativeRuntime,
@@ -66,6 +68,8 @@ export function wireOperatorStepOperationModules(pick: PickFn): void {
 		buildLiveBrowserOutput: pick("buildLiveBrowserOutput", buildLiveBrowserOutput),
 		runWebAuthzState: pick("runWebAuthzState", runWebAuthzState),
 		buildWebAuthzStateOutput: pick("buildWebAuthzStateOutput", buildWebAuthzStateOutput),
+		runJsSigning: pick("runJsSigning", runJsSigning),
+		buildJsSigningOutput: pick("buildJsSigningOutput", buildJsSigningOutput),
 		runMobileRuntime: pick("runMobileRuntime", runMobileRuntime),
 		buildMobileRuntimeOutput: pick("buildMobileRuntimeOutput", buildMobileRuntimeOutput),
 		runNativeRuntime: pick("runNativeRuntime", runNativeRuntime),

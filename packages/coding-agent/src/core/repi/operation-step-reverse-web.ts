@@ -1,4 +1,4 @@
-/** Operation reverse steps: browser/web-authz/mobile (run-first). */
+/** Operation reverse steps: browser/web-authz/mobile/js-signing (run-first). */
 import type { ExtensionAPI } from "../extensions/types.ts";
 import { d } from "./operation-step-deps.ts";
 import type { OperationExecution } from "./operator-step.ts";
@@ -33,6 +33,17 @@ export async function tryExecuteOperationReverseWebStep(
 			action === "run"
 				? await d().runWebAuthzState(pi, { target: authzTarget, timeoutMs })
 				: d().buildWebAuthzStateOutput(action, { target: authzTarget, timeoutMs }),
+		);
+	}
+	const jsSigningMatch = /^re[-_]js[-_]signing\s+(plan|show|run)?(?:\s+(.+?))?(?:\s+(\d+))?$/i.exec(command);
+	if (jsSigningMatch) {
+		const action = (jsSigningMatch[1] as "plan" | "show" | "run") ?? "run";
+		const jsTarget = jsSigningMatch[2]?.trim() || target;
+		const timeoutMs = jsSigningMatch[3] ? Number(jsSigningMatch[3]) : undefined;
+		return done(
+			action === "run"
+				? await d().runJsSigning(pi, { target: jsTarget, timeoutMs })
+				: d().buildJsSigningOutput(action, { target: jsTarget, timeoutMs }),
 		);
 	}
 	const mobileRuntimeMatch =
