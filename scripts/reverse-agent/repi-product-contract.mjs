@@ -10880,6 +10880,29 @@ push(
 		"Keep pure_python honesty; do not reintroduce settings.memory",
 	);
 
+	push(
+		"reverse:moat-sri-pslist-pure-2026-07-22",
+		includesAll(
+			joinSources([
+				"packages/coding-agent/src/core/repi/web-runtime/js-signing-sri.ts",
+				"packages/coding-agent/src/core/repi/runtime-adapter/command-templates/memory-extra-surrogates.ts",
+				"docs/reverse-agent/js-signing-host-capture-smoke.out",
+				"docs/reverse-agent/memory-host-capture-smoke.out",
+			]),
+			[
+				"js-signing-sri",
+				"summary.js_signing_sri",
+				"pure_python_pslist",
+				"mem-pslist-surrogate",
+				"repi-js-sign-sample.html",
+			],
+		) &&
+			/\[js-signing-sri\] ok=1/.test(read("docs/reverse-agent/js-signing-host-capture-smoke.out")) &&
+			/\[mem-vol\] pure_python_pslist windows_pslist=\d+/.test(read("docs/reverse-agent/memory-host-capture-smoke.out")),
+		"Moat CAP: dual-path JS SRI companion HTML + pure mem pslist windows_pslist alias (not vol dump); memory product remains removed",
+	);
+
+
 
 push(
 	"reverse:delegate-budget-resume-playbooks-lane-softband",

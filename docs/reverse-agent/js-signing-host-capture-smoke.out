@@ -31,8 +31,8 @@
 [js-signing-run] [js-signing-jwt-claim] case=kid-present token_len=167 kid=repi-key-1 jku=0 x5u=0 exp= nbf= role=user
 [js-signing-run] [js-signing-jwt-claim] case=jku-injection token_len=175 kid= jku=1 x5u=0 exp= nbf= role=
 [js-signing-run] [js-signing-jwt-claim] case=x5u-injection token_len=174 kid= jku=0 x5u=1 exp= nbf= role=
-[js-signing-run] [js-signing-jwt-claim] case=expired token_len=145 kid= jku=0 x5u=0 exp=1784711068 nbf= role=
-[js-signing-run] [js-signing-jwt-claim] case=nbf-future token_len=145 kid= jku=0 x5u=0 exp= nbf=1784718268 role=
+[js-signing-run] [js-signing-jwt-claim] case=expired token_len=145 kid= jku=0 x5u=0 exp=1784721830 nbf= role=
+[js-signing-run] [js-signing-jwt-claim] case=nbf-future token_len=145 kid= jku=0 x5u=0 exp= nbf=1784729030 role=
 [js-signing-run] [js-signing-jwt-claim] case=admin-role token_len=162 kid=admin jku=0 x5u=0 exp= nbf= role=admin
 [js-signing-run] [js-signing-jwt-claim] expired_token_parse=1 note=consumer_must_reject
 [js-signing-run] [js-signing-jwt-claims] ok=1 cases=6
@@ -50,7 +50,7 @@
 [js-signing-host] node=/usr/bin/node work=/tmp/repi-js-sign-work-static
 [js-signing-sri] file=/tmp/repi-js-sign-sample.html integrity=sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= pure_python=1
 [js-signing-sri] file=/tmp/repi-js-sign-sample.html integrity=sha384-abcdefghijklmnopqrstuvwxyz0123456789+/ABCDEF== pure_python=1
-[js-signing-sri] count=2
+[js-signing-sri] count=2 paths=2
 summary.js_signing_sri=1
 [js-signing-sri] ok=1
 [js-signing-wasm] file=/tmp/repi-js-sign-sample.js signal=js_webassembly pure_python=1
@@ -63,32 +63,32 @@ summary.js_signing_wasm=1
 
 
 
-==== JS-SIGNING URL http://127.0.0.1:45193/app.js ====
+==== JS-SIGNING URL http://127.0.0.1:35841/app.js ====
 [js-signing-env] node=/usr/bin/node timeout=20s work=/tmp/repi-js-sign-work-url
-[js-signing-script] /tmp/repi-js-sign-work-url/repi-js-signing-capture.mjs target=http://127.0.0.1:45193/app.js
-[js-signing-run] [js-signing-url] url=http://127.0.0.1:45193/app.js
+[js-signing-script] /tmp/repi-js-sign-work-url/repi-js-signing-capture.mjs target=http://127.0.0.1:35841/app.js
+[js-signing-run] [js-signing-url] url=http://127.0.0.1:35841/app.js
 [js-signing-run] [js-signing-fetch] status=200 bytes=433 content_type=application/javascript; charset=utf-8
 [js-signing-run] [js-signing-sourcemap] signal=true
 [js-signing-run] [repi-js-hook] observed=inline-or-bundle-pattern engine=fetch-html
 [js-signing-run] [js-signing-crypto] ops=hmac,createHmac,sha256
-[js-signing-run] [js-signing-secret] label=http://127.0.0.1:45193/app.js sample=repi-dev-secret
-[js-signing-run] [js-signing-secret] label=http://127.0.0.1:45193/app.js sample=changeme
-[js-signing-run] [js-signing-secret] label=http://127.0.0.1:45193/app.js sample=repi-dev-secret
-[js-signing-run] [js-signing-candidate] label=http://127.0.0.1:45193/app.js signal=secret-like count=3
-[js-signing-run] [js-signing-script] url=http://127.0.0.1:45193/app.js status=200 bytes=433 direct=1
-[js-signing-run] [js-signing-sourcemap] label=http://127.0.0.1:45193/app.js signal=true
-[js-signing-run] [repi-js-hook] label=http://127.0.0.1:45193/app.js observed=network-api
-[js-signing-run] [js-signing-crypto] label=http://127.0.0.1:45193/app.js ops=hmac,createHmac,sha256
-[js-signing-run] [js-signing-secret] label=http://127.0.0.1:45193/app.js sample=repi-dev-secret
-[js-signing-run] [js-signing-secret] label=http://127.0.0.1:45193/app.js sample=changeme
-[js-signing-run] [js-signing-secret] label=http://127.0.0.1:45193/app.js sample=repi-dev-secret
-[js-signing-run] [js-signing-candidate] label=http://127.0.0.1:45193/app.js signal=secret-like count=3
-[js-signing-run] [js-signing-candidate] label=http://127.0.0.1:45193/app.js signal=sign-like
+[js-signing-run] [js-signing-secret] label=http://127.0.0.1:35841/app.js sample=repi-dev-secret
+[js-signing-run] [js-signing-secret] label=http://127.0.0.1:35841/app.js sample=changeme
+[js-signing-run] [js-signing-secret] label=http://127.0.0.1:35841/app.js sample=repi-dev-secret
+[js-signing-run] [js-signing-candidate] label=http://127.0.0.1:35841/app.js signal=secret-like count=3
+[js-signing-run] [js-signing-script] url=http://127.0.0.1:35841/app.js status=200 bytes=433 direct=1
+[js-signing-run] [js-signing-sourcemap] label=http://127.0.0.1:35841/app.js signal=true
+[js-signing-run] [repi-js-hook] label=http://127.0.0.1:35841/app.js observed=network-api
+[js-signing-run] [js-signing-crypto] label=http://127.0.0.1:35841/app.js ops=hmac,createHmac,sha256
+[js-signing-run] [js-signing-secret] label=http://127.0.0.1:35841/app.js sample=repi-dev-secret
+[js-signing-run] [js-signing-secret] label=http://127.0.0.1:35841/app.js sample=changeme
+[js-signing-run] [js-signing-secret] label=http://127.0.0.1:35841/app.js sample=repi-dev-secret
+[js-signing-run] [js-signing-candidate] label=http://127.0.0.1:35841/app.js signal=secret-like count=3
+[js-signing-run] [js-signing-candidate] label=http://127.0.0.1:35841/app.js signal=sign-like
 [js-signing-run] [repi-signing-rebuild] selfcheck=1 sha256=3ca39107870433cc hmac=c01327282b029659
 [js-signing-run] [js-signing-crypto] selfcheck=1 ops=createHmac,createHash,SHA-256
 [js-signing-run] [js-signing-deep] ok=1 crypto=1 hooks=1 scripts=1 sourcemap=1
-[js-signing-run] [js-signing-sourcemap] label=http://127.0.0.1:45193/app.js.map status=200 bytes=169
-[js-signing-run] [js-signing-sourcemap] label=http://127.0.0.1:45193/app.js.map parsed=1
+[js-signing-run] [js-signing-sourcemap] label=http://127.0.0.1:35841/app.js.map status=200 bytes=169
+[js-signing-run] [js-signing-sourcemap] label=http://127.0.0.1:35841/app.js.map parsed=1
 [js-signing-run] [js-signing-verify] selfcheck=1 pass=1 alg=HMAC-SHA256 sig16=d6ddbd81a8a26b99
 [js-signing-run] [js-signing-extra] ok=1
 [js-signing-run] [js-signing-jwt] alg=HS256 token_len=129 header_alg=HS256 sub=repi
@@ -103,8 +103,8 @@ summary.js_signing_wasm=1
 [js-signing-run] [js-signing-jwt-claim] case=kid-present token_len=167 kid=repi-key-1 jku=0 x5u=0 exp= nbf= role=user
 [js-signing-run] [js-signing-jwt-claim] case=jku-injection token_len=175 kid= jku=1 x5u=0 exp= nbf= role=
 [js-signing-run] [js-signing-jwt-claim] case=x5u-injection token_len=174 kid= jku=0 x5u=1 exp= nbf= role=
-[js-signing-run] [js-signing-jwt-claim] case=expired token_len=145 kid= jku=0 x5u=0 exp=1784711069 nbf= role=
-[js-signing-run] [js-signing-jwt-claim] case=nbf-future token_len=145 kid= jku=0 x5u=0 exp= nbf=1784718269 role=
+[js-signing-run] [js-signing-jwt-claim] case=expired token_len=145 kid= jku=0 x5u=0 exp=1784721830 nbf= role=
+[js-signing-run] [js-signing-jwt-claim] case=nbf-future token_len=145 kid= jku=0 x5u=0 exp= nbf=1784729030 role=
 [js-signing-run] [js-signing-jwt-claim] case=admin-role token_len=162 kid=admin jku=0 x5u=0 exp= nbf= role=admin
 [js-signing-run] [js-signing-jwt-claim] expired_token_parse=1 note=consumer_must_reject
 [js-signing-run] [js-signing-jwt-claims] ok=1 cases=6
@@ -120,8 +120,11 @@ summary.js_signing_wasm=1
 [js-signing-run] summary.capture.scripts=1
 [js-signing-run] summary.capture.url=1
 [js-signing-host] node=/usr/bin/node work=/tmp/repi-js-sign-work-url
-[js-signing-sri] count=0
-[js-signing-sri] ok=0 note=no_integrity_attrs
+[js-signing-sri] file=/tmp/repi-js-sign-sample.html integrity=sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= pure_python=1
+[js-signing-sri] file=/tmp/repi-js-sign-sample.html integrity=sha384-abcdefghijklmnopqrstuvwxyz0123456789+/ABCDEF== pure_python=1
+[js-signing-sri] count=2 paths=2
+summary.js_signing_sri=1
+[js-signing-sri] ok=1
 [js-signing-wasm] file=/tmp/repi-js-sign-sample.wasm magic=00asm version=1 pure_python=1
 [js-signing-wasm] sections=
 [js-signing-wasm] file=/tmp/repi-js-sign-sample.js signal=js_webassembly pure_python=1

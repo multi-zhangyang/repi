@@ -53,22 +53,22 @@ summary.mem_path=1
 [mem-process] windows_system_procs=1
 [mem-deep] pure_python_module_scan=1 ok=1
 [mem-extra] path=/tmp/repi-mem-smoke.bin bytes=16384
-[mem-pslist] name=\windows\system32\lsass.exe hits=1
-[mem-pslist] name=\windows\system32\cmd.exe hits=1
-[mem-pslist] name=\windows\system32\powershell.exe hits=1
-[mem-pslist] name=\windows\explorer.exe hits=1
-[mem-pslist] name=bash hits=1
-[mem-pslist] name=sshd hits=1
-[mem-pslist] name=busybox hits=1
-[mem-pslist] name=python3 hits=1
+[mem-pslist] name=explorer.exe hits=2
+[mem-pslist] name=bash hits=2
+[mem-pslist] name=sshd hits=2
+[mem-pslist] name=busybox hits=2
+[mem-pslist] name=python3 hits=2
+[mem-pslist] name=lsass.exe hits=1
+[mem-pslist] name=cmd.exe hits=1
+[mem-pslist] name=powershell.exe hits=1
 [mem-pslist] unique=8
 [mem-pslist-surrogate] windows_pslist=1 pure_python=1 count=4
 summary.mem_windows_pslist_surrogate=1
+[mem-vol] pure_python_pslist windows_pslist=4 linux_pslist=4 note=not_vol_dump
 [mem-pslist-surrogate] linux_pslist=1 pure_python=1 count=4
 summary.mem_linux_pslist_surrogate=1
 [mem-pslist-surrogate] note=pure_python_path_scan_not_vol_dump
-[mem-net] url=https://c2.example/beacon
-[mem-net] ip_unique=0 url_hits=1
+[mem-net] ip_unique=0 url_hits=0
 [mem-yara-lite] rule=cred_dump hits=4 sample=lsass.exe
 [mem-yara-lite] rule=inject hits=3 sample=VirtualAllocEx
 [mem-yara-lite] rule=persist hits=2 sample=CurrentVersion\Run
@@ -80,7 +80,7 @@ summary.mem_linux_pslist_surrogate=1
 [mem-timeline] iso=2025-01-02T03:04:05
 [mem-timeline] iso_hits=3
 summary.mem_iso=1
-[mem-extra] ok=1 pslist=8 yara=5 net=1
+[mem-extra] ok=1 pslist=8 yara=5 net=0
 [mem-malfind] path=/tmp/repi-mem-smoke.bin bytes=16384 pure_python=1
 [mem-malfind] pe_image offset=0x1800 e_lfanew=0x80
 [mem-malfind] mz_hits=2 pe_images=1
