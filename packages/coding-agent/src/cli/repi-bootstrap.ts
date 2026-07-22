@@ -187,8 +187,8 @@ export function bootstrapRepiCli(args: readonly string[]): string[] {
 	process.env.REPI_TELEMETRY = process.env.REPI_TELEMETRY || "0";
 	process.env.REPI_OFFLINE = process.env.REPI_OFFLINE || "0";
 	process.env.REPI_PRINT_PROGRESS = process.env.REPI_PRINT_PROGRESS || "1";
-	process.env.REPI_PRINT_TIMEOUT_MS = process.env.REPI_PRINT_TIMEOUT_MS || "210000";
-	process.env.REPI_PRINT_TIMEOUT_GRACE_MS = process.env.REPI_PRINT_TIMEOUT_GRACE_MS || "30000";
+	process.env.REPI_PRINT_TIMEOUT_MS = process.env.REPI_PRINT_TIMEOUT_MS || "600000";
+	process.env.REPI_PRINT_TIMEOUT_GRACE_MS = process.env.REPI_PRINT_TIMEOUT_GRACE_MS || "90000";
 	process.env.REPI_PRINT_TIMEOUT_TOOL_GRACE_MS = process.env.REPI_PRINT_TIMEOUT_TOOL_GRACE_MS || "300000";
 	process.env.REPI_PRINT_MAX_TURNS = process.env.REPI_PRINT_MAX_TURNS || "40";
 	process.env.REPI_PRINT_MAX_TOOL_CALLS = process.env.REPI_PRINT_MAX_TOOL_CALLS || "80";

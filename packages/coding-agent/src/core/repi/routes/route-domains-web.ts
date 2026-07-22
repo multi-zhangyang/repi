@@ -3,12 +3,18 @@ import type { RoutePlan } from "./patterns.ts";
 import { plan } from "./patterns.ts";
 import type { RouteSignals } from "./route-signals.ts";
 
-export function routeRepiDomainWeb(lower: string, _s: RouteSignals): RoutePlan | undefined {
-	if (
-		/(?:\bcrypto\b|cryptography|rsa|aes|cbc|ecb|gcm|nonce|iv\b|padding oracle|oracle|lattice|sage|z3|hashcat|john|xor|base64|base32|hex|modulus|exponent|elliptic|ecdsa|stego|隐写|密码题|格|同余|椭圆曲线)/.test(
+export function routeRepiDomainWeb(lower: string, s: RouteSignals): RoutePlan | undefined {
+	// Never match bare Chinese "格" (hits 格式/格局). Use multi-char lattice terms only.
+	// Do not let incidental crypto-looking tokens in long operator prompts hijack explicit web/URL tasks.
+	const strongCryptoArtifact =
+		/(?:\brsa\b|\baes\b|\bcbc\b|\becb\b|\bgcm\b|padding oracle|\blattice\b|\bsage\b|\bz3\b|hashcat|stego|隐写|密码题|格密码|格基|同余|椭圆曲线)/.test(
 			lower,
-		)
-	) {
+		);
+	const cryptoIntent =
+		/(?:\bcrypto\b|cryptography|nonce|iv\b|oracle|john|xor|base64|base32|\bhex\b|modulus|exponent|elliptic|ecdsa)/.test(
+			lower,
+		);
+	if (strongCryptoArtifact || (cryptoIntent && !s.webTargetSignal)) {
 		return plan(
 			"Crypto / stego",
 			"recover parameters, transform chain, oracle behavior, or solver path",
@@ -36,7 +42,7 @@ export function routeRepiDomainWeb(lower: string, _s: RouteSignals): RoutePlan |
 			["scope baseline", "crawl/route corpus", "template scan", "manual replay verifier", "finding queue/report"],
 		);
 	}
-	if (/api|graphql|jwt|oauth|ssrf|idor|bola|xss|sqli|ssti|csrf|rce|web|burp|waf|渗透/.test(lower)) {
+	if (/api|graphql|jwt|oauth|ssrf|idor|bola|xss|sqli|ssti|csrf|rce|web|burp|waf|渗透|接口|下载/.test(lower)) {
 		return plan(
 			"Web / API pentest",
 			"prove request/auth/state vulnerability path",

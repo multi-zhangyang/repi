@@ -68,13 +68,13 @@ function printProgressEnabled(mode: PrintModeOptions["mode"]): boolean {
 function printTimeoutMs(_mode: PrintModeOptions["mode"]): number | undefined {
 	const configured = envPositiveInteger("REPI_PRINT_TIMEOUT_MS");
 	if (configured !== undefined) return configured;
-	return isRepiProductMode() ? 210_000 : undefined;
+	return isRepiProductMode() ? 600_000 : undefined;
 }
 
 function printTimeoutGraceMs(_mode: PrintModeOptions["mode"]): number {
 	const configured = envNonNegativeInteger("REPI_PRINT_TIMEOUT_GRACE_MS");
 	if (configured !== undefined) return configured;
-	return isRepiProductMode() ? 30_000 : 0;
+	return isRepiProductMode() ? 90_000 : 0;
 }
 
 /**
