@@ -42,8 +42,12 @@ export function writeReplayerArtifact(replay: ReplayArtifact): string {
 		verify: `cat ${path}`,
 		confidence: "compiler repro command replay matrix",
 	});
-	if (replay.mode === "run")
+	if (replay.mode === "run") {
 		updateMissionCheckpoint("replay_ready", replay.executions.length ? "done" : "blocked", path);
+	} else if ((replay.steps?.length ?? 0) > 0) {
+		// Plan with concrete replay steps is enough for queue readiness; run upgrades evidence.
+		updateMissionCheckpoint("replay_ready", "done", path);
+	}
 	appendRuntimeFailureRepairFromReplay(replay, path);
 	appendReplayerMemoryEvent(replay, path);
 	return path;

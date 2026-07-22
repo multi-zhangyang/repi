@@ -2,6 +2,7 @@
 import { join } from "node:path";
 import { strictClaimCheckSnapshot } from "../claim-release/strict.ts";
 import { type DomainProofExitClosureV1, formatDomainProofExitClosure } from "../domain-proof-exit.ts";
+import { appendEvolution, appendJournal } from "../journal-append.ts";
 import { appendCompletionMemoryEvent } from "../memory-events-append.ts";
 import { appendEvidence } from "../reflection/types-config.ts";
 import { ensureReconStorage } from "../resources.ts";
@@ -102,5 +103,24 @@ export function writeDomainProofExitClosureArtifact(report: DomainProofExitClosu
 	);
 	const reverseStatus = report.status === "passed" ? "done" : report.matchedProofExits.length ? "pending" : "blocked";
 	updateMissionCheckpoint("reverse_proof_exit_ready", reverseStatus, `DomainProofExitClosureV1 ${report.status}`);
+	try {
+		appendJournal(
+			"domain-proof-exit",
+			`DomainProofExitClosureV1 ${report.status}`,
+			[
+				`domain=${report.domainId ?? "unmapped"}`,
+				`status=${report.status}`,
+				`matched=${(report.matchedProofExits ?? []).join(",") || "none"}`,
+				`missing=${(report.missingProofExits ?? []).join(",") || "none"}`,
+				`artifact=${path}`,
+			].join("\n"),
+		);
+		appendEvolution(
+			`domain-proof-exit ${report.status}`,
+			`Domain proof-exit closure ${report.status} for ${report.domainId ?? "unmapped"} @ ${path}`,
+		);
+	} catch {
+		/* journal optional */
+	}
 	return path;
 }

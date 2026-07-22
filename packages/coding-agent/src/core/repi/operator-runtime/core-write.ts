@@ -42,6 +42,8 @@ export function writeOperatorArtifact(operator: any): string {
 		confidence: "context-pack/operator dispatcher",
 	});
 	updateMissionCheckpoint("operator_queue_ready", "done", path);
+	// Web/domain matrices use operation_queue_ready; keep both in sync.
+	updateMissionCheckpoint("operation_queue_ready", "done", path);
 	appendRuntimeFailureRepairFromOperator(operator, path);
 	return path;
 }
