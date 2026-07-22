@@ -28,8 +28,13 @@ export function detectRouteSignals(text: string): RouteSignals {
 			!/(?:api|graphql|jwt|oauth|auth|session|csrf|ssrf|idor|bola|xss|sqli|ssti|rce|web\s*api|web\s*渗透)/.test(
 				lower,
 			));
+	const nativePathSignal =
+		/(?:^|[\s`'"(])(?:\/(?:usr\/)?(?:local\/)?(?:bin|sbin|lib(?:32|64)?|opt|home)\/[\w./+-]+|\.\/[\w./+-]+\.(?:so|dll|exe|bin|elf|out))(?:\b|$)/i.test(
+			text,
+		) || /\/(?:usr\/)?(?:bin|sbin)\/[\w.+-]+/.test(lower);
 	const nativeConcreteSignal =
-		/elf|pe\b|dll|so\b|binary|二进制|反编译|反汇编|\bida\b|radare2|\br2\b|ghidra|wasm|\.exe\b|executable|compiled|\bcrackme\b|keygen|license[-_ ]?check|许可证校验/i.test(
+		nativePathSignal ||
+		/elf|pe\b|dll|so\b|binary|二进制|反编译|反汇编|\bida\b|radare2|\br2\b|ghidra|wasm|\.exe\b|executable|compiled|\bcrackme\b|keygen|license[-_ ]?check|许可证校验|\brizin\b|\brz-bin\b|checksec|ropgadget|one_gadget/i.test(
 			lower,
 		);
 	// bare "reverse" must not flip generic reverse/pentest task → Native
