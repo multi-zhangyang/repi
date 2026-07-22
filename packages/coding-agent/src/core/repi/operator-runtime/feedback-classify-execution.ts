@@ -47,7 +47,17 @@ export function classifyOperatorExecutionFeedback(
 			operatorArtifact,
 		});
 	}
-	if (/exit=\s*(?:[1-9]|\d{2,})|failed|error|killed=true|blocked/i.test(text) || execution.status === "blocked") {
+	// Done steps are not runtime_failure just because output mentions "error=false" / HTML "failed".
+	const failedExit = /\bexit\s*=\s*(?:[1-9]\d*)\b/i.test(text) && !/\bexit\s*=\s*0\b/i.test(text);
+	const hardFail =
+		execution.status === "blocked" ||
+		/\bkilled\s*=\s*true\b/i.test(text) ||
+		/\berror\s*=\s*true\b/i.test(text) ||
+		/\bstatus\s*=\s*(?:failed|blocked)\b/i.test(text) ||
+		failedExit ||
+		(/\b(?:command not found|traceback \(most recent call last\)|ENOENT|EACCES)\b/i.test(text) &&
+			execution.status !== "done");
+	if (hardFail) {
 		return operatorFeedbackRow({
 			category: "runtime_failure",
 			execution,

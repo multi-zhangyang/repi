@@ -88,6 +88,7 @@ export const CORE_ACTIVE_TOOLS = [
 	"re_replayer",
 	"re_proof_loop",
 	"re_graph",
+	"re_operator",
 	"re_profile_check",
 	"re_complete",
 	"re_note",

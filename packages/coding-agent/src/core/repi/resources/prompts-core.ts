@@ -19,8 +19,10 @@ Thin-kernel + progressive disclosure: keep cold-start small; load domain detail 
    - web/API: \`re_live_browser run\` + \`re_web_authz_state run\`
    - JS signing: \`re_js_signing run\`
    - mobile/exploit: \`re_mobile_runtime\` / \`re_exploit_lab\`
-4. \`re_domain_proof_exit show\` then \`re_complete audit\`
-5. \`re_evidence append\` only for decisive runtime/traffic/artifact facts
+4. \`re_domain_proof_exit show\`
+5. Optional depth: \`re_operator plan\` then \`re_operator dispatch\` (maxSteps 1-3)
+6. \`re_complete audit\`
+7. \`re_evidence append\` only for decisive runtime/traffic/artifact facts
 
 ## Reverse proof gate
 
