@@ -20,7 +20,12 @@ export function auditReverseProofFromEvidence(evidence: string): {
 	if (reverseSignals.length === 0) {
 		warnings.push("evidence ledger lacks reverse query anchors (query.technique|mitre|cwe|proof_exit)");
 	} else {
-		for (const signal of reverseSignals.slice(0, 8)) warnings.push(`reverse_anchor: ${signal}`);
+		// Keep compact anchors; full dump confuses models into reporting satisfied gates as bugs.
+		for (const signal of reverseSignals.slice(0, 8)) {
+			if (/proof_exit=|bind_ready=/.test(signal)) warnings.push(`reverse_anchor: ${signal}`);
+		}
+		const technique = reverseSignals.find((s: string) => s.startsWith("reverse.technique="));
+		if (technique) warnings.push(`reverse_anchor: ${technique}`);
 	}
 	const proofLines = reverseEvidenceProofLines(
 		evidence
@@ -66,7 +71,6 @@ export function auditReverseProofFromEvidence(evidence: string): {
 			warnings.push(`reverse_next: ${cmd}`);
 		}
 	} else {
-		for (const line of proofLines.slice(0, 6)) warnings.push(`reverse_proof: ${line}`);
 		if (hasRuntimeProofExit) warnings.push("reverse_proof: runtime proof capture satisfied");
 		if (hasBindReady) {
 			warnings.push("reverse_proof: technique capture bind_ready=true");

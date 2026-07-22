@@ -46,7 +46,7 @@ export function auditCompletionContextGates(blockers: string[], warnings: string
 			else warnings.push(message);
 		}
 		if (!isResumeContract && contextPack.closure?.status === "open") {
-			warnings.push(`context pack is open and should be refreshed before handoff/final: ${contextPath}`);
+			warnings.push(`context pack open (refresh optional): ${contextPath}`);
 		}
 	}
 	const supervisorPath = latestSupervisorArtifactPath();

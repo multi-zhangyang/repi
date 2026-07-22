@@ -13,7 +13,9 @@ export {
 export {
 	formatCompletionAudit,
 	formatCompletionAuditFromAudit,
-	writeDomainProofExitClosureArtifact,
-	writeReportScaffold,
 } from "./completion-audit/format.ts";
 export { auditReverseProofFromEvidence } from "./completion-audit/reverse.ts";
+export {
+	writeDomainProofExitClosureArtifact,
+	writeReportScaffold,
+} from "./completion-audit/write-artifacts.ts";

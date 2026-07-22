@@ -1,6 +1,6 @@
 /** Domain proof-exit closure output. */
 
-import { writeDomainProofExitClosureArtifact } from "../completion-audit/format.ts";
+import { writeDomainProofExitClosureArtifact } from "../completion-audit/write-artifacts.ts";
 import { readCurrentMission } from "../mission.ts";
 import { buildDomainProofExitClosure } from "./build-closure-core.ts";
 import { formatDomainProofExitClosure } from "./pure.ts";

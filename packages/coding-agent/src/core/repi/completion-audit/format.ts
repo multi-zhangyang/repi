@@ -1,127 +1,59 @@
-/** Completion audit formatting and report scaffolds. */
-import { join } from "node:path";
-import { strictClaimCheckSnapshot } from "../claim-release/strict.ts";
-import { type DomainProofExitClosureV1, formatDomainProofExitClosure } from "../domain-proof-exit.ts";
-import { appendEvolution, appendJournal } from "../journal-append.ts";
-import { appendCompletionMemoryEvent } from "../memory-events-append.ts";
-import { appendEvidence } from "../reflection/types-config.ts";
-import { ensureReconStorage } from "../resources.ts";
-import { evidenceToolchainDir, reportDir, writePrivateTextFile } from "../storage.ts";
-import { slug, truncateMiddle } from "../text.ts";
+/** Completion audit formatting (lean surface for re_complete). */
+
 import { auditCompletion } from "./audit.ts";
 import type { CompletionAudit } from "./audit-claims.ts";
-import { buildEvidenceDigest, formatMission, readCurrentMission, updateMissionCheckpoint } from "./deps.ts";
 
 export function formatCompletionAuditFromAudit(audit: CompletionAudit): string {
+	const warnings = audit.warnings ?? [];
+	const optionalPending = warnings.filter((w) => /pending optional check/i.test(w));
+	const reverseSatisfied = warnings.filter((w) =>
+		/reverse_proof: runtime proof capture satisfied|reverse_proof: technique capture bind_ready=true|reverse_domain_proof_align: reverse proof_exit and domain proof-exit both satisfied/i.test(
+			w,
+		),
+	);
+	const proofBits = warnings
+		.filter((w) => /reverse_anchor: reverse\.(proof_exit|bind_ready)=/i.test(w))
+		.map((w) => w.replace(/^reverse_anchor:\s*/i, ""));
+	const realWarnings = warnings.filter(
+		(w) =>
+			!optionalPending.includes(w) &&
+			!reverseSatisfied.includes(w) &&
+			!/reverse_anchor: reverse\.(proof_exit|bind_ready)=/i.test(w),
+	);
 	return [
 		audit.ready ? "completion_status: ready" : "completion_status: blocked",
-		audit.mission ? formatMission(audit.mission) : "mission: none",
+		audit.mission ? `mission_id: ${audit.mission.id}` : "mission: none",
+		audit.mission ? `task: ${audit.mission.task}` : undefined,
+		audit.mission ? `route: ${audit.mission.route?.domain ?? "unknown"}` : undefined,
 		audit.domainProofExitClosure
-			? formatDomainProofExitClosure(audit.domainProofExitClosure)
-			: "domain_proof_exit_closure:\nDomainProofExitClosureV1: false\nstatus: missing",
+			? [
+					`domain_proof_exit_closure: status=${audit.domainProofExitClosure.status} domain=${audit.domainProofExitClosure.domainId ?? "unmapped"} toolchain=${audit.domainProofExitClosure.toolchainStatus ?? "unknown"}`,
+					`matched=${(audit.domainProofExitClosure.matchedProofExits ?? []).length} missing=${(audit.domainProofExitClosure.missingProofExits ?? []).length}`,
+					`corpus_sha256=${audit.domainProofExitClosure.artifactCorpusHash ?? "none"}`,
+				].join("\n")
+			: "domain_proof_exit_closure: missing",
 		"blockers:",
 		...(audit.blockers.length ? audit.blockers.map((item: any) => `- ${item}`) : ["- none"]),
+		"proof_summary:",
+		...(proofBits.length ? proofBits.map((item) => `- ${item}`) : ["- none"]),
+		...(audit.ready ? ["reverse_runtime_gate: satisfied"] : []),
+		"optional_pending_checks:",
+		...(optionalPending.length
+			? optionalPending.map(
+					(item) => `- ${item.replace(/^pending optional check(?: \(reverse proof ready\))?:\s*/i, "")}`,
+				)
+			: ["- none"]),
 		"warnings:",
-		...(audit.warnings.length ? audit.warnings.map((item: any) => `- ${item}`) : ["- none"]),
+		...(realWarnings.length ? realWarnings.map((item: any) => `- ${item}`) : ["- none"]),
 		"required_output:",
 		"- Outcome / Key Evidence / Verification / Next Step",
 		"- evidence block with paths, offsets, hashes, commands, requests, hook points, or state transitions",
 		"- reproducible commands or explicit reason why no new command applies",
-	].join("\n");
+	]
+		.filter(Boolean)
+		.join("\n");
 }
 
 export function formatCompletionAudit(): string {
 	return formatCompletionAuditFromAudit(auditCompletion());
-}
-
-export function writeReportScaffold(title?: string): string {
-	ensureReconStorage();
-	const mission = readCurrentMission();
-	const audit = auditCompletion();
-	const date = new Date().toISOString().replace(/[:.]/g, "-");
-	const safeTitle = (title ?? mission?.route.domain ?? "repi-report").replace(/[^a-z0-9._-]+/gi, "-").slice(0, 80);
-	const path = join(reportDir(), `${date}-${safeTitle}.md`);
-	const body = [
-		"# REPI Report Scaffold",
-		"",
-		"## Outcome",
-		"",
-		"## Key Evidence",
-		"",
-		truncateMiddle(buildEvidenceDigest(), 6000),
-		"",
-		"## Verification",
-		"",
-		"## Next Step",
-		"",
-		"## Mission",
-		"",
-		mission ? formatMission(mission) : "no mission",
-		"",
-		"## Completion Audit",
-		"",
-		formatCompletionAuditFromAudit(audit),
-		"",
-	].join("\n");
-	// Atomic temp+rename (0o600): read back via readText by maintainPlaybooks;
-	// a torn writeFileSync would mis-rank/archive with no error. #43/#103.
-	writePrivateTextFile(path, body);
-	appendCompletionMemoryEvent(audit, path);
-	const strictClaim = strictClaimCheckSnapshot();
-	updateMissionCheckpoint(
-		"report_or_writeup_ready",
-		strictClaim.status === "pass" ? "done" : "blocked",
-		`${path} strict_claim_check=${strictClaim.status}`,
-	);
-	return path;
-}
-
-export function writeDomainProofExitClosureArtifact(report: DomainProofExitClosureV1): string {
-	ensureReconStorage();
-	const domainToken = slug(String(report.domainId ?? "unmapped")).slice(0, 64) || "unmapped";
-	const path = join(
-		evidenceToolchainDir(),
-		`${report.generatedAt.replace(/[:.]/g, "-")}-${domainToken}-domain-proof-exit-closure.md`,
-	);
-	writePrivateTextFile(
-		path,
-		`${formatDomainProofExitClosure(report)}\n\n## JSON\n\n\`\`\`json\n${JSON.stringify(report, null, 2)}\n\`\`\`\n`,
-	);
-	appendEvidence({
-		kind: "artifact",
-		title: "domain-proof-exit-closure",
-		fact: `DomainProofExitClosureV1 domain=${report.domainId ?? "unmapped"} status=${report.status} missing=${report.missingProofExits.length}`,
-		command: "re_domain_proof_exit show",
-		path,
-		hash: report.artifactCorpusHash,
-		verify: `cat ${path}`,
-		confidence: "domain proof-exit closure bound to ToolchainDomainCapabilityV1 and runtime artifacts",
-	});
-	updateMissionCheckpoint(
-		"minimal_path_proven",
-		report.status === "passed" ? "done" : report.matchedProofExits.length ? "pending" : "blocked",
-		`DomainProofExitClosureV1 ${report.status}`,
-	);
-	const reverseStatus = report.status === "passed" ? "done" : report.matchedProofExits.length ? "pending" : "blocked";
-	updateMissionCheckpoint("reverse_proof_exit_ready", reverseStatus, `DomainProofExitClosureV1 ${report.status}`);
-	try {
-		appendJournal(
-			"domain-proof-exit",
-			`DomainProofExitClosureV1 ${report.status}`,
-			[
-				`domain=${report.domainId ?? "unmapped"}`,
-				`status=${report.status}`,
-				`matched=${(report.matchedProofExits ?? []).join(",") || "none"}`,
-				`missing=${(report.missingProofExits ?? []).join(",") || "none"}`,
-				`artifact=${path}`,
-			].join("\n"),
-		);
-		appendEvolution(
-			`domain-proof-exit ${report.status}`,
-			`Domain proof-exit closure ${report.status} for ${report.domainId ?? "unmapped"} @ ${path}`,
-		);
-	} catch {
-		/* journal optional */
-	}
-	return path;
 }

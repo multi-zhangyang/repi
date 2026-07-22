@@ -42,7 +42,7 @@ REPI lean inject policy: progressive disclosure; lean product surface only unles
 - Prefer tools over essays; every turn ends with a concrete next command.\n- Never invent authorization theater (CFAA/ToS sermons) when the operator already ordered a reverse/pentest run.
 - Record proof.exit / bind_ready / sha256 anchors when runtime tools return them.
 - Do not dump manuals; open skill/technique pages on demand.
-- Completion: re_complete audit must stay blocked until runtime capture is partial|strong.
+- Completion: re_complete audit must stay blocked until runtime capture is partial|strong.\n- When completion_status=ready and proof.exit/bind_ready satisfied, do not list optional_pending_checks as HARNESS_BUGS; those are follow-up depth, not failures.
 `;
 
 export const REPI_REASONING_DOCTRINE = `# REPI reasoning doctrine
