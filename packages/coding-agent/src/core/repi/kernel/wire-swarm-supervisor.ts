@@ -4,8 +4,8 @@ import { latestScopedMarkdownArtifact } from "../artifact-scope-filter.ts";
 import { updateMissionCheckpoint } from "../autopilot-deps.ts";
 import { buildClaimCheckResult, strictClaimCheckSnapshot } from "../claim-release.ts";
 import { latestOrBuildDelegate } from "../delegate/build-output.ts";
+import { appendEvidence } from "../evidence.ts";
 import { readCurrentMission } from "../mission/io.ts";
-import { appendEvidence } from "../runtime-adapter-exec-deps.ts";
 import {
 	commanderWorkerScoreboard,
 	latestSwarmForSupervisor,

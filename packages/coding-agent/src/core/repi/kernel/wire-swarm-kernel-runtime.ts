@@ -3,24 +3,20 @@
 import { latestScopedMarkdownArtifact } from "../artifact-scope-filter.ts";
 import { latestAutofixArtifactPath } from "../autofix/helpers.ts";
 import { updateMissionCheckpoint } from "../autopilot-deps.ts";
+import { latestCompilerArtifactPath } from "../compiler-runtime.ts";
+import { latestContextPackArtifactPath } from "../context-pack.ts";
+import { appendEvidence } from "../evidence.ts";
 import { latestExploitChainArtifactPath } from "../exploit-chain/helpers.ts";
 import { configureKernelRuntime } from "../kernel-runtime.ts";
-import {
-	latestCompilerArtifactPath,
-	latestContextPackArtifactPath,
-	latestProofLoopArtifactPath,
-} from "../memory-events-deps.ts";
+import { latestProofLoopArtifactPath } from "../memory-events-deps.ts";
+import { latestOperatorArtifactPath } from "../operator-runtime.ts";
 import { latestDecisionCoreArtifactPath, latestKnowledgeGraphArtifactPath } from "../proof-loop-core/deps-latest.ts";
+import { latestReplayerArtifactPath } from "../replayer-runtime.ts";
 import { latestExploitLabArtifactPath } from "../reverse-io/exploit-pure.ts";
 import { latestMobileRuntimeArtifactPath } from "../reverse-io/mobile-pure.ts";
 import { latestNativeRuntimeArtifactPath } from "../reverse-io/native-pure.ts";
-import {
-	latestOperatorArtifactPath,
-	latestReplayerArtifactPath,
-	latestVerifierArtifactPath,
-} from "../reverse-io/shared.ts";
-import { appendEvidence } from "../runtime-adapter-exec-deps.ts";
 import { commandTarget } from "../target.ts";
+import { latestVerifierArtifactPath } from "../verifier-runtime.ts";
 import type { PickFn } from "./wire-pick.ts";
 
 export function wireKernelRuntimeConfigure(pick: PickFn): void {

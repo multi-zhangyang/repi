@@ -8,9 +8,9 @@ import { campaignEvidenceGaps, campaignPivotCandidates } from "../campaign-runti
 import { latestOrBuildCampaign } from "../campaign-runtime/campaign-write.ts";
 import { operationCommandConcrete } from "../campaign-runtime/operation.ts";
 import { configureCampaignRuntime } from "../campaign-runtime.ts";
+import { appendEvidence } from "../evidence.ts";
 import { inferTargetFromMap, latestPassiveMapContext } from "../passive-map-runtime.ts";
 import { routeReconTask } from "../routes.ts";
-import { appendEvidence } from "../runtime-adapter-exec-deps.ts";
 import { recommendedToolsForRoute } from "../tool-index.ts";
 import type { PickFn } from "./wire-pick.ts";
 

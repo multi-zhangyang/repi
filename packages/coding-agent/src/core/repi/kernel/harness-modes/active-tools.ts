@@ -1,4 +1,4 @@
-/** Plan/accept/core/domain active tool sets for lean reverse product surface. */
+/** Plan/accept/core/domain active tool sets for reverse product surface. */
 
 export const PLAN_MODE_TOOLS = [
 	"read",
@@ -17,10 +17,15 @@ export const PLAN_MODE_TOOLS = [
 	"re_domain_proof_exit",
 	"re_runtime_adapter",
 	"re_native_runtime",
+	"re_exploit_lab",
+	"re_mobile_runtime",
 	"re_live_browser",
 	"re_js_signing",
 	"re_web_authz_state",
+	"re_verifier",
 	"re_replayer",
+	"re_proof_loop",
+	"re_graph",
 	"re_complete",
 ] as const;
 export const ACCEPT_EDITS_TOOLS = [
@@ -40,11 +45,21 @@ export const ACCEPT_EDITS_TOOLS = [
 	"re_evidence",
 	"re_bootstrap",
 	"re_runtime_adapter",
+	"re_native_runtime",
+	"re_exploit_lab",
+	"re_mobile_runtime",
+	"re_live_browser",
+	"re_js_signing",
+	"re_web_authz_state",
 	"re_domain_proof_exit",
+	"re_verifier",
 	"re_replayer",
+	"re_proof_loop",
+	"re_graph",
 	"re_complete",
 ] as const;
 
+/** Always-on reverse execution surface (lean product). Domain packs add emphasis only. */
 export const CORE_ACTIVE_TOOLS = [
 	"read",
 	"bash",
@@ -62,7 +77,18 @@ export const CORE_ACTIVE_TOOLS = [
 	"re_evidence",
 	"re_bootstrap",
 	"re_runtime_adapter",
+	"re_native_runtime",
+	"re_exploit_lab",
+	"re_mobile_runtime",
+	"re_live_browser",
+	"re_js_signing",
+	"re_web_authz_state",
 	"re_domain_proof_exit",
+	"re_verifier",
+	"re_replayer",
+	"re_proof_loop",
+	"re_graph",
+	"re_profile_check",
 	"re_complete",
 	"re_note",
 ] as const;

@@ -2,7 +2,19 @@
 import { reverseDomainCaptureNextCommands, reverseProofGateLines } from "../reverse-capture.ts";
 import type { NativeRuntimeArtifact } from "./types.ts";
 
+function captureScriptPreview(script: string | undefined, maxLines = 24, maxChars = 1800): string {
+	const raw = String(script ?? "").trim();
+	if (!raw) return "# <empty capture script>";
+	const lines = raw.split("\n");
+	const head = lines.slice(0, maxLines).join("\n");
+	const clipped = head.length > maxChars ? `${head.slice(0, maxChars)}\n# ...truncated...` : head;
+	if (lines.length <= maxLines && raw.length <= maxChars) return clipped;
+	return `${clipped}\n# ... capture_script truncated lines=${lines.length} chars=${raw.length} (full script on artifact disk only)`;
+}
+
 export function formatNativeRuntime(native: NativeRuntimeArtifact, path?: string): string {
+	const scriptChars = String(native.captureScript ?? "").length;
+	const anchors = (native.runtimeAnchors ?? []).slice(0, 80);
 	return [
 		"native_runtime:",
 		path ? `native_runtime_artifact: ${path}` : undefined,
@@ -36,12 +48,16 @@ export function formatNativeRuntime(native: NativeRuntimeArtifact, path?: string
 				)
 			: ["- planned native runtime capture; run re_native_runtime run <elf-or-so> [timeout-ms]"]),
 		"runtime_anchors:",
-		...(native.runtimeAnchors.length ? native.runtimeAnchors.map((item: any) => `- ${item}`) : ["- none"]),
+		...(anchors.length ? anchors.map((item: any) => `- ${item}`) : ["- none"]),
+		native.runtimeAnchors.length > anchors.length
+			? `- ... ${native.runtimeAnchors.length - anchors.length} more anchors on disk`
+			: undefined,
 		"replay_commands:",
 		...(native.replayCommands.length ? native.replayCommands.map((item: any) => `- ${item}`) : ["- none"]),
-		"capture_script:",
+		`capture_script_chars: ${scriptChars}`,
+		"capture_script_preview:",
 		"```bash",
-		native.captureScript,
+		captureScriptPreview(native.captureScript),
 		"```",
 		"native_next_actions:",
 		...(native.nextActions.length ? native.nextActions.map((item: any) => `- ${item}`) : ["- re_verifier matrix"]),
@@ -55,8 +71,9 @@ export function formatNativeRuntime(native: NativeRuntimeArtifact, path?: string
 		...(native.sourceArtifacts.length ? native.sourceArtifacts.map((item: any) => `- ${item}`) : ["- none"]),
 		"reverse_domain_next:",
 		...(() => {
-			const blob = JSON.stringify(native);
-			if (/proof_exit\s*=\s*(partial_runtime_capture|runtime_capture_strong)/i.test(blob)) return [] as string[];
+			// Avoid JSON.stringify of multi-10k capture scripts on every format call.
+			const proofish = [...(native.runtimeAnchors ?? []), ...(native.structuredSummary ?? [])].join("\n");
+			if (/proof_exit\s*=\s*(partial_runtime_capture|runtime_capture_strong)/i.test(proofish)) return [] as string[];
 			return reverseDomainCaptureNextCommands({
 				routeOrBlob: `native_runtime ${(native as any).target ?? ""} ${(native as any).route ?? ""}`,
 				target: (native as any).target,

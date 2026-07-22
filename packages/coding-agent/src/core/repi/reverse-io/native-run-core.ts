@@ -44,8 +44,8 @@ export async function runNativeRuntime(
 				killed: result.killed,
 				stdoutHash: replayHash(result.stdout),
 				stderrHash: replayHash(result.stderr),
-				stdoutHead: truncateMiddle(result.stdout.trim(), 3000),
-				stderrHead: truncateMiddle(result.stderr.trim(), 2000),
+				stdoutHead: truncateMiddle(result.stdout.trim(), 2000),
+				stderrHead: truncateMiddle(result.stderr.trim(), 1200),
 			},
 		],
 		runtimeAnchors: anchors,
@@ -57,8 +57,8 @@ export async function runNativeRuntime(
 	const reverseFooter = nativeReverseFooter(proofExit, target, anchors);
 	return [
 		formatNativeRuntime(native, path),
-		result.stdout.trim() ? ["stdout:", "```", truncateMiddle(result.stdout.trim(), 6000), "```"].join("\n") : "",
-		result.stderr.trim() ? ["stderr:", "```", truncateMiddle(result.stderr.trim(), 2000), "```"].join("\n") : "",
+		result.stdout.trim() ? ["stdout:", "```", truncateMiddle(result.stdout.trim(), 3500), "```"].join("\n") : "",
+		result.stderr.trim() ? ["stderr:", "```", truncateMiddle(result.stderr.trim(), 1200), "```"].join("\n") : "",
 		...reverseFooter,
 	]
 		.filter(Boolean)

@@ -16,16 +16,31 @@ import { appendEvidence, reverseEvidenceLedgerFields, updateMissionCheckpoint } 
 
 export function writeNativeRuntimeArtifact(native: NativeRuntimeArtifact): string {
 	ensureReconStorage();
-	const path = join(
-		evidenceNativeRuntimeDir(),
-		`${native.timestamp.replace(/[:.]/g, "-")}-${slug(native.target ?? "native-runtime")}-${native.mode}.md`,
-	);
+	const base = `${native.timestamp.replace(/[:.]/g, "-")}-${slug(native.target ?? "native-runtime")}-${native.mode}`;
+	const dir = evidenceNativeRuntimeDir();
+	const path = join(dir, `${base}.md`);
+	const scriptPath = join(dir, `${base}.capture.sh`);
+	const script = String(native.captureScript ?? "");
+	if (script) writePrivateTextFile(scriptPath, script.endsWith("\n") ? script : `${script}\n`);
+	// Disk JSON omits multi-10k capture script body (sidecar .capture.sh keeps full script).
+	const leanNative = {
+		...native,
+		captureScript: script ? `# see ${scriptPath} chars=${script.length}` : native.captureScript,
+		runtimeAnchors: (native.runtimeAnchors ?? []).slice(0, 120),
+		executions: (native.executions ?? []).map((item: any) => ({
+			...item,
+			stdoutHead: typeof item.stdoutHead === "string" ? item.stdoutHead.slice(0, 2000) : item.stdoutHead,
+			stderrHead: typeof item.stderrHead === "string" ? item.stderrHead.slice(0, 1200) : item.stderrHead,
+		})),
+	};
 	writePrivateTextFile(
 		path,
 		[
 			"# REPI Native Runtime Artifact",
 			"",
 			formatNativeRuntime(native, path),
+			"",
+			script ? `capture_script_file: ${scriptPath}` : undefined,
 			"",
 			"## Structured Summary",
 			"",
@@ -34,10 +49,12 @@ export function writeNativeRuntimeArtifact(native: NativeRuntimeArtifact): strin
 			"## JSON",
 			"",
 			"```json",
-			JSON.stringify(native, null, 2),
+			JSON.stringify(leanNative, null, 2),
 			"```",
 			"",
-		].join("\n"),
+		]
+			.filter((line) => line !== undefined)
+			.join("\n"),
 	);
 	appendEvidence({
 		kind: native.mode === "run" ? "runtime" : "artifact",

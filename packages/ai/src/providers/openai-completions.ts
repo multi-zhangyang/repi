@@ -583,6 +583,9 @@ function buildParams(
 
 	if (context.tools && context.tools.length > 0) {
 		params.tools = convertTools(context.tools, compat);
+		// Prefer concurrent tool execution when the gateway supports OpenAI-style parallel calls.
+		// Gateway may ignore unknown fields; do not gate behind a compat flag that defaults off.
+		(params as any).parallel_tool_calls = true;
 		if (compat.zaiToolStream) {
 			(params as any).tool_stream = true;
 		}

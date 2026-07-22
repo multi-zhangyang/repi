@@ -2,6 +2,7 @@
 
 import { latestScopedMarkdownArtifact } from "../artifact-scope-filter.ts";
 import { updateMissionCheckpoint } from "../autopilot-deps.ts";
+import { appendEvidence } from "../evidence.ts";
 import { writeReflectionMemory } from "../memory-stubs.ts";
 import {
 	buildWorkerPromotionQueue,
@@ -9,7 +10,6 @@ import {
 	latestOrBuildSupervisor,
 	workerAdaptiveRoutingHints,
 } from "../reflection/types-config.ts";
-import { appendEvidence } from "../runtime-adapter-exec-deps.ts";
 import type { PickFn } from "./wire-pick.ts";
 
 export function wireReflectionConfigure(pick: PickFn): void {

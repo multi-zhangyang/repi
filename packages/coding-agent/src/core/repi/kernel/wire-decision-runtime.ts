@@ -3,28 +3,24 @@
 import { latestScopedMarkdownArtifact } from "../artifact-scope-filter.ts";
 import { latestAutofixArtifactPath } from "../autofix/helpers.ts";
 import { updateMissionCheckpoint } from "../autopilot-deps.ts";
+import { latestCompilerArtifactPath } from "../compiler-runtime.ts";
 import { contextArtifactIndex } from "../context-pack/index.ts";
+import { latestContextPackArtifactPath } from "../context-pack.ts";
 import { decisionOperatorSteps } from "../decision-runtime/rules.ts";
 import { configureDecisionRuntime } from "../decision-runtime.ts";
+import { appendEvidence } from "../evidence.ts";
+import { latestKernelArtifactPath } from "../kernel-runtime.ts";
 import { latestKnowledgeGraphArtifactPath } from "../knowledge-graph/io.ts";
-import {
-	latestCompilerArtifactPath,
-	latestContextPackArtifactPath,
-	latestProofLoopArtifactPath,
-} from "../memory-events-deps.ts";
+import { latestProofLoopArtifactPath } from "../memory-events-deps.ts";
 import { activeLane } from "../mission/lane-helpers.ts";
+import { latestOperatorArtifactPath } from "../operator-runtime.ts";
 import { executeOperatorStep } from "../operator-step.ts";
-import {
-	latestKernelArtifactPath,
-	latestOperatorArtifactPath,
-	latestReplayerArtifactPath,
-	latestVerifierArtifactPath,
-} from "../reverse-io/shared.ts";
-import { appendEvidence, parseToolIndex } from "../runtime-adapter-exec-deps.ts";
+import { latestReplayerArtifactPath } from "../replayer-runtime.ts";
 import { toolIndexPath } from "../storage/paths/core.ts";
 import { commandTarget, looksLikeNaturalLanguageTarget, sanitizeTargetForCommand } from "../target.ts";
-import { bootstrapCatalogFor } from "../tool-index/catalog-core.ts";
+import { bootstrapCatalogFor, parseToolIndex } from "../tool-index/catalog-core.ts";
 import { recommendedToolsForRoute } from "../tool-index.ts";
+import { latestVerifierArtifactPath } from "../verifier-runtime.ts";
 import type { PickFn } from "./wire-pick.ts";
 
 export function wireDecisionRuntimeConfigure(pick: PickFn): void {

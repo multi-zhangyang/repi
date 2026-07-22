@@ -1,6 +1,7 @@
 /** Reverse install tool: re_native_runtime. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { truncateMiddle } from "../../text.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseNativeTool(
@@ -31,7 +32,7 @@ export function registerRepiReverseNativeTool(
 					? await deps.runNativeRuntime(pi, { target: params.target, timeoutMs: params.timeoutMs })
 					: deps.buildNativeRuntimeOutput(action, { target: params.target, timeoutMs: params.timeoutMs });
 			return {
-				content: [{ type: "text" as const, text }],
+				content: [{ type: "text" as const, text: truncateMiddle(text, 20000) }],
 				details: { action, path: deps.latestNativeRuntimeArtifactPath(), target: params.target } as Record<
 					string,
 					unknown

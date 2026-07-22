@@ -1,11 +1,11 @@
 /** Wire-reverse: configureProfessionalBridgeRuntime bag. */
 
+import { appendEvidence } from "../evidence.ts";
 import { PROFESSIONAL_RUNTIME_BRIDGE_MATRIX } from "../professional-runtime-bridges-data.ts";
 import { configureProfessionalBridgeRuntime } from "../professional-runtime-bridges-runtime.ts";
 import { RECON_APPEND_SYSTEM_PROMPT, RECON_SYSTEM_PROMPT } from "../resources/prompts-core.ts";
-import { appendEvidence, parseToolIndex } from "../runtime-adapter-exec-deps.ts";
 import { toolIndexPath } from "../storage/paths/core.ts";
-import { buildToolDigest } from "../tool-index/catalog-core.ts";
+import { buildToolDigest, parseToolIndex } from "../tool-index/catalog-core.ts";
 import { repiIndexedToolPresent } from "../tool-presence.ts";
 import type { PickFn } from "./wire-pick.ts";
 

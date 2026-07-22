@@ -69,8 +69,9 @@ export function startupHarnessPacketLines(state: RepiHarnessModeState): string[]
 		"- Plan mode is read-only; write a numbered `Plan:` section, then /plan execute.",
 		"- Mark progress with [DONE:n] after each step.",
 		"- Env: REPI_PLAN=1 or REPI_PERMISSION_MODE=plan starts in plan mode.",
-		"- Tools activate by route (dynamic tool loading) after re_route/mission.",
-		"- Reverse plan template: re_map → re_bootstrap → re_native_runtime/re_live_browser → re_domain_proof_exit → re_complete audit",
-		"- Reverse run-first: prefer re_* run over plan when capturing proof.exit=partial|strong",
+		"- Reverse tools stay loaded (native/mobile/web/adapter/proof). Prefer calling them over narration.",
+		"- Reverse plan template: re_map → re_bootstrap → re_native_runtime/re_live_browser/re_runtime_adapter → re_domain_proof_exit → re_complete audit",
+		"- Reverse run-first: call re_* run tools immediately for proof.exit=partial|strong; do not stall on long plans",
+		"- Parallel tool calls are allowed when independent (route+map, multi-probe).",
 	];
 }

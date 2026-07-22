@@ -3,8 +3,8 @@
 import { latestScopedMarkdownArtifact, scopedMarkdownArtifacts } from "../artifact-scope-filter.ts";
 import { updateMissionCheckpoint } from "../autopilot-deps.ts";
 import { latestOrBuildDelegate } from "../delegate/build-output.ts";
+import { appendEvidence } from "../evidence.ts";
 import { operatorCommandConcrete } from "../proof-loop-core/deps-run.ts";
-import { appendEvidence } from "../runtime-adapter-exec-deps.ts";
 import { refreshSwarmRuntimeClaimLedger } from "../structured-claim-merge/build.ts";
 import { refreshSwarmRunDerivedFields } from "../swarm-exec/execute.ts";
 import { deriveSwarmAuditFields } from "../swarm-exec/pure-audit.ts";

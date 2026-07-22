@@ -9,7 +9,7 @@ export const NATIVE_SYMBOLIC_QILING_LINES: string[] = [
 	"  fi",
 	'  if [ -n "$QL_PY" ]; then',
 	'    printf "[native-symbolic-qiling] host=1 python=%s\\n" "$QL_PY"',
-	'    QL_OUT=$(timeout 60s "$QL_PY" - "$TARGET" <<\'PY\'',
+	'    QL_OUT=$(timeout 20s "$QL_PY" - "$TARGET" <<\'PY\'',
 	"import pathlib, sys",
 	"path = pathlib.Path(sys.argv[1])",
 	'print("[native-symbolic-qiling] path=%s bytes=%d" % (path, path.stat().st_size if path.is_file() else 0))',

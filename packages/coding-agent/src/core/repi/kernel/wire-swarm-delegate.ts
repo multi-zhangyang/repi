@@ -10,11 +10,11 @@ import {
 	dispatcherPromotionQueue,
 	latestWorkerScoreboard,
 } from "../delegate/pure.ts";
+import { appendEvidence } from "../evidence.ts";
 import { dispatcherAdaptiveRoutingHints } from "../operator-runtime/dispatch/hints.ts";
 import { delegateEvidenceContract } from "../proof-loop-core/deps-build.ts";
 import { autonomousExecutionBudget, operatorCommandConcrete } from "../proof-loop-core/deps-run.ts";
 import { buildWorkerPromotionQueue, workerAdaptiveRoutingHints } from "../reflection/types-config.ts";
-import { appendEvidence } from "../runtime-adapter-exec-deps.ts";
 import type { PickFn } from "./wire-pick.ts";
 
 export function wireDelegateConfigure(pick: PickFn): void {
