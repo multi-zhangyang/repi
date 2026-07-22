@@ -47,6 +47,7 @@ export function auditCompletionEvidenceGates(): {
 		// After runtime_capture_strong + bind_ready, remaining domain tools are follow-ups.
 	]);
 	const softWhenReverseReady = new Set([
+		"passive_map_done",
 		"execution_kernel_ready",
 		"decision_core_ready",
 		"operator_queue_ready",

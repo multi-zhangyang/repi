@@ -39,6 +39,7 @@ function syncSoftFill(pending: Set<string>, target: string | undefined, filled: 
 		"verifier_matrix_ready",
 		"compiler_ready",
 		"replay_ready",
+		"proof_loop_ready",
 	]) {
 		if (pending.has(name)) markOptional(name, markNote, filled);
 	}

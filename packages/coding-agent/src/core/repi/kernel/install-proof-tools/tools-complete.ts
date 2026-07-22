@@ -5,6 +5,7 @@ import { softFillOptionalOrchestrationWhenReverseReadyAsync } from "../../comple
 import { readCurrentMission } from "../../mission.ts";
 import { reverseDomainCaptureNextCommands } from "../../reverse-capture.ts";
 import { REPI_TOOL_BOOTSTRAP_CATALOG as TOOL_BOOTSTRAP_CATALOG } from "../../toolchain.ts";
+import { COMPLETE_SOFT_FILL_TARGETS } from "./soft-fill-targets.ts";
 import type { ProofLoopToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiCompleteBootstrapTools(
@@ -74,19 +75,7 @@ export function registerRepiCompleteBootstrapTools(
 				readCurrentMission()
 					?.checkpoints?.filter((c: { status?: string }) => c.status !== "done")
 					.map((c: { name?: string }) => String(c.name)) ?? [];
-			const softFillTargets = new Set([
-				"execution_kernel_ready",
-				"decision_core_ready",
-				"attack_graph_ready",
-				"operation_queue_ready",
-				"operator_queue_ready",
-				"verifier_matrix_ready",
-				"compiler_ready",
-				"replay_ready",
-				"report_or_writeup_ready",
-				"web_authz_ready",
-			]);
-			const needsSoftFill = missionPending.some((name: string) => softFillTargets.has(name));
+			const needsSoftFill = missionPending.some((name: string) => COMPLETE_SOFT_FILL_TARGETS.has(name));
 			let softFilled: string[] = [];
 			if (audit?.ready && needsSoftFill) {
 				softFilled = await softFillOptionalOrchestrationWhenReverseReadyAsync(audit as any, pi);

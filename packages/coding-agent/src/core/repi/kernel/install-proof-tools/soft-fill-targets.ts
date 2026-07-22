@@ -1,0 +1,14 @@
+/** Optional checkpoints soft-filled after reverse proof is ready. */
+export const COMPLETE_SOFT_FILL_TARGETS = new Set([
+	"execution_kernel_ready",
+	"decision_core_ready",
+	"attack_graph_ready",
+	"operation_queue_ready",
+	"operator_queue_ready",
+	"verifier_matrix_ready",
+	"compiler_ready",
+	"replay_ready",
+	"report_or_writeup_ready",
+	"proof_loop_ready",
+	"web_authz_ready",
+]);
