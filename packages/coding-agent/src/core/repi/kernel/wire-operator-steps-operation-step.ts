@@ -5,8 +5,15 @@ import { runAutoLaneChain } from "../auto-lane.ts";
 import { buildAutofixOutput } from "../autofix.ts";
 import { buildCampaignOutput } from "../campaign-runtime.ts";
 import { buildCompilerOutput } from "../compiler-runtime.ts";
-import { formatCompletionAudit, writeReportScaffold } from "../completion-audit.ts";
+import { softFillOptionalOrchestrationWhenReverseReady } from "../completion-audit/soft-fill-optional.ts";
+import {
+	auditCompletion,
+	formatCompletionAudit,
+	writeDomainProofExitClosureArtifact,
+	writeReportScaffold,
+} from "../completion-audit.ts";
 import { buildDecisionCoreOutput, runDecisionCore } from "../decision-runtime.ts";
+import { buildDomainProofExitClosure, formatDomainProofExitClosure } from "../domain-proof-exit.ts";
 import { buildExploitChainOutput } from "../exploit-chain.ts";
 import { buildKernelOutput } from "../kernel-runtime.ts";
 import { buildKnowledgeGraphOutput } from "../knowledge-graph.ts";
@@ -35,6 +42,7 @@ import {
 	runWebAuthzState,
 } from "../reverse-io.ts";
 import { routeReconTask } from "../routes.ts";
+import { runRuntimeAdapterExecution } from "../runtime-adapter-exec-run.ts";
 import { createBootstrapPlan, formatBootstrapPlan, refreshToolIndex } from "../tool-index.ts";
 import { buildVerifierOutput } from "../verifier-runtime.ts";
 import type { PickFn } from "./wire-pick.ts";
@@ -80,5 +88,17 @@ export function wireOperatorStepOperationModules(pick: PickFn): void {
 		formatCompletionAudit: pick("formatCompletionAudit", formatCompletionAudit),
 		writeReportScaffold: pick("writeReportScaffold", writeReportScaffold),
 		refreshToolIndex: pick("refreshToolIndex", refreshToolIndex),
+		runRuntimeAdapterExecution: pick("runRuntimeAdapterExecution", runRuntimeAdapterExecution),
+		buildDomainProofExitClosure: pick("buildDomainProofExitClosure", buildDomainProofExitClosure),
+		writeDomainProofExitClosureArtifact: pick(
+			"writeDomainProofExitClosureArtifact",
+			writeDomainProofExitClosureArtifact,
+		),
+		formatDomainProofExitClosure: pick("formatDomainProofExitClosure", formatDomainProofExitClosure),
+		auditCompletion: pick("auditCompletion", auditCompletion),
+		softFillOptionalOrchestrationWhenReverseReady: pick(
+			"softFillOptionalOrchestrationWhenReverseReady",
+			softFillOptionalOrchestrationWhenReverseReady,
+		),
 	});
 }

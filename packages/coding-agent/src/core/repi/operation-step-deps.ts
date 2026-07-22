@@ -54,6 +54,13 @@ export type OperationStepDeps = {
 	formatCompletionAudit: (...args: any[]) => any;
 	writeReportScaffold: (...args: any[]) => any;
 	refreshToolIndex: (...args: any[]) => any;
+	runRuntimeAdapterExecution: (...args: any[]) => any;
+	buildDomainProofExitClosure: (...args: any[]) => any;
+	writeDomainProofExitClosureArtifact: (...args: any[]) => any;
+	formatDomainProofExitClosure: (...args: any[]) => any;
+	formatCompletionAuditFromAudit?: (...args: any[]) => any;
+	auditCompletion?: (...args: any[]) => any;
+	softFillOptionalOrchestrationWhenReverseReady?: (...args: any[]) => any;
 };
 
 let operationStepDeps: OperationStepDeps | null = null;

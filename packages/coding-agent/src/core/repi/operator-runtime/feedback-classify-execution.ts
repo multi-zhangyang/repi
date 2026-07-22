@@ -23,7 +23,7 @@ export function classifyOperatorExecutionFeedback(
 			operatorArtifact,
 		});
 	}
-	if (/unsupported operation command|internal REPI command/i.test(text)) {
+	if (/unsupported (?:operation|operator) command|internal REPI command/i.test(text)) {
 		return operatorFeedbackRow({
 			category: "dispatcher_gap",
 			execution,
