@@ -1,6 +1,8 @@
 /** Operation step handlers: decision/lane/map/kernel control plane. */
 import type { ExtensionAPI } from "../extensions/types.ts";
+import { buildEvidenceDigest } from "./evidence/ledger-digest.ts";
 import { d } from "./operation-step-deps.ts";
+import { buildTechniquesOperationOutput } from "./operation-step-techniques.ts";
 import type { OperationExecution } from "./operator-step.ts";
 
 type Done = (output: string) => OperationExecution;
@@ -55,5 +57,15 @@ export async function tryExecuteOperationControlStep(
 				target: kernelMatch[2]?.trim() || target,
 			}),
 		);
+	if (/^re[-_]techniques\b/i.test(command)) {
+		const mission = d().readCurrentMission?.();
+		const domain = mission?.route?.domain;
+		return done(buildTechniquesOperationOutput(command, domain));
+	}
+	if (/^re[-_]evidence\b/i.test(command)) {
+		const q = command.replace(/^re[-_]evidence\s+(?:show|search|append)?\s*/i, "").trim();
+		// append is not fully reconstructed here; show/search digest is the operator-safe path
+		return done(buildEvidenceDigest(q || undefined));
+	}
 	return undefined;
 }
