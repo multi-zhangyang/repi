@@ -1,4 +1,6 @@
 /** Assemble operator artifact payload. */
+
+import { existsSync } from "node:fs";
 import { operatorReverseNextActions } from "./core-build-reverse.ts";
 import { caseMemoryLanePlanLines } from "./deps.ts";
 
@@ -91,12 +93,16 @@ export function assembleOperatorArtifact(params: {
 			new Set(
 				[
 					contextArtifact,
-					autonomousBudget.dispatcherBoardPath,
-					autonomousBudget.promotionPlaybookPath,
-					compactResumePath,
+					autonomousBudget.dispatcherBoardPath && existsSync(autonomousBudget.dispatcherBoardPath)
+						? autonomousBudget.dispatcherBoardPath
+						: undefined,
+					autonomousBudget.promotionPlaybookPath && existsSync(autonomousBudget.promotionPlaybookPath)
+						? autonomousBudget.promotionPlaybookPath
+						: undefined,
+					compactResumePath && existsSync(compactResumePath) ? compactResumePath : undefined,
 					...context.sourceArtifacts,
 					...feedback.sourceArtifacts,
-				].filter(Boolean) as string[],
+				].filter((path): path is string => Boolean(path) && existsSync(path)),
 			),
 		).slice(0, 40),
 	};

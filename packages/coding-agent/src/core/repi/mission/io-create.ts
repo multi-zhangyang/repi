@@ -32,5 +32,10 @@ export function normalizeMission(mission: MissionState): MissionState {
 		if (firstPending >= 0)
 			lanes[firstPending] = { ...lanes[firstPending], status: "in_progress", updatedAt: timestamp };
 	}
-	return { ...mission, lanes };
+	const checkpoints = (mission.checkpoints ?? []).map((checkpoint: any) =>
+		checkpoint.name === "memory_checked" && checkpoint.status !== "done"
+			? { ...checkpoint, status: "done", note: checkpoint.note ?? "memory:product-removed" }
+			: checkpoint,
+	);
+	return { ...mission, lanes, checkpoints };
 }

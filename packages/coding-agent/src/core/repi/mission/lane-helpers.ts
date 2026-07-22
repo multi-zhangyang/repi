@@ -6,11 +6,16 @@ import { MISSION_CHECKPOINTS_BY_DOMAIN, MISSION_CHECKPOINTS_CORE, MISSION_CHECKP
 import type { MissionCheckpoint, MissionLane, MissionState } from "./types.ts";
 
 export function defaultMissionCheckpoints(route?: RoutePlan): MissionCheckpoint[] {
-	if (!route) return MISSION_CHECKPOINTS_FULL.map((checkpoint: any) => ({ ...checkpoint }));
+	// Memory product removed: memory_checked is satisfied by design (doctor memory:product-removed).
+	const markMemory = (checkpoint: MissionCheckpoint): MissionCheckpoint =>
+		checkpoint.name === "memory_checked"
+			? { ...checkpoint, status: "done", note: "memory:product-removed" }
+			: { ...checkpoint };
+	if (!route) return MISSION_CHECKPOINTS_FULL.map((checkpoint: any) => markMemory({ ...checkpoint }));
 	const wanted = new Set([...MISSION_CHECKPOINTS_CORE, ...(MISSION_CHECKPOINTS_BY_DOMAIN[route.domain] ?? [])]);
-	return MISSION_CHECKPOINTS_FULL.filter((checkpoint: any) => wanted.has(checkpoint.name)).map((checkpoint: any) => ({
-		...checkpoint,
-	}));
+	return MISSION_CHECKPOINTS_FULL.filter((checkpoint: any) => wanted.has(checkpoint.name)).map((checkpoint: any) =>
+		markMemory({ ...checkpoint }),
+	);
 }
 
 export function laneSpec(

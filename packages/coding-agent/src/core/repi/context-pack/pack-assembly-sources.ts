@@ -39,11 +39,19 @@ export function collectContextPackSourceArtifacts(input: {
 		new Set(
 			[
 				...artifactIndex.filter((artifact: any) => artifact.exists).map((artifact: any) => artifact.path),
-				swarmRetry.path,
-				autonomousBudget.dispatcherBoardPath,
-				autonomousBudget.promotionPlaybookPath,
-				autonomousBudget.ledgerPath,
-				autonomousBudget.formalPlaybookPath,
+				swarmRetry.path && existsSync(swarmRetry.path) ? swarmRetry.path : undefined,
+				autonomousBudget.dispatcherBoardPath && existsSync(autonomousBudget.dispatcherBoardPath)
+					? autonomousBudget.dispatcherBoardPath
+					: undefined,
+				autonomousBudget.promotionPlaybookPath && existsSync(autonomousBudget.promotionPlaybookPath)
+					? autonomousBudget.promotionPlaybookPath
+					: undefined,
+				autonomousBudget.ledgerPath && existsSync(autonomousBudget.ledgerPath)
+					? autonomousBudget.ledgerPath
+					: undefined,
+				autonomousBudget.formalPlaybookPath && existsSync(autonomousBudget.formalPlaybookPath)
+					? autonomousBudget.formalPlaybookPath
+					: undefined,
 				existsSync(compactionResumeTelemetryPath()) ? compactionResumeTelemetryPath() : undefined,
 				memoryOrchestrator?.reportPath && existsSync(memoryOrchestrator.reportPath)
 					? memoryOrchestrator.reportPath

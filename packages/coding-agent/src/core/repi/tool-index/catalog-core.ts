@@ -1,5 +1,6 @@
 /** Tool-index digest/bootstrap plan pure helpers. */
 import { spawnSync } from "node:child_process";
+import { updateMissionCheckpoint } from "../mission/io-update.ts";
 import { REPI_TOOL_INDEX_CANDIDATES as TOOL_INDEX_CANDIDATES } from "../profile.ts";
 import { ensureReconStorage } from "../resources.ts";
 import { readTextFile as readText, toolIndexPath, writePrivateTextFile } from "../storage.ts";
@@ -46,6 +47,11 @@ export function ensureToolIndexMaterialized(): void {
 		"",
 	].join("\n");
 	writePrivateTextFile(path, `${body}\n`);
+	try {
+		updateMissionCheckpoint("tool_index_checked", "done", "tool-index:host-sync");
+	} catch {
+		/* ignore mission write failures during early boot */
+	}
 }
 
 export function buildToolDigest(): string {

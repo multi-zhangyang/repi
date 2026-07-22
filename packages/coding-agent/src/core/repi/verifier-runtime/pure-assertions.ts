@@ -39,8 +39,26 @@ export function executionAssertion(execution: any, index: number, operatorPath: 
 	};
 }
 
+/** Memory product removed: these paths must not force verifier contradictions. */
+function isRemovedMemoryProductPath(artifact: string): boolean {
+	const lower = artifact.replace(/\\/g, "/").toLowerCase();
+	return (
+		/\/memory\//.test(lower) ||
+		/(?:^|\/)(dispatcher-promotion-playbook|compaction-auto-resume-board|autonomous-budget-ledger|formal-playbook)\.md$/.test(
+			lower,
+		) ||
+		/memory[-_](events|store|orchestrator|deposition|experience|skill|distill|quality|replay|strategy|active|maturation|vector|semantic|contradiction|injection)/i.test(
+			lower,
+		)
+	);
+}
+
 export function artifactAssertions(operator: OperatorArtifact): VerifierAssertion[] {
-	return operator.sourceArtifacts.slice(0, 24).map((artifact: any, index: any) => {
+	// Drop removed memory-product paths entirely (product memory deleted).
+	const artifacts = operator.sourceArtifacts
+		.filter((artifact: any) => !isRemovedMemoryProductPath(String(artifact)))
+		.slice(0, 24);
+	return artifacts.map((artifact: any, index: any) => {
 		const present = existsSync(artifact);
 		return {
 			id: `artifact:${index + 1}:${slug(artifact).slice(0, 24)}`,
