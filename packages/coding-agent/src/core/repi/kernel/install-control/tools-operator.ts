@@ -12,6 +12,13 @@ export type ControlOperatorToolDeps = {
 	latestOperatorArtifactPath: (...args: any[]) => any;
 };
 
+function checkpointDone(name: string): boolean {
+	const mission = readCurrentMission();
+	return Boolean(
+		mission?.checkpoints?.some((c: { name?: string; status?: string }) => c.name === name && c.status === "done"),
+	);
+}
+
 export function registerRepiControlOperatorTool(
 	registerTool: ToolRegistrar,
 	pi: ExtensionAPI,
@@ -44,23 +51,22 @@ export function registerRepiControlOperatorTool(
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const action = params.action ?? (params.target ? "dispatch" : "plan");
-			// After reverse proof is ready, further plan/dispatch thrash is wasted — steer to final report.
+			// After reverse proof is ready, further thrash is wasted — but the first plan then
+			// first dispatch after map/browser/proof must still run.
 			try {
 				const audit = auditCompletion();
-				const mission = readCurrentMission();
-				const queueDone = Boolean(
-					mission?.checkpoints?.some(
-						(c: { name?: string; status?: string }) =>
-							(c.name === "operation_queue_ready" || c.name === "operator_queue_ready") && c.status === "done",
-					),
-				);
-				// Only stop thrash after reverse is ready *and* an operator queue was already materialised.
-				// First plan/dispatch after map/browser/proof must still run.
-				if (
-					audit?.ready &&
+				const queueDone = checkpointDone("operation_queue_ready") || checkpointDone("operator_queue_ready");
+				const reportDone = checkpointDone("report_or_writeup_ready");
+				// plan/verify/escalate: stop only after a queue already exists
+				// dispatch: stop only after report soft-fill/complete closed the loop
+				const stopThrash =
+					Boolean(audit?.ready) &&
 					queueDone &&
-					(action === "plan" || action === "dispatch" || action === "verify" || action === "escalate")
-				) {
+					(action === "plan" ||
+						action === "verify" ||
+						action === "escalate" ||
+						(action === "dispatch" && reportDone));
+				if (stopThrash) {
 					const text = [
 						"operator_queue:",
 						"status: reverse_ready_stop",
