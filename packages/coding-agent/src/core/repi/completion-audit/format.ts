@@ -100,5 +100,7 @@ export function writeDomainProofExitClosureArtifact(report: DomainProofExitClosu
 		report.status === "passed" ? "done" : report.matchedProofExits.length ? "pending" : "blocked",
 		`DomainProofExitClosureV1 ${report.status}`,
 	);
+	const reverseStatus = report.status === "passed" ? "done" : report.matchedProofExits.length ? "pending" : "blocked";
+	updateMissionCheckpoint("reverse_proof_exit_ready", reverseStatus, `DomainProofExitClosureV1 ${report.status}`);
 	return path;
 }

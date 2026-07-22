@@ -29,7 +29,7 @@ export function detectRouteSignals(text: string): RouteSignals {
 				lower,
 			));
 	const nativeConcreteSignal =
-		/elf|pe\b|dll|so\b|binary|二进制|反编译|反汇编|ida|radare2|\br2\b|ghidra|wasm|\.exe\b|executable|compiled|\bcrackme\b|keygen|license[-_ ]?check|许可证校验/i.test(
+		/elf|pe\b|dll|so\b|binary|二进制|反编译|反汇编|\bida\b|radare2|\br2\b|ghidra|wasm|\.exe\b|executable|compiled|\bcrackme\b|keygen|license[-_ ]?check|许可证校验/i.test(
 			lower,
 		);
 	// bare "reverse" must not flip generic reverse/pentest task → Native

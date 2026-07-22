@@ -18,7 +18,14 @@ export function ensureToolIndexMaterialized(): void {
 	ensureReconStorage();
 	const path = toolIndexPath();
 	const existing = readText(path).trim();
-	if (existing.includes("| yes |") || existing.includes("| no |")) return;
+	if (existing.includes("| yes |") || existing.includes("| no |")) {
+		try {
+			updateMissionCheckpoint("tool_index_checked", "done", "tool-index:present");
+		} catch {
+			/* ignore */
+		}
+		return;
+	}
 	const rows: string[] = [];
 	const pathEnv = process.env.PATH ?? "";
 	for (const tool of TOOL_INDEX_CANDIDATES) {

@@ -8,7 +8,7 @@ import type { MissionCheckpoint, MissionLane, MissionState } from "./types.ts";
 export function defaultMissionCheckpoints(route?: RoutePlan): MissionCheckpoint[] {
 	// Memory product removed: memory_checked is satisfied by design (doctor memory:product-removed).
 	const markMemory = (checkpoint: MissionCheckpoint): MissionCheckpoint =>
-		checkpoint.name === "memory_checked"
+		checkpoint.name === "memory_checked" || checkpoint.name === "memory_or_evolution_written"
 			? { ...checkpoint, status: "done", note: "memory:product-removed" }
 			: { ...checkpoint };
 	if (!route) return MISSION_CHECKPOINTS_FULL.map((checkpoint: any) => markMemory({ ...checkpoint }));

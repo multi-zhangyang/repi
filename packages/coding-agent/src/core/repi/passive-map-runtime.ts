@@ -1,5 +1,6 @@
 /** Passive map run helpers. */
 import type { ExtensionAPI } from "../extensions/types.ts";
+import { updateMissionCheckpoint } from "./mission.ts";
 import {
 	defaultAppendEvidence,
 	type PassiveMapSideEffects,
@@ -47,6 +48,16 @@ export async function runPassiveMap(
 	});
 	sideEffects.onMapped?.(artifactPath);
 	const reverseNext = passiveMapReverseNextCommands(signals, params.target);
+	try {
+		updateMissionCheckpoint("passive_map_done", "done", artifactPath);
+		updateMissionCheckpoint(
+			"repro_commands_ready",
+			"done",
+			reverseNext.length > 0 ? `map-next:${reverseNext[0]}` : `map-artifact:${artifactPath}`,
+		);
+	} catch {
+		/* mission optional during early boot */
+	}
 	return [
 		"passive_map_result:",
 		`exit: ${result.code}`,

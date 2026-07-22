@@ -107,7 +107,8 @@ export function registerRepiReverseAdapterTools(
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const report = deps.buildDomainProofExitClosure(deps.readCurrentMission(), params.domain);
-			const path = params.action === "write" ? deps.writeDomainProofExitClosureArtifact(report) : undefined;
+			// Always persist on show|write so mission checkpoints (minimal_path_proven / reverse proof) update.
+			const path = deps.writeDomainProofExitClosureArtifact(report);
 			return {
 				content: [
 					{
