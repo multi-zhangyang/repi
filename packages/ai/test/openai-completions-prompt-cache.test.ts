@@ -1,8 +1,8 @@
 // @ts-nocheck — branded Model fixtures; runtime tests still execute.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getModel } from "../src/models.ts";
 import { streamOpenAICompletions } from "../src/providers/openai-completions.ts";
 import type { Model } from "../src/types.ts";
+import { fixtureOpenAICompletionsMini, seedProviderPayloadTestModels } from "./test-model-fixtures.ts";
 
 interface FakeOpenAIClientOptions {
 	apiKey: string;
@@ -67,6 +67,7 @@ describe("openai-completions prompt caching", () => {
 	const originalEnv = process.env.PI_CACHE_RETENTION;
 
 	beforeEach(() => {
+		seedProviderPayloadTestModels();
 		mockState.lastParams = undefined;
 		mockState.lastClientOptions = undefined;
 		delete process.env.PI_CACHE_RETENTION;
@@ -81,7 +82,7 @@ describe("openai-completions prompt caching", () => {
 	});
 
 	function createModel(overrides: Partial<Model<"openai-completions">> = {}): Model<"openai-completions"> {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
+		const { compat: _compat, ...baseModel } = fixtureOpenAICompletionsMini();
 		return {
 			...(baseModel as Omit<Model<"openai-completions">, "api">),
 			api: "openai-completions",

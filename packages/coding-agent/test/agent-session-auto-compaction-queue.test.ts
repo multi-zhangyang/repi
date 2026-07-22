@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent } from "@pi-recon/repi-agent-core";
-import { type AssistantMessage, getModel } from "@pi-recon/repi-ai";
+import type { AssistantMessage, Model } from "@pi-recon/repi-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -10,6 +10,21 @@ import { ModelRegistry } from "../src/core/model-registry.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createTestResourceLoader } from "./utilities.ts";
+
+function testAnthropicModel(): Model<"anthropic-messages"> {
+	return {
+		id: "claude-sonnet-4-5",
+		name: "Claude Sonnet 4.5 (test fixture)",
+		api: "anthropic-messages",
+		provider: "anthropic",
+		baseUrl: "https://api.anthropic.com",
+		reasoning: true,
+		input: ["text", "image"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 200000,
+		maxTokens: 64000,
+	};
+}
 
 vi.mock("../src/core/compaction/index.js", () => ({
 	calculateContextTokens: (usage: {
@@ -83,7 +98,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 
 		// Keep this test independent from generated/dist model metadata drift.
 		// The regression exercises threshold behavior near a 200k window.
-		const model = { ...getModel("anthropic", "claude-sonnet-4-5")!, contextWindow: 200_000 };
+		const model = { ...testAnthropicModel(), contextWindow: 200_000 };
 		const agent = new Agent({
 			initialState: {
 				model,
