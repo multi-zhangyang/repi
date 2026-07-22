@@ -31,7 +31,8 @@ export function registerRepiReverseNativeTools(
 			timeoutMs: Type.Optional(Type.Number()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const action = params.action ?? "plan";
+			const hasTarget = Boolean(String(params.target || params.url || "").trim());
+			const action = params.action ?? (hasTarget ? "run" : "plan");
 			const text =
 				action === "run"
 					? await deps.runExploitLab(pi, { target: params.target, runs: params.runs, timeoutMs: params.timeoutMs })

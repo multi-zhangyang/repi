@@ -14,7 +14,10 @@ export function registerRepiSpecialistPackTool(registerTool: ToolRegistrar, deps
 			"Call re_lane_specialist_pack show to choose the right lane seeds, command pack markers, analyzer anchors, and self-heal commands.",
 			"Follow with re_lane plan/run and re_domain_proof_exit so command-pack evidence closes the domain proof exit.",
 		],
-		parameters: Type.Object({ action: Type.Union([Type.Literal("show")]), domain: Type.Optional(Type.String()) }),
+		parameters: Type.Object({
+			action: Type.Optional(Type.Union([Type.Literal("show")])),
+			domain: Type.Optional(Type.String()),
+		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const report = deps.buildReLaneSpecialistCommandPackGate(params.domain);
 			deps.updateMissionCheckpoint(
@@ -30,7 +33,7 @@ export function registerRepiSpecialistPackTool(registerTool: ToolRegistrar, deps
 					},
 				],
 				details: {
-					action: params.action,
+					action: params.action ?? "show",
 					domain: params.domain,
 					closure: report.closure,
 					readyDomainCount: report.readyDomainCount,

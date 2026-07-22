@@ -28,7 +28,8 @@ export function registerRepiReverseWebTools(
 			timeoutMs: Type.Optional(Type.Number()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const action = params.action ?? "plan";
+			const hasHttpTarget = /^https?:\/\//i.test(String(params.url || params.target || "").trim());
+			const action = params.action ?? (hasHttpTarget ? "run" : "plan");
 			const text =
 				action === "run"
 					? await deps.runLiveBrowser(pi, { target: params.target, url: params.url, timeoutMs: params.timeoutMs })
@@ -66,7 +67,8 @@ export function registerRepiReverseWebTools(
 			timeoutMs: Type.Optional(Type.Number()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const action = params.action ?? "plan";
+			const hasHttpTarget = /^https?:\/\//i.test(String(params.url || params.target || "").trim());
+			const action = params.action ?? (hasHttpTarget ? "run" : "plan");
 			const text =
 				action === "run"
 					? await deps.runWebAuthzState(pi, {

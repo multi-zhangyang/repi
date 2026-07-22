@@ -15,12 +15,9 @@ export function registerRepiNoteTool(registerTool: ToolRegistrar, deps: Narrativ
 			"Use type=user (who the user is), feedback (how to work), project (goals/constraints), reference (external pointers/URLs).",
 		],
 		parameters: Type.Object({
-			action: Type.Union([
-				Type.Literal("write"),
-				Type.Literal("list"),
-				Type.Literal("read"),
-				Type.Literal("delete"),
-			]),
+			action: Type.Optional(
+				Type.Union([Type.Literal("write"), Type.Literal("list"), Type.Literal("read"), Type.Literal("delete")]),
+			),
 			name: Type.Optional(Type.String()),
 			description: Type.Optional(Type.String()),
 			type: Type.Optional(
@@ -34,7 +31,8 @@ export function registerRepiNoteTool(registerTool: ToolRegistrar, deps: Narrativ
 			body: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			if (params.action === "list") {
+			const action = params.action ?? "list";
+			if (action === "list") {
 				const entries = deps.listNotes();
 				if (entries.length === 0) {
 					return {
@@ -59,7 +57,7 @@ export function registerRepiNoteTool(registerTool: ToolRegistrar, deps: Narrativ
 					details: { action: "list", count: entries.length, notes: entries } as Record<string, unknown>,
 				};
 			}
-			if (params.action === "read") {
+			if (action === "read") {
 				if (!params.name) {
 					return {
 						content: [{ type: "text" as const, text: "re_note read: missing required param `name`." }],
@@ -83,7 +81,7 @@ export function registerRepiNoteTool(registerTool: ToolRegistrar, deps: Narrativ
 					details: { action: "read", name: note.name, type: note.type } as Record<string, unknown>,
 				};
 			}
-			if (params.action === "delete") {
+			if (action === "delete") {
 				if (!params.name) {
 					return {
 						content: [{ type: "text" as const, text: "re_note delete: missing required param `name`." }],

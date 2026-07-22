@@ -27,7 +27,8 @@ export function registerRepiReverseJsSigningTool(
 			timeoutMs: Type.Optional(Type.Number()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const action = params.action ?? "plan";
+			const hasHttpOrPath = Boolean(String(params.url || params.target || "").trim());
+			const action = params.action ?? (hasHttpOrPath ? "run" : "plan");
 			const text =
 				action === "run"
 					? await deps.runJsSigning(pi, { target: params.target, url: params.url, timeoutMs: params.timeoutMs })

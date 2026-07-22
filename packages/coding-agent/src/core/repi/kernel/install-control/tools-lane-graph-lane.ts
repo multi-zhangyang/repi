@@ -25,17 +25,19 @@ export function registerRepiControlLaneTools(
 			"Call re_lane plan with a lane/target to generate the smallest command pack before broad scanning.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([
-				Type.Literal("show"),
-				Type.Literal("next"),
-				Type.Literal("done"),
-				Type.Literal("block"),
-				Type.Literal("set"),
-				Type.Literal("add"),
-				Type.Literal("plan"),
-				Type.Literal("run"),
-				Type.Literal("run-auto"),
-			]),
+			action: Type.Optional(
+				Type.Union([
+					Type.Literal("show"),
+					Type.Literal("next"),
+					Type.Literal("done"),
+					Type.Literal("block"),
+					Type.Literal("set"),
+					Type.Literal("add"),
+					Type.Literal("plan"),
+					Type.Literal("run"),
+					Type.Literal("run-auto"),
+				]),
+			),
 			lane: Type.Optional(Type.String()),
 			target: Type.Optional(Type.String()),
 			max: Type.Optional(Type.Number()),
@@ -52,7 +54,8 @@ export function registerRepiControlLaneTools(
 			note: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			return executeRepiLaneTool(pi, deps, params);
+			const action = params.action ?? "show";
+			return executeRepiLaneTool(pi, deps, { ...params, action });
 		},
 	});
 }
