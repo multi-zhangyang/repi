@@ -102,6 +102,7 @@ export function registerRepiReverseAdapterTools(
 		promptGuidelines: [
 			"Call re_domain_proof_exit show after re_lane/re_native_runtime/re_live_browser/replayer/proof-loop artifacts exist.",
 			"Treat domain_proof_exit_missing blockers as commands to run, not as narrative refusal.",
+			"After domain proof passes, call re_operator plan then re_operator dispatch then re_complete before final HARNESS_BUGS/PROOF.",
 		],
 		parameters: Type.Object(
 			{
@@ -124,11 +125,15 @@ export function registerRepiReverseAdapterTools(
 					typeof deps.formatDomainProofExitClosure === "function"
 						? deps.formatDomainProofExitClosure
 						: (r: any, p?: string) => JSON.stringify({ path: p, status: r?.status, domain: r?.domainId });
+				const nextFooter =
+					report.status === "passed"
+						? "\n\nnext_required:\n- re_operator plan <target>\n- re_operator dispatch <target> maxSteps=2\n- re_complete audit\n- then HARNESS_BUGS/PROOF only"
+						: "";
 				return {
 					content: [
 						{
 							type: "text" as const,
-							text: deps.truncateMiddle(format(report, path), 20000),
+							text: deps.truncateMiddle(`${format(report, path)}${nextFooter}`, 20000),
 						},
 					],
 					details: {

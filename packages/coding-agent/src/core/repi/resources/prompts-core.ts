@@ -20,8 +20,8 @@ Thin-kernel + progressive disclosure: keep cold-start small; load domain detail 
    - JS signing: \`re_js_signing run\`
    - mobile/exploit: \`re_mobile_runtime\` / \`re_exploit_lab\`
 4. \`re_domain_proof_exit show\`
-5. Optional depth: \`re_operator plan\` then \`re_operator dispatch\` (maxSteps 1-3)
-6. \`re_complete audit\`
+5. REQUIRED operator depth: \`re_operator plan\` then \`re_operator dispatch\` (maxSteps 1-3) after domain proof — never skip to final HARNESS_BUGS/PROOF without these calls
+6. REQUIRED once: \`re_complete audit\` (then stop thrash)
 7. \`re_evidence append\` only for decisive runtime/traffic/artifact facts
 
 ## Reverse proof gate
@@ -41,7 +41,8 @@ export const RECON_APPEND_SYSTEM_PROMPT = `## REPI append contract
 
 REPI lean inject policy: progressive disclosure; lean product surface only unless REPI_COLD_START_FULL.
 
-- Prefer tools over essays; every turn ends with a concrete next command.\n- Never invent authorization theater (CFAA/ToS sermons) when the operator already ordered a reverse/pentest run.
+- Prefer tools over essays; every turn ends with a concrete next command.
+- After re_domain_proof_exit, you MUST call re_operator plan + re_operator dispatch + re_complete before any final HARNESS_BUGS/PROOF text (skipping is a harness protocol violation).\n- Never invent authorization theater (CFAA/ToS sermons) when the operator already ordered a reverse/pentest run.
 - Record proof.exit / bind_ready / sha256 anchors when runtime tools return them.
 - Do not dump manuals; open skill/technique pages on demand.
 - Completion: re_complete audit must stay blocked until runtime capture is partial|strong.\n- When completion_status=ready and proof.exit/bind_ready satisfied, do not list optional_pending_checks as HARNESS_BUGS; those are follow-up depth, not failures.\n- After re_complete reports ready with reverse_runtime_gate satisfied, stop thrash and write HARNESS_BUGS/PROOF only; do not start new re_route/re_runtime_adapter loops without a real blocker.
