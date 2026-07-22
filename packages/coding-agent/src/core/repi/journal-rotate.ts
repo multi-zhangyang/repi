@@ -50,8 +50,8 @@ export function rotateRuntimeCaseIndexJournalIfNeeded(): void {
 // per-record semantics / no hash chain → tail-capping is behavior-preserving.
 // REPI_JOURNAL_MAX_RECORDS (default 500, 0 = disable) bounds all three.
 
-export function tailCapMarkdownBlockLedger(path: string, maxRecords: number): void {
-	if (maxRecords <= 0) return;
+export function tailCapMarkdownBlockLedger(path: string, maxRecords: number, maxBytes = 256 * 1024): void {
+	if (maxRecords <= 0 && maxBytes <= 0) return;
 	const text = readText(path);
 	if (!text.trim()) return;
 	const firstHeader = text.search(/^##\s/m);
@@ -65,8 +65,23 @@ export function tailCapMarkdownBlockLedger(path: string, maxRecords: number): vo
 		.split(/^##\s/m)
 		.map((r: any) => r.replace(/^\n+/, ""))
 		.filter((r: any) => r.trim());
-	if (records.length <= maxRecords) return;
-	const kept = records.slice(-maxRecords);
+	let kept = maxRecords > 0 && records.length > maxRecords ? records.slice(-maxRecords) : records;
+	// Also enforce a byte budget: large fact/command payloads can make 500 records
+	// multi-hundred KB and slow every append/audit read-modify-write.
+	if (maxBytes > 0) {
+		const budget = Math.max(16 * 1024, maxBytes - Buffer.byteLength(preamble, "utf8"));
+		let total = 0;
+		const selected: string[] = [];
+		for (let i = kept.length - 1; i >= 0; i--) {
+			const chunk = `## ${kept[i]}`;
+			const cost = Buffer.byteLength(chunk, "utf8") + (selected.length ? 2 : 0);
+			if (selected.length > 0 && total + cost > budget) break;
+			selected.push(kept[i]!);
+			total += cost;
+		}
+		kept = selected.reverse();
+	}
+	if (kept.length === records.length && Buffer.byteLength(text, "utf8") <= Math.max(maxBytes, 0)) return;
 	writePrivateTextFile(path, `${preamble}${kept.map((r: any) => `## ${r}`).join("\n\n")}\n`);
 }
 

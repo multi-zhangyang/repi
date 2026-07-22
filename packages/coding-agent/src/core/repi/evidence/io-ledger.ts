@@ -7,13 +7,20 @@ import { readTextFile } from "./io-read.ts";
 
 export function runtimeEvidenceLedgerMaxRecords(): number {
 	const raw = process.env.REPI_EVIDENCE_LEDGER_MAX_RECORDS;
-	if (raw === undefined) return 500;
+	if (raw === undefined) return 200;
 	const n = Math.floor(Number(raw));
-	return Number.isFinite(n) && n >= 0 ? n : 500; // 0 = disable rotation
+	return Number.isFinite(n) && n >= 0 ? n : 200; // 0 = disable record rotation
+}
+
+export function runtimeEvidenceLedgerMaxBytes(): number {
+	const raw = process.env.REPI_EVIDENCE_LEDGER_MAX_BYTES;
+	if (raw === undefined) return 256 * 1024;
+	const n = Math.floor(Number(raw));
+	return Number.isFinite(n) && n >= 0 ? n : 256 * 1024; // 0 = disable byte rotation
 }
 
 export function rotateRuntimeEvidenceLedgerIfNeeded(): void {
-	tailCapMarkdownBlockLedger(evidenceLedgerPath(), runtimeEvidenceLedgerMaxRecords());
+	tailCapMarkdownBlockLedger(evidenceLedgerPath(), runtimeEvidenceLedgerMaxRecords(), runtimeEvidenceLedgerMaxBytes());
 }
 
 export function appendText(path: string, text: string): void {
