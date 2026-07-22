@@ -14,7 +14,7 @@ export function appendLexicalTargetSignals(
 	targetKind: "file" | "directory" | undefined,
 	add: TargetSignalAdd,
 ): void {
-	if (/^https?:\/\//i.test(text)) add("web-cdp-network-adapter", "web-url", "http url target", "network");
+	if (/https?:\/\//i.test(text)) add("web-cdp-network-adapter", "web-url", "http url target", "network");
 	if (/\.(?:har)(?:$|[?#\s])/.test(lower))
 		add("web-cdp-network-adapter", "web-url", "HAR network archive target", "network");
 	if (
@@ -109,5 +109,8 @@ export function appendLexicalTargetSignals(
 			"memory forensics host lexical signal",
 			"runtime_artifact",
 		);
+	}
+	if (/\b(?:malware|恶意|样本|yara|sigma|ioc|c2|beacon|implant|ransom|trojan|pe overlay|capa|floss)\b/i.test(text)) {
+		add("malware-static-ioc-adapter", "malware-sample", "malware static IOC lexical signal", "runtime_artifact");
 	}
 }

@@ -15,6 +15,7 @@ export type RuntimeAdapterTargetKind =
 	| "agent-security"
 	| "memory-forensics"
 	| "js-signing"
+	| "malware-sample"
 	| "unknown";
 
 export type RuntimeAdapterParserRuleV1 = {
