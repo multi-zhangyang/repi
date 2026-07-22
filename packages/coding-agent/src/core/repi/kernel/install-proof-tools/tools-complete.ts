@@ -2,6 +2,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { softFillOptionalOrchestrationWhenReverseReadyAsync } from "../../completion-audit/soft-fill-optional.ts";
+import { readCurrentMission } from "../../mission.ts";
 import { reverseDomainCaptureNextCommands } from "../../reverse-capture.ts";
 import { REPI_TOOL_BOOTSTRAP_CATALOG as TOOL_BOOTSTRAP_CATALOG } from "../../toolchain.ts";
 import type { ProofLoopToolDeps, ToolRegistrar } from "./types.ts";
@@ -69,14 +70,30 @@ export function registerRepiCompleteBootstrapTools(
 			let audit = deps.auditCompletion();
 			// Soft-fill only when reverse is ready but optional checkpoints remain.
 			// Avoid re-running authz/graph builds on repeated re_complete after already filled.
-			const optionalPending = (audit?.warnings ?? []).some((w: string) => /pending optional check/i.test(w));
+			const missionPending =
+				readCurrentMission()
+					?.checkpoints?.filter((c: { status?: string }) => c.status !== "done")
+					.map((c: { name?: string }) => String(c.name)) ?? [];
+			const softFillTargets = new Set([
+				"execution_kernel_ready",
+				"decision_core_ready",
+				"attack_graph_ready",
+				"operation_queue_ready",
+				"operator_queue_ready",
+				"verifier_matrix_ready",
+				"compiler_ready",
+				"replay_ready",
+				"report_or_writeup_ready",
+				"web_authz_ready",
+			]);
+			const needsSoftFill = missionPending.some((name: string) => softFillTargets.has(name));
 			let softFilled: string[] = [];
-			if (audit?.ready && optionalPending) {
+			if (audit?.ready && needsSoftFill) {
 				softFilled = await softFillOptionalOrchestrationWhenReverseReadyAsync(audit as any, pi);
 				if (softFilled.length) audit = deps.auditCompletion();
 			}
-			const memoryEvent = deps.appendCompletionMemoryEvent(audit);
-			const refreshedAudit = memoryEvent && softFilled.length ? deps.auditCompletion() : audit;
+			const memoryEvent = softFilled.length || !audit?.ready ? deps.appendCompletionMemoryEvent(audit) : undefined;
+			const refreshedAudit = softFilled.length ? deps.auditCompletion() : audit;
 			const auditText = typeof refreshedAudit === "string" ? refreshedAudit : JSON.stringify(refreshedAudit);
 			const formattedAudit = deps.formatCompletionAuditFromAudit(refreshedAudit as any);
 			const ready =
