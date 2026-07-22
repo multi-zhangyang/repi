@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { truncateMiddle } from "../../text.ts";
 import type { ControlPlaneToolDeps } from "./tools-deps.ts";
+import { tryReuseRecentMapArtifact } from "./tools-map-reuse.ts";
 
 type ToolRegistrar = (tool: Parameters<ExtensionAPI["registerTool"]>[0]) => void;
 
@@ -26,10 +27,24 @@ export function registerRepiControlCoreMapEvidenceTools(
 			depth: Type.Optional(Type.Number()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
+			const target = params.target;
+			const mapsDir = deps.evidenceMapsDir();
+			const reused = tryReuseRecentMapArtifact({ target, mapsDir });
+			if (reused) {
+				const note = `map_reuse: latest artifact within 180s for same target (ageMs=${reused.ageMs})\npath: ${reused.path}\n`;
+				return {
+					content: [{ type: "text" as const, text: truncateMiddle(note + reused.body, 16000) }],
+					details: {
+						path: reused.path,
+						target: target ?? ".",
+						reused: true,
+					} as Record<string, unknown>,
+				};
+			}
 			const text = await deps.runPassiveMap(pi, { target: params.target, depth: params.depth });
 			return {
 				content: [{ type: "text" as const, text: truncateMiddle(text, 16000) }],
-				details: { path: deps.evidenceMapsDir(), target: params.target ?? "." } as Record<string, unknown>,
+				details: { path: mapsDir, target: params.target ?? "." } as Record<string, unknown>,
 			};
 		},
 	});
