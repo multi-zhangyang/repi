@@ -75,7 +75,7 @@ export function appendLexicalTargetSignals(
 		add("r2-native-xref-adapter", "native-binary", "native reverse lexical signal", "runtime_artifact");
 	}
 	if (
-		/\b(?:cloud|aws|azure|gcp|imds|metadata service|sts|iam|kubectl|kubernetes|k8s|docker\.sock|ecs|eks|gke|serviceaccount|kubeconfig)\b/i.test(
+		/\b(?:cloud|aws|azure|gcp|imds|metadata service|sts|iam|kubectl|kubernetes|k8s|docker\.sock|ecs|eks|gke|serviceaccount|kubeconfig|kerberoast|asrep|ntlm|ldap|bloodhound|certipy|active directory|\bad\b)\b/i.test(
 			text,
 		)
 	) {

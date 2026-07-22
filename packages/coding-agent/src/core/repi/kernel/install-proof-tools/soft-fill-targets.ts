@@ -17,4 +17,6 @@ export const COMPLETE_SOFT_FILL_TARGETS = new Set([
 	"swarm_plan_ready",
 	"supervisor_review_ready",
 	"context_pack_ready",
+	"exploit_lab_ready",
+	"exploit_chain_ready",
 ]);
