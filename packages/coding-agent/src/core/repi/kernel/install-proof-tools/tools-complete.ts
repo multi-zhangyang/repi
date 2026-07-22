@@ -1,12 +1,12 @@
-/** Register REPI bootstrap/complete tools (reverse proof.exit gates). */
+/** Register REPI complete tools (reverse proof.exit gates). */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { softFillOptionalOrchestrationWhenReverseReadyAsync } from "../../completion-audit/soft-fill-optional.ts";
 import { readCurrentMission } from "../../mission.ts";
 import { reverseDomainCaptureNextCommands } from "../../reverse-capture.ts";
-import { REPI_TOOL_BOOTSTRAP_CATALOG as TOOL_BOOTSTRAP_CATALOG } from "../../toolchain.ts";
 import { buildCompleteReadySkeleton } from "./complete-ready-skeleton.ts";
 import { COMPLETE_SOFT_FILL_TARGETS } from "./soft-fill-targets.ts";
+import { registerRepiBootstrapTool } from "./tools-bootstrap.ts";
 import type { ProofLoopToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiCompleteBootstrapTools(
@@ -14,35 +14,7 @@ export function registerRepiCompleteBootstrapTools(
 	pi: ExtensionAPI,
 	deps: ProofLoopToolDeps,
 ): void {
-	registerTool({
-		name: "re_bootstrap",
-		label: "RE Bootstrap",
-		description: "Plan or execute bootstrap commands for missing reverse/pentest tools and refresh the tool index.",
-		promptSnippet: "Use tool-index driven bootstrap instead of guessing missing tool installation.",
-		promptGuidelines: [
-			"Call re_bootstrap plan before installing missing tools.",
-			"Only call re_bootstrap install for tools required by the active mission lane.",
-		],
-		parameters: Type.Object({
-			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("plan"), Type.Literal("install")])),
-			tools: Type.Optional(Type.Array(Type.String())),
-		}),
-		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const tools = params.tools?.length
-				? params.tools
-				: params.action === "show"
-					? TOOL_BOOTSTRAP_CATALOG.map((entry: any) => entry.tool)
-					: ["checksec", "gdb", "radare2", "binwalk", "nmap", "ffuf"];
-			const text =
-				params.action === "install"
-					? await deps.installBootstrapTools(pi, tools)
-					: deps.formatBootstrapPlan(deps.createBootstrapPlan(tools));
-			return {
-				content: [{ type: "text" as const, text }],
-				details: { tools, action: params.action } as Record<string, unknown>,
-			};
-		},
-	});
+	registerRepiBootstrapTool(registerTool, pi, deps);
 	registerTool({
 		name: "re_complete",
 		label: "RE Complete",

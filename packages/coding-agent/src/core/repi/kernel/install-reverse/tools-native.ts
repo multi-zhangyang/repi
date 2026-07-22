@@ -1,6 +1,8 @@
 /** Reverse install tools: native / mobile / exploit. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { auditCompletion } from "../../completion-audit.ts";
+import { readCurrentMission } from "../../mission.ts";
 import { registerRepiReverseNativeTool } from "./tools-native-core.ts";
 import { registerRepiReverseMobileTool } from "./tools-native-mobile.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
@@ -33,6 +35,38 @@ export function registerRepiReverseNativeTools(
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const hasTarget = Boolean(String(params.target || params.url || "").trim());
 			const action = params.action ?? (hasTarget ? "run" : "plan");
+			// After reverse proof is ready, further exploit-lab thrash wastes wall clock.
+			try {
+				const mission = readCurrentMission();
+				const reverseDone = Boolean(
+					mission?.checkpoints?.some(
+						(c: { name?: string; status?: string }) =>
+							(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
+					),
+				);
+				if (reverseDone && (action === "run" || action === "plan" || action === "show")) {
+					const audit = auditCompletion();
+					if (audit?.ready) {
+						const text = [
+							"exploit_lab:",
+							"status: reverse_ready_stop",
+							"note: reverse_runtime_gate already satisfied; do not thrash re_exploit_lab without a real blocker",
+							"next: write HARNESS_BUGS/PROOF only",
+						].join("\n");
+						return {
+							content: [{ type: "text" as const, text }],
+							details: {
+								action,
+								skipped: true,
+								reason: "reverse_ready_stop",
+								target: params.target,
+							} as Record<string, unknown>,
+						};
+					}
+				}
+			} catch {
+				/* optional */
+			}
 			const text =
 				action === "run"
 					? await deps.runExploitLab(pi, { target: params.target, runs: params.runs, timeoutMs: params.timeoutMs })
