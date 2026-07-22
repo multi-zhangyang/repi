@@ -2,6 +2,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { auditCompletion } from "../../completion-audit.ts";
+import { readCurrentMission } from "../../mission.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseAdapterTools(
@@ -72,24 +73,36 @@ export function registerRepiReverseAdapterTools(
 			if (action === "run") {
 				// After reverse proof is already ready, further adapter thrash wastes wall clock.
 				try {
-					const audit = auditCompletion();
-					if (audit?.ready) {
-						const text = [
-							"runtime_adapter:",
-							"status: reverse_ready_stop",
-							"note: reverse_runtime_gate already satisfied; do not re-run adapters without a real blocker",
-							"next: write HARNESS_BUGS/PROOF only",
-						].join("\n");
-						return {
-							content: [{ type: "text" as const, text }],
-							details: {
-								action,
-								skipped: true,
-								reason: "reverse_ready_stop",
-								adapter: params.adapter,
-								target: params.target,
-							} as Record<string, unknown>,
-						};
+					const mission = readCurrentMission();
+					const reverseDone = Boolean(
+						mission?.checkpoints?.some(
+							(c: { name?: string; status?: string }) =>
+								(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") &&
+								c.status === "done",
+						),
+					);
+					// Mission-scoped thrash stop only — do not use global audit.ready (shared ledger
+					// would block the first adapter run of a fresh mission).
+					if (reverseDone) {
+						const audit = auditCompletion();
+						if (audit?.ready) {
+							const text = [
+								"runtime_adapter:",
+								"status: reverse_ready_stop",
+								"note: reverse_runtime_gate already satisfied for this mission; do not re-run adapters without a real blocker",
+								"next: write HARNESS_BUGS/PROOF only",
+							].join("\n");
+							return {
+								content: [{ type: "text" as const, text }],
+								details: {
+									action,
+									skipped: true,
+									reason: "reverse_ready_stop",
+									adapter: params.adapter,
+									target: params.target,
+								} as Record<string, unknown>,
+							};
+						}
 					}
 				} catch {
 					/* optional */

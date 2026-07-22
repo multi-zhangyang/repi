@@ -74,4 +74,16 @@ export function appendLexicalTargetSignals(
 	) {
 		add("r2-native-xref-adapter", "native-binary", "native reverse lexical signal", "runtime_artifact");
 	}
+	if (
+		/\b(?:cloud|aws|azure|gcp|imds|metadata service|sts|iam|kubectl|kubernetes|k8s|docker\.sock|ecs|eks|gke|serviceaccount|kubeconfig)\b/i.test(
+			text,
+		)
+	) {
+		add(
+			"cloud-identity-host-adapter",
+			"cloud-identity",
+			"cloud/identity host inventory lexical signal",
+			"process_config",
+		);
+	}
 }

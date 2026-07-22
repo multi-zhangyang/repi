@@ -33,10 +33,17 @@ export function registerRepiReverseNativeTool(
 			const action = params.action ?? (hasTarget ? "run" : "plan");
 			// Stop thrash: if reverse proof is already ready and mission is not native/pwn, skip.
 			try {
-				const audit = auditCompletion();
-				const domain = String(readCurrentMission()?.route?.domain ?? "");
+				const mission = readCurrentMission();
+				const domain = String(mission?.route?.domain ?? "");
 				const nativeDomain = /Native reverse|Pwn \/ exploit|Malware analysis|Firmware/i.test(domain);
-				if (audit?.ready && !nativeDomain && action === "run") {
+				const reverseDone = Boolean(
+					mission?.checkpoints?.some(
+						(c: { name?: string; status?: string }) =>
+							(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
+					),
+				);
+				const audit = auditCompletion();
+				if (reverseDone && audit?.ready && !nativeDomain && action === "run") {
 					const text = [
 						"native_runtime:",
 						"status: reverse_ready_stop",

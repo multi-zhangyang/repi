@@ -52,9 +52,18 @@ export function prepareRuntimeAdapterExecution(options: {
 	const selectedTemplate = selectedRunner === "native" ? adapter.commandTemplate : adapter.fallbackCommandTemplate;
 	const command = materializeRuntimeAdapterCommand(selectedTemplate, options.target);
 	const index = parseToolIndex();
-	const missingCommandTools = commandKnownTools(command).filter(
-		(tool: any) => resolvedToolPresent(index, tool) === false,
-	);
+	// Presence probes (`command -v aws`) must not hard-block inventory adapters when optional CLIs are absent.
+	const commandForToolProbe = command
+		.replace(/\$\(\s*command\s+-v\s+[A-Za-z0-9_.+-]+\s*(?:\|\|\s*true)?\s*\)/g, "")
+		.replace(/command\s+-v\s+[A-Za-z0-9_.+-]+/g, "")
+		.replace(/\$\(\s*which\s+[A-Za-z0-9_.+-]+\s*(?:\|\|\s*true)?\s*\)/g, "")
+		.replace(/\bwhich\s+[A-Za-z0-9_.+-]+/g, "");
+	// Optional cloud CLIs are best-effort inventory probes; pure/host paths must still run.
+	const optionalInventoryCli = new Set(["aws", "az", "gcloud", "kubectl", "docker", "helm", "terraform"]);
+	const missingCommandTools = commandKnownTools(commandForToolProbe).filter((tool: any) => {
+		if (optionalInventoryCli.has(String(tool).toLowerCase())) return false;
+		return resolvedToolPresent(index, tool) === false;
+	});
 	if (missingCommandTools.length > 0) {
 		appendEvidence({
 			kind: "runtime",
