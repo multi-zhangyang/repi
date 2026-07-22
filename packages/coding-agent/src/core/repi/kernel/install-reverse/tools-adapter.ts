@@ -96,30 +96,54 @@ export function registerRepiReverseAdapterTools(
 			"Call re_domain_proof_exit show after re_lane/re_native_runtime/re_live_browser/replayer/proof-loop artifacts exist.",
 			"Treat domain_proof_exit_missing blockers as commands to run, not as narrative refusal.",
 		],
-		parameters: Type.Object({
-			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("write")])),
-			domain: Type.Optional(Type.String()),
-		}),
+		parameters: Type.Object(
+			{
+				// Coerce freely: models pass show/write/audit/run/empty.
+				action: Type.Optional(Type.String()),
+				domain: Type.Optional(Type.String()),
+			},
+			{ additionalProperties: true },
+		),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const action = params.action ?? "show";
-			const report = deps.buildDomainProofExitClosure(deps.readCurrentMission(), params.domain);
-			// Always persist on show|write so mission checkpoints (minimal_path_proven / reverse proof) update.
-			const path = deps.writeDomainProofExitClosureArtifact(report);
-			return {
-				content: [
-					{
-						type: "text" as const,
-						text: deps.truncateMiddle(deps.formatDomainProofExitClosure(report, path), 20000),
-					},
-				],
-				details: {
-					action,
-					domain: params.domain,
-					path,
-					status: report.status,
-					missingProofExits: report.missingProofExits,
-				} as Record<string, unknown>,
-			};
+			try {
+				const rawAction = String(params?.action ?? "show").toLowerCase();
+				const action = rawAction === "write" ? "write" : "show";
+				const domain =
+					typeof params?.domain === "string" && params.domain.trim() ? params.domain.trim() : undefined;
+				const report = deps.buildDomainProofExitClosure(deps.readCurrentMission(), domain);
+				// Always persist so mission checkpoints update even when models omit action.
+				const path = deps.writeDomainProofExitClosureArtifact(report);
+				const format =
+					typeof deps.formatDomainProofExitClosure === "function"
+						? deps.formatDomainProofExitClosure
+						: (r: any, p?: string) => JSON.stringify({ path: p, status: r?.status, domain: r?.domainId });
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: deps.truncateMiddle(format(report, path), 20000),
+						},
+					],
+					details: {
+						action,
+						domain,
+						path,
+						status: report.status,
+						missingProofExits: report.missingProofExits,
+					} as Record<string, unknown>,
+				};
+			} catch (error) {
+				const message = error instanceof Error ? error.stack || error.message : String(error);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `re_domain_proof_exit error: ${message.slice(0, 4000)}`,
+						},
+					],
+					details: { error: true, message: message.slice(0, 1000) } as Record<string, unknown>,
+				};
+			}
 		},
 	});
 	registerTool({

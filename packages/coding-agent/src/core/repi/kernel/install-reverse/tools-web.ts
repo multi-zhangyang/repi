@@ -21,15 +21,28 @@ export function registerRepiReverseWebTools(
 			"Call re_live_browser run for HTTP(S) targets before claiming route/auth/session behavior.",
 			"Call re_live_browser run with a concrete URL to capture request_response_log, runtime_anchors, storage, and WebSocket evidence.",
 		],
-		parameters: Type.Object({
-			action: Type.Optional(Type.Union([Type.Literal("plan"), Type.Literal("show"), Type.Literal("run")])),
-			target: Type.Optional(Type.String()),
-			url: Type.Optional(Type.String()),
-			timeoutMs: Type.Optional(Type.Number()),
-		}),
+		parameters: Type.Object(
+			{
+				action: Type.Optional(Type.String()),
+				target: Type.Optional(Type.String()),
+				url: Type.Optional(Type.String()),
+				timeoutMs: Type.Optional(Type.Number()),
+			},
+			{ additionalProperties: true },
+		),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const hasHttpTarget = /^https?:\/\//i.test(String(params.url || params.target || "").trim());
-			const action = params.action ?? (hasHttpTarget ? "run" : "plan");
+			const rawAction = String(params.action ?? (hasHttpTarget ? "run" : "plan")).toLowerCase();
+			const action =
+				rawAction === "run" || rawAction === "capture"
+					? "run"
+					: rawAction === "show"
+						? "show"
+						: rawAction === "plan"
+							? "plan"
+							: hasHttpTarget
+								? "run"
+								: "plan";
 			const text =
 				action === "run"
 					? await deps.runLiveBrowser(pi, { target: params.target, url: params.url, timeoutMs: params.timeoutMs })
@@ -60,15 +73,28 @@ export function registerRepiReverseWebTools(
 			"Call re_web_authz_state run for Web/API targets to define principal, object, sequence, and rollback evidence contracts.",
 			"Call re_web_authz_state run with COOKIE_A/COOKIE_B or AUTH_A/AUTH_B to capture principal status/body-hash matrix and object ownership anchors.",
 		],
-		parameters: Type.Object({
-			action: Type.Optional(Type.Union([Type.Literal("plan"), Type.Literal("show"), Type.Literal("run")])),
-			target: Type.Optional(Type.String()),
-			url: Type.Optional(Type.String()),
-			timeoutMs: Type.Optional(Type.Number()),
-		}),
+		parameters: Type.Object(
+			{
+				action: Type.Optional(Type.String()),
+				target: Type.Optional(Type.String()),
+				url: Type.Optional(Type.String()),
+				timeoutMs: Type.Optional(Type.Number()),
+			},
+			{ additionalProperties: true },
+		),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const hasHttpTarget = /^https?:\/\//i.test(String(params.url || params.target || "").trim());
-			const action = params.action ?? (hasHttpTarget ? "run" : "plan");
+			const rawAction = String(params.action ?? (hasHttpTarget ? "run" : "plan")).toLowerCase();
+			const action =
+				rawAction === "run" || rawAction === "capture"
+					? "run"
+					: rawAction === "show"
+						? "show"
+						: rawAction === "plan"
+							? "plan"
+							: hasHttpTarget
+								? "run"
+								: "plan";
 			const text =
 				action === "run"
 					? await deps.runWebAuthzState(pi, {
