@@ -50,16 +50,23 @@ export function registerRepiReverseAdapterTools(
 			"Call re_runtime_adapter show or plan to choose an adapter with native/fallback status; if only a target is provided, REPI auto-detects URL/PCAP/APK/firmware/native/GDB-oriented adapters.",
 			"Call re_runtime_adapter run only with an explicit target and bounded timeout; then feed the artifact to re_verifier and re_domain_proof_exit.",
 		],
-		parameters: Type.Object({
-			action: Type.Optional(
-				Type.Union([Type.Literal("show"), Type.Literal("plan"), Type.Literal("run"), Type.Literal("refresh")]),
-			),
-			adapter: Type.Optional(Type.String()),
-			target: Type.Optional(Type.String()),
-			timeoutMs: Type.Optional(Type.Number()),
-		}),
+		parameters: Type.Object(
+			{
+				action: Type.Optional(Type.String()),
+				adapter: Type.Optional(Type.String()),
+				target: Type.Optional(Type.String()),
+				timeoutMs: Type.Optional(Type.Number()),
+			},
+			{ additionalProperties: true },
+		),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const action = params.action ?? "show";
+			const raw = String(params.action ?? "")
+				.trim()
+				.toLowerCase();
+			const hasTarget = Boolean(params.target && String(params.target).trim());
+			// URL/target present ⇒ run (not plan/show false success), same policy as browser/authz/native.
+			const action =
+				raw === "run" || raw === "show" || raw === "plan" || raw === "refresh" ? raw : hasTarget ? "run" : "show";
 			if (action === "refresh") await deps.refreshToolIndex(pi);
 			if (action === "run") {
 				const text = await deps.runRuntimeAdapterExecution(pi, {
