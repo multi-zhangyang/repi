@@ -60,7 +60,11 @@ export function appendLexicalTargetSignals(
 	) {
 		add("binwalk-firmware-extract-adapter", "firmware-image", "firmware image lexical signal", "runtime_artifact");
 	}
-	if (/\b(?:pwn|exploit|rop|ret2|heap|tcache|format string|one_gadget|pwntools)\b/i.test(text)) {
+	if (
+		/\b(?:pwn|exploit|rop|ret2|heap|tcache|format string|one_gadget|pwntools|ctf|challenge|flag\{|sandbox)\b/i.test(
+			text,
+		)
+	) {
 		add("pwntools-local-verifier-adapter", "pwn-binary", "pwn/exploit lexical signal", "runtime_artifact");
 	}
 	if (/\b(?:gdb|breakpoint|register|core dump|coredump|sigsegv|crash)\b/i.test(text)) {

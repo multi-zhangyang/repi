@@ -19,7 +19,7 @@ export function toolchainDomainIdForRoute(routeDomain?: string): string | undefi
 	if (/Cloud|Identity \/ Windows \/ AD/i.test(routeDomain)) return "cloud-identity";
 	if (/Exploit reliability/i.test(routeDomain)) return "exploit-reliability";
 	if (/Malware analysis/i.test(routeDomain)) return "malware-analysis";
-	if (/CTF|sandbox/i.test(routeDomain)) return "rev-native";
+	if (/CTF|sandbox/i.test(routeDomain)) return "pwn";
 	return undefined;
 }
 
