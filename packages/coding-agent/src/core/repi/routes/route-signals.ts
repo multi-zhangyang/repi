@@ -53,7 +53,7 @@ export function detectRouteSignals(text: string): RouteSignals {
 			lower,
 		);
 	const agentBoundarySpecific =
-		/prompt injection|system prompt|developer message|tool injection|tool-call|tool call|function call|mcp|model context protocol|agent\s*安全|llm\s*安全|rag|retrieval|memory poisoning|记忆投毒|工具滥用|越狱|jailbreak|indirect prompt|untrusted content|repi\s*(?:自身|self|harness|qa)|harness\s*qa|agent[-_ ]?thread|sub[-_ ]?agent|agent\s*(?:harness|runtime|orchestration|boundary)|env[-_ ]?only|model provider|print mode/.test(
+		/prompt injection|system prompt|developer message|tool injection|tool-call|tool call|function call|mcp|model context protocol|agent\s*安全|llm\s*安全|rag|retrieval|memory poisoning|记忆投毒|工具滥用|越狱|jailbreak|indirect prompt|untrusted content|repi\s*(?:自身|self|harness|qa)|harness\s*qa|agent[-_ ]?thread|sub[-_ ]?agent|agent\s*(?:harness|runtime|orchestration|boundary|security)|agent[-_ ]?security|host harness|permission\s*boundary|env[-_ ]?only|model provider|print mode/.test(
 			lower,
 		);
 	const exploitReliabilitySpecific =

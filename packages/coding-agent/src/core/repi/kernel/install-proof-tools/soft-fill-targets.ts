@@ -13,4 +13,8 @@ export const COMPLETE_SOFT_FILL_TARGETS = new Set([
 	"web_authz_ready",
 	"mobile_runtime_ready",
 	"native_runtime_ready",
+	"delegation_packets_ready",
+	"swarm_plan_ready",
+	"supervisor_review_ready",
+	"context_pack_ready",
 ]);

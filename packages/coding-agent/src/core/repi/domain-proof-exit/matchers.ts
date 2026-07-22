@@ -9,6 +9,7 @@ export function toolchainDomainIdForRoute(routeDomain?: string): string | undefi
 	if (/Frontend JS/i.test(routeDomain)) return "frontend-js";
 	if (/Pwn \/ exploit/i.test(routeDomain)) return "pwn";
 	if (/Native reverse/i.test(routeDomain)) return "rev-native";
+	if (/Agent \/ LLM (?:boundary|security)/i.test(routeDomain)) return "agent-security";
 	if (/Mobile \/ Android/i.test(routeDomain)) return "mobile";
 	if (/Mobile \/ iOS/i.test(routeDomain)) return "mobile-ios";
 	if (/DFIR|PCAP/i.test(routeDomain)) return "pcap-dfir";
@@ -18,7 +19,6 @@ export function toolchainDomainIdForRoute(routeDomain?: string): string | undefi
 	if (/Cloud|Identity \/ Windows \/ AD/i.test(routeDomain)) return "cloud-identity";
 	if (/Exploit reliability/i.test(routeDomain)) return "exploit-reliability";
 	if (/Malware analysis/i.test(routeDomain)) return "malware-analysis";
-	if (/Agent \/ LLM security/i.test(routeDomain)) return "agent-security";
 	if (/CTF|sandbox/i.test(routeDomain)) return "rev-native";
 	return undefined;
 }

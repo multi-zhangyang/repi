@@ -12,6 +12,7 @@ export type RuntimeAdapterTargetKind =
 	| "firmware-rootfs"
 	| "crypto-artifact"
 	| "cloud-identity"
+	| "agent-security"
 	| "unknown";
 
 export type RuntimeAdapterParserRuleV1 = {

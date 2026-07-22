@@ -86,4 +86,16 @@ export function appendLexicalTargetSignals(
 			"process_config",
 		);
 	}
+	if (
+		/\b(?:agent[-_ ]?security|prompt injection|tool injection|jailbreak|mcp|model context protocol|host harness|permission boundary|llm\s*安全|agent\s*安全)\b/i.test(
+			text,
+		)
+	) {
+		add(
+			"agent-security-boundary-adapter",
+			"agent-security",
+			"agent/LLM boundary host harness lexical signal",
+			"runtime_artifact",
+		);
+	}
 }
