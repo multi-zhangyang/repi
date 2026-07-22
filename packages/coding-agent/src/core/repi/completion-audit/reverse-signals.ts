@@ -27,6 +27,43 @@ function pickPreferredTechnique(text: string): string | undefined {
 	return lines[lines.length - 1]!.slice(0, 120);
 }
 
+function pickPreferredProofExit(text: string): string | undefined {
+	// Collect runtime proof exits with positions; prefer latest partial|strong from browser/runtime tags.
+	const hits: Array<{ value: string; index: number; weight: number }> = [];
+	const patterns: Array<{ re: RegExp; weight: number }> = [
+		{ re: /\[browser-proof-capture\][^\n]*proof\.exit=([A-Za-z0-9_]+)/gi, weight: 5 },
+		{ re: /summary\.runtime_proof_exit\s*=\s*([A-Za-z0-9_]+)/gi, weight: 4 },
+		{ re: /(?:^|\n)\s*-\s*proof\.exit\s*=\s*([A-Za-z0-9_]+)/gim, weight: 4 },
+		{ re: /(?:^|\n)\s*-\s*query\.proof_exit\s*:\s*([A-Za-z0-9_|.-]+)/gim, weight: 3 },
+		{ re: /(?:query\.)?proof_exit\s*[:=]\s*([A-Za-z0-9_|.-]+)/gi, weight: 2 },
+		{ re: /proof\.exit\s*=\s*([A-Za-z0-9_]+)/gi, weight: 1 },
+	];
+	for (const { re, weight } of patterns) {
+		for (const match of text.matchAll(re)) {
+			const value = match[1]?.trim();
+			if (!value) continue;
+			// Skip catalog placeholders / unbound markers.
+			if (/catalog|unbound|pending_runtime_capture|none/i.test(value) && !/partial|strong/i.test(value)) continue;
+			hits.push({ value, index: match.index ?? 0, weight });
+		}
+	}
+	if (hits.length === 0) return undefined;
+	// Prefer higher weight then later index (more recent in ledger text).
+	hits.sort((a, b) => a.weight - b.weight || a.index - b.index);
+	let chosen = hits[hits.length - 1]!.value;
+	// Challenge-only surfaces should not report strong when honesty labels present nearby.
+	const challengeOnly =
+		/summary\.challenge_interstitial=true|summary\.proof_honesty=challenge_surface_not_business_depth|note=challenge_surface_only/i.test(
+			text,
+		) && !/summary\.organic_api=true|\[browser-organic-api\]|summary\.capture\.organic_api=1/i.test(text);
+	if (challengeOnly && /runtime_capture_strong/i.test(chosen)) {
+		chosen = "partial_runtime_capture";
+	}
+	// Normalize multi-value pollution.
+	const runtime = /partial_runtime_capture|runtime_capture_strong/i.exec(chosen);
+	return (runtime?.[0] ?? chosen).slice(0, 120);
+}
+
 export function reverseQuerySignalsFromEvidence(text: string): string[] {
 	const out: string[] = [];
 	const tech = pickPreferredTechnique(text);
@@ -36,11 +73,7 @@ export function reverseQuerySignalsFromEvidence(text: string): string[] {
 	const cwe =
 		lastMatch(text, /(?:^|\n)\s*-\s*query\.cwe\s*:\s*(.+)$/im) ??
 		lastMatch(text, /(?:query\.)?cwe\s*[:=]\s*([A-Za-z0-9_.,-]+)/i);
-	const proof =
-		lastMatch(text, /(?:^|\n)\s*-\s*query\.proof_exit\s*:\s*(.+)$/im) ??
-		lastMatch(text, /(?:query\.)?proof_exit\s*[:=]\s*([^\n|]+)/i) ??
-		lastMatch(text, /proof\.exit\s*=\s*([^\n|\s]+)/i) ??
-		lastMatch(text, /summary\.runtime_proof_exit\s*=\s*([^\n|\s]+)/i);
+	const proof = pickPreferredProofExit(text);
 	const bind =
 		lastMatch(text, /(?:^|\n)\s*-\s*(?:query\.|summary\.)?bind_ready\s*:\s*(true|false)/im) ??
 		lastMatch(text, /(?:query\.|summary\.)?bind_ready\s*[:=]\s*(true|false)/i) ??

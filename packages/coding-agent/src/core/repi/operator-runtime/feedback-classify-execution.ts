@@ -8,7 +8,13 @@ export function classifyOperatorExecutionFeedback(
 ): string | undefined {
 	const text = `${execution.command}\n${execution.output}`;
 	const evidence = execution.output.replace(/\s+/g, " ");
-	if (/target placeholder|unresolved target|<target>|<TARGET>|<URL>/i.test(text)) {
+	const cmd = String(execution.command ?? "");
+	// Only treat as unresolved when the *executed command* or explicit failure text lacks a concrete target.
+	const unresolvedCmd =
+		/(?:^|\s)(?:re_[a-z0-9_-]+)\s+(?:plan|run|show|dispatch|matrix|check)?\s*(?:<target>|<TARGET>|<URL>|\{target\})(?:\s|$)/i.test(
+			cmd,
+		) || /unresolved target|target placeholder|missing target/i.test(text);
+	if (unresolvedCmd) {
 		return operatorFeedbackRow({
 			category: "unresolved_target",
 			execution,
@@ -27,7 +33,8 @@ export function classifyOperatorExecutionFeedback(
 		});
 	}
 	if (
-		/command not found|No such file|cannot stat|ModuleNotFoundError|ImportError|not found|cannot access/i.test(text)
+		/command not found|No such file|cannot stat|ModuleNotFoundError|ImportError|cannot access/i.test(text) &&
+		!/status=done|proof_loop:|operator_queue:|lane plan/i.test(text)
 	) {
 		const tool = operatorFeedbackToolHint(text, execution.command) ?? "tool";
 		return operatorFeedbackRow({
@@ -66,18 +73,29 @@ export function classifyOperatorExecutionFeedback(
 			operatorArtifact,
 		});
 	}
-	if (/stdout_sha256|stderr_sha256|replay_matrix|exploit_lab|PoC|poc|payload|crash|offset|RIP|EIP/i.test(text)) {
+	// Replay/exploit only when actual exploit/replay surfaces — not bare "offset" in lane notes.
+	if (
+		/stdout_sha256|stderr_sha256|replay_matrix|\[exploit-lab|re_exploit_lab|crash dump|segfault|instruction pointer|\bRIP=|\bEIP=/i.test(
+			text,
+		) ||
+		(/\b(?:PoC|payload)\b/i.test(text) && /exploit|crash|offset\s*0x/i.test(text))
+	) {
 		return operatorFeedbackRow({
 			category: "replay_or_exploit_candidate",
 			execution,
-			next: /exploit|poc|payload|crash|offset|RIP|EIP/i.test(text)
+			next: /exploit|poc|payload|crash|RIP|EIP/i.test(text)
 				? `re_exploit_lab run ${targetRef} 3 60000`
 				: `re_replayer run ${targetRef} 1`,
 			evidence,
 			operatorArtifact,
 		});
 	}
-	if (/artifact|path:|verify:|hash|anchor|checkpoint|proof|verifier_matrix|compiler_report/i.test(text)) {
+	if (
+		execution.status === "done" &&
+		/artifact|path:|verify:|hash|anchor|checkpoint|proof\.exit|proof_loop|verifier_matrix|compiler_report|bind_ready/i.test(
+			text,
+		)
+	) {
 		return operatorFeedbackRow({
 			category: "strong_evidence",
 			execution,
