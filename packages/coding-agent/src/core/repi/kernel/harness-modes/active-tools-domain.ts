@@ -1,6 +1,6 @@
 /** Domain-specific active tool sets (softband split). */
 export const DOMAIN_ACTIVE_TOOLS: Record<string, readonly string[]> = {
-	// Keep values on the lean product surface (no re_operator/re_subagent/re_reflect/re_compiler).
+	// Keep values on the lean product surface (no re_subagent/re_reflect/re_compiler). re_operator is lean-global.
 	"Native reverse": [
 		"re_native_runtime",
 		"re_exploit_lab",

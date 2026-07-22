@@ -1,4 +1,5 @@
 /** Failure-repair DI configure/shims. */
+import { runtimeArtifactHashes as pureRuntimeArtifactHashes } from "../swarm-claim-ledger/pure.ts";
 import type { FailureRepairDeps } from "./types.ts";
 
 let failureRepairDeps: FailureRepairDeps | undefined;
@@ -18,13 +19,20 @@ export function latestProofLoopArtifactPath(...args: any[]): any {
 }
 
 export function operatorFeedbackCategory(...args: any[]): any {
-	return d().operatorFeedbackCategory(...args);
+	const fn = (d() as any).operatorFeedbackCategory;
+	if (typeof fn === "function" && fn !== operatorFeedbackCategory) return fn(...args);
+	return undefined;
 }
 
 export function operatorFeedbackFallbackCommands(...args: any[]): any {
-	return d().operatorFeedbackFallbackCommands(...args);
+	const fn = (d() as any).operatorFeedbackFallbackCommands;
+	// Avoid DI self-loop when wire mistakenly binds this shim as the implementation.
+	if (typeof fn === "function" && fn !== operatorFeedbackFallbackCommands) return fn(...args);
+	return [];
 }
 
 export function runtimeArtifactHashes(...args: any[]): any {
-	return d().runtimeArtifactHashes(...args);
+	const fn = (d() as any).runtimeArtifactHashes;
+	if (typeof fn === "function" && fn !== runtimeArtifactHashes) return fn(...args);
+	return pureRuntimeArtifactHashes(...(args as [any]));
 }

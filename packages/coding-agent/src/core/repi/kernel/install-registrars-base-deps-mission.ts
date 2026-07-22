@@ -24,6 +24,7 @@ import {
 	updateMissionLane,
 	writeCurrentMission,
 } from "../mission.ts";
+import { buildOperatorOutput, dispatchOperatorQueue, latestOperatorArtifactPath } from "../operator-runtime.ts";
 import { runPassiveMap } from "../passive-map.ts";
 import { formatRoute, routeReconTask } from "../routes.ts";
 import { currentMissionPath, evidenceLedgerPath, evidenceMapsDir, toolIndexPath } from "../storage.ts";
@@ -53,6 +54,9 @@ export const installBaseMissionDeps = {
 	writeReportScaffold,
 	buildAttackGraphOutput,
 	latestAttackGraphArtifactPath,
+	buildOperatorOutput,
+	dispatchOperatorQueue,
+	latestOperatorArtifactPath,
 	currentMissionPath,
 	evidenceLedgerPath,
 	evidenceMapsDir,

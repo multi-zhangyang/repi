@@ -3,7 +3,7 @@ import { APP_NAME, IS_REPI_PRODUCT } from "../../../config.ts";
 /**
  * Product lean operator surface allowlists.
  * Product mode defaults to lean execution surface; set REPI_FULL_SURFACE=1 for full registration.
- * Narrative/control-plane tools (re_kernel, re_decision_core, campaign/operator/swarm/autopilot/subagent/reflect) stay full-surface only via allowlist + install gates.
+ * Narrative/control-plane tools (re_kernel, re_decision_core, campaign/swarm/autopilot/subagent/reflect) stay full-surface only via allowlist + install gates. re_operator is lean so reverse can dispatch bounded queues.
  */
 export function isRepiFullSurface(): boolean {
 	const flag = process.env.REPI_FULL_SURFACE?.trim().toLowerCase();
@@ -37,6 +37,7 @@ export const REPI_LEAN_TOOL_ALLOW = new Set([
 	"re_replayer",
 	"re_proof_loop",
 	"re_graph",
+	"re_operator",
 	"re_note",
 	"re_domain_proof_exit",
 	"re_profile_check",
@@ -62,6 +63,7 @@ export const REPI_LEAN_COMMAND_ALLOW = new Set([
 	"re-replayer",
 	"re-proof-loop",
 	"re-graph",
+	"re-operator",
 	"re-domain-proof-exit",
 	"re-profile-check",
 	"re-toolchain",

@@ -4,6 +4,7 @@ import { registerRepiControlCoreTools } from "./tools-core.ts";
 import type { ControlPlaneToolDeps } from "./tools-deps.ts";
 import { registerRepiControlLaneGraphTools } from "./tools-lane-graph.ts";
 import { registerRepiControlNarrativeTools } from "./tools-narrative.ts";
+import { registerRepiControlOperatorTool } from "./tools-operator.ts";
 
 export type { ControlPlaneToolDeps } from "./tools-deps.ts";
 
@@ -20,4 +21,5 @@ export function registerRepiControlPlaneTools(
 		registerRepiControlNarrativeTools(registerTool, pi, deps);
 	}
 	registerRepiControlLaneGraphTools(registerTool, pi, deps);
+	registerRepiControlOperatorTool(registerTool, pi, deps as any);
 }
