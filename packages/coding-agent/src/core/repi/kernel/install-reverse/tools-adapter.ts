@@ -4,7 +4,8 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { softFillOptionalOrchestrationWhenReverseReady } from "../../completion-audit/soft-fill-optional.ts";
 import { auditCompletion } from "../../completion-audit.ts";
-import { readCurrentMission } from "../../mission.ts";
+import { tryReverseReadyDomainProofStop, tryReverseReadyRuntimeAdapterStop } from "./tools-adapter-ready-stop.ts";
+import { tryReuseRecentRuntimeAdapterArtifact } from "./tools-adapter-reuse.ts";
 import { pickAdapterIdForRun, resolveAdapterRunTarget } from "./tools-adapter-target.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
@@ -74,48 +75,50 @@ export function registerRepiReverseAdapterTools(
 				raw === "run" || raw === "show" || raw === "plan" || raw === "refresh" ? raw : hasTarget ? "run" : "show";
 			if (action === "refresh") await deps.refreshToolIndex(pi);
 			if (action === "run") {
-				// After reverse proof is already ready, further adapter thrash wastes wall clock.
-				try {
-					const mission = readCurrentMission();
-					const reverseDone = Boolean(
-						mission?.checkpoints?.some(
-							(c: { name?: string; status?: string }) =>
-								(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") &&
-								c.status === "done",
-						),
-					);
-					// Mission-scoped thrash stop only — do not use global audit.ready (shared ledger
-					// would block the first adapter run of a fresh mission).
-					if (reverseDone) {
-						const audit = auditCompletion();
-						if (audit?.ready) {
-							const text = [
-								"runtime_adapter:",
-								"status: reverse_ready_stop",
-								"note: reverse_runtime_gate already satisfied for this mission; do not re-run adapters without a real blocker",
-								"next: write HARNESS_BUGS/PROOF only",
-							].join("\n");
-							return {
-								content: [{ type: "text" as const, text }],
-								details: {
-									action,
-									skipped: true,
-									reason: "reverse_ready_stop",
-									adapter: params.adapter,
-									target: params.target,
-								} as Record<string, unknown>,
-							};
-						}
-					}
-				} catch {
-					/* optional */
-				}
+				const readyStop = tryReverseReadyRuntimeAdapterStop({
+					action,
+					adapter: params.adapter,
+					target: params.target,
+				});
+				if (readyStop) return readyStop;
 				const resolvedTarget = resolveAdapterRunTarget(params.target);
 				const adapter = pickAdapterIdForRun({
 					adapter: params.adapter,
 					target: params.target,
 					resolvedTarget,
 				});
+				try {
+					const reused = tryReuseRecentRuntimeAdapterArtifact({
+						adapterId: adapter,
+						target: resolvedTarget ?? params.target,
+						ttlMs: 120_000,
+					});
+					if (reused) {
+						const nl = String.fromCharCode(10);
+						const note = [
+							"runtime_adapter:",
+							"status: reuse",
+							`adapter: ${reused.adapterId}`,
+							`path: ${reused.path}`,
+							`ageMs: ${reused.ageMs}`,
+							"note: latest same adapter+target capture within 120s; do not re-run",
+							"next: re_domain_proof_exit show",
+						].join(nl);
+						return {
+							content: [{ type: "text" as const, text: note }],
+							details: {
+								action: "reuse",
+								reused: true,
+								path: reused.path,
+								adapter: reused.adapterId,
+								target: params.target,
+								ageMs: reused.ageMs,
+							} as Record<string, unknown>,
+						};
+					}
+				} catch {
+					/* optional */
+				}
 				const text = await deps.runRuntimeAdapterExecution(pi, {
 					adapter,
 					target: resolvedTarget,
@@ -161,32 +164,8 @@ export function registerRepiReverseAdapterTools(
 		),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			try {
-				// If reverse is already ready for this mission, do not re-emit next_required thrash.
-				try {
-					const mission = readCurrentMission();
-					const reverseDone = Boolean(
-						mission?.checkpoints?.some(
-							(c: { name?: string; status?: string }) =>
-								(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") &&
-								c.status === "done",
-						),
-					);
-					const audit = auditCompletion();
-					if (reverseDone && audit?.ready) {
-						const text = [
-							"domain_proof_exit:",
-							"status: reverse_ready_stop",
-							"note: reverse_runtime_gate already satisfied; do not re-run domain proof or reverse_next thrash",
-							"next: write HARNESS_BUGS/PROOF only",
-						].join("\n");
-						return {
-							content: [{ type: "text" as const, text }],
-							details: { skipped: true, reason: "reverse_ready_stop" } as Record<string, unknown>,
-						};
-					}
-				} catch {
-					/* optional */
-				}
+				const domainStop = tryReverseReadyDomainProofStop();
+				if (domainStop) return domainStop;
 				const rawAction = String(params?.action ?? "show").toLowerCase();
 				const action = rawAction === "write" ? "write" : "show";
 				const domain =
