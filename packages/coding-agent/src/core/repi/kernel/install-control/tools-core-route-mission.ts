@@ -22,11 +22,15 @@ export function registerRepiControlCoreRouteMissionTools(
 		],
 		parameters: Type.Object({ task: Type.String() }),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const route = deps.routeReconTask(params.task);
+			const task = String(params.task ?? "").trim() || "reverse/pentest task";
+			const route = deps.routeReconTask(task);
+			// Always open a fresh mission blackboard on route so reverse loops do not inherit
+			// prior operation_queue_ready/done state (which falsely short-circuits re_operator).
+			const mission = deps.writeCurrentMission(deps.createMission(task, route));
 			const techniqueIds = deps.techniqueIdsForRoute(route);
 			const activeTools = deps.activateToolsForRoute?.(route.domain) ?? [];
 			const reverseNext = reverseDomainCaptureNextCommands({
-				routeOrBlob: `${route.domain ?? ""} ${route.intent ?? ""} ${params.task}`,
+				routeOrBlob: `${route.domain ?? ""} ${route.intent ?? ""} ${task}`,
 				includeGates: true,
 			}).slice(0, 3);
 			return {
@@ -35,6 +39,7 @@ export function registerRepiControlCoreRouteMissionTools(
 						type: "text" as const,
 						text: [
 							deps.formatRoute(route),
+							`mission_id: ${mission.id}`,
 							`skill: ${route.skillHint}`,
 							...route.workflow.map((step: any) => `- ${step}`),
 							...(techniqueIds.length > 0
@@ -47,7 +52,7 @@ export function registerRepiControlCoreRouteMissionTools(
 						].join("\n"),
 					},
 				],
-				details: { ...route, techniques: techniqueIds, activeTools },
+				details: { ...route, techniques: techniqueIds, activeTools, missionId: mission.id },
 			};
 		},
 	});
