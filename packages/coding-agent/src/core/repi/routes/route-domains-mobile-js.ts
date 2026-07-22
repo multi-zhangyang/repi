@@ -19,7 +19,11 @@ export function routeRepiDomainMobileJs(lower: string, s: RouteSignals): RoutePl
 			],
 		);
 	}
-	if (/apk|android|jadx|apktool|smali|frida|objection/.test(lower)) {
+	if (
+		/apk|android|jadx|apktool|smali|frida|objection|\bmobile\b|移动端|安卓|手机应用|app\s*inventory|package\s*inventory|device\s*inventory/.test(
+			lower,
+		)
+	) {
 		return plan(
 			"Mobile / Android",
 			"reverse app logic or bypass runtime checks",

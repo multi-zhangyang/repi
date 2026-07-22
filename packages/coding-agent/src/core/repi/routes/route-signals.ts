@@ -53,7 +53,7 @@ export function detectRouteSignals(text: string): RouteSignals {
 	const nonAgentConcreteTargetSignal =
 		nativeRouteSignal ||
 		webTargetSignal ||
-		/\b(?:pcap|pcapng|tshark|wireshark|capinfos|dfir|forensic|firmware|rootfs|squashfs|apk|ipa|android|ios|frida|jadx|apktool|malware|yara|sigma|volatility|memdump|vmem|kerberos|ntlm|ldap|bloodhound|certipy|kubernetes|docker|metadata|aws|azure|gcp|crypto|stego)\b|流量|取证|固件|内存镜像|恶意样本|域控|云|容器|隐写/i.test(
+		/\b(?:pcap|pcapng|tshark|wireshark|capinfos|dfir|forensic|firmware|rootfs|squashfs|apk|ipa|android|ios|mobile|frida|jadx|apktool|malware|yara|sigma|volatility|memdump|vmem|kerberos|ntlm|ldap|bloodhound|certipy|kubernetes|docker|metadata|aws|azure|gcp|crypto|stego)\b|流量|取证|固件|内存镜像|恶意样本|域控|云|容器|隐写/i.test(
 			lower,
 		);
 	const agentBoundarySpecific =

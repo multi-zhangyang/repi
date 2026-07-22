@@ -1,6 +1,8 @@
 /** Reverse install tool: re_mobile_runtime. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
+import { auditCompletion } from "../../completion-audit.ts";
+import { readCurrentMission } from "../../mission.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseMobileTool(
@@ -26,8 +28,42 @@ export function registerRepiReverseMobileTool(
 			timeoutMs: Type.Optional(Type.Number()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const hasTarget = Boolean(String(params.target || params.url || "").trim());
-			const action = params.action ?? (hasTarget ? "run" : "plan");
+			const hasTarget = Boolean(String(params.target || params.url || params.packageName || "").trim());
+			// Inventory host pure / bare run defaults to run (not plan false success).
+			const action = params.action ?? (hasTarget ? "run" : "run");
+			// After reverse proof is ready for this mission, do not thrash mobile inventory.
+			try {
+				const mission = readCurrentMission();
+				const reverseDone = Boolean(
+					mission?.checkpoints?.some(
+						(c: { name?: string; status?: string }) =>
+							(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
+					),
+				);
+				if (reverseDone && action === "run") {
+					const audit = auditCompletion();
+					if (audit?.ready) {
+						const text = [
+							"mobile_runtime:",
+							"status: reverse_ready_stop",
+							"note: reverse_runtime_gate already satisfied for this mission; do not re-run mobile runtime without a real blocker",
+							"next: write HARNESS_BUGS/PROOF only",
+						].join("\n");
+						return {
+							content: [{ type: "text" as const, text }],
+							details: {
+								action,
+								skipped: true,
+								reason: "reverse_ready_stop",
+								target: params.target,
+								packageName: params.packageName,
+							} as Record<string, unknown>,
+						};
+					}
+				}
+			} catch {
+				/* optional */
+			}
 			const text =
 				action === "run"
 					? await deps.runMobileRuntime(pi, {
