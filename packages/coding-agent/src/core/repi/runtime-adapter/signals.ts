@@ -10,8 +10,9 @@ import type {
 
 export function materializeRuntimeAdapterCommand(template: string, target?: string): string {
 	const targetValue = target?.trim() || ".";
-	// Only strip an optional first-line "adapter-id: " label — never strip shell `${var:-default}` colons.
-	const body = template.replace(/^([A-Za-z0-9_.-]+-adapter)\s*:\s*/i, "");
+	// Strip optional first-line labels like "foo-adapter: " / "adapter-foo-runner: " only.
+	// Never strip shell `${var:-default}` colons mid-script.
+	const body = template.replace(/^(?:[A-Za-z0-9_.-]+-adapter|adapter-[A-Za-z0-9_.-]+(?:-runner)?)\s*:\s*/i, "");
 	return body.replaceAll("<target>", shellQuote(targetValue)).replaceAll("\0", "");
 }
 
