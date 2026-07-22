@@ -1,34 +1,11 @@
 /** Reverse install tools: runtime adapter / domain proof / toolchain. */
 
-import { existsSync } from "node:fs";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { auditCompletion } from "../../completion-audit.ts";
 import { readCurrentMission } from "../../mission.ts";
-import { detectRuntimeAdapterIds } from "../../runtime-adapter/target-inspect-detect.ts";
+import { pickAdapterIdForRun, resolveAdapterRunTarget } from "./tools-adapter-target.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
-
-function resolveAdapterRunTarget(raw?: string): string | undefined {
-	const target = String(raw ?? "").trim();
-	if (!target) return undefined;
-	if (existsSync(target) || /^https?:\/\//i.test(target)) return target;
-	// Lexical-only targets (e.g. exploit reliability matrix): prefer concrete mission map ELF/path.
-	try {
-		const mission = readCurrentMission();
-		const note =
-			mission?.checkpoints?.find((c: { name?: string }) => c.name === "passive_map_done")?.note ??
-			mission?.checkpoints?.find((c: { name?: string }) => c.name === "repro_commands_ready")?.note ??
-			"";
-		const fromNote = String(note).match(/(\/[^\s]+\/(?:bin|sbin)\/[^\s]+|\/usr\/bin\/[^\s]+|\/bin\/[^\s]+)/);
-		if (fromNote?.[1] && existsSync(fromNote[1])) return fromNote[1];
-		const task = String(mission?.task ?? "");
-		const fromTask = task.match(/(\/(?:usr\/)?(?:local\/)?(?:bin|sbin)\/[\w.+-]+)/);
-		if (fromTask?.[1] && existsSync(fromTask[1])) return fromTask[1];
-	} catch {
-		/* optional */
-	}
-	return target;
-}
 
 export function registerRepiReverseAdapterTools(
 	registerTool: ToolRegistrar,
@@ -132,13 +109,12 @@ export function registerRepiReverseAdapterTools(
 				} catch {
 					/* optional */
 				}
-				const rawTarget = String(params.target ?? "").trim();
 				const resolvedTarget = resolveAdapterRunTarget(params.target);
-				// Keep lexical adapter preference from the operator target string; only the
-				// executed path may be rewritten to a concrete mapped ELF/URL.
-				const adapter =
-					params.adapter ||
-					(rawTarget && rawTarget !== resolvedTarget ? detectRuntimeAdapterIds(rawTarget)[0] : undefined);
+				const adapter = pickAdapterIdForRun({
+					adapter: params.adapter,
+					target: params.target,
+					resolvedTarget,
+				});
 				const text = await deps.runRuntimeAdapterExecution(pi, {
 					adapter,
 					target: resolvedTarget,
