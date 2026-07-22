@@ -17,7 +17,7 @@ export function routeRepiDomainOps(lower: string, s: RouteSignals): RoutePlan | 
 			["image profile", "process/network map", "credential/artifact hunt", "timeline/carve", "verification/report"],
 		);
 	}
-	if (/pcap|取证|dfir|forensic|stego|隐写|wireshark|tshark|内存转储/.test(lower)) {
+	if (/pcap|取证|dfir|forensic|wireshark|tshark|内存转储/.test(lower)) {
 		return plan(
 			"DFIR / PCAP / stego",
 			"recover artifact or timeline",

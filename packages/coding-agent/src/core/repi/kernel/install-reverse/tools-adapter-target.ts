@@ -52,17 +52,9 @@ function missionLexicalBlob(): string {
 	try {
 		const mission = readCurrentMission();
 		if (!mission) return "";
-		return [
-			mission.task,
-			mission.route?.domain,
-			mission.route?.intent,
-			mission.route?.skillHint,
-			mission.route?.toolchain,
-			...(mission.route?.workflow ?? []),
-		]
-			.filter(Boolean)
-			.map(String)
-			.join("\n");
+		// Prefer task/intent over domain label: labels like "DFIR / PCAP / stego" falsely
+		// promote crypto adapter ahead of pcap when target is bare cwd.
+		return [mission.task, mission.route?.intent, mission.route?.skillHint].filter(Boolean).map(String).join("\n");
 	} catch {
 		return "";
 	}
@@ -79,19 +71,26 @@ export function pickAdapterIdForRun(params: {
 	// Prefer mission/task lexical when filesystem target is bare "." / cwd — directory inventory
 	// would otherwise demote stego/crypto/mobile into unrelated host adapters.
 	const missionBlob = missionLexicalBlob();
-	const bareFs = !rawTarget || rawTarget === "." || rawTarget === "./" || rawTarget === resolvedTarget;
-	const lexicalProbe = bareFs ? [missionBlob, rawTarget].filter(Boolean).join("\n") : rawTarget;
-	if (lexicalProbe.trim()) {
-		const ids = detectRuntimeAdapterIds(lexicalProbe);
+	// Bare cwd only — never treat an existing concrete path as bare just because
+	// resolveAdapterRunTarget returned the same string (e.g. pcap/ELF path).
+	const bareFs = !rawTarget || rawTarget === "." || rawTarget === "./";
+	// For concrete paths, detect from the path first; blend mission lexical only for bare cwd.
+	if (bareFs) {
+		const ids = detectRuntimeAdapterIds([missionBlob, rawTarget].filter(Boolean).join("\n"));
 		if (ids[0]) return ids[0];
 	}
-	if (rawTarget && rawTarget !== resolvedTarget) {
-		const ids = detectRuntimeAdapterIds(rawTarget);
-		if (ids[0]) return ids[0];
-	}
-	if (resolvedTarget) {
-		const ids = detectRuntimeAdapterIds(resolvedTarget);
-		if (ids[0]) return ids[0];
-	}
+	// Concrete path: prefer path detection, but if path is a generic host ELF/bin and mission
+	// has a stronger lexical domain adapter (malware/crypto/stego/dfir/cloud/agent), use mission.
+	const pathProbe = rawTarget || resolvedTarget;
+	const pathIds = pathProbe ? detectRuntimeAdapterIds(pathProbe) : [];
+	const missionIds = missionBlob ? detectRuntimeAdapterIds(missionBlob) : [];
+	const genericNative =
+		pathIds[0] &&
+		/^(?:gdb-native-trace-adapter|r2-native-xref-adapter)$/.test(pathIds[0]) &&
+		/\/(?:usr\/)?(?:local\/)?(?:bin|sbin)\//.test(pathProbe);
+	const missionStrong = missionIds[0] && !/^(?:gdb-native-trace-adapter|r2-native-xref-adapter)$/.test(missionIds[0]);
+	if (genericNative && missionStrong) return missionIds[0];
+	if (pathIds[0]) return pathIds[0];
+	if (missionIds[0]) return missionIds[0];
 	return undefined;
 }
