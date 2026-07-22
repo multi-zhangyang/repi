@@ -67,12 +67,16 @@ export function registerRepiCompleteBootstrapTools(
 				};
 			}
 			let audit = deps.auditCompletion();
-			// When reverse proof is ready, cheaply fill optional orchestration so residual
-			// kernel/decision/graph/operator/verifier/replay/report checks do not linger.
-			const softFilled = await softFillOptionalOrchestrationWhenReverseReadyAsync(audit as any, pi);
-			if (softFilled.length) audit = deps.auditCompletion();
+			// Soft-fill only when reverse is ready but optional checkpoints remain.
+			// Avoid re-running authz/graph builds on repeated re_complete after already filled.
+			const optionalPending = (audit?.warnings ?? []).some((w: string) => /pending optional check/i.test(w));
+			let softFilled: string[] = [];
+			if (audit?.ready && optionalPending) {
+				softFilled = await softFillOptionalOrchestrationWhenReverseReadyAsync(audit as any, pi);
+				if (softFilled.length) audit = deps.auditCompletion();
+			}
 			const memoryEvent = deps.appendCompletionMemoryEvent(audit);
-			const refreshedAudit = memoryEvent ? deps.auditCompletion() : audit;
+			const refreshedAudit = memoryEvent && softFilled.length ? deps.auditCompletion() : audit;
 			const auditText = typeof refreshedAudit === "string" ? refreshedAudit : JSON.stringify(refreshedAudit);
 			const formattedAudit = deps.formatCompletionAuditFromAudit(refreshedAudit as any);
 			const ready =
