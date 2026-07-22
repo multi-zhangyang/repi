@@ -29,6 +29,7 @@ export {
 	resolveContextPackPathByRef,
 	scopedContextArtifactIndex,
 } from "./context-pack/index.ts";
+export { contextBranchId, contextSessionId } from "./context-pack/scope-ids.ts";
 export type {
 	ContextArtifactIndexEntry,
 	ContextPackArtifact,

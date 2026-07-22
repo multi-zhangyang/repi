@@ -24,6 +24,9 @@ export type ClaimReleaseMarker = {
 	generatedAt?: string;
 	mode?: string;
 	ok?: boolean;
+	reverseScoped?: boolean;
+	reverseProofExit?: string;
+	bindReady?: boolean;
 	root?: string;
 	markerPath?: string;
 	sourceSha256?: string;
@@ -48,6 +51,8 @@ export type ClaimReleaseMarker = {
 			platformRequiredScore?: number;
 			orchestrationScore?: number;
 			requiredGaps?: ClaimReleaseGap[];
+			reverseProofExit?: string;
+			bind_ready?: boolean;
 		};
 	};
 };

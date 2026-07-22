@@ -48,14 +48,20 @@ export function strictClaimCheckSnapshot(): StrictClaimCheckSnapshot {
 	const rawGaps = marker.requiredGaps ?? marker.checks?.checkAndScores?.requiredGaps ?? [];
 	const requiredGaps = rawGaps.map(claimReleaseGapLabel).filter(Boolean);
 	// reverse-heavy markers must not pass without runtime proof exit / bind readiness signal
-	const reverseHeavy =
-		/native|pwn|malware|firmware|reverse|binary|exploit|mobile|js|browser|authz|web|proof_exit|bind_ready/i.test(
-			JSON.stringify(marker),
+	const markerBlob = JSON.stringify(marker);
+	// Require reverse proof only when the marker itself asserts reverse/web proof scope — not path substrings.
+	const reverseScoped =
+		Boolean((marker as any).reverseScoped) ||
+		Boolean((marker as any).requireReverseProof) ||
+		/proof_exit|bind_ready|runtime_capture|reverse_domain|domain_proof_exit/i.test(markerBlob);
+	const reverseProofPresent =
+		/proof[._]?exit\s*[=:]\s*(?:partial_runtime_capture|runtime_capture_strong)|bind_ready\s*[=:]\s*true|runtime_capture_strong|partial_runtime_capture/i.test(
+			markerBlob,
 		);
 	if (
-		reverseHeavy &&
-		!requiredGaps.some((g: any) => /proof_exit|bind_ready|reverse/i.test(String(g))) &&
-		!/proof_exit|bind_ready|runtime_capture/i.test(JSON.stringify(marker))
+		reverseScoped &&
+		!reverseProofPresent &&
+		!requiredGaps.some((g: any) => /proof_exit|bind_ready|reverse/i.test(String(g)))
 	) {
 		requiredGaps.push("reverse_proof_exit_or_bind_ready_missing");
 	}

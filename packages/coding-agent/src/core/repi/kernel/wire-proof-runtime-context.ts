@@ -3,6 +3,7 @@
 import { artifactScopeInferTarget, latestScopedMarkdownArtifact } from "../artifact-scope.ts";
 import { verifyContextPackResume } from "../compact-resume.ts";
 import { formatCompletionAudit } from "../completion-audit.ts";
+import { contextBranchId, contextSessionId } from "../context-pack/scope-ids.ts";
 import { configureContextPack, contextRefLooksExplicit, parseContextPackArtifact } from "../context-pack.ts";
 import { appendEvidence, buildEvidenceDigest } from "../evidence.ts";
 import {
@@ -20,9 +21,7 @@ import {
 	buildMemorySkillCapsuleReport,
 	buildMemoryStrategyCapsuleReport,
 	caseMemoryOperatorCommands,
-	contextBranchId,
 	contextCompactionLedger,
-	contextSessionId,
 	currentCaseMemoryLanePlan,
 	formatCompactResumeLedgerV2,
 	memoryOrchestratorPhaseCommand,

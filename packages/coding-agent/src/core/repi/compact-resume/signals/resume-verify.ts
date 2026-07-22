@@ -43,9 +43,25 @@ export function verifyContextPackResume(
 			blocked.push(`workspaceRoot mismatch: ${pack.scope.workspaceRoot} != ${process.cwd()}`);
 		}
 		const currentBranchId = contextBranchId();
-		if (pack.scope.branchId && pack.scope.branchId !== currentBranchId) {
+		const packBranch = pack.scope.branchId;
+		const packBranchKey =
+			packBranch == null ? "" : typeof packBranch === "string" ? packBranch : JSON.stringify(packBranch);
+		const currentBranchKey =
+			currentBranchId == null
+				? ""
+				: typeof currentBranchId === "string"
+					? currentBranchId
+					: JSON.stringify(currentBranchId);
+		// Ignore legacy memory-stub {} branch ids; only compare non-empty string ids.
+		if (
+			packBranchKey &&
+			currentBranchKey &&
+			packBranchKey !== "{}" &&
+			currentBranchKey !== "{}" &&
+			packBranchKey !== currentBranchKey
+		) {
 			scope = "mismatch";
-			blocked.push(`branch mismatch: ${pack.scope.branchId} != ${currentBranchId}`);
+			blocked.push(`branch mismatch: ${packBranchKey} != ${currentBranchKey}`);
 		}
 	}
 	let artifactHashes: any["artifactHashes"] = "pass";

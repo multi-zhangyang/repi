@@ -35,9 +35,15 @@ export function writeLocalClaimReleaseMarker(): string {
 	const dir = join(evidenceClaimReleaseDir(), `local-runtime-${timestamp.replace(/[:.]/g, "-")}`);
 	mkdirSync(dir, { recursive: true });
 	const markerPath = join(dir, "result.json");
+	const ledgerTail = readText(ledgerPath).slice(-ledgerKeptChars);
+	const missionText = readText(currentMissionPath());
+	const reverseProof =
+		/proof\.exit=(partial_runtime_capture|runtime_capture_strong)/i.exec(ledgerTail) ||
+		/proof\.exit=(partial_runtime_capture|runtime_capture_strong)/i.exec(missionText);
+	const bindReady = /bind_ready=true/i.test(ledgerTail) || /bind_ready=true/i.test(missionText);
 	const source = [
-		readText(currentMissionPath()),
-		readText(ledgerPath).slice(-ledgerKeptChars),
+		missionText,
+		ledgerTail,
 		readText(memoryStoreReportPath()),
 		readText(memoryArtifactScopeFilterReportPath()),
 	].join("\n");
@@ -57,12 +63,17 @@ export function writeLocalClaimReleaseMarker(): string {
 		platformRequiredScore: 0,
 		orchestrationScore: 100,
 		requiredGaps: [],
+		reverseScoped: Boolean(reverseProof || bindReady),
+		reverseProofExit: reverseProof?.[1],
+		bindReady,
 		checks: {
 			checkAndScores: {
 				status: "pass",
 				platformRequiredScore: 0,
 				orchestrationScore: 100,
 				requiredGaps: [],
+				reverseProofExit: reverseProof?.[1],
+				bind_ready: bindReady,
 			},
 		},
 	};

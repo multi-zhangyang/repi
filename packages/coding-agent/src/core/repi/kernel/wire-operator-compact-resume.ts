@@ -1,12 +1,12 @@
 /** Wire compact-resume configure bag. */
 
 import { configureCompactResume } from "../compact-resume.ts";
+import { contextBranchId } from "../context-pack/scope-ids.ts";
 import { contextPackSha256 } from "../context-pack.ts";
 import {
 	appendCompactResumeTransition,
 	buildCompactResumeLedgerV2Report,
 	compactResumeAttemptForKey,
-	contextBranchId,
 	normalizeReconCommand,
 	readCompactResumeTransitions,
 } from "../memory-stubs.ts";

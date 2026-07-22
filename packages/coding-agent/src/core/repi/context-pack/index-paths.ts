@@ -16,6 +16,11 @@ const CONTEXT_HASH_OMIT = new Set([
 	"raw",
 	"stdout",
 	"stderr",
+	// Self-referential / post-hash fields must not feed the digest.
+	"contextSha256",
+	"exactResumeVerification",
+	"generatedAt",
+	"timestamp",
 ]);
 
 export function contextPackArtifactPathFor(params: {
