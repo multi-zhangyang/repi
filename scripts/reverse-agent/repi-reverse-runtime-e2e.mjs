@@ -117,6 +117,8 @@ const cmd = ${callExpr};
 const env = {
   ...process.env,
   REPI_NATIVE_DYN: process.env.REPI_NATIVE_DYN || "1",
+			REPI_NATIVE_SYMBOLIC: process.env.REPI_NATIVE_SYMBOLIC || "1",
+			REPI_NATIVE_DEEP: process.env.REPI_NATIVE_DEEP || "1",
   REPI_FRIDA_LOCAL_ATTACH: process.env.REPI_FRIDA_LOCAL_ATTACH || "1",
   PATH: ${JSON.stringify(PATH_PREFIX)},
   NODE_PATH: "/usr/lib/node_modules:/usr/local/lib/node_modules",

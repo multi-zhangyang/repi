@@ -55,6 +55,9 @@ if [ -n "${REPI_ALLOW_BROWSER_COOKIES:-}" ] && [ -z "${PI_ALLOW_BROWSER_COOKIES:
   export PI_ALLOW_BROWSER_COOKIES="$REPI_ALLOW_BROWSER_COOKIES"
 fi
 export REPI_REPO_ROOT="$ROOT"
+# Host reverse toolchains (rizin suite under /opt/repi-tools/rizin) before user PATH.
+export PATH="/opt/repi-tools/rizin:/opt/repi-tools/rizin/bin:/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH:-}"
+
 
 validate_repi_env_model_config() {
   local has_model_config=0

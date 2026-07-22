@@ -1,6 +1,7 @@
 /** Proof-loop artifact build/write helpers. */
 import { join } from "node:path";
 import type { ArtifactScopeFilterOptions } from "../artifact-scope.ts";
+import { latestScopedMarkdownArtifact as latestScopedMarkdownArtifactConcrete } from "../artifact-scope-filter.ts";
 import { ensureReconStorage } from "../resources.ts";
 import { evidenceProofLoopsDir, writePrivateTextFile } from "../storage.ts";
 import { slug } from "../text.ts";
@@ -10,7 +11,6 @@ import {
 	appendRuntimeFailureRepairFromProofLoop,
 	autonomousExecutionBudget,
 	buildProofLoopSteps,
-	latestScopedMarkdownArtifact,
 	proofLoopSourceArtifacts,
 	readCurrentMission,
 	refreshProofLoop,
@@ -21,7 +21,7 @@ import { formatProofLoop } from "./format.ts";
 import type { ProofLoopArtifact } from "./types.ts";
 
 export function latestProofLoopArtifactPath(options: ArtifactScopeFilterOptions = {}): string | undefined {
-	return latestScopedMarkdownArtifact("proof_loop", evidenceProofLoopsDir(), options);
+	return latestScopedMarkdownArtifactConcrete("proof_loop", evidenceProofLoopsDir(), options);
 }
 
 export function buildProofLoop(
