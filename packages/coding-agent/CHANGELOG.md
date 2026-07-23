@@ -49,6 +49,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- Thrash capture_first: after re_route and before map, block re_mission/re_techniques/re_evidence/find thrash (re_map still allowed).
 - Complete skeleton insists on plain HARNESS_BUGS:/PROOF: lines (no markdown bold); missing-closeout detector accepts **HARNESS_BUGS:** wrappers.
 - re_js_signing run soft-marks reverse bound (session thrash/operator closeout) like browser/native captures.
 - Thrash completion_ready_stop also blocks re_domain_proof_exit/re_operator/re_complete after reverse+audit ready; thrash state split under softband.
