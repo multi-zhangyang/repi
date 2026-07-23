@@ -49,6 +49,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- Obedience layer detects post-route ask-for-target execution_stall and injects capture-first correction (pure/local tasks must not stop for a target letter).
 - Firmware adapter proof tags require real image/rootfs/binwalk-hit CAP (no unconditional partial/strong bind on bare host or empty targets).
 - Thrash blocks re_domain_proof_exit/re_operator/re_complete after map until process-local reverse capture binds (prevents false proof from shared evidence corpus).
 - Reverse thrash/ready/route/operator predicates use process-local reverseBound only (ignore shared disk checkpoint done from prior --no-session runs).

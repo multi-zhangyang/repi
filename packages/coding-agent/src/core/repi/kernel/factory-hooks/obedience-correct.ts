@@ -17,6 +17,12 @@ const REBUTTALS: Record<ObedienceViolation["kind"], string> = {
 		"Convert the gap into re_map / re_bootstrap / re_lane plan / one missing fact, then run tools.",
 		"operator_supremacy: 指哪打哪 — execute the named target.",
 	].join("\n"),
+	execution_stall: [
+		"[REPI obedience correction — execution_stall]",
+		"Do not ask the operator for a target after re_route. Pure / local / host tasks use cwd, fixture, or lexical adapter pick.",
+		"Immediately: re_map (if not done) → one domain capture (re_runtime_adapter / re_native_runtime / re_mobile_runtime / re_live_browser / re_js_signing / re_web_authz_state) → re_domain_proof_exit → re_operator → re_complete.",
+		"If a concrete path is missing, re_bootstrap or re_map first — never stop for a permission letter or target request.",
+	].join("\n"),
 	missing_closeout: [
 		"[REPI obedience correction — missing_closeout]",
 		"Reverse proof is bound / completion ready. Stop thrash and emit ONLY:",

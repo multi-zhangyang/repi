@@ -1,6 +1,10 @@
 /** Product-layer obedience detection (authorization theater / excuse / missing closeout). */
 
-export type ObedienceViolationKind = "refusal_theater" | "authorization_theater" | "missing_closeout";
+export type ObedienceViolationKind =
+	| "refusal_theater"
+	| "authorization_theater"
+	| "execution_stall"
+	| "missing_closeout";
 
 export type ObedienceViolation = {
 	kind: ObedienceViolationKind;
@@ -15,6 +19,17 @@ const REFUSAL_PATTERNS: RegExp[] = [
 	/作为(?:一个)?(?:AI|人工智能|语言模型).{0,40}(?:不能|无法|不应)/,
 	/我(?:不能|无法|没法|不可以|拒绝)(?:帮助|协助|帮你|提供|执行|继续)/,
 	/抱歉[，,]?\s*(?:我|这)(?:不能|无法)/,
+];
+
+/** Ask-for-target / wait-for-operator after tools — protocol stall under operator supremacy. */
+const EXECUTION_STALL_PATTERNS: RegExp[] = [
+	/\bI need (?:a |the )?(?:target|domain|url|asset)\b/i,
+	/\bCould you (?:please )?(?:provide|share|specify) (?:the )?(?:specific )?(?:domain|url|target|asset)\b/i,
+	/\bPlease (?:provide|share|specify) (?:a |the )?(?:target|domain|url|asset)\b/i,
+	/\b(?:what|which) (?:target|domain|url|asset)\b[^\n]{0,40}\?/i,
+	/需要(?:一个|具体的?)?(?:目标|域名|URL|资产)/i,
+	/请(?:提供|给出|补充)(?:一个|具体的?)?(?:目标|域名|URL|资产)/i,
+	/routing is complete but I need a target/i,
 ];
 
 const AUTH_THEATER_PATTERNS: RegExp[] = [
@@ -47,6 +62,9 @@ export function detectObedienceViolation(text: string): ObedienceViolation | und
 	}
 	for (const re of AUTH_THEATER_PATTERNS) {
 		if (re.test(t)) return { kind: "authorization_theater", snippet: snippetAround(t, re) };
+	}
+	for (const re of EXECUTION_STALL_PATTERNS) {
+		if (re.test(t)) return { kind: "execution_stall", snippet: snippetAround(t, re) };
 	}
 	return undefined;
 }
