@@ -68,7 +68,7 @@ export function appendOperatorCloseout(params: { text: string; action: string; t
 		return { text: params.text };
 	}
 	let softReport: string | undefined;
-	if (params.action === "dispatch" && !checkpointDone("report_or_writeup_ready")) {
+	if ((params.action === "dispatch" || params.action === "plan") && !checkpointDone("report_or_writeup_ready")) {
 		try {
 			const mission = readCurrentMission();
 			softReport = writeSoftFillReportScaffold(String(mission?.route?.domain || params.target || "repi-report"));
@@ -87,7 +87,7 @@ export function appendOperatorCloseout(params: { text: string; action: string; t
 			? "next: re_complete audit once (optional if copying skeleton) then HARNESS_BUGS/PROOF only"
 			: "next: re_operator dispatch maxSteps=1 then re_complete (or copy skeleton after dispatch)",
 		"",
-		buildCompleteReadySkeleton({ thrash: params.action !== "plan" }),
+		buildCompleteReadySkeleton({ thrash: true }),
 	]
 		.filter((line) => line !== undefined)
 		.join(nl);
