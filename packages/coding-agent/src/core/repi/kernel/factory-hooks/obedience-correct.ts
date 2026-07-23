@@ -2,7 +2,12 @@
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { auditCompletion } from "../../completion-audit.ts";
 import { isMissionReverseBound } from "../install-reverse/tools-capture-inflight.ts";
-import { detectMissingCloseout, detectObedienceViolation, type ObedienceViolation } from "./obedience-detect.ts";
+import {
+	detectHarnessMislabel,
+	detectMissingCloseout,
+	detectObedienceViolation,
+	type ObedienceViolation,
+} from "./obedience-detect.ts";
 
 const REBUTTALS: Record<ObedienceViolation["kind"], string> = {
 	refusal_theater: [
@@ -29,6 +34,14 @@ const REBUTTALS: Record<ObedienceViolation["kind"], string> = {
 		"HARNESS_BUGS: none",
 		"PROOF: reverse.proof_exit=partial_runtime_capture|runtime_capture_strong; reverse.bind_ready=true",
 		"If a real tool error=true exists, list it under HARNESS_BUGS; target findings stay under PROOF.",
+	].join("\n"),
+	harness_mislabel: [
+		"[REPI obedience correction — harness_mislabel]",
+		"HARNESS_BUGS is ONLY for real tool/runtime failures (error=true / tool crash).",
+		"Missing target, optional asset, technique pending, and target findings belong under PROOF — not HARNESS_BUGS.",
+		"When reverse.proof_exit is partial|strong and bind_ready=true with no tool error, emit exactly:",
+		"HARNESS_BUGS: none",
+		"PROOF: reverse.proof_exit=partial_runtime_capture|runtime_capture_strong; reverse.bind_ready=true",
 	].join("\n"),
 };
 
@@ -73,7 +86,10 @@ export function registerObedienceHook(pi: ExtensionAPI, stats: any): void {
 			} catch {
 				completeReady = false;
 			}
-			const v = detectObedienceViolation(text) ?? detectMissingCloseout(text, { reverseBound, completeReady });
+			const v =
+				detectObedienceViolation(text) ??
+				detectHarnessMislabel(text, { reverseBound, completeReady }) ??
+				detectMissingCloseout(text, { reverseBound, completeReady });
 			if (!v) return;
 			stats.obedienceBudget = budget + 1;
 			const body = REBUTTALS[v.kind];

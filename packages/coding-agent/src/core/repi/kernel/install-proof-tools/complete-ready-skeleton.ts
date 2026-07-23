@@ -7,7 +7,7 @@ export function buildCompleteReadySkeleton(options?: { thrash?: boolean }): stri
 		"HARNESS_BUGS: none",
 		"PROOF: reverse.proof_exit=partial_runtime_capture|runtime_capture_strong; reverse.bind_ready=true",
 		thrash
-			? "note: already ready — paste the two HARNESS_BUGS/PROOF lines verbatim; do not thrash re_complete/re_operator"
-			: "note: paste the two HARNESS_BUGS/PROOF lines verbatim as final answer unless a real tool failure (error true) exists; do not thrash re_*",
+			? "note: already ready — paste the two HARNESS_BUGS/PROOF lines verbatim; HARNESS_BUGS is tool failures only (not missing target)"
+			: "note: paste the two HARNESS_BUGS/PROOF lines verbatim; HARNESS_BUGS only if error=true tool failure; missing target stays PROOF/none",
 	].join("\n");
 }

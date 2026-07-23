@@ -4,7 +4,8 @@ export type ObedienceViolationKind =
 	| "refusal_theater"
 	| "authorization_theater"
 	| "execution_stall"
-	| "missing_closeout";
+	| "missing_closeout"
+	| "harness_mislabel";
 
 export type ObedienceViolation = {
 	kind: ObedienceViolationKind;
@@ -88,4 +89,41 @@ export function detectMissingCloseout(
 		kind: "missing_closeout",
 		snippet: t.slice(0, 120).replace(/\s+/g, " ").trim(),
 	};
+}
+
+/**
+ * When reverse is bound, HARNESS_BUGS must be tool failures only.
+ * Models often invent "missing target" / target findings as HARNESS_BUGS.
+ */
+export function detectHarnessMislabel(
+	text: string,
+	opts: { reverseBound: boolean; completeReady: boolean },
+): ObedienceViolation | undefined {
+	if (!opts.reverseBound && !opts.completeReady) return undefined;
+	const t = String(text ?? "");
+	const m = /HARNESS_BUGS\s*:\s*([^\n]+)/i.exec(t);
+	if (!m) return undefined;
+	const body = m[1].trim();
+	if (!body || /^none\b/i.test(body) || /^n\/?a\b/i.test(body) || body === "-" || body === "—") {
+		return undefined;
+	}
+	// Real tool failures usually mention error=true / tool_end / tool name + fail
+	if (/\berror\s*=\s*true\b/i.test(body) || /\btool_(?:end|error)\b/i.test(body)) return undefined;
+	if (/\b(?:re_\w+|bash|read|write)\b[^\n]{0,40}\b(?:failed|error|crash)\b/i.test(body)) return undefined;
+	// Mislabel: target gap / missing asset framed as harness bug while capture succeeded
+	if (
+		/\bmissing (?:target|apk|path|package|binary|asset|url|file)\b/i.test(body) ||
+		/\bno (?:target|apk|path|binary|file)\b/i.test(body) ||
+		/\bbut runtime capture\b/i.test(body) ||
+		/\bbind_ready\s*=\s*true\b/i.test(body) ||
+		/缺少(?:目标|路径|APK|包名|文件)/.test(body) ||
+		/目标(?:缺失|不存在|未提供)/.test(body)
+	) {
+		return { kind: "harness_mislabel", snippet: body.slice(0, 160) };
+	}
+	// Long non-none narrative without tool error markers when reverse is bound
+	if (body.length > 40 && !/\berror\b/i.test(body) && !/\bfail(?:ed|ure)?\b/i.test(body)) {
+		return { kind: "harness_mislabel", snippet: body.slice(0, 160) };
+	}
+	return undefined;
 }
