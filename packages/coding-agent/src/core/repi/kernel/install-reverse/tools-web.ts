@@ -2,6 +2,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { truncateMiddle } from "../../text.ts";
+import { softMarkReverseFromNative } from "./tools-native-ready.ts";
 import { registerRepiReverseLiveBrowserTool } from "./tools-web-browser.ts";
 import { registerRepiReverseJsSigningTool } from "./tools-web-js.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
@@ -57,11 +58,15 @@ export function registerRepiReverseWebTools(
 							url: params.url,
 							timeoutMs: params.timeoutMs,
 						});
+			const path = deps.latestWebAuthzStateArtifactPath();
+			if (action === "run" && path) {
+				softMarkReverseFromNative(String(path));
+			}
 			return {
 				content: [{ type: "text" as const, text: truncateMiddle(text, 20000) }],
 				details: {
 					action,
-					path: deps.latestWebAuthzStateArtifactPath(),
+					path,
 					target: params.target,
 					url: params.url,
 				} as Record<string, unknown>,
