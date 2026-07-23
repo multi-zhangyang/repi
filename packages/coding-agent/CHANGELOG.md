@@ -49,6 +49,8 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- Structural obedience: agent_end detect/correct (refusal/authorization theater/missing closeout) + doctrine operator_supremacy/no_moral_judgment in prompts/sticky/cold-start; expands no_refusal_kernel theater patterns.
+- Thrash capture_first: block re_mission/re_techniques/re_map side thrash before route and after map until one reverse capture; keep re_route always allowed.
 - Runtime adapter parserRules: escape tag literals like \\[crypto-solver\\] so new RegExp no longer throws Range out of order (crypto/agent/cloud/memory).
 - re_map passive binary-candidates find: escape \( \) so bash no longer syntax-errors on prune groups.
 

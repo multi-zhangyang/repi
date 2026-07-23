@@ -1,6 +1,6 @@
 /** Reverse/completion thrash stop helpers for tool_call hooks. */
 import { readCurrentMission } from "../../mission.ts";
-import { reverseProofBound } from "../install-reverse/tools-native-ready.ts";
+import { isMissionReverseBound } from "../install-reverse/tools-capture-inflight.ts";
 
 export const POST_REVERSE_CAPTURE_BLOCK = new Set([
 	"re_runtime_adapter",
@@ -20,6 +20,16 @@ export const POST_REVERSE_CAPTURE_BLOCK = new Set([
 
 export const POST_COMPLETE_HOST_BLOCK = new Set(["bash", "read", "grep", "find", "ls", "write", "edit"]);
 
+/** Side tools that must not thrash before reverse capture after map is done (or before route). */
+export const PRE_CAPTURE_SIDE_BLOCK = new Set([
+	"re_techniques",
+	"re_mission",
+	"re_tool_index",
+	"re_lane",
+	"re_evidence",
+	"re_map",
+]);
+
 export function missionCheckpoints(_d?: Record<string, any>): Array<{ name?: string; status?: string; note?: string }> {
 	try {
 		const mission = readCurrentMission();
@@ -30,8 +40,10 @@ export function missionCheckpoints(_d?: Record<string, any>): Array<{ name?: str
 }
 
 export function isReverseDone(cps?: Array<{ name?: string; status?: string; note?: string }>): boolean {
+	// Process-local session bind survives mission-id churn; prefer explicit cps when provided
+	// (do not re-read disk mission and ignore the caller's checkpoint snapshot).
 	try {
-		if (reverseProofBound()) return true;
+		if (isMissionReverseBound()) return true;
 	} catch {
 		/* optional */
 	}
@@ -50,25 +62,51 @@ export function tryThrashStopBeforeTool(params: {
 	completeReady: boolean;
 }): { block: true; isError: false; reason: string } | undefined {
 	const toolName = String(params.toolName ?? "").trim();
+	// New tasks always need re_route; never thrash-block it.
+	if (!toolName || toolName === "re_route") return undefined;
+
 	const cps = params.cps ?? missionCheckpoints();
 	const reverseDone = isReverseDone(cps);
 	const mapDone = cps.some((c) => c.name === "passive_map_done" && c.status === "done");
 	const hasReverseGate = cps.some((c) => c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven");
 	const routed = cps.some((c) => c.name === "route_selected" && c.status === "done");
-	// Pre-route / reverse-gate missions: no host thrash until reverse soft-mark/done.
-	// Models often bash in parallel with re_route before mission exists — block host tools then too.
-	if ((!routed || (hasReverseGate && !reverseDone)) && toolName && POST_COMPLETE_HOST_BLOCK.has(toolName)) {
+
+	// Pre-route: host + side tools wait for re_route (models often ls/find/re_mission first).
+	if (!routed && (POST_COMPLETE_HOST_BLOCK.has(toolName) || PRE_CAPTURE_SIDE_BLOCK.has(toolName))) {
 		return {
 			block: true,
 			isError: false,
-			reason: !routed
-				? "REPI capture_first: call re_route first (then re_map → domain capture); do not thrash bash/read before reverse protocol."
-				: mapDone
-					? "REPI capture_first: map done — call re_runtime_adapter/re_native_runtime/re_live_browser before bash/read. Then re_domain_proof_exit → re_operator → re_complete."
-					: "REPI capture_first: reverse mission — use re_route → re_map → domain capture tool; do not thrash bash/read first.",
+			reason:
+				"REPI capture_first: call re_route first (then re_map → domain capture); do not thrash bash/read/ls/find/re_mission/re_techniques before reverse protocol.",
 		};
 	}
-	if (toolName && POST_REVERSE_CAPTURE_BLOCK.has(toolName) && reverseDone) {
+
+	// Reverse mission before map: host thrash blocked.
+	if (routed && hasReverseGate && !reverseDone && !mapDone && POST_COMPLETE_HOST_BLOCK.has(toolName)) {
+		return {
+			block: true,
+			isError: false,
+			reason:
+				"REPI capture_first: reverse mission — use re_map then one domain capture tool; do not thrash bash/read/ls/find first.",
+		};
+	}
+
+	// Map done, reverse not bound: force one capture tool (no host/side/re_map loop).
+	if (
+		routed &&
+		mapDone &&
+		!reverseDone &&
+		(POST_COMPLETE_HOST_BLOCK.has(toolName) || PRE_CAPTURE_SIDE_BLOCK.has(toolName))
+	) {
+		return {
+			block: true,
+			isError: false,
+			reason:
+				"REPI capture_first: map done — call re_runtime_adapter/re_native_runtime/re_live_browser/re_mobile_runtime once (not bash/find/re_map/re_techniques). Then re_domain_proof_exit → re_operator → re_complete.",
+		};
+	}
+
+	if (POST_REVERSE_CAPTURE_BLOCK.has(toolName) && reverseDone) {
 		return {
 			block: true,
 			isError: false,
@@ -76,7 +114,7 @@ export function tryThrashStopBeforeTool(params: {
 				"REPI reverse_ready_stop: reverse proof already bound. Do not thrash capture tools. Call re_operator → re_complete then output HARNESS_BUGS/PROOF only.",
 		};
 	}
-	if (toolName === "re_map" && reverseDone && cps.some((c) => c.name === "passive_map_done" && c.status === "done")) {
+	if (toolName === "re_map" && reverseDone && mapDone) {
 		return {
 			block: true,
 			isError: false,
@@ -84,7 +122,7 @@ export function tryThrashStopBeforeTool(params: {
 				"REPI reverse_ready_stop: reverse proof already bound and map done. Do not thrash re_map. Call re_operator → re_complete then HARNESS_BUGS/PROOF only.",
 		};
 	}
-	if (toolName && POST_COMPLETE_HOST_BLOCK.has(toolName) && (params.completeReady || reverseDone)) {
+	if (POST_COMPLETE_HOST_BLOCK.has(toolName) && (params.completeReady || reverseDone)) {
 		return {
 			block: true,
 			isError: false,

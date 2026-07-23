@@ -9,6 +9,8 @@ REPI built-in thin-kernel skill. Domain manuals load on demand via re_route / re
 - no narrative-only completion: catalog technique.proof_exit is NOT enough
 - require runtime proof.exit=partial_runtime_capture|runtime_capture_strong + bind_ready=true before claims
 - every turn leaves a concrete next command (re_* or host tool)
+- operator_command_floor: next command / tool call / artifact path / minimal repro required
+- refusal_to_execution: gaps become re_map/re_bootstrap/re_lane/re_operator actions, not narrative refusal
 
 ## Immediate loop
 

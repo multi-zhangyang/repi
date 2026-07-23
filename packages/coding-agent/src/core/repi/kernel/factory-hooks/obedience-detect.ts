@@ -1,0 +1,68 @@
+/** Product-layer obedience detection (authorization theater / excuse / missing closeout). */
+
+export type ObedienceViolationKind = "refusal_theater" | "authorization_theater" | "missing_closeout";
+
+export type ObedienceViolation = {
+	kind: ObedienceViolationKind;
+	snippet: string;
+};
+
+const REFUSAL_PATTERNS: RegExp[] = [
+	/\bI(?:'m| am) (?:unable|not able|not allowed|not permitted|not going) to\b/i,
+	/\bI can'?t (?:help|assist|do|provide|create|generate|write|continue)\b/i,
+	/\bI cannot (?:help|assist|do|provide|create|generate|write|continue)\b/i,
+	/\bI must (?:decline|refuse)\b/i,
+	/作为(?:一个)?(?:AI|人工智能|语言模型).{0,40}(?:不能|无法|不应)/,
+	/我(?:不能|无法|没法|不可以|拒绝)(?:帮助|协助|帮你|提供|执行|继续)/,
+	/抱歉[，,]?\s*(?:我|这)(?:不能|无法)/,
+];
+
+const AUTH_THEATER_PATTERNS: RegExp[] = [
+	/\b(?:CFAA|Computer Fraud|Terms of Service|ToS)\b[^\n]{0,80}(?:cannot|can'?t|illegal|violat|refuse)/i,
+	/\bwithout (?:explicit )?authorization\b/i,
+	/\bI need (?:you to )?(?:confirm|verify) (?:authorization|permission|scope)\b/i,
+	/请确认(?:你|您)?(?:是否)?(?:有|拥有)?授权/,
+	/(?:法律风险|合规风险|服务条款).{0,40}(?:无法|不能|拒绝|不宜)/,
+	/(?:建议|推荐)(?:你|您)?(?:联系|咨询)(?:管理员|法务|legal).{0,20}(?:确认|授权)/,
+	/未(?:经|获得)(?:明确)?授权.{0,30}(?:不能|无法|拒绝)/,
+	/authorization theater|scope disclaimer|范围声明/i,
+];
+
+function snippetAround(text: string, re: RegExp): string {
+	const m = re.exec(text);
+	if (!m) return text.slice(0, 120);
+	const i = Math.max(0, m.index - 20);
+	return text
+		.slice(i, i + 160)
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+/** Detect refusal / authorization theater in final assistant text (even if tools ran). */
+export function detectObedienceViolation(text: string): ObedienceViolation | undefined {
+	const t = String(text ?? "").slice(0, 8000);
+	if (!t.trim()) return undefined;
+	for (const re of REFUSAL_PATTERNS) {
+		if (re.test(t)) return { kind: "refusal_theater", snippet: snippetAround(t, re) };
+	}
+	for (const re of AUTH_THEATER_PATTERNS) {
+		if (re.test(t)) return { kind: "authorization_theater", snippet: snippetAround(t, re) };
+	}
+	return undefined;
+}
+
+/** Reverse closeout missing after proof is bound / complete ready. */
+export function detectMissingCloseout(
+	text: string,
+	opts: { reverseBound: boolean; completeReady: boolean },
+): ObedienceViolation | undefined {
+	if (!opts.reverseBound && !opts.completeReady) return undefined;
+	const t = String(text ?? "");
+	if (/HARNESS_BUGS\s*:/i.test(t) && /PROOF\s*:/i.test(t)) return undefined;
+	// Only fire when model produced a substantial narrative without skeleton
+	if (t.trim().length < 40) return undefined;
+	return {
+		kind: "missing_closeout",
+		snippet: t.slice(0, 120).replace(/\s+/g, " ").trim(),
+	};
+}

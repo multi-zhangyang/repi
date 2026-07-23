@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { registerRepiAgentHooks } from "./agent-hooks.ts";
 import { registerRepiCompactHooks } from "./compact-hooks.ts";
 import { _hookDeps } from "./loaders.ts";
+import { registerObedienceHook } from "./obedience-correct.ts";
 import { registerRepiToolHooks } from "./tool-hooks.ts";
 
 export function installRepiSessionHooks(pi: any, stats: any, overrides: Record<string, any> = {}): void {
@@ -23,4 +24,6 @@ export function installRepiSessionHooks(pi: any, stats: any, overrides: Record<s
 	registerRepiAgentHooks(pi, stats, d);
 	registerRepiToolHooks(pi, stats, d);
 	registerRepiCompactHooks(pi, stats, d, compactState);
+	// Structural obedience: agent_end detect + followUp correction (complements no_refusal_kernel).
+	registerObedienceHook(pi, stats);
 }

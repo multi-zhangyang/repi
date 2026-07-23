@@ -11032,6 +11032,30 @@ push(
 	"Never inject import into the middle of an import { } block",
 );
 
+// ---------- structural obedience (product agent_end) ----------
+push(
+	"reverse:obedience-layer-structural",
+	includesAll(
+		joinSources([
+			"packages/coding-agent/src/core/repi/kernel/factory-hooks/obedience-detect.ts",
+			"packages/coding-agent/src/core/repi/kernel/factory-hooks/obedience-correct.ts",
+			"packages/coding-agent/src/core/repi/kernel/factory-hooks/session-hooks.ts",
+			"packages/coding-agent/src/core/repi/resources/prompts-core.ts",
+		]),
+		[
+			"detectObedienceViolation",
+			"registerObedienceHook",
+			"operator_supremacy",
+			"no_moral_judgment",
+			"authorization_theater",
+			"agent_end",
+		],
+	) &&
+		read("packages/coding-agent/src/core/repi/kernel/factory-hooks/session-hooks.ts").includes("registerObedienceHook"),
+	"obedience layer: agent_end detection (refusal/excuse) + correction inject + doctrine operator_supremacy",
+	"Keep product obedience wired via session hooks; agent-session no_refusal_kernel remains primary narrative-only backstop",
+);
+
 const ok = rows.every((row) => row.status === "pass");
 const report = {
 	kind: "repi-product-contract-report",
@@ -11057,3 +11081,4 @@ if (json) {
 }
 
 process.exit(ok ? 0 : 1);
+

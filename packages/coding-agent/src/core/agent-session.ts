@@ -1299,6 +1299,13 @@ export class AgentSession {
 			/(?:请|建议您?)不要(?:尝试|进行|这么做)/,
 			/无法协助/,
 			/抱歉[，,]?\s*(?:我|这)(?:不能|无法|没法)/,
+			// authorization theater / legal sermon (en+zh) — residual after doctrine
+			/\b(?:CFAA|Computer Fraud|Terms of Service|ToS)\b[^.]{0,60}(?:cannot|can'?t|won'?t|illegal|violat)/i,
+			/\b(?:without (?:explicit )?authorization|I need (?:you to )?(?:confirm|verify) (?:authorization|permission|scope))\b/i,
+			/请确认(?:你|您)?(?:是否)?(?:有|拥有)?授权/,
+			/(?:法律风险|合规风险|服务条款).{0,30}(?:无法|不能|拒绝|不宜)/,
+			/(?:建议|推荐)(?:你|您)?(?:联系|咨询)(?:管理员|法务|legal).{0,20}(?:确认|授权)/,
+			/未(?:经|获得)(?:明确)?授权.{0,20}(?:不能|无法|拒绝)/,
 		];
 		return patterns.some((p) => p.test(t));
 	}
