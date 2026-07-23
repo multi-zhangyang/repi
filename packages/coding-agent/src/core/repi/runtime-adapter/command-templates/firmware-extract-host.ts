@@ -8,7 +8,7 @@ export const FIRMWARE_EXTRACT_HOST_LINES = [
 	'    printf "[firmware-extract-host] binwalk=%s\\n" "$(command -v binwalk)"',
 	'    timeout 90s binwalk --run-as=root -eM -C "$EXTRACT_ROOT" "$target" 2>/tmp/repi-fw-binwalk-extract.err | head -80 | sed "s/^/[firmware-extract] /"',
 	'    if [ -s /tmp/repi-fw-binwalk-extract.err ]; then head -5 /tmp/repi-fw-binwalk-extract.err | sed "s/^/[firmware-extract-err] /"; fi',
-	"    CAP_BINWALK=1; CAP_EXTRACT=1; CAP_IMAGE=1",
+	'    if [ -n "$(find "$EXTRACT_ROOT" -maxdepth 3 -type f 2>/dev/null | head -1)" ]; then CAP_BINWALK=1; CAP_EXTRACT=1; CAP_IMAGE=1; else CAP_BINWALK=1; printf "[firmware-extract-host] cap=0 note=binwalk-ran-no-artifacts\\n"; fi',
 	"  else",
 	'    printf "[firmware-extract-host] binwalk=0\\n"',
 	"  fi",

@@ -28,7 +28,9 @@ export const FIRMWARE_IMAGE_SURROGATE_LINES = [
 	"print('[firmware-image] pure_python_map=1 signatures=%d' % len(found))",
 	"if found:",
 	"    print('[firmware-extract] pure_python_map=1 count=%d' % len(found))",
+	"    raise SystemExit(0)",
+	"raise SystemExit(2)",
 	"PY",
-	"  CAP_EXTRACT=1",
+	"  if [ $? -eq 0 ]; then CAP_EXTRACT=1; CAP_IMAGE=1; fi",
 	"fi",
 ] as const;
