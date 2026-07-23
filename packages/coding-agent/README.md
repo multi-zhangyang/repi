@@ -4,14 +4,14 @@
   </a>
 </p>
 <p align="center">
-  <a href="https://www.npmjs.com/package/@repi/coding-agent"><img alt="npm" src="https://img.shields.io/npm/v/@repi/coding-agent?style=flat-square" /></a>
+  <a href="https://github.com/multi-zhangyang/repi/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/multi-zhangyang/repi?style=flat-square" /></a>
 </p>
 
 ---
 
 # REPI Coding Agent
 
-**REPI is the runnable reverse / pentest harness agent.** It maps targets, executes real tools, verifies claims, writes evidence, and keeps upstream `pi` isolated: command is `repi`, profile is `~/.repi/agent`, and normal `pi` / `~/.pi` are not owned by REPI.
+**REPI is the runnable reverse / pentest harness agent.** Primary install is `install.sh` or GitHub Release tarballs; `@repi/*` package names are fixed for future registry publish (not yet on npm). It maps targets, executes real tools, verifies claims, writes evidence, and keeps upstream `pi` isolated: command is `repi`, profile is `~/.repi/agent`, and normal `pi` / `~/.pi` are not owned by REPI.
 
 The npm/bin entry boots straight into the REPI kernel: reverse/pentest prompts, `/goal`, evidence ledgers, verifier → compiler → replayer → autofix proof-loop, runtime adapters, extension compatibility, and profile initialization are all product defaults.
 

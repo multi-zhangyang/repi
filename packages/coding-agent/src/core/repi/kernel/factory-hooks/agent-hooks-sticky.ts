@@ -1,3 +1,5 @@
+import { readCurrentMission } from "../../mission.ts";
+
 /** Sticky / long-run cold-start helpers for agent-hooks. */
 
 export function sameRouteDomain(a: any, b: any): boolean {
@@ -43,6 +45,27 @@ export function buildStickyRuntimeLine(input: {
 			: "active_tools: (route default)";
 	const calls = Number(input.stats?.calls ?? 0);
 	const failures = Number(input.stats?.failures ?? 0);
+	let reverseBound = false;
+	try {
+		const cps = readCurrentMission()?.checkpoints;
+		reverseBound = Array.isArray(cps)
+			? cps.some(
+					(c: { name?: string; status?: string; note?: string }) =>
+						((c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") &&
+							(c.status === "done" ||
+								(c.status === "pending" && String(c.note ?? "").includes("runtime_adapter")))) ||
+						((c.name === "native_runtime_ready" ||
+							c.name === "mobile_runtime_ready" ||
+							c.name === "live_browser_ready") &&
+							c.status === "done"),
+				)
+			: false;
+	} catch {
+		reverseBound = false;
+	}
+	const next = reverseBound
+		? "next: reverse capture already bound — re_domain_proof_exit show → re_operator plan → re_operator dispatch maxSteps=1 → re_complete → HARNESS_BUGS/PROOF only; do not thrash re_runtime_adapter/re_native_runtime/re_live_browser/re_bootstrap"
+		: "next: continue live proof path → re_domain_proof_exit show → re_complete audit when runtime capture is partial|strong";
 	return [
 		"## REPI Runtime (sticky)",
 		"repi_inject: sticky-v1",
@@ -51,7 +74,7 @@ export function buildStickyRuntimeLine(input: {
 		`session_stats: tool_calls=${calls} failures=${failures}`,
 		toolLine,
 		"policy: reuse sticky mission; progressive disclosure; do not re-dump manuals/memory/evidence tails",
-		"next: continue live proof path → re_domain_proof_exit show → re_complete audit when runtime capture is partial|strong",
+		next,
 	].join("\n");
 }
 

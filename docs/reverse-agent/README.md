@@ -4,6 +4,8 @@ REPI 的主题是逆向渗透执行，不是泛安全助手、通用 coding agen
 
 项目可以大改；方向比兼容旧形态更重要。保留 Pi / Claude Code 风格 runtime、插件、MCP、工具调用和 subagent 的成熟机制，删除或重塑不能服务逆向渗透执行的臃肿控制平面。
 
+Primary install path: `install.sh` or GitHub Release tarballs. Workspace package names are `@repi/*` (not yet published to the public npm registry).
+
 本目录只保留 REPI 的普通使用和运行时说明。通用验证入口是：
 
 ```bash

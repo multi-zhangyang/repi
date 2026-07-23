@@ -52,31 +52,19 @@ const memoryFiles = [
 
 function usage() {
 	return `Usage:
-  repi memory status [--json]
-  repi memory list [--json] [--limit N] [--all] [--query <text>] [--verbose]
-  repi memory show <query-or-event-id> [--json]
-  repi memory diff [--json] [--limit N] [--all]
-  repi memory why <query-or-event-id> [--json] [--limit N]
-  repi memory forget <query-or-event-id> [--reason <text>] [--json]
-  repi memory quarantine <query-or-event-id> [--reason <text>] [--json]
-  repi memory doctor [--json]
-  repi memory export [--output <path>] [--full] [--limit N] [--json]
-  repi memory purge [--dry-run|--apply --yes] [--governed|--older-than-days N|--query <text>|--id <event-id>|--all] [--json]
-  repi memory sanitize [--dry-run|--apply --yes] [--include-evidence] [--include-sessions] [--backup] [--json]
-  repi memory repair [--dry-run|--apply --yes] [--json]
+  repi memory status|doctor|export|purge|sanitize|repair [options]
 
-status  Show scoped memory posture, file sizes, pending consolidation count.
-list    List sanitized memory events. By default hides forget/quarantine rows and long lessons; add --verbose for details.
-show    Show one sanitized memory event and its governance state.
-diff    Show high-value memory events not yet consolidated.
-why     Explain which memory rows match a query and why they would be visible.
-forget  Append a tombstone governance decision. It does not rewrite history.
-quarantine Append a quarantine governance decision. It blocks future recall/injection.
-doctor  Check memory pollution posture and store health.
-export  Write a sanitized memory diagnostic bundle. API keys/tokens are redacted.
-purge   Physically remove selected event rows after creating a .bak backup; default is dry-run. --apply requires --yes.
-sanitize Redact leaked API keys/tokens/private API URLs from local memory files; default is dry-run. --apply requires --yes. Raw backups are off by default; add --backup only if you accept keeping pre-redaction copies locally.
-repair  Quarantine invalid events/case-memory JSONL rows and rechain events.jsonl when seq/hash drift is detected; default is dry-run. --apply requires --yes.
+REPI memory product surface is REMOVED (doctor: memory:product-removed).
+These commands are residual diagnostics/cleanup only — not a product feature.
+
+  status     Show residual files + pollution-safe posture
+  doctor     Check residual store health / pollution
+  export     Redacted diagnostic bundle
+  purge      Remove residual event rows (default dry-run; --apply needs --yes)
+  sanitize   Redact secrets from residual local files (default dry-run)
+  repair     Quarantine invalid JSONL / rechain (default dry-run)
+
+Legacy list/show/diff/why/forget/quarantine/consolidate remain for residual cleanup only.
 `;
 }
 
@@ -1137,6 +1125,7 @@ function buildRepairReport() {
 
 function printStatus(report) {
 	console.log("REPI Memory Status");
+	console.log("product: removed (diagnostic/cleanup only; not a product feature)");
 	console.log(`agentDir: ${report.agentDir}`);
 	console.log(
 		`mode=${report.posture.mode} schema=${report.posture.schemaVersion} autoRecall=${report.posture.autoRecall} autoDeposit=${report.posture.autoDeposit}`,
@@ -1161,7 +1150,7 @@ function printStatus(report) {
 		const status = file.exists ? `${file.bytes} bytes mtime=${file.mtime}` : "missing";
 		console.log(`  ${basename(file.path)}: ${status}`);
 	}
-	console.log("next: repi memory diff && repi memory consolidate --dry-run");
+	console.log("next: repi memory doctor (product surface removed; purge/sanitize only if cleaning local residual files)");
 }
 
 function printList(report) {

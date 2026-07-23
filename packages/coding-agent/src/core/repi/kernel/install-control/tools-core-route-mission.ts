@@ -2,6 +2,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { reverseDomainCaptureNextCommands } from "../../reverse-capture.ts";
+import { clearMissionReverseBound } from "../install-reverse/tools-capture-inflight.ts";
 import { trySameTaskReverseReadyRouteStop } from "./route-same-task-ready.ts";
 import type { ControlPlaneToolDeps } from "./tools-deps.ts";
 
@@ -28,6 +29,14 @@ export function registerRepiControlCoreRouteMissionTools(
 			const sameTaskStop = trySameTaskReverseReadyRouteStop({ task, route, deps });
 			if (sameTaskStop) return sameTaskStop;
 			// Fresh mission blackboard so reverse loops do not inherit prior operation_queue state.
+			try {
+				const prev = deps.readCurrentMission?.();
+				const prevDomain = String(prev?.route?.domain ?? "").trim();
+				const nextDomain = String(route?.domain ?? "").trim();
+				if (!prevDomain || !nextDomain || prevDomain !== nextDomain) clearMissionReverseBound();
+			} catch {
+				clearMissionReverseBound();
+			}
 			const mission = deps.writeCurrentMission(deps.createMission(task, route));
 			const techniqueIds = deps.techniqueIdsForRoute(route);
 			const activeTools = deps.activateToolsForRoute?.(route.domain) ?? [];
@@ -78,6 +87,14 @@ export function registerRepiControlCoreRouteMissionTools(
 			const action = params.action ?? "show";
 			if (action === "new") {
 				const task = params.task ?? "reverse/pentest task";
+				try {
+					const prev = deps.readCurrentMission?.();
+					const prevDomain = String(prev?.deps.routeReconTask(task)?.domain ?? "").trim();
+					const nextDomain = String(deps.routeReconTask(task)?.domain ?? "").trim();
+					if (!prevDomain || !nextDomain || prevDomain !== nextDomain) clearMissionReverseBound();
+				} catch {
+					clearMissionReverseBound();
+				}
 				const mission = deps.writeCurrentMission(deps.createMission(task, deps.routeReconTask(task)));
 				const activated = deps.activateToolsForRoute?.(mission.route?.domain) ?? [];
 				const reverseNext = reverseDomainCaptureNextCommands({

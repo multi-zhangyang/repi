@@ -19,6 +19,8 @@ export {
 	writePrivateTextFile,
 } from "./io/files.ts";
 export {
+	invalidateJsonObjectFileCache,
 	readJsonObjectFile,
 	readJsonObjectFileCached,
+	seedJsonObjectFileCache,
 } from "./io/json.ts";

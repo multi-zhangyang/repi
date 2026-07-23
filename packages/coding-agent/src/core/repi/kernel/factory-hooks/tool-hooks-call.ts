@@ -1,5 +1,6 @@
-/** Tool call session hook: trace + loop guard. */
+/** Tool call session hook: trace + loop guard + reverse/completion thrash stop. */
 import { createHash } from "node:crypto";
+import { missionCheckpoints, tryThrashStopBeforeTool } from "./tool-hooks-thrash.ts";
 
 export function registerRepiToolCallHook(pi: any, stats: any, d: Record<string, any>): void {
 	const allowNoSessionReconWriteback = d.allowNoSessionReconWriteback;
@@ -14,6 +15,31 @@ export function registerRepiToolCallHook(pi: any, stats: any, d: Record<string, 
 		} catch (error) {
 			pi.appendEntry("repi-tool-call-trace-error", { timestamp: Date.now(), error: String(error).slice(0, 500) });
 		}
+
+		const toolName = String(event?.toolName ?? event?.name ?? event?.tool?.name ?? "").trim();
+		const cps = missionCheckpoints();
+		let completeReady = false;
+		try {
+			const audit = typeof d.auditCompletion === "function" ? d.auditCompletion() : undefined;
+			const reverseDone = cps.some((c) => {
+				if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
+				if (c.status === "done") return true;
+				return c.status === "pending" && String(c.note ?? "").includes("runtime_adapter");
+			});
+			completeReady =
+				audit?.ready === true ||
+				(reverseDone &&
+					cps.some(
+						(c) =>
+							(c.name === "report_or_writeup_ready" || c.name === "completion_audit_ready") &&
+							c.status === "done",
+					));
+		} catch {
+			completeReady = false;
+		}
+		const thrash = tryThrashStopBeforeTool({ toolName, cps, completeReady });
+		if (thrash) return thrash;
+
 		const command = getBashCommand(event);
 		if (!command) return;
 		stats.bashCalls += 1;

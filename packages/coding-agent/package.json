@@ -103,5 +103,9 @@
 	},
 	"publishConfig": {
 		"access": "public"
+	},
+	"homepage": "https://github.com/multi-zhangyang/repi",
+	"bugs": {
+		"url": "https://github.com/multi-zhangyang/repi/issues"
 	}
 }

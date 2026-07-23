@@ -62,5 +62,13 @@ export function writeMobileRuntimeArtifact(mobile: MobileRuntimeArtifact): strin
 		mobile.executions.length > 0 &&
 		mobile.executions.every((item: any) => item.status === "blocked");
 	updateMissionCheckpoint("mobile_runtime_ready", blocked ? "blocked" : "done", path);
+	if (!blocked) {
+		try {
+			updateMissionCheckpoint("reverse_proof_exit_ready", "pending", `runtime_adapter mobile ${path}`);
+			updateMissionCheckpoint("minimal_path_proven", "pending", `runtime_adapter mobile ${path}`);
+		} catch {
+			/* optional */
+		}
+	}
 	return path;
 }

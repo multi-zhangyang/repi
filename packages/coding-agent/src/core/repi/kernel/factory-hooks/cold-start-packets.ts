@@ -90,8 +90,8 @@ export function buildRepiColdStartLeanPacket(input: RepiColdStartInput): string 
 			? workflow.slice(0, 6).map((step: string) => `- ${step}`)
 			: ["- re_map <target>", "- live proof path", "- re_domain_proof_exit show"]),
 		"next:",
-		"- re_map <target> then one live proof path (re_native_runtime / re_live_browser / re_js_signing / re_web_authz_state / re_lane run)",
-		"- re_evidence append for decisive runtime/traffic/artifact facts only",
+		"- re_route then re_map <target> then ONE live proof path (re_runtime_adapter / re_native_runtime / re_live_browser) — never bash/read first",
+		"- re_evidence append only after capture if needed (not before reverse bind)",
 		...reverseNext,
 		"- Load domain skill/prompt only when needed; do not dump reference manuals into context",
 		"- harness: /plan for read-only recon; /permission default|plan|acceptEdits|bypass; tools activate by route",

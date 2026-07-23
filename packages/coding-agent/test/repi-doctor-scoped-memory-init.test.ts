@@ -19,7 +19,7 @@ const GUARDRAILS = [
 	"REPI_BASH_DEFAULT_TIMEOUT_SECONDS",
 ];
 
-describe("repi doctor scoped memory bootstrap", () => {
+describe("repi doctor memory product-removed bootstrap", () => {
 	let tempRoot: string;
 	let repoRoot: string;
 	let agentDir: string;
@@ -97,7 +97,7 @@ if (args.includes("--help")) {
   process.exit(0);
 }
 if (args.includes("--list-models")) {
-  console.log("No models available. Configure a model with REPI_* environment variables (Claude Code-style) or ~/.repi/agent/models.json");
+  console.log("No models available. Configure a model with REPI_* environment variables (or ~/.repi/agent/models.json");
   process.exit(0);
 }
 process.exit(0);
@@ -141,11 +141,13 @@ process.exit(0);
 			goal: { builtIn: "pass", footer: "pass", rpcGoalCommands: 1, rpcGoalTools: 1 },
 			envModel: { runtimeProvider: "fake-provider", runtimeModel: "fake-model", contextWindow: 262144 },
 		});
+		expect(report.checks.find((check) => check.id === "memory:product-removed")).toMatchObject({
+			status: "pass",
+			evidence: expect.stringContaining("product=removed"),
+		});
+		// Legacy memory seed file checks are intentionally absent (product surface removed).
 		for (const id of ["memory:core-file", "memory:project-file", "memory:procedural-file", "memory:event-store"]) {
-			expect(report.checks.find((check) => check.id === id)).toMatchObject({
-				status: "pass",
-				evidence: expect.stringContaining("lazyScoped=true"),
-			});
+			expect(report.checks.find((check) => check.id === id)).toBeUndefined();
 		}
 		expect(report.checks.find((check) => check.id === "goal:rpc-runtime-registration")).toMatchObject({
 			status: "pass",
@@ -182,15 +184,12 @@ process.exit(0);
 		expect(report.fixActions.find((action) => action.id === "install-repi")).toMatchObject({ exit: 0 });
 		expect(report.fixActions.find((action) => action.id === "profile-init")).toMatchObject({ exit: 0 });
 		expect(report.checks.find((check) => check.id === "runtime:settings")).toMatchObject({ status: "pass" });
-		expect(report.checks.find((check) => check.id === "memory:scoped-defaults")).toMatchObject({
+		expect(report.checks.find((check) => check.id === "memory:product-removed")).toMatchObject({
 			status: "pass",
-			evidence: expect.stringContaining('"schemaVersion":2'),
+			evidence: expect.stringContaining("product=removed"),
 		});
 		for (const id of ["memory:core-file", "memory:project-file", "memory:procedural-file", "memory:event-store"]) {
-			expect(report.checks.find((check) => check.id === id)).toMatchObject({
-				status: "pass",
-				evidence: expect.stringContaining("lazyScoped=true"),
-			});
+			expect(report.checks.find((check) => check.id === id)).toBeUndefined();
 		}
 	});
 

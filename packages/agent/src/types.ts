@@ -55,6 +55,12 @@ export type AgentToolCall = Extract<AssistantMessage["content"][number], { type:
 export interface BeforeToolCallResult {
 	block?: boolean;
 	reason?: string;
+	/**
+	 * When `block` is true, controls whether the synthetic tool result is marked isError.
+	 * Default true (hard block). Soft thrash-stops may set false so protocol guards are not
+	 * counted as harness tool failures.
+	 */
+	isError?: boolean;
 }
 
 /**

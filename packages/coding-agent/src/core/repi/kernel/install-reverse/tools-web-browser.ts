@@ -3,6 +3,8 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { updateMissionCheckpoint } from "../../mission.ts";
 import { truncateMiddle } from "../../text.ts";
+import { markMissionReverseBound } from "./tools-capture-inflight.ts";
+import { reverseProofBound, softMarkReverseFromNative } from "./tools-native-ready.ts";
 import { tryReuseRecentLiveBrowserArtifact } from "./tools-web-browser-reuse.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
@@ -44,6 +46,24 @@ export function registerRepiReverseLiveBrowserTool(
 							: hasHttpTarget
 								? "run"
 								: "plan";
+			if (action === "run" && reverseProofBound()) {
+				const text = [
+					"live_browser:",
+					"status: reverse_ready_stop",
+					"note: reverse capture already bound; do not thrash re_live_browser",
+					"next: re_domain_proof_exit show → re_operator plan/dispatch → re_complete → HARNESS_BUGS/PROOF only",
+				].join("\n");
+				return {
+					content: [{ type: "text" as const, text }],
+					details: {
+						action,
+						skipped: true,
+						reason: "reverse_ready_stop",
+						target: params.target,
+						url: params.url,
+					} as Record<string, unknown>,
+				};
+			}
 			// Same-URL rerun within TTL: reuse latest artifact (models often double-call browser).
 			if (action === "run" && hasHttpTarget) {
 				const reused = tryReuseRecentLiveBrowserArtifact({
@@ -52,7 +72,9 @@ export function registerRepiReverseLiveBrowserTool(
 				});
 				if (reused) {
 					try {
+						markMissionReverseBound();
 						updateMissionCheckpoint("live_browser_ready", "done", reused.path);
+						softMarkReverseFromNative(reused.path);
 					} catch {
 						/* mission optional */
 					}
@@ -77,6 +99,18 @@ export function registerRepiReverseLiveBrowserTool(
 							url: params.url,
 							timeoutMs: params.timeoutMs,
 						});
+			if (action === "run") {
+				try {
+					const path = deps.latestLiveBrowserArtifactPath?.();
+					if (path) {
+						markMissionReverseBound();
+						updateMissionCheckpoint("live_browser_ready", "done", path);
+						softMarkReverseFromNative(path);
+					}
+				} catch {
+					/* optional */
+				}
+			}
 			return {
 				content: [{ type: "text" as const, text: truncateMiddle(text, 20000) }],
 				details: {

@@ -8,6 +8,46 @@ in `CHANGELOG.upstream.md` for reference.
 
 ## [Unreleased]
 
+### Added
+
+- Commercial install honesty: `install.sh` / GitHub Release tarballs are primary; public npm `@repi/*` documented as not yet published.
+- `re_operator` closeout skeleton + soft-fill report after reverse proof so skip-`re_complete` models still finalize HARNESS/PROOF.
+- Stop further `re_operator` thrash once reverse completion is ready (plan/show/dispatch all return reverse_ready_stop).
+- Agent/LLM missions include reverse proof checkpoints; successful runtime adapter capture soft-marks reverse proof pending so capture thrash stops before domain_proof closeout.
+- Block capture tools (`re_runtime_adapter`/browser/native/…) after reverse proof soft-mark/done; keep `re_route` unblocked for new tasks.
+- Soft thrash-stops return blocked tool results with `isError: false` so protocol guards are not counted as harness tool failures.
+- Runtime adapter ready-stop engages after reverse soft-mark (not only full completion audit); native/mobile captures soft-mark reverse the same way.
+- `re_native_runtime` / `re_mobile_runtime` reverse_ready_stop after reverse soft-mark (kills double native thrash); reuse path also soft-marks.
+- Coalesce concurrent same-target `re_native_runtime` runs (parallel double-call → one execution).
+- Sticky inject switches to reverse-bound closeout when capture is already soft-marked/done; web domains include reverse proof checkpoints; browser ready-stop after reverse bound.
+- Process-local capture in-flight lock collapses concurrent same-mission adapter/native thrash; optimistic reverse soft-mark at capture start; host bash/read thrash soft-blocked after reverse bound.
+- Capture-first host thrash stop for any mission with reverse_proof checkpoints; tool thrash helpers use direct mission IO.
+- Pre-route host thrash stop (bash/read blocked until reverse protocol binds or route+capture path starts).
+- Ops domains (crypto/DFIR/memory/cloud/AD) include reverse_proof_exit_ready + report_or_writeup_ready for thrash/closeout parity.
+- Cold-start protocol: re_route→re_map→one capture tool first; no bash/read before reverse bind; closeout-only after reverse bound.
+- Same-domain re_route after reverse bind soft-stops (no mission wipe thrash); ephemeral dNNN tags ignored in same-task match.
+- Session-level reverseBound flag + mission JSON cache seed so thrash stops survive same-tick soft-mark and mission-id churn; clear only on fresh re_route mission.
+- Native runtime marks session reverseBound on acquire (sequential double native → reverse_ready_stop).
+- re_route same-domain soft-stop consults session reverseBound; clear reverseBound only on domain change.
+- Live browser marks session reverseBound on successful capture/reuse.
+- Operator reverseProofDone consults session reverseBound for closeout/thrash stop.
+- Operator thrash stops after reverse bound + report soft-fill (plan/show thrash blocked once queue exists; all actions stop once report done).
+- Completion-ready thrash stop blocks bash/read/write/edit/grep/find/ls after reverse proof + report ready.
+- Demote model-forced native adapters when mission lexical is a stronger domain (agent/cloud/crypto/…).
+
+### Changed
+
+- Package names use `@repi/*` (coding-agent, ai, agent-core, tui); publish/release scripts aligned.
+- Memory CLI/help marked product-removed (diagnostic/cleanup only).
+- Doctor fix hints prefer `repi doctor --fix` for end users.
+- Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
+
+### Fixed
+
+- Release tarball install after package rename (dist imports `@repi/*`).
+- Release/selfcheck doctor expectations use `memory:product-removed` instead of removed `memory:scoped-defaults`.
+
+
 ## [0.1.3] - 2026-07-07
 
 Patch release focused on env-provider correctness, runtime reliability, and release install safety.

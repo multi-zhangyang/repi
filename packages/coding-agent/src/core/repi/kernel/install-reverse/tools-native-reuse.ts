@@ -26,3 +26,28 @@ export function tryReuseRecentNativeRuntimeArtifact(params: {
 	if (!sameTarget || !hasProof) return undefined;
 	return { path: latest, ageMs, body };
 }
+
+const inflight = new Map<string, Promise<string>>();
+
+export function nativeRunKey(target?: string): string {
+	return String(target ?? "").trim() || ".";
+}
+
+/** Coalesce concurrent same-target native runs onto one execution promise. */
+export async function runNativeRuntimeCoalesced(params: {
+	target?: string;
+	run: () => Promise<string>;
+}): Promise<{ text: string; coalesced: boolean }> {
+	const key = nativeRunKey(params.target);
+	const existing = inflight.get(key);
+	if (existing) {
+		const text = await existing;
+		return { text, coalesced: true };
+	}
+	const pending = params.run().finally(() => {
+		if (inflight.get(key) === pending) inflight.delete(key);
+	});
+	inflight.set(key, pending);
+	const text = await pending;
+	return { text, coalesced: false };
+}

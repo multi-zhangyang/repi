@@ -83,11 +83,11 @@ if (parallel) {
 } else if (args === "doctor" && !fs.existsSync(fixedPath)) {
 	console.log("REPI Doctor");
 	console.log("FAIL runtime:settings :: settings=/tmp/fresh/settings.json");
-	console.log("FAIL memory:scoped-defaults :: memory={}");
+	console.log("FAIL memory:product-removed :: memory={}");
 	process.exit(1);
 } else if (args === "doctor --fix --json") {
 	fs.writeFileSync(fixedPath, "1");
-	console.log(JSON.stringify({ kind: "repi-doctor-report", ok: true, fixActions: [{ id: "profile-init", exit: 0 }], checks: [{ id: "runtime:settings", status: "pass" }, { id: "memory:scoped-defaults", status: "pass" }] }));
+	console.log(JSON.stringify({ kind: "repi-doctor-report", ok: true, fixActions: [{ id: "profile-init", exit: 0 }], checks: [{ id: "runtime:settings", status: "pass" }, { id: "memory:product-removed", status: "pass" }] }));
 } else if (args.includes("model list")) {
 	console.log("repi-model-list-report");
 } else if (args.includes("memory doctor")) {

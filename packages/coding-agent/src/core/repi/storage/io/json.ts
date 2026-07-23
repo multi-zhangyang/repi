@@ -32,3 +32,18 @@ export function readJsonObjectFileCached<T>(path: string): T | undefined {
 		return undefined;
 	}
 }
+
+/** Seed/overwrite cache after an atomic write so same-tick readers see the new value. */
+export function seedJsonObjectFileCache(path: string, value: unknown): void {
+	try {
+		const stat = statSync(path);
+		jsonObjectFileCache.set(path, { mtimeMs: stat.mtimeMs, size: stat.size, value });
+	} catch {
+		jsonObjectFileCache.delete(path);
+	}
+}
+
+export function invalidateJsonObjectFileCache(path?: string): void {
+	if (path) jsonObjectFileCache.delete(path);
+	else jsonObjectFileCache.clear();
+}

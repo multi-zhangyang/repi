@@ -2,11 +2,14 @@
 
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
-import { softFillOptionalOrchestrationWhenReverseReady } from "../../completion-audit/soft-fill-optional.ts";
-import { auditCompletion } from "../../completion-audit.ts";
-import { tryReverseReadyDomainProofStop, tryReverseReadyRuntimeAdapterStop } from "./tools-adapter-ready-stop.ts";
+import { updateMissionCheckpoint } from "../../mission.ts";
+import { buildRuntimeAdapterDemoteNote } from "./tools-adapter-demote.ts";
+import { registerRepiDomainProofExitTool } from "./tools-adapter-domain-proof.ts";
+import { tryReverseReadyRuntimeAdapterStop } from "./tools-adapter-ready-stop.ts";
 import { runRuntimeAdapterCoalesced, tryReuseRecentRuntimeAdapterArtifact } from "./tools-adapter-reuse.ts";
 import { pickAdapterIdForRun, resolveAdapterRunTarget } from "./tools-adapter-target.ts";
+import { registerRepiToolchainDomainTool } from "./tools-adapter-toolchain.ts";
+import { markMissionReverseBound, releaseCaptureSlot, tryAcquireCaptureSlot } from "./tools-capture-inflight.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseAdapterTools(
@@ -87,6 +90,34 @@ export function registerRepiReverseAdapterTools(
 					target: params.target,
 					resolvedTarget,
 				});
+				if (!tryAcquireCaptureSlot("runtime_adapter")) {
+					const text = [
+						"runtime_adapter:",
+						"status: reverse_ready_stop",
+						"note: another capture is already in-flight for this mission; do not thrash",
+						"next: re_domain_proof_exit show → re_operator plan/dispatch → re_complete → HARNESS_BUGS/PROOF only",
+					].join("\n");
+					return {
+						content: [{ type: "text" as const, text }],
+						details: {
+							action,
+							skipped: true,
+							reason: "reverse_ready_stop",
+							adapter,
+							target: params.target,
+						} as Record<string, unknown>,
+					};
+				}
+				// Optimistic soft-mark so concurrent thrash hits reverse_ready_stop mid-flight.
+				if (adapter) {
+					try {
+						markMissionReverseBound();
+						updateMissionCheckpoint("reverse_proof_exit_ready", "pending", `runtime_adapter ${adapter} starting`);
+						updateMissionCheckpoint("minimal_path_proven", "pending", `runtime_adapter ${adapter} starting`);
+					} catch {
+						/* optional */
+					}
+				}
 				try {
 					const reused = tryReuseRecentRuntimeAdapterArtifact({
 						adapterId: adapter,
@@ -95,6 +126,21 @@ export function registerRepiReverseAdapterTools(
 					});
 					if (reused) {
 						const nl = String.fromCharCode(10);
+						// Soft-mark reverse proof so thrash-stop engages even when models only hit reuse.
+						try {
+							updateMissionCheckpoint(
+								"reverse_proof_exit_ready",
+								"pending",
+								`runtime_adapter ${reused.adapterId} ${reused.path}`,
+							);
+							updateMissionCheckpoint(
+								"minimal_path_proven",
+								"pending",
+								`runtime_adapter ${reused.adapterId} ${reused.path}`,
+							);
+						} catch {
+							/* optional */
+						}
 						const note = [
 							"runtime_adapter:",
 							"status: reuse",
@@ -104,6 +150,7 @@ export function registerRepiReverseAdapterTools(
 							"note: latest same adapter+target capture within 120s; do not re-run",
 							"next: re_domain_proof_exit show",
 						].join(nl);
+						releaseCaptureSlot("runtime_adapter");
 						return {
 							content: [{ type: "text" as const, text: note }],
 							details: {
@@ -119,6 +166,10 @@ export function registerRepiReverseAdapterTools(
 				} catch {
 					/* optional */
 				}
+				const { demoted, note: demoteNote } = buildRuntimeAdapterDemoteNote({
+					requested: params.adapter,
+					adapter,
+				});
 				const { text, coalesced } = await runRuntimeAdapterCoalesced({
 					adapterId: adapter,
 					target: resolvedTarget ?? params.target,
@@ -129,21 +180,25 @@ export function registerRepiReverseAdapterTools(
 							timeoutMs: params.timeoutMs,
 						}),
 				});
+				releaseCaptureSlot("runtime_adapter");
 				return {
 					content: [
 						{
 							type: "text" as const,
 							text: deps.truncateMiddle(
-								coalesced
-									? `runtime_adapter:\nstatus: coalesce\nnote: joined in-flight same adapter+target run\n\n${text}`
-									: text,
+								demoteNote +
+									(coalesced
+										? `runtime_adapter:\nstatus: coalesce\nnote: joined in-flight same adapter+target run\n\n${text}`
+										: text),
 								24000,
 							),
 						},
 					],
 					details: {
 						action,
-						adapter: params.adapter,
+						adapter,
+						requestedAdapter: params.adapter,
+						demoted,
 						target: params.target,
 						coalesced,
 					} as Record<string, unknown>,
@@ -162,113 +217,6 @@ export function registerRepiReverseAdapterTools(
 			};
 		},
 	});
-	registerTool({
-		name: "re_domain_proof_exit",
-		label: "RE Domain Proof Exit Closure",
-		description:
-			"Check whether the active reverse/pentest domain has runtime evidence satisfying ToolchainDomainCapabilityV1 proof-exit criteria before final completion. Catalog technique.proofExit alone is insufficient; require proof.exit=partial_runtime_capture|runtime_capture_strong and bind_ready=true.",
-		promptSnippet:
-			"Use re_domain_proof_exit before final claims to convert missing domain proof exits into concrete next commands.",
-		promptGuidelines: [
-			"Call re_domain_proof_exit show after re_lane/re_native_runtime/re_live_browser/replayer/proof-loop artifacts exist.",
-			"Treat domain_proof_exit_missing blockers as commands to run, not as narrative refusal.",
-			"After domain proof passes, call re_operator plan then re_operator dispatch then re_complete before final HARNESS_BUGS/PROOF.",
-		],
-		parameters: Type.Object(
-			{
-				// Coerce freely: models pass show/write/audit/run/empty.
-				action: Type.Optional(Type.String()),
-				domain: Type.Optional(Type.String()),
-			},
-			{ additionalProperties: true },
-		),
-		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			try {
-				const domainStop = tryReverseReadyDomainProofStop();
-				if (domainStop) return domainStop;
-				const rawAction = String(params?.action ?? "show").toLowerCase();
-				const action = rawAction === "write" ? "write" : "show";
-				const domain =
-					typeof params?.domain === "string" && params.domain.trim() ? params.domain.trim() : undefined;
-				const report = deps.buildDomainProofExitClosure(deps.readCurrentMission(), domain);
-				// Always persist so mission checkpoints update even when models omit action.
-				const path = deps.writeDomainProofExitClosureArtifact(report);
-				// If runtime proof already binds, soft-fill optional orchestration even when the
-				// model forgets re_complete (common free-model skip after operator verify).
-				if (report.status === "passed") {
-					try {
-						const audit = auditCompletion();
-						if (audit?.ready) softFillOptionalOrchestrationWhenReverseReady(audit as any);
-					} catch {
-						/* optional */
-					}
-				}
-				const format =
-					typeof deps.formatDomainProofExitClosure === "function"
-						? deps.formatDomainProofExitClosure
-						: (r: any, p?: string) => JSON.stringify({ path: p, status: r?.status, domain: r?.domainId });
-				const nextFooter =
-					report.status === "passed"
-						? "\n\nnext_required:\n- re_operator plan <target>\n- re_operator dispatch <target> maxSteps=2\n- re_complete audit\n- then HARNESS_BUGS/PROOF only"
-						: "";
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: deps.truncateMiddle(`${format(report, path)}${nextFooter}`, 20000),
-						},
-					],
-					details: {
-						action,
-						domain,
-						path,
-						status: report.status,
-						missingProofExits: report.missingProofExits,
-					} as Record<string, unknown>,
-				};
-			} catch (error) {
-				const message = error instanceof Error ? error.stack || error.message : String(error);
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `re_domain_proof_exit error: ${message.slice(0, 4000)}`,
-						},
-					],
-					details: { error: true, message: message.slice(0, 1000) } as Record<string, unknown>,
-				};
-			}
-		},
-	});
-	registerTool({
-		name: "re_toolchain_domain",
-		label: "RE Toolchain Domain Capability",
-		description:
-			"Inspect REPI professional reverse/pentest domain capability matrix with runtime tool-index evidence, fallbacks, proof exits, and next commands.",
-		promptSnippet:
-			"Use re_toolchain_domain to choose concrete domain tools and fallbacks before claiming a route is blocked.",
-		promptGuidelines: [
-			"Call re_toolchain_domain show when a reverse/pentest task feels under-tooled or too generic.",
-			"Use domain nextRuntimeCommands and recommendedInstallHints to drive re_lane/re_bootstrap rather than narrative-only advice.",
-		],
-		parameters: Type.Object({
-			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("refresh")])),
-			domain: Type.Optional(Type.String()),
-		}),
-		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const action = params.action ?? "show";
-			if (action === "refresh") await deps.refreshToolIndex(pi);
-			const report = deps.buildToolchainDomainCapability(params.domain);
-			const path = deps.writeToolchainDomainCapabilityArtifact(report);
-			return {
-				content: [
-					{
-						type: "text" as const,
-						text: deps.truncateMiddle(deps.formatToolchainDomainCapability(report, path), 20000),
-					},
-				],
-				details: { action, domain: params.domain, path, coverage: report.coverage } as Record<string, unknown>,
-			};
-		},
-	});
+	registerRepiDomainProofExitTool(registerTool, pi, deps);
+	registerRepiToolchainDomainTool(registerTool, pi, deps);
 }

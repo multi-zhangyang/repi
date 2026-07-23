@@ -17,13 +17,11 @@
 		"README.md"
 	],
 	"keywords": [
+		"repi",
 		"tui",
 		"terminal",
-		"ui",
-		"text-editor",
-		"differential-rendering",
-		"typescript",
-		"cli"
+		"cli",
+		"differential-rendering"
 	],
 	"author": "REPI Contributors",
 	"license": "MIT",
@@ -46,5 +44,9 @@
 	},
 	"publishConfig": {
 		"access": "public"
+	},
+	"homepage": "https://github.com/multi-zhangyang/repi/tree/main/packages/tui",
+	"bugs": {
+		"url": "https://github.com/multi-zhangyang/repi/issues"
 	}
 }

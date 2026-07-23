@@ -1080,10 +1080,11 @@ async function prepareToolCall(
 				};
 			}
 			if (beforeResult?.block) {
+				const blockedIsError = beforeResult.isError !== false;
 				return {
 					kind: "immediate",
 					result: createErrorToolResult(beforeResult.reason || "Tool execution was blocked"),
-					isError: true,
+					isError: blockedIsError,
 				};
 			}
 		}

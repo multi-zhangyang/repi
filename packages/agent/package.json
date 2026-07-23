@@ -35,11 +35,12 @@
 		"yaml": "2.9.0"
 	},
 	"keywords": [
-		"ai",
+		"repi",
 		"agent",
 		"llm",
-		"transport",
-		"state-management"
+		"reverse-pentest",
+		"harness",
+		"tool-calling"
 	],
 	"author": "REPI Contributors",
 	"license": "MIT",
@@ -59,5 +60,9 @@
 	},
 	"publishConfig": {
 		"access": "public"
+	},
+	"homepage": "https://github.com/multi-zhangyang/repi",
+	"bugs": {
+		"url": "https://github.com/multi-zhangyang/repi/issues"
 	}
 }

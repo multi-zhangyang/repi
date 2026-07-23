@@ -76,7 +76,15 @@ npm run build -w @repi/ai -w @repi/tui -w @repi/agent-core -w @repi/coding-agent
 # 或直接用仓库包装脚本：./repi
 ```
 
-### npm 包（发布后）
+### 安装方式（诚实说明）
+
+| 方式 | 状态 | 说明 |
+|------|------|------|
+| `install.sh` | **推荐** | clone + 依赖 + 本机 `repi` launcher |
+| GitHub Release `.tgz` | 支持 | tag 发布附带四包 tarball，可 `npm i -g ./xxx.tgz` |
+| npm registry `@repi/*` | **尚未公开发布** | 包名已定为 `@repi/*`，registry 上暂无；勿写 `npm i -g @repi/coding-agent` 当主路径 |
+
+包名（workspace / 未来 registry）：
 
 | 包 | 用途 |
 |----|------|
@@ -85,9 +93,12 @@ npm run build -w @repi/ai -w @repi/tui -w @repi/agent-core -w @repi/coding-agent
 | `@repi/agent-core` | agent loop / harness 核心 |
 | `@repi/tui` | 终端 UI |
 
+从 GitHub Release tarball 安装示例（版本号按 release 调整）：
+
 ```bash
-# 典型：安装 CLI（需已发布到 npm）
-npm i -g @repi/coding-agent
+# 下载四个同版本 tarball 后，在同一目录：
+npm i -g ./repi-ai-0.1.3.tgz ./repi-tui-0.1.3.tgz ./repi-agent-core-0.1.3.tgz ./repi-coding-agent-0.1.3.tgz
+repi --version && repi doctor
 ```
 
 ### 模型环境（OpenAI 兼容，通用网关）
@@ -120,6 +131,20 @@ repi reverse-sticky-smoke   # 多轮 sticky inject 冒烟
 ```
 
 运行时数据目录：`~/.repi/agent`（与 `pi` / `~/.pi` 隔离）。
+
+## 排障（可用优先）
+
+```bash
+repi doctor              # 就绪检查
+repi doctor --fix       # 修复空 profile / 缺失 settings
+repi model status        # 模型/env 是否生效
+repi smoke --json        # 离线产品冒烟
+```
+
+无模型时 `repi -p "..."` 会打印 REPI_* / `repi model add` 指引，不会静默挂起。
+
+安装主路径是 `install.sh` 或 GitHub Release tarball；公开 npm `@repi/*` 在未发布前不要作为主安装方式。
+
 
 ---
 

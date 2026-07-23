@@ -1,0 +1,97 @@
+/** Reverse/completion thrash stop helpers for tool_call hooks. */
+import { readCurrentMission } from "../../mission.ts";
+import { reverseProofBound } from "../install-reverse/tools-native-ready.ts";
+
+export const POST_REVERSE_CAPTURE_BLOCK = new Set([
+	"re_runtime_adapter",
+	"re_native_runtime",
+	"re_mobile_runtime",
+	"re_live_browser",
+	"re_web_authz_state",
+	"re_js_signing",
+	"re_exploit_lab",
+	"re_bootstrap",
+	"re_tool_index",
+	"re_lane",
+	"re_evidence",
+	"re_mission",
+	"re_techniques",
+]);
+
+export const POST_COMPLETE_HOST_BLOCK = new Set(["bash", "read", "grep", "find", "ls", "write", "edit"]);
+
+export function missionCheckpoints(_d?: Record<string, any>): Array<{ name?: string; status?: string; note?: string }> {
+	try {
+		const mission = readCurrentMission();
+		return Array.isArray(mission?.checkpoints) ? mission.checkpoints : [];
+	} catch {
+		return [];
+	}
+}
+
+export function isReverseDone(cps?: Array<{ name?: string; status?: string; note?: string }>): boolean {
+	try {
+		if (reverseProofBound()) return true;
+	} catch {
+		/* optional */
+	}
+	const list = cps ?? missionCheckpoints();
+	return list.some((c) => {
+		if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
+		if (c.status === "done") return true;
+		return c.status === "pending" && String(c.note ?? "").includes("runtime_adapter");
+	});
+}
+
+export function tryThrashStopBeforeTool(params: {
+	toolName: string;
+	cps?: Array<{ name?: string; status?: string; note?: string }>;
+	domain?: string;
+	completeReady: boolean;
+}): { block: true; isError: false; reason: string } | undefined {
+	const toolName = String(params.toolName ?? "").trim();
+	const cps = params.cps ?? missionCheckpoints();
+	const reverseDone = isReverseDone(cps);
+	const mapDone = cps.some((c) => c.name === "passive_map_done" && c.status === "done");
+	const hasReverseGate = cps.some((c) => c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven");
+	const routed = cps.some((c) => c.name === "route_selected" && c.status === "done");
+	// Pre-route / reverse-gate missions: no host thrash until reverse soft-mark/done.
+	// Models often bash in parallel with re_route before mission exists — block host tools then too.
+	if ((!routed || (hasReverseGate && !reverseDone)) && toolName && POST_COMPLETE_HOST_BLOCK.has(toolName)) {
+		return {
+			block: true,
+			isError: false,
+			reason: !routed
+				? "REPI capture_first: call re_route first (then re_map → domain capture); do not thrash bash/read before reverse protocol."
+				: mapDone
+					? "REPI capture_first: map done — call re_runtime_adapter/re_native_runtime/re_live_browser before bash/read. Then re_domain_proof_exit → re_operator → re_complete."
+					: "REPI capture_first: reverse mission — use re_route → re_map → domain capture tool; do not thrash bash/read first.",
+		};
+	}
+	if (toolName && POST_REVERSE_CAPTURE_BLOCK.has(toolName) && reverseDone) {
+		return {
+			block: true,
+			isError: false,
+			reason:
+				"REPI reverse_ready_stop: reverse proof already bound. Do not thrash capture tools. Call re_operator → re_complete then output HARNESS_BUGS/PROOF only.",
+		};
+	}
+	if (toolName === "re_map" && reverseDone && cps.some((c) => c.name === "passive_map_done" && c.status === "done")) {
+		return {
+			block: true,
+			isError: false,
+			reason:
+				"REPI reverse_ready_stop: reverse proof already bound and map done. Do not thrash re_map. Call re_operator → re_complete then HARNESS_BUGS/PROOF only.",
+		};
+	}
+	if (toolName && POST_COMPLETE_HOST_BLOCK.has(toolName) && (params.completeReady || reverseDone)) {
+		return {
+			block: true,
+			isError: false,
+			reason: params.completeReady
+				? "REPI completion_ready_stop: reverse completion already ready. Do not thrash bash/read/write/edit/grep/find. Output HARNESS_BUGS/PROOF only (optional re_complete once)."
+				: "REPI reverse_ready_stop: reverse capture already bound. Do not thrash bash/read/write/edit/grep/find. Call re_domain_proof_exit → re_operator → re_complete → HARNESS_BUGS/PROOF only.",
+		};
+	}
+	return undefined;
+}

@@ -1,10 +1,7 @@
 /** Reverse install tool: re_native_runtime. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
-import { auditCompletion } from "../../completion-audit.ts";
-import { readCurrentMission } from "../../mission.ts";
-import { truncateMiddle } from "../../text.ts";
-import { tryReuseRecentNativeRuntimeArtifact } from "./tools-native-reuse.ts";
+import { executeNativeRuntimeTool } from "./tools-native-run.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseNativeTool(
@@ -30,90 +27,7 @@ export function registerRepiReverseNativeTool(
 			timeoutMs: Type.Optional(Type.Number()),
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const hasTarget = Boolean(String(params.target || params.url || "").trim());
-			const action = params.action ?? (hasTarget ? "run" : "plan");
-			// Stop thrash: if reverse proof is already ready and mission is not native/pwn, skip.
-			try {
-				const mission = readCurrentMission();
-				const domain = String(mission?.route?.domain ?? "");
-				const nativeDomain = /Native reverse|Pwn \/ exploit|Malware analysis|Firmware/i.test(domain);
-				const reverseDone = Boolean(
-					mission?.checkpoints?.some(
-						(c: { name?: string; status?: string }) =>
-							(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
-					),
-				);
-				const audit = auditCompletion();
-				if (reverseDone && audit?.ready && !nativeDomain && action === "run") {
-					const nl = String.fromCharCode(10);
-					const text = [
-						"native_runtime:",
-						"status: reverse_ready_stop",
-						`route_domain: ${domain || "unknown"}`,
-						"note: reverse_runtime_gate already satisfied for non-native domain; do not thrash re_native_runtime",
-						"next: write HARNESS_BUGS/PROOF only",
-					].join(nl);
-					return {
-						content: [{ type: "text" as const, text }],
-						details: {
-							action,
-							skipped: true,
-							reason: "reverse_ready_stop",
-							target: params.target,
-						} as Record<string, unknown>,
-					};
-				}
-			} catch {
-				/* optional */
-			}
-			if (action === "run") {
-				try {
-					const reused = tryReuseRecentNativeRuntimeArtifact({
-						target: params.target,
-						latestPath: deps.latestNativeRuntimeArtifactPath?.(),
-						ttlMs: 120_000,
-					});
-					if (reused) {
-						const nl = String.fromCharCode(10);
-						const note = [
-							"native_runtime:",
-							"status: reuse",
-							`path: ${reused.path}`,
-							`ageMs: ${reused.ageMs}`,
-							"note: latest same-target native capture within 120s; do not re-run",
-							"next: re_domain_proof_exit show",
-						].join(nl);
-						return {
-							content: [
-								{
-									type: "text" as const,
-									text: truncateMiddle(`${note}${nl}${nl}${reused.body}`, 20000),
-								},
-							],
-							details: {
-								action: "reuse",
-								reused: true,
-								path: reused.path,
-								target: params.target,
-								ageMs: reused.ageMs,
-							} as Record<string, unknown>,
-						};
-					}
-				} catch {
-					/* optional */
-				}
-			}
-			const text =
-				action === "run"
-					? await deps.runNativeRuntime(pi, { target: params.target, timeoutMs: params.timeoutMs })
-					: deps.buildNativeRuntimeOutput(action, { target: params.target, timeoutMs: params.timeoutMs });
-			return {
-				content: [{ type: "text" as const, text: truncateMiddle(text, 20000) }],
-				details: { action, path: deps.latestNativeRuntimeArtifactPath(), target: params.target } as Record<
-					string,
-					unknown
-				>,
-			};
+			return executeNativeRuntimeTool(pi, deps, params);
 		},
 	});
 }

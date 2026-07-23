@@ -253,13 +253,13 @@ ${updateCommandLine}
   ${APP_NAME} smoke [--full|--json]
                                  Run fast REPI runtime checks
   ${APP_NAME} selfcheck [--deep|--json] [--provider <name>] [--model <id>]
-                                 End-to-end selfcheck for model/tool/memory/parallel/orchestration usability
+                                 End-to-end selfcheck for model/tool/parallel/orchestration usability
   ${APP_NAME} bugreport [--output <path>|--stdout|--json]
                                  Create a strictly redacted local diagnostic bundle
   ${APP_NAME} trust status|yes|no|clear [path]
                                  Show, save, or clear project trust decision
-  ${APP_NAME} memory status|list|show|diff|why|forget|quarantine|doctor|export|purge|consolidate
-                                 Inspect, explain, govern, export, purge, and consolidate scoped memory
+  ${APP_NAME} memory status|doctor|export|purge|sanitize|repair
+                                 Memory product surface REMOVED; diagnostic/cleanup only (not a product feature)
   ${APP_NAME} model list|add|edit|remove|login|test|default|reset|doctor|cost|export|import
                                  Configure providers, store local credentials, test/reset models, export/import templates, and estimate cost
   ${APP_NAME} mcp status|list|probe [server-id]

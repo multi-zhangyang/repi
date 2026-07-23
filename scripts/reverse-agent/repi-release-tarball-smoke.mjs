@@ -9,10 +9,10 @@ const skipBuild = process.argv.includes("--skip-build");
 const keep = process.argv.includes("--keep");
 const json = process.argv.includes("--json");
 const packages = [
-	{ directory: "packages/ai", name: "@pi-recon/repi-ai" },
-	{ directory: "packages/tui", name: "@pi-recon/repi-tui" },
-	{ directory: "packages/agent", name: "@pi-recon/repi-agent-core" },
-	{ directory: "packages/coding-agent", name: "@pi-recon/repi-coding-agent" },
+	{ directory: "packages/ai", name: "@repi/ai" },
+	{ directory: "packages/tui", name: "@repi/tui" },
+	{ directory: "packages/agent", name: "@repi/agent-core" },
+	{ directory: "packages/coding-agent", name: "@repi/coding-agent" },
 ];
 const rootPackageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const generatedModelFiles = ["packages/ai/src/models.generated.ts", "packages/ai/src/image-models.generated.ts"];
@@ -169,7 +169,7 @@ try {
 	rows.push(run("package-bin:env-model", repiBin, ["--offline", "--list-models"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: envAgentDir }, expectOutput: ["repi-env", "release-smoke-env-model", "262.1K"], rejectOutput: ["kimchi", "aigateway"] }));
 	rows.push(run("package-bin:model-status-env", repiBin, ["model", "status", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "model-status-agent") }, expectOutput: ['"source": "REPI_* environment"', '"provider": "repi-env"', '"model": "release-smoke-env-model"'], rejectOutput: ["https://release-smoke.invalid"] }));
 	rows.push(run("package-bin:doctor-env-model", repiBin, ["doctor", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "doctor-agent") }, timeout: 120_000, expectOutput: ['"ok": true', '"launcher:path-command-resolution"', '"launcher:shell-rc-path-activation"', '"goal:built-in-mode"', '"goal:footer-status-contract"', '"goal:rpc-runtime-registration"', '"models:env-only-contract"', '"models:env-rpc-runtime"', '"models:env-overrides-saved-default"', '"repi:launch-readiness"'] }));
-	rows.push(run("package-bin:doctor-fix-fresh-profile", repiBin, ["doctor", "--fix", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "doctor-fix-agent") }, timeout: 120_000, expectOutput: ['"ok": true', '"id": "profile-init"', '"exit": 0', '"runtime:settings"', '"memory:scoped-defaults"', '"repi:launch-readiness"'], rejectOutput: ['"provider":"kimchi"', '"id":"kimi-k2.7"'] }));
+	rows.push(run("package-bin:doctor-fix-fresh-profile", repiBin, ["doctor", "--fix", "--json"], { cwd: installDir, env: { ...envModel, REPI_CODING_AGENT_DIR: join(outDir, "doctor-fix-agent") }, timeout: 120_000, expectOutput: ['"ok": true', '"id": "profile-init"', '"exit": 0', '"runtime:settings"', '"memory:product-removed"', '"repi:launch-readiness"'], rejectOutput: ['"provider":"kimchi"', '"id":"kimi-k2.7"'] }));
 	rows.push(
 		run("package-bin:rpc-fresh-env-footer", repiBin, ["--offline", "--mode", "rpc", "--no-session"], {
 			cwd: installDir,

@@ -1,9 +1,8 @@
 /** Reverse install tool: re_mobile_runtime. */
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
-import { auditCompletion } from "../../completion-audit.ts";
-import { readCurrentMission } from "../../mission.ts";
 import { tryReuseRecentMobileRuntimeArtifact } from "./tools-mobile-reuse.ts";
+import { reverseProofBound, softMarkReverseFromNative } from "./tools-native-ready.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseMobileTool(
@@ -31,49 +30,30 @@ export function registerRepiReverseMobileTool(
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const hasTarget = Boolean(String(params.target || params.url || params.packageName || "").trim());
 			const action = params.action ?? (hasTarget ? "run" : "run");
-			try {
-				const mission = readCurrentMission();
-				const reverseDone = Boolean(
-					mission?.checkpoints?.some(
-						(c: { name?: string; status?: string }) =>
-							(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
-					),
-				);
-				if (reverseDone && action === "run") {
-					const audit = auditCompletion();
-					if (audit?.ready) {
-						const nl = String.fromCharCode(10);
-						const text = [
-							"mobile_runtime:",
-							"status: reverse_ready_stop",
-							"note: reverse_runtime_gate already satisfied for this mission; do not re-run mobile runtime without a real blocker",
-							"next: write HARNESS_BUGS/PROOF only",
-						].join(nl);
-						return {
-							content: [{ type: "text" as const, text }],
-							details: {
-								action,
-								skipped: true,
-								reason: "reverse_ready_stop",
-								target: params.target,
-								packageName: params.packageName,
-							} as Record<string, unknown>,
-						};
-					}
-				}
-			} catch {
-				/* optional */
+			if (action === "run" && reverseProofBound()) {
+				const text = [
+					"mobile_runtime:",
+					"status: reverse_ready_stop",
+					"note: reverse capture already bound; do not thrash re_mobile_runtime",
+					"next: re_domain_proof_exit show → re_operator plan/dispatch → re_complete → HARNESS_BUGS/PROOF only",
+				].join("\n");
+				return {
+					content: [{ type: "text" as const, text }],
+					details: { action, skipped: true, reason: "reverse_ready_stop", target: params.target } as Record<
+						string,
+						unknown
+					>,
+				};
 			}
 			if (action === "run") {
 				try {
 					const reused = tryReuseRecentMobileRuntimeArtifact({
-						target: params.target,
-						packageName: params.packageName,
+						target: params.target || params.packageName,
 						latestPath: deps.latestMobileRuntimeArtifactPath?.(),
 						ttlMs: 120_000,
 					});
 					if (reused) {
-						const nl = String.fromCharCode(10);
+						softMarkReverseFromNative(reused.path);
 						const note = [
 							"mobile_runtime:",
 							"status: reuse",
@@ -81,15 +61,14 @@ export function registerRepiReverseMobileTool(
 							`ageMs: ${reused.ageMs}`,
 							"note: latest same-target mobile capture within 120s; do not re-run",
 							"next: re_domain_proof_exit show",
-						].join(nl);
+						].join("\n");
 						return {
-							content: [{ type: "text" as const, text: `${note}${nl}${nl}${reused.body}` }],
+							content: [{ type: "text" as const, text: `${note}\n\n${reused.body}` }],
 							details: {
 								action: "reuse",
 								reused: true,
 								path: reused.path,
 								target: params.target,
-								packageName: params.packageName,
 								ageMs: reused.ageMs,
 							} as Record<string, unknown>,
 						};
@@ -110,11 +89,19 @@ export function registerRepiReverseMobileTool(
 							packageName: params.packageName,
 							timeoutMs: params.timeoutMs,
 						});
+			if (action === "run") {
+				try {
+					const path = deps.latestMobileRuntimeArtifactPath?.();
+					if (path) softMarkReverseFromNative(path);
+				} catch {
+					/* optional */
+				}
+			}
 			return {
 				content: [{ type: "text" as const, text }],
 				details: {
 					action,
-					path: deps.latestMobileRuntimeArtifactPath(),
+					path: deps.latestMobileRuntimeArtifactPath?.(),
 					target: params.target,
 					packageName: params.packageName,
 				} as Record<string, unknown>,

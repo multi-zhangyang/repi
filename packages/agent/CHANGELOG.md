@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `BeforeToolCallResult.isError` optional flag so soft protocol thrash-stops can block tools without marking the tool result as an error.
+
 ### Fixed
 
 - Fixed the compaction summarization system prompt to use neutral AI assistant wording for non-coding agents ([#5401](https://github.com/earendil-works/pi/issues/5401)).

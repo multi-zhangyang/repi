@@ -22,7 +22,7 @@ function collectPackageJsonFiles(directory) {
 }
 
 function isInternalWorkspaceDependency(name) {
-	return name.startsWith("@pi-recon/repi-");
+	return name.startsWith("@repi/");
 }
 
 function isNonRegistrySpecifier(specifier) {

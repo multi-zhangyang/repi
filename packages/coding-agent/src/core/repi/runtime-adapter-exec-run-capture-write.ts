@@ -1,6 +1,7 @@
 /** Runtime adapter execution artifact write. */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { updateMissionCheckpoint } from "./mission.ts";
 import {
 	inspectRuntimeAdapterTarget,
 	parseRuntimeAdapterSignals,
@@ -61,5 +62,20 @@ export function writeRuntimeAdapterExecutionArtifact(params: {
 		)}\n`,
 		0o644,
 	);
+	// Soft-mark reverse proof as pending after a successful runtime capture so thrash stops
+	// can engage before re_domain_proof_exit closes the gate as done.
+	try {
+		const head = `${result.stdout}\n${result.stderr}`;
+		const proofOk =
+			result.code === 0 &&
+			/proof\.exit=(partial_runtime_capture|runtime_capture_strong)/i.test(head) &&
+			/bind_ready=true/i.test(head);
+		if (proofOk) {
+			updateMissionCheckpoint("reverse_proof_exit_ready", "pending", `runtime_adapter ${adapter.adapterId} ${path}`);
+			updateMissionCheckpoint("minimal_path_proven", "pending", `runtime_adapter ${adapter.adapterId} ${path}`);
+		}
+	} catch {
+		/* optional */
+	}
 	return { artifact, path };
 }

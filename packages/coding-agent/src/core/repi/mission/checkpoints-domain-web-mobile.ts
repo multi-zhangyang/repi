@@ -1,7 +1,10 @@
 /** Mission checkpoints: web/frontend/mobile/agent. */
 export const MISSION_CHECKPOINTS_WEB_MOBILE: Record<string, string[]> = {
 	"Web / API pentest": [
+		"reverse_proof_exit_ready",
+		"minimal_path_proven",
 		"live_browser_ready",
+		"report_or_writeup_ready",
 		"web_authz_ready",
 		"attack_graph_ready",
 		"operation_queue_ready",
@@ -10,7 +13,10 @@ export const MISSION_CHECKPOINTS_WEB_MOBILE: Record<string, string[]> = {
 		"replay_ready",
 	],
 	"Web pentest scanning": [
+		"reverse_proof_exit_ready",
+		"minimal_path_proven",
 		"live_browser_ready",
+		"report_or_writeup_ready",
 		"web_authz_ready",
 		"attack_graph_ready",
 		"operation_queue_ready",
@@ -20,7 +26,9 @@ export const MISSION_CHECKPOINTS_WEB_MOBILE: Record<string, string[]> = {
 	],
 	"Frontend JS reverse": [
 		"reverse_proof_exit_ready",
+		"minimal_path_proven",
 		"live_browser_ready",
+		"report_or_writeup_ready",
 		"web_authz_ready",
 		"attack_graph_ready",
 		"verifier_matrix_ready",
@@ -44,6 +52,8 @@ export const MISSION_CHECKPOINTS_WEB_MOBILE: Record<string, string[]> = {
 		"replay_ready",
 	],
 	"Agent / LLM boundary": [
+		"reverse_proof_exit_ready",
+		"minimal_path_proven",
 		"delegation_packets_ready",
 		"swarm_plan_ready",
 		"supervisor_review_ready",
@@ -52,5 +62,6 @@ export const MISSION_CHECKPOINTS_WEB_MOBILE: Record<string, string[]> = {
 		"verifier_matrix_ready",
 		"compiler_ready",
 		"proof_loop_ready",
+		"report_or_writeup_ready",
 	],
 };

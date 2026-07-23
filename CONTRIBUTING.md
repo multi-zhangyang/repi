@@ -8,7 +8,7 @@
 
 - REPI 版本、安装方式、操作系统和 Node.js 版本。
 - 最小复现命令、关键日志、期望行为与实际行为。
-- 是否涉及模型 provider、`~/.repi/agent/models.json`、`auth.json`、memory、swarm 或 compact。
+- 是否涉及模型 provider、`~/.repi/agent/models.json`、`auth.json`、swarm 或 compact（memory 产品面已移除，仅残留诊断）。
 
 不要在 Issue、PR、日志或截图里提交 API key、GitHub token、Authorization header、私有 baseUrl、会话文件或未脱敏的 bugreport。
 
@@ -22,7 +22,7 @@
 推荐本地验证：
 
 ```bash
-npm install
+npm install --ignore-scripts
 npm run check
 npm run smoke:repi
 ```
@@ -41,14 +41,14 @@ npm run build
 - 新增 runtime 行为要有可执行验证：script、fixture、schema、doctor 或 smoke test。
 - 任何能力声明都要绑定证据；不要只改 README 或 prompt。
 - 面向用户的命令必须在 `README.md`、`--help`、doctor/smoke 中保持一致。
-- 对 provider、memory、bugreport、session、auth 的改动必须默认脱敏并保持本地私有。
+- 对 provider、bugreport、session、auth 的改动必须默认脱敏并保持本地私有；memory 仅残留诊断/清理，禁止重新产品化。
 
 ## 依赖升级策略
 
 npm 依赖由维护者手动升级，不接受只改 `package-lock.json` 的自动版本 PR。原因是本仓库还有生成的 coding-agent shrinkwrap、模型目录和 release 流程，升级依赖后必须一起运行并提交对应结果：
 
 ```bash
-npm install
+npm install --ignore-scripts
 npm run shrinkwrap:coding-agent
 npm run check
 npm run smoke:repi
@@ -82,4 +82,4 @@ PR 合并前至少满足：
 - 代码和文档没有明显过期名称、私有端点或密钥。
 - CI 通过。
 - 变更有明确证据链和回滚路径。
-- 不降低 REPI 的独立产品边界、profile 隔离、memory 污染防护和 release 流程约束。
+- 不降低 REPI 的独立产品边界、profile 隔离、memory 产品面移除约束和 release 流程约束。

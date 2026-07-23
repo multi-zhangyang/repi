@@ -681,7 +681,7 @@ const globalMemoryLazyOk = memoryProductRemovedOk;
 
 const checks = [
 	check("repo:root", existsSync(join(root, "package.json")) && existsSync(repiBin), `root=${root}`),
-	check("launcher:local", existsSync(repiBin), `path=${repiBin}`, "run npm run install:repi"),
+	check("launcher:local", existsSync(repiBin), `path=${repiBin}`, "run repi doctor --fix (or from source: npm run install:repi)"),
 	check(
 		"launcher:global",
 		globalRepiOk,
@@ -702,8 +702,8 @@ const checks = [
 		`required=${shellRcPath.requireRc} expectedDir=${shellRcPath.expectedDir} pathHasDir=${shellRcPath.pathHasExpectedDir} userLocal=${shellRcPath.userLocalInstall} rcHits=${shellRcPath.rcHits.length}`,
 		"add export PATH=\"$HOME/.local/bin:$PATH\" to ~/.bashrc or source the installer-updated shell rc",
 	),
-	check("runtime:agent-dir", existsSync(agentDir), `agentDir=${agentDir}`, "run npm run install:repi"),
-	check("runtime:settings", Boolean(settings), `settings=${join(agentDir, "settings.json")}`, "run npm run install:repi"),
+	check("runtime:agent-dir", existsSync(agentDir), `agentDir=${agentDir}`, "run repi doctor --fix (or from source: npm run install:repi)"),
+	check("runtime:settings", Boolean(settings), `settings=${join(agentDir, "settings.json")}`, "run repi doctor --fix (or from source: npm run install:repi)"),
 	check(
 		"memory:product-removed",
 		memoryProductRemovedOk,
@@ -723,13 +723,13 @@ const checks = [
 		"cli:help",
 		help.code === 0 && /REPI reverse\/pentest/.test(helpText),
 		`exit=${help.code} timeoutMs=${help.timeoutMs ?? probeTimeoutMs}${help.signal ? ` signal=${help.signal}` : ""}${help.timedOut ? " timedOut=true" : ""}`,
-		"run npm install && npm run install:repi",
+		"run repi doctor --fix; from source also: npm install --ignore-scripts && npm run install:repi",
 	),
 	check(
 		"runtime:long-run-guardrails-help",
 		missingHelpGuardrails.length === 0,
 		`missing=${missingHelpGuardrails.join(",") || "<none>"}`,
-		"run git pull && npm run install:repi",
+		"update checkout then repi doctor --fix (source: npm run install:repi)",
 	),
 	check(
 		"runtime:package-bootstrap-guardrails",

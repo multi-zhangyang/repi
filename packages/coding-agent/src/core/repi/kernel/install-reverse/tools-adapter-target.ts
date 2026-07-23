@@ -65,12 +65,26 @@ export function pickAdapterIdForRun(params: {
 	target?: string;
 	resolvedTarget?: string;
 }): string | undefined {
-	if (params.adapter) return params.adapter;
+	const missionBlob = missionLexicalBlob();
+	const missionIds = missionBlob ? detectRuntimeAdapterIds(missionBlob) : [];
+	const missionStrong =
+		Boolean(missionIds[0]) && !/^(?:gdb-native-trace-adapter|r2-native-xref-adapter)$/.test(String(missionIds[0]));
+	// Models often force native adapters on agent/cloud/crypto tasks; demote when mission lexical is strong.
+	if (params.adapter) {
+		const requested = String(params.adapter);
+		if (
+			missionStrong &&
+			/^(?:gdb-native-trace-adapter|r2-native-xref-adapter)$/.test(requested) &&
+			missionIds[0] !== requested
+		) {
+			return missionIds[0];
+		}
+		return params.adapter;
+	}
 	const rawTarget = String(params.target ?? "").trim();
 	const resolvedTarget = String(params.resolvedTarget ?? "").trim();
 	// Prefer mission/task lexical when filesystem target is bare "." / cwd — directory inventory
 	// would otherwise demote stego/crypto/mobile into unrelated host adapters.
-	const missionBlob = missionLexicalBlob();
 	// Bare cwd only — never treat an existing concrete path as bare just because
 	// resolveAdapterRunTarget returned the same string (e.g. pcap/ELF path).
 	const bareFs = !rawTarget || rawTarget === "." || rawTarget === "./";
@@ -83,12 +97,10 @@ export function pickAdapterIdForRun(params: {
 	// has a stronger lexical domain adapter (malware/crypto/stego/dfir/cloud/agent), use mission.
 	const pathProbe = rawTarget || resolvedTarget;
 	const pathIds = pathProbe ? detectRuntimeAdapterIds(pathProbe) : [];
-	const missionIds = missionBlob ? detectRuntimeAdapterIds(missionBlob) : [];
 	const genericNative =
 		pathIds[0] &&
 		/^(?:gdb-native-trace-adapter|r2-native-xref-adapter)$/.test(pathIds[0]) &&
 		/\/(?:usr\/)?(?:local\/)?(?:bin|sbin)\//.test(pathProbe);
-	const missionStrong = missionIds[0] && !/^(?:gdb-native-trace-adapter|r2-native-xref-adapter)$/.test(missionIds[0]);
 	if (genericNative && missionStrong) return missionIds[0];
 	if (pathIds[0]) return pathIds[0];
 	if (missionIds[0]) return missionIds[0];

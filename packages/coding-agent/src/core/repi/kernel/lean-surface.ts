@@ -41,6 +41,8 @@ export const REPI_LEAN_TOOL_ALLOW = new Set([
 	"re_note",
 	"re_domain_proof_exit",
 	"re_profile_check",
+	"re_toolchain_domain",
+	"re_runtime_bridge",
 ]);
 
 export const REPI_LEAN_COMMAND_ALLOW = new Set([

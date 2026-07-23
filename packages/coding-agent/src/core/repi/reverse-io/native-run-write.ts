@@ -79,5 +79,13 @@ export function writeNativeRuntimeArtifact(native: NativeRuntimeArtifact): strin
 		native.executions.length > 0 &&
 		native.executions.every((item: any) => item.status === "blocked");
 	updateMissionCheckpoint("native_runtime_ready", blocked ? "blocked" : "done", path);
+	if (!blocked) {
+		try {
+			updateMissionCheckpoint("reverse_proof_exit_ready", "pending", `runtime_adapter native ${path}`);
+			updateMissionCheckpoint("minimal_path_proven", "pending", `runtime_adapter native ${path}`);
+		} catch {
+			/* optional */
+		}
+	}
 	return path;
 }

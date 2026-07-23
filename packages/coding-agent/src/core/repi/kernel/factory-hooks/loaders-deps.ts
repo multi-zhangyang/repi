@@ -1,6 +1,6 @@
 /** Factory session hook deps bag (_hookDeps). */
 // Landmark: _hookDeps loadMission loadRoutes softband facade
-import { formatCompletionAudit } from "../../completion-audit.ts";
+import { auditCompletion, formatCompletionAudit } from "../../completion-audit.ts";
 import { buildStartupContextDigest, buildStartupEvidenceDigest } from "../../evidence.ts";
 import {
 	allowNoSessionReconWriteback,
@@ -42,6 +42,7 @@ import {
 
 export const _hookDeps = {
 	allowNoSessionReconWriteback,
+	auditCompletion,
 	appendMemoryDepositionRuntimeEvent,
 	appendToolCallTraceFromCall: (...args: any[]) => loadToolTrace().appendToolCallTraceFromCall(...args),
 	appendToolCallTraceFromResult: (...args: any[]) => loadToolTrace().appendToolCallTraceFromResult(...args),

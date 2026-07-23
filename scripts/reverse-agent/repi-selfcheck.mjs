@@ -270,7 +270,7 @@ function looksLikeFreshProfileDoctorFailure(row) {
 ${row.stderrTail ?? ""}`;
 	return (
 		/FAIL runtime:settings/.test(text) ||
-		/FAIL memory:scoped-defaults/.test(text) ||
+		/FAIL memory:product-removed/.test(text) ||
 		/FAIL memory:(?:core-file|project-file|procedural-file|event-store)/.test(text)
 	);
 }
@@ -293,7 +293,7 @@ if (initialDoctor.ok || !looksLikeFreshProfileDoctorFailure(initialDoctor)) {
 	rows.push(
 		runRepi("doctor-fix-fresh-profile", ["doctor", "--fix", "--json"], {
 			timeoutMs: 120_000,
-			expectStdout: /repi-doctor-report|profile-init|runtime:settings|memory:scoped-defaults/,
+			expectStdout: /repi-doctor-report|profile-init|runtime:settings|memory:product-removed/,
 		}),
 	);
 	rows.push(runRepi("doctor-post-fix", ["doctor"], { timeoutMs: 120_000 }));

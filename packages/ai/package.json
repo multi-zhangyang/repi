@@ -83,14 +83,13 @@
 		"typebox": "1.1.38"
 	},
 	"keywords": [
+		"repi",
 		"ai",
 		"llm",
-		"openai",
+		"openai-compatible",
 		"anthropic",
-		"gemini",
-		"bedrock",
-		"unified",
-		"api"
+		"tool-calling",
+		"provider"
 	],
 	"author": "REPI Contributors",
 	"license": "MIT",
@@ -109,5 +108,9 @@
 	},
 	"publishConfig": {
 		"access": "public"
+	},
+	"homepage": "https://github.com/multi-zhangyang/repi/tree/main/packages/ai",
+	"bugs": {
+		"url": "https://github.com/multi-zhangyang/repi/issues"
 	}
 }

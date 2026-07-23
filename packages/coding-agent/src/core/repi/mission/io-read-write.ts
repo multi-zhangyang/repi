@@ -1,4 +1,10 @@
-import { currentMissionPath, ensureRepiStorage, readJsonObjectFileCached, writePrivateTextFile } from "../storage.ts";
+import {
+	currentMissionPath,
+	ensureRepiStorage,
+	readJsonObjectFileCached,
+	seedJsonObjectFileCache,
+	writePrivateTextFile,
+} from "../storage.ts";
 import { normalizeMission } from "./io-create.ts";
 /** Mission create/read/write/update helpers. */
 import type { MissionState } from "./types.ts";
@@ -43,6 +49,9 @@ export function writeCurrentMission(mission: MissionState): MissionState {
 	// guarantees a fresh mtime+size → readCurrentMission's readJsonObjectFileCached
 	// invalidates cleanly (no stale-cache-on-same-ms-tick risk a same-file truncate could
 	// have). 0o600 tightens the mode to match the rest of REPI state (#43 doctrine).
-	writePrivateTextFile(currentMissionPath(), `${JSON.stringify(next, null, 2)}\n`);
+	const path = currentMissionPath();
+	writePrivateTextFile(path, `${JSON.stringify(next, null, 2)}\n`);
+	// Same-tick thrash stops must see soft-mark without waiting for mtime granularity.
+	seedJsonObjectFileCache(path, next);
 	return next;
 }

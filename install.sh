@@ -227,4 +227,7 @@ ${SOURCE_COMMAND:+$SOURCE_COMMAND
 repi          # Run command
 
 For more information visit https://github.com/multi-zhangyang/repi
+
+Note: primary install is this script (or GitHub Release .tgz). Public npm @repi/* packages are not the install path until published.
+Configure models with REPI_* env or: repi model add / repi doctor
 MSG

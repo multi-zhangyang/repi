@@ -214,7 +214,7 @@ describe("RPC prompt response semantics", () => {
 					command: "prompt",
 					success: false,
 					error: expect.stringContaining(
-						"No API key found for fake-provider.\n\nConfigure a model with REPI_* environment variables (Claude Code-style) or ~/.repi/agent/models.json. See:",
+						"No API key found for fake-provider.\n\nConfigure a model with REPI_* environment variables or ~/.repi/agent/models.json.",
 					),
 				});
 				expect(String(responses[0]?.error)).toContain("export REPI_AUTH_TOKEN=sk-...");
