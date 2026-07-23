@@ -4,6 +4,7 @@ import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { auditCompletion } from "../../completion-audit.ts";
 import { readCurrentMission } from "../../mission.ts";
 import { truncateMiddle } from "../../text.ts";
+import { tryReuseRecentNativeRuntimeArtifact } from "./tools-native-reuse.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseNativeTool(
@@ -44,13 +45,14 @@ export function registerRepiReverseNativeTool(
 				);
 				const audit = auditCompletion();
 				if (reverseDone && audit?.ready && !nativeDomain && action === "run") {
+					const nl = String.fromCharCode(10);
 					const text = [
 						"native_runtime:",
 						"status: reverse_ready_stop",
 						`route_domain: ${domain || "unknown"}`,
 						"note: reverse_runtime_gate already satisfied for non-native domain; do not thrash re_native_runtime",
 						"next: write HARNESS_BUGS/PROOF only",
-					].join("\n");
+					].join(nl);
 					return {
 						content: [{ type: "text" as const, text }],
 						details: {
@@ -63,6 +65,43 @@ export function registerRepiReverseNativeTool(
 				}
 			} catch {
 				/* optional */
+			}
+			if (action === "run") {
+				try {
+					const reused = tryReuseRecentNativeRuntimeArtifact({
+						target: params.target,
+						latestPath: deps.latestNativeRuntimeArtifactPath?.(),
+						ttlMs: 120_000,
+					});
+					if (reused) {
+						const nl = String.fromCharCode(10);
+						const note = [
+							"native_runtime:",
+							"status: reuse",
+							`path: ${reused.path}`,
+							`ageMs: ${reused.ageMs}`,
+							"note: latest same-target native capture within 120s; do not re-run",
+							"next: re_domain_proof_exit show",
+						].join(nl);
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: truncateMiddle(`${note}${nl}${nl}${reused.body}`, 20000),
+								},
+							],
+							details: {
+								action: "reuse",
+								reused: true,
+								path: reused.path,
+								target: params.target,
+								ageMs: reused.ageMs,
+							} as Record<string, unknown>,
+						};
+					}
+				} catch {
+					/* optional */
+				}
 			}
 			const text =
 				action === "run"
