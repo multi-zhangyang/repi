@@ -41,17 +41,12 @@ export function missionCheckpoints(_d?: Record<string, any>): Array<{ name?: str
 	}
 }
 
-export function isReverseDone(cps?: Array<{ name?: string; status?: string; note?: string }>): boolean {
-	// Process-local session bind only for soft-mark. Disk pending+runtime_adapter soft-marks
-	// from prior print-mode processes must NOT block a fresh run's first capture.
+export function isReverseDone(_cps?: Array<{ name?: string; status?: string; note?: string }>): boolean {
+	// Process-local session bind only. Disk checkpoint done/pending from prior --no-session
+	// processes must NOT block a fresh run's first capture (shared ~/.repi mission file).
 	try {
-		if (isMissionReverseBound()) return true;
+		return isMissionReverseBound();
 	} catch {
-		/* optional */
+		return false;
 	}
-	const list = cps ?? missionCheckpoints();
-	return list.some((c) => {
-		if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
-		return c.status === "done";
-	});
 }

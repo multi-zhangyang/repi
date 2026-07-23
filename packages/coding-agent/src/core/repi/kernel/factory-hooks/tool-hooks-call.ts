@@ -1,5 +1,6 @@
 /** Tool call session hook: trace + loop guard + reverse/completion thrash stop. */
 import { createHash } from "node:crypto";
+import { isMissionReverseBound } from "../install-reverse/tools-capture-inflight.ts";
 import { missionCheckpoints, tryThrashStopBeforeTool } from "./tool-hooks-thrash.ts";
 
 export function registerRepiToolCallHook(pi: any, stats: any, d: Record<string, any>): void {
@@ -21,11 +22,7 @@ export function registerRepiToolCallHook(pi: any, stats: any, d: Record<string, 
 		let completeReady = false;
 		try {
 			const audit = typeof d.auditCompletion === "function" ? d.auditCompletion() : undefined;
-			const reverseDone = cps.some((c) => {
-				if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
-				if (c.status === "done") return true;
-				return c.status === "pending" && String(c.note ?? "").includes("runtime_adapter");
-			});
+			const reverseDone = isMissionReverseBound();
 			completeReady =
 				audit?.ready === true ||
 				(reverseDone &&

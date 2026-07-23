@@ -1,34 +1,12 @@
 /** Native reverse-ready thrash helpers. */
-import { readCurrentMission, updateMissionCheckpoint } from "../../mission.ts";
+import { updateMissionCheckpoint } from "../../mission.ts";
 import { isMissionReverseBound, markMissionReverseBound } from "./tools-capture-inflight.ts";
 
 export function reverseProofBound(): boolean {
-	// Soft-mark is process-local (markMissionReverseBound). Disk pending notes from a prior
-	// process must not make a fresh --no-session run look reverse-ready before first capture.
+	// Process-local only. Shared disk missions from prior print runs keep done checkpoints
+	// that would otherwise false-stop first capture on a fresh process.
 	try {
-		if (isMissionReverseBound()) return true;
-	} catch {
-		/* optional */
-	}
-	try {
-		const mission = readCurrentMission();
-		const cps = mission?.checkpoints;
-		if (!Array.isArray(cps)) return false;
-		if (
-			cps.some(
-				(c: { name?: string; status?: string }) =>
-					(c.name === "native_runtime_ready" ||
-						c.name === "mobile_runtime_ready" ||
-						c.name === "live_browser_ready") &&
-					c.status === "done",
-			)
-		) {
-			return true;
-		}
-		return cps.some(
-			(c: { name?: string; status?: string }) =>
-				(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
-		);
+		return isMissionReverseBound();
 	} catch {
 		return false;
 	}

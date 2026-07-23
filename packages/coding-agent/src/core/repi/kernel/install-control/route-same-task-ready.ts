@@ -10,14 +10,8 @@ export function trySameTaskReverseReadyRouteStop(params: {
 		const current = params.deps.readCurrentMission?.();
 		if (!current) return undefined;
 
-		const reverseDone =
-			isMissionReverseBound() ||
-			Boolean(
-				current?.checkpoints?.some(
-					(c: { name?: string; status?: string }) =>
-						(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
-				),
-			);
+		// Session bind only — disk done from prior process must not soft-stop re_route.
+		const reverseDone = isMissionReverseBound();
 		if (!reverseDone) return undefined;
 
 		const curDomain = String(current.route?.domain ?? "").trim();

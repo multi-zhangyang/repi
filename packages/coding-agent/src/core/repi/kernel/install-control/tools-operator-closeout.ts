@@ -15,17 +15,10 @@ export function checkpointDone(name: string): boolean {
 
 export function reverseProofDone(): boolean {
 	try {
-		if (isMissionReverseBound()) return true;
+		return isMissionReverseBound();
 	} catch {
-		/* optional */
+		return false;
 	}
-	const mission = readCurrentMission();
-	return Boolean(
-		mission?.checkpoints?.some(
-			(c: { name?: string; status?: string }) =>
-				(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
-		),
-	);
 }
 
 export function shouldStopOperatorThrash(action: string): boolean {
