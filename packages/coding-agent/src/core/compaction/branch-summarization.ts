@@ -5,9 +5,9 @@
  * a summary of the branch being left so context isn't lost.
  */
 
-import type { AgentMessage, StreamFn } from "@pi-recon/repi-agent-core";
-import type { AssistantMessage, Model, SimpleStreamOptions } from "@pi-recon/repi-ai";
-import { completeSimple } from "@pi-recon/repi-ai";
+import type { AgentMessage, StreamFn } from "@repi/agent-core";
+import type { AssistantMessage, Model, SimpleStreamOptions } from "@repi/ai";
+import { completeSimple } from "@repi/ai";
 import {
 	convertToLlm,
 	createBranchSummaryMessage,

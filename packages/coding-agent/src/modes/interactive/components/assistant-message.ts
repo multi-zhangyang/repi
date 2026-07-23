@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@pi-recon/repi-ai";
-import { Container, Markdown, type MarkdownTheme, Spacer, Text } from "@pi-recon/repi-tui";
+import type { AssistantMessage } from "@repi/ai";
+import { Container, Markdown, type MarkdownTheme, Spacer, Text } from "@repi/tui";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";

@@ -1,5 +1,5 @@
-import type { AssistantMessage, ImageContent, Model, TextContent, Usage } from "@pi-recon/repi-ai";
-import { completeSimple } from "@pi-recon/repi-ai";
+import type { AssistantMessage, ImageContent, Model, TextContent, Usage } from "@repi/ai";
+import { completeSimple } from "@repi/ai";
 import type { AgentMessage, ThinkingLevel } from "../../types.ts";
 import {
 	convertToLlm,

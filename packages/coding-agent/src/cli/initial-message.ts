@@ -1,4 +1,4 @@
-import type { ImageContent } from "@pi-recon/repi-ai";
+import type { ImageContent } from "@repi/ai";
 import type { Args } from "./args.ts";
 
 export interface InitialMessageInput {

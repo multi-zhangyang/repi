@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { AgentToolResult } from "@pi-recon/repi-agent-core";
+import type { AgentToolResult } from "@repi/agent-core";
 import { Type } from "typebox";
 import { APP_NAME, getAgentDir, VERSION } from "../config.ts";
 import { drainResponseBody } from "../utils/http-drain.ts";

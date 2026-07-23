@@ -16,11 +16,11 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolResult } from "@pi-recon/repi-agent-core";
-import type { Message } from "@pi-recon/repi-ai";
-import { StringEnum } from "@pi-recon/repi-ai";
-import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@pi-recon/repi-coding-agent";
-import { Container, Markdown, Spacer, Text } from "@pi-recon/repi-tui";
+import type { AgentToolResult } from "@repi/agent-core";
+import type { Message } from "@repi/ai";
+import { StringEnum } from "@repi/ai";
+import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@repi/coding-agent";
+import { Container, Markdown, Spacer, Text } from "@repi/tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 

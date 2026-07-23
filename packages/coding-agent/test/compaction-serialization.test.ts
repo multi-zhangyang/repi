@@ -1,4 +1,4 @@
-import type { Message } from "@pi-recon/repi-ai";
+import type { Message } from "@repi/ai";
 import { describe, expect, it } from "vitest";
 import { serializeConversation } from "../src/core/compaction/utils.ts";
 

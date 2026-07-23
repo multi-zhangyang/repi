@@ -1,4 +1,4 @@
-import { Markdown, type MarkdownTheme } from "@pi-recon/repi-tui";
+import { Markdown, type MarkdownTheme } from "@repi/tui";
 import chalk from "chalk";
 import { selectConfig } from "./cli/config-selector.ts";
 import {

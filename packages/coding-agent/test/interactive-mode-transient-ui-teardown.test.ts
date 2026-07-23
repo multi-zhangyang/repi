@@ -1,5 +1,5 @@
-import type { TUI } from "@pi-recon/repi-tui";
-import { Loader } from "@pi-recon/repi-tui";
+import type { TUI } from "@repi/tui";
+import { Loader } from "@repi/tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { CountdownTimer } from "../src/modes/interactive/components/countdown-timer.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";

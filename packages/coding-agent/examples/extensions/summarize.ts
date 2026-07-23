@@ -1,7 +1,7 @@
-import { complete, getModel } from "@pi-recon/repi-ai";
-import type { ExtensionAPI, ExtensionCommandContext } from "@pi-recon/repi-coding-agent";
-import { DynamicBorder, getMarkdownTheme } from "@pi-recon/repi-coding-agent";
-import { Container, Markdown, matchesKey, Text } from "@pi-recon/repi-tui";
+import { complete, getModel } from "@repi/ai";
+import type { ExtensionAPI, ExtensionCommandContext } from "@repi/coding-agent";
+import { DynamicBorder, getMarkdownTheme } from "@repi/coding-agent";
+import { Container, Markdown, matchesKey, Text } from "@repi/tui";
 
 type ContentBlock = {
 	type?: string;

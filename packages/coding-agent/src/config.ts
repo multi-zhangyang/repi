@@ -482,7 +482,7 @@ try {
 const runtimeAppNameOverride = process.env.REPI_CODING_AGENT_APP_NAME?.trim();
 const runtimeConfigDirOverride = process.env.REPI_CODING_AGENT_CONFIG_DIR?.trim();
 const piConfigName: string | undefined = runtimeAppNameOverride || pkg.piConfig?.name;
-export const PACKAGE_NAME: string = pkg.name || "@pi-recon/repi-coding-agent";
+export const PACKAGE_NAME: string = pkg.name || "@repi/coding-agent";
 export const APP_NAME: string = piConfigName || "repi";
 export const IS_REPI_PRODUCT: boolean = process.env.REPI_PRODUCT === "1" || APP_NAME === "repi";
 export const APP_TITLE: string = piConfigName ? APP_NAME : "REPI";

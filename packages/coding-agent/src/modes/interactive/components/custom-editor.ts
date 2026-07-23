@@ -1,4 +1,4 @@
-import { Editor, type EditorOptions, type EditorTheme, type TUI } from "@pi-recon/repi-tui";
+import { Editor, type EditorOptions, type EditorTheme, type TUI } from "@repi/tui";
 import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
 
 /**

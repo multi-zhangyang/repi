@@ -3,10 +3,10 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"paths": {
-			"@pi-recon/repi-coding-agent": ["./src/index.ts"],
-			"@pi-recon/repi-coding-agent/hooks": ["./src/core/hooks/index.ts"],
-			"@pi-recon/repi-tui": ["../tui/src/index.ts"],
-			"@pi-recon/repi-ai": ["../ai/src/index.ts"],
+			"@repi/coding-agent": ["./src/index.ts"],
+			"@repi/coding-agent/hooks": ["./src/core/hooks/index.ts"],
+			"@repi/tui": ["../tui/src/index.ts"],
+			"@repi/ai": ["../ai/src/index.ts"],
 			"typebox": ["../../node_modules/typebox"]
 		},
 		"skipLibCheck": true

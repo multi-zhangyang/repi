@@ -1,6 +1,6 @@
 /** Goal mode types and constants. */
 
-import type { AutocompleteItem } from "@pi-recon/repi-tui";
+import type { AutocompleteItem } from "@repi/tui";
 import type { ExtensionContext } from "../../extensions/types.ts";
 export type RepiGoalStatus = "active" | "paused" | "budget_limited" | "complete";
 export type AgentStopReason = "stop" | "length" | "toolUse" | "error" | "aborted";

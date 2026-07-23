@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent, type AgentEvent, type AgentTool } from "@pi-recon/repi-agent-core";
-import { type AssistantMessage, type AssistantMessageEvent, EventStream, getModel } from "@pi-recon/repi-ai";
+import { Agent, type AgentEvent, type AgentTool } from "@repi/agent-core";
+import { type AssistantMessage, type AssistantMessageEvent, EventStream, getModel } from "@repi/ai";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";

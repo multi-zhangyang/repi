@@ -3,7 +3,7 @@
  */
 
 import { access, open, readFile, stat } from "node:fs/promises";
-import type { ImageContent } from "@pi-recon/repi-ai";
+import type { ImageContent } from "@repi/ai";
 import chalk from "chalk";
 import { resolve } from "path";
 import { resolveReadPath } from "../core/tools/path-utils.ts";

@@ -1,4 +1,4 @@
-import type { TextContent } from "@pi-recon/repi-ai";
+import type { TextContent } from "@repi/ai";
 import { describe, expect, it } from "vitest";
 import { capToolResultContent } from "../src/agent-loop.ts";
 import { truncateForSummary } from "../src/harness/compaction/utils.ts";

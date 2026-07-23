@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createWriteStream, unlinkSync, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerSessionResourceCleanup } from "@pi-recon/repi-ai";
+import { registerSessionResourceCleanup } from "@repi/ai";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, type TruncationResult, truncateTail } from "./truncate.ts";
 
 export interface OutputAccumulatorOptions {

@@ -1,6 +1,6 @@
-import type { AgentMessage } from "@pi-recon/repi-agent-core";
-import type { AssistantMessage, Usage } from "@pi-recon/repi-ai";
-import { getModel } from "@pi-recon/repi-ai";
+import type { AgentMessage } from "@repi/agent-core";
+import type { AssistantMessage, Usage } from "@repi/ai";
+import { getModel } from "@repi/ai";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { beforeEach, describe, expect, it } from "vitest";

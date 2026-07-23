@@ -1,4 +1,4 @@
-import { EventStream } from "@pi-recon/repi-ai";
+import { EventStream } from "@repi/ai";
 import { describe, expect, it } from "vitest";
 
 describe("EventStream end(undefined) rejects result()", () => {

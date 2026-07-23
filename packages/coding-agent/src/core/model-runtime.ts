@@ -11,7 +11,7 @@
  */
 
 import { join } from "node:path";
-import type { Api, Model } from "@pi-recon/repi-ai";
+import type { Api, Model } from "@repi/ai";
 import { getAgentDir } from "../config.ts";
 import { AuthStorage } from "./auth-storage.ts";
 import { ModelRegistry, type ProviderConfigInput } from "./model-registry.ts";

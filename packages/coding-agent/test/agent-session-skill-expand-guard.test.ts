@@ -19,8 +19,8 @@ vi.mock("node:fs", async () => {
 });
 
 import * as fs from "node:fs";
-import { Agent } from "@pi-recon/repi-agent-core";
-import { getModel } from "@pi-recon/repi-ai";
+import { Agent } from "@repi/agent-core";
+import { getModel } from "@repi/ai";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { createExtensionRuntime } from "../src/core/extensions/loader.ts";

@@ -40,10 +40,10 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Api, Model } from "@pi-recon/repi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@pi-recon/repi-coding-agent";
-import { DynamicBorder, getAgentDir } from "@pi-recon/repi-coding-agent";
-import { Container, Key, type SelectItem, SelectList, Text } from "@pi-recon/repi-tui";
+import type { Api, Model } from "@repi/ai";
+import type { ExtensionAPI, ExtensionContext } from "@repi/coding-agent";
+import { DynamicBorder, getAgentDir } from "@repi/coding-agent";
+import { Container, Key, type SelectItem, SelectList, Text } from "@repi/tui";
 
 // Preset configuration
 interface Preset {

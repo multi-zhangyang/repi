@@ -1,5 +1,5 @@
 /** Goal prompt/objective parsing helpers. */
-import type { AgentMessage } from "@pi-recon/repi-agent-core";
+import type { AgentMessage } from "@repi/agent-core";
 import { formatBudget, formatTokenCount, goalObjectiveBlock, goalPersistenceRules } from "./format.ts";
 import { continuationMarkerComment, isAgentStopReason } from "./state.ts";
 import type { AssistantMessageLike, RepiGoalCommandResult, RepiGoalState } from "./types.ts";

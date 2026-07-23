@@ -1,4 +1,4 @@
-import { fauxAssistantMessage } from "@pi-recon/repi-ai";
+import { fauxAssistantMessage } from "@repi/ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, type Harness } from "../harness.ts";
 

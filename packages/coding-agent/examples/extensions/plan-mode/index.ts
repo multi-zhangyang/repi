@@ -12,10 +12,10 @@
  * - Progress tracking widget during execution
  */
 
-import type { AgentMessage } from "@pi-recon/repi-agent-core";
-import type { AssistantMessage, TextContent } from "@pi-recon/repi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@pi-recon/repi-coding-agent";
-import { Key } from "@pi-recon/repi-tui";
+import type { AgentMessage } from "@repi/agent-core";
+import type { AssistantMessage, TextContent } from "@repi/ai";
+import type { ExtensionAPI, ExtensionContext } from "@repi/coding-agent";
+import { Key } from "@repi/tui";
 import { extractTodoItems, isSafeCommand, markCompletedSteps, type TodoItem } from "./utils.ts";
 
 // Tools

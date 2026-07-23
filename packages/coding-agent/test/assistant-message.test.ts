@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@pi-recon/repi-ai";
+import type { AssistantMessage } from "@repi/ai";
 import { describe, expect, test } from "vitest";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";

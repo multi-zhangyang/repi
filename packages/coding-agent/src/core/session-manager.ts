@@ -1,5 +1,5 @@
-import { type AgentMessage, uuidv7 } from "@pi-recon/repi-agent-core";
-import type { ImageContent, Message, TextContent } from "@pi-recon/repi-ai";
+import { type AgentMessage, uuidv7 } from "@repi/agent-core";
+import type { ImageContent, Message, TextContent } from "@repi/ai";
 import { randomBytes, randomUUID } from "crypto";
 import {
 	appendFileSync,

@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@pi-recon/repi-agent-core";
+import type { AgentMessage } from "@repi/agent-core";
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "../src/core/extensions/types.ts";
 import {

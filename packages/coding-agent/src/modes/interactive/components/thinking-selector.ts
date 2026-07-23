@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "@pi-recon/repi-agent-core";
-import { Container, type SelectItem, SelectList, type SelectListLayoutOptions } from "@pi-recon/repi-tui";
+import type { ThinkingLevel } from "@repi/agent-core";
+import { Container, type SelectItem, SelectList, type SelectListLayoutOptions } from "@repi/tui";
 import { getSelectListTheme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 

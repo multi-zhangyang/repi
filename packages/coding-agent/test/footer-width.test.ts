@@ -1,4 +1,4 @@
-import { visibleWidth } from "@pi-recon/repi-tui";
+import { visibleWidth } from "@repi/tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { CompactionSettings } from "../src/core/compaction/index.ts";

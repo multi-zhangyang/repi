@@ -1,4 +1,4 @@
-import type { TUI } from "@pi-recon/repi-tui";
+import type { TUI } from "@repi/tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import { LoginDialogComponent } from "../src/modes/interactive/components/login-dialog.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";

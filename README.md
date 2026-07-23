@@ -53,35 +53,59 @@
 
 ## 快速开始
 
-### 一键安装（发布仓库就绪后）
+### 一键安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/multi-zhangyang/repi/main/install.sh | bash
 ```
 
-### 从源码
+装好后确认：
+
+```bash
+repi --version
+repi doctor
+```
+
+### 从源码（开发 / 贡献）
 
 ```bash
 git clone https://github.com/multi-zhangyang/repi.git
 cd repi
 npm install --ignore-scripts
-# 按需构建 coding-agent 入口；日常可用仓库内 repi 包装脚本
+npm run build -w @repi/ai -w @repi/tui -w @repi/agent-core -w @repi/coding-agent
+# 或直接用仓库包装脚本：./repi
 ```
 
-### 模型环境（OpenAI 兼容示例）
+### npm 包（发布后）
+
+| 包 | 用途 |
+|----|------|
+| `@repi/coding-agent` | `repi` CLI（主产品） |
+| `@repi/ai` | 模型/provider 运行时 |
+| `@repi/agent-core` | agent loop / harness 核心 |
+| `@repi/tui` | 终端 UI |
 
 ```bash
-export REPI_AUTH_TOKEN="sk-xxxxx"
-export REPI_BASE_URL="https://api.example.com/v1"   # OpenAI 兼容路径需含 /v1
+# 典型：安装 CLI（需已发布到 npm）
+npm i -g @repi/coding-agent
+```
+
+### 模型环境（OpenAI 兼容，通用网关）
+
+```bash
+export REPI_AUTH_TOKEN="YOUR_TOKEN"                 # 勿提交仓库
+export REPI_BASE_URL="https://api.example.com/v1"   # 需含 /v1
 export REPI_MODEL="provider/model-id"
 export REPI_MODEL_API="openai-compatible"           # openai-compatible | anthropic | ...
 export REPI_PROVIDER="my-provider"                  # 可选标签
 
 repi doctor
-repi -p "对目标做逆向路线盘点" --provider my-provider --model "provider/model-id" --no-session
+repi --provider my-provider --model "provider/model-id" -p "对目标做逆向路线盘点" --no-session
 ```
 
-> 不要把真实 token 写进仓库或文档示例。进程环境中的 token 才用于真实调用；transcript 可能脱敏。
+也可写入 `~/.repi/agent/models.json` + `~/.repi/agent/settings.json`（本地配置，勿 commit 密钥）。
+
+> 进程环境中的 token 才用于真实调用；transcript 可能脱敏。**禁止**把真实 token 写进仓库、Issue 或文档示例。
 
 ### 常用命令
 

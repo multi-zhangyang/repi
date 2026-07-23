@@ -1,4 +1,4 @@
-import { resetCapabilitiesCache, setCapabilities } from "@pi-recon/repi-tui";
+import { resetCapabilitiesCache, setCapabilities } from "@repi/tui";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	detectTerminalBackground,

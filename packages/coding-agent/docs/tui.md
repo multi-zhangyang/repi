@@ -4,7 +4,7 @@
 
 Extensions and custom tools can render custom TUI components for interactive user interfaces. This page covers the component system and available building blocks.
 
-**Source:** [`@pi-recon/repi-tui`](https://github.com/multi-zhangyang/repi/tree/main/packages/tui)
+**Source:** [`@repi/tui`](https://github.com/multi-zhangyang/repi/tree/main/packages/tui)
 
 ## Component Interface
 
@@ -33,7 +33,7 @@ The TUI appends a full SGR reset and OSC 8 reset at the end of each rendered lin
 Components that display a text cursor and need IME (Input Method Editor) support should implement the `Focusable` interface:
 
 ```typescript
-import { CURSOR_MARKER, type Component, type Focusable } from "@pi-recon/repi-tui";
+import { CURSOR_MARKER, type Component, type Focusable } from "@repi/tui";
 
 class MyInput implements Component, Focusable {
   focused: boolean = false;  // Set by TUI when focus changes
@@ -59,7 +59,7 @@ The cursor remains hidden by default. This keeps the fake cursor rendering, whil
 When a container component (dialog, selector, etc.) contains an `Input` or `Editor` child, the container must implement `Focusable` and propagate the focus state to the child. Otherwise, the hardware cursor won't be positioned correctly for IME input.
 
 ```typescript
-import { Container, type Focusable, Input } from "@pi-recon/repi-tui";
+import { Container, type Focusable, Input } from "@repi/tui";
 
 class SearchDialog extends Container implements Focusable {
   private searchInput: Input;
@@ -188,10 +188,10 @@ See [overlay-qa-tests.ts](../examples/extensions/overlay-qa-tests.ts) for compre
 
 ## Built-in Components
 
-Import from `@pi-recon/repi-tui`:
+Import from `@repi/tui`:
 
 ```typescript
-import { Text, Box, Container, Spacer, Markdown } from "@pi-recon/repi-tui";
+import { Text, Box, Container, Spacer, Markdown } from "@repi/tui";
 ```
 
 ### Text
@@ -273,7 +273,7 @@ const image = new Image(
 Use `matchesKey()` for key detection:
 
 ```typescript
-import { matchesKey, Key } from "@pi-recon/repi-tui";
+import { matchesKey, Key } from "@repi/tui";
 
 handleInput(data: string) {
   if (matchesKey(data, Key.up)) {
@@ -299,7 +299,7 @@ handleInput(data: string) {
 **Critical:** Each line from `render()` must not exceed the `width` parameter.
 
 ```typescript
-import { visibleWidth, truncateToWidth } from "@pi-recon/repi-tui";
+import { visibleWidth, truncateToWidth } from "@repi/tui";
 
 render(width: number): string[] {
   // Truncate long lines
@@ -320,7 +320,7 @@ Example: Interactive selector
 import {
   matchesKey, Key,
   truncateToWidth, visibleWidth
-} from "@pi-recon/repi-tui";
+} from "@repi/tui";
 
 class MySelector {
   private items: string[];
@@ -434,8 +434,8 @@ renderResult(result, options, theme, context) {
 **For Markdown**, use `getMarkdownTheme()`:
 
 ```typescript
-import { getMarkdownTheme } from "@pi-recon/repi-coding-agent";
-import { Markdown } from "@pi-recon/repi-tui";
+import { getMarkdownTheme } from "@repi/coding-agent";
+import { Markdown } from "@repi/tui";
 
 renderResult(result, options, theme, context) {
   const mdTheme = getMarkdownTheme();
@@ -596,12 +596,12 @@ These patterns cover the most common UI needs in extensions. **Copy these patter
 
 ### Pattern 1: Selection Dialog (SelectList)
 
-For letting users pick from a list of options. Use `SelectList` from `@pi-recon/repi-tui` with `DynamicBorder` for framing.
+For letting users pick from a list of options. Use `SelectList` from `@repi/tui` with `DynamicBorder` for framing.
 
 ```typescript
-import type { ExtensionAPI } from "@pi-recon/repi-coding-agent";
-import { DynamicBorder } from "@pi-recon/repi-coding-agent";
-import { Container, type SelectItem, SelectList, Text } from "@pi-recon/repi-tui";
+import type { ExtensionAPI } from "@repi/coding-agent";
+import { DynamicBorder } from "@repi/coding-agent";
+import { Container, type SelectItem, SelectList, Text } from "@repi/tui";
 
 repi.registerCommand("pick", {
   handler: async (_args, ctx) => {
@@ -659,7 +659,7 @@ repi.registerCommand("pick", {
 For operations that take time and should be cancellable. `BorderedLoader` shows a spinner and handles escape to cancel.
 
 ```typescript
-import { BorderedLoader } from "@pi-recon/repi-coding-agent";
+import { BorderedLoader } from "@repi/coding-agent";
 
 repi.registerCommand("fetch", {
   handler: async (_args, ctx) => {
@@ -688,11 +688,11 @@ repi.registerCommand("fetch", {
 
 ### Pattern 3: Settings/Toggles (SettingsList)
 
-For toggling multiple settings. Use `SettingsList` from `@pi-recon/repi-tui` with `getSettingsListTheme()`.
+For toggling multiple settings. Use `SettingsList` from `@repi/tui` with `getSettingsListTheme()`.
 
 ```typescript
-import { getSettingsListTheme } from "@pi-recon/repi-coding-agent";
-import { Container, type SettingItem, SettingsList, Text } from "@pi-recon/repi-tui";
+import { getSettingsListTheme } from "@repi/coding-agent";
+import { Container, type SettingItem, SettingsList, Text } from "@repi/tui";
 
 repi.registerCommand("settings", {
   handler: async (_args, ctx) => {
@@ -831,8 +831,8 @@ Token stats available via `ctx.sessionManager.getBranch()` and `ctx.model`.
 Replace the main input editor with a custom implementation. Useful for modal editing (vim), different keybindings (emacs), or specialized input handling.
 
 ```typescript
-import { CustomEditor, type ExtensionAPI } from "@pi-recon/repi-coding-agent";
-import { matchesKey, truncateToWidth } from "@pi-recon/repi-tui";
+import { CustomEditor, type ExtensionAPI } from "@repi/coding-agent";
+import { matchesKey, truncateToWidth } from "@repi/tui";
 
 type Mode = "normal" | "insert";
 

@@ -9,7 +9,7 @@ LLMs have limited context windows. When conversations grow too long, repi uses c
 - [`packages/coding-agent/src/core/session-manager.ts`](https://github.com/multi-zhangyang/repi/blob/main/packages/coding-agent/src/core/session-manager.ts) - Entry types (`CompactionEntry`, `BranchSummaryEntry`)
 - [`packages/coding-agent/src/core/extensions/types.ts`](https://github.com/multi-zhangyang/repi/blob/main/packages/coding-agent/src/core/extensions/types.ts) - Extension event types
 
-For TypeScript definitions in your project, inspect `node_modules/@pi-recon/repi-coding-agent/dist/`.
+For TypeScript definitions in your project, inspect `node_modules/@repi/coding-agent/dist/`.
 
 ## Overview
 
@@ -310,7 +310,7 @@ repi.on("session_before_compact", async (event, ctx) => {
 To generate a summary with your own model, convert messages to text using `serializeConversation`:
 
 ```typescript
-import { convertToLlm, serializeConversation } from "@pi-recon/repi-coding-agent";
+import { convertToLlm, serializeConversation } from "@repi/coding-agent";
 
 repi.on("session_before_compact", async (event, ctx) => {
   const { preparation } = event;

@@ -5,10 +5,10 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentMessage, AgentTool } from "@pi-recon/repi-agent-core";
-import { Agent } from "@pi-recon/repi-agent-core";
-import type { FauxModelDefinition, FauxProviderRegistration, FauxResponseStep, Model } from "@pi-recon/repi-ai";
-import { registerFauxProvider } from "@pi-recon/repi-ai";
+import type { AgentMessage, AgentTool } from "@repi/agent-core";
+import { Agent } from "@repi/agent-core";
+import type { FauxModelDefinition, FauxProviderRegistration, FauxResponseStep, Model } from "@repi/ai";
+import { registerFauxProvider } from "@repi/ai";
 import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import type { ExtensionRunner } from "../../src/core/extensions/index.ts";

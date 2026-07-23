@@ -2,7 +2,7 @@
  * CLI argument parsing and help display
  */
 
-import type { ThinkingLevel } from "@pi-recon/repi-agent-core";
+import type { ThinkingLevel } from "@repi/agent-core";
 import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME, IS_REPI_PRODUCT } from "../config.ts";
 import type { ExtensionFlag } from "../core/extensions/types.ts";

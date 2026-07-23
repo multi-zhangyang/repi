@@ -1,8 +1,8 @@
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import type { AgentTool } from "@pi-recon/repi-agent-core";
-import { Text } from "@pi-recon/repi-tui";
+import type { AgentTool } from "@repi/agent-core";
+import { Text } from "@repi/tui";
 import { spawn } from "child_process";
 import path from "path";
 import { type Static, Type } from "typebox";

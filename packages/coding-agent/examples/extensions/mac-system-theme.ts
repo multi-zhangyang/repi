@@ -7,7 +7,7 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import type { ExtensionAPI } from "@pi-recon/repi-coding-agent";
+import type { ExtensionAPI } from "@repi/coding-agent";
 
 const execAsync = promisify(exec);
 

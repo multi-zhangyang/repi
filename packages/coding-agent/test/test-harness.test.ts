@@ -3,8 +3,8 @@
  * Validates that the faux provider and session factory work correctly.
  */
 
-import type { AgentTool } from "@pi-recon/repi-agent-core";
-import type { AssistantMessage } from "@pi-recon/repi-ai";
+import type { AgentTool } from "@repi/agent-core";
+import type { AssistantMessage } from "@repi/ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, createHarnessWithExtensions, type Harness } from "./test-harness.ts";

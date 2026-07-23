@@ -12,7 +12,7 @@
  * Fix: after the read loop, flush the decoder's trailing bytes and process the
  * remaining line(s) via the same per-line handler.
  */
-import type { AssistantMessage, Model } from "@pi-recon/repi-ai";
+import type { AssistantMessage, Model } from "@repi/ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { streamProxy } from "../src/proxy.ts";
 

@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { Agent, type AgentMessage, DEFAULT_MAX_TOOL_RESULT_CHARS, type ThinkingLevel } from "@pi-recon/repi-agent-core";
-import { clampThinkingLevel, type Message, type Model, streamSimple } from "@pi-recon/repi-ai";
+import { Agent, type AgentMessage, DEFAULT_MAX_TOOL_RESULT_CHARS, type ThinkingLevel } from "@repi/agent-core";
+import { clampThinkingLevel, type Message, type Model, streamSimple } from "@repi/ai";
 import { getAgentDir } from "../config.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
@@ -283,7 +283,7 @@ function getDefaultAgentDir(): string {
  * const { session } = await createAgentSession();
  *
  * // With explicit model
- * import { getModel } from '@pi-recon/repi-ai';
+ * import { getModel } from '@repi/ai';
  * const { session } = await createAgentSession({
  *   model: getModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',

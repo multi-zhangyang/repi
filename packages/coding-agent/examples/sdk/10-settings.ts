@@ -4,7 +4,7 @@
  * Override settings using SettingsManager.
  */
 
-import { createAgentSession, SessionManager, SettingsManager } from "@pi-recon/repi-coding-agent";
+import { createAgentSession, SessionManager, SettingsManager } from "@repi/coding-agent";
 
 const cwd = process.cwd();
 

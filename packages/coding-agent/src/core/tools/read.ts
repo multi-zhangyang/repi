@@ -1,7 +1,7 @@
 import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
-import type { AgentTool } from "@pi-recon/repi-agent-core";
-import type { Api, ImageContent, Model, TextContent } from "@pi-recon/repi-ai";
-import { Text } from "@pi-recon/repi-tui";
+import type { AgentTool } from "@repi/agent-core";
+import type { Api, ImageContent, Model, TextContent } from "@repi/ai";
+import { Text } from "@repi/tui";
 import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile, stat as fsStat } from "fs/promises";
 import { type Static, Type } from "typebox";

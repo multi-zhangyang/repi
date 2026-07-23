@@ -1,13 +1,8 @@
 // Requires GitHub CLI (`gh`) and a GitHub repository checkout.
 // Preloads the latest open issues once per session, then filters them locally for fast `#...` completion.
 
-import type { ExtensionAPI } from "@pi-recon/repi-coding-agent";
-import {
-	type AutocompleteItem,
-	type AutocompleteProvider,
-	type AutocompleteSuggestions,
-	fuzzyFilter,
-} from "@pi-recon/repi-tui";
+import type { ExtensionAPI } from "@repi/coding-agent";
+import { type AutocompleteItem, type AutocompleteProvider, type AutocompleteSuggestions, fuzzyFilter } from "@repi/tui";
 
 type GitHubIssue = {
 	number: number;

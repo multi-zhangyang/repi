@@ -42,8 +42,8 @@ import {
 	type Tool,
 	type ToolCall,
 	type ToolResultMessage,
-} from "@pi-recon/repi-ai";
-import type { ExtensionAPI } from "@pi-recon/repi-coding-agent";
+} from "@repi/ai";
+import type { ExtensionAPI } from "@repi/coding-agent";
 
 // =============================================================================
 // OAuth Implementation (copied from packages/ai/src/utils/oauth/anthropic.ts)

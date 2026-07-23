@@ -1,4 +1,4 @@
-import { fuzzyMatch } from "@pi-recon/repi-tui";
+import { fuzzyMatch } from "@repi/tui";
 import type { SessionInfo } from "../../../core/session-manager.ts";
 
 export type SortMode = "threaded" | "recent" | "relevance";

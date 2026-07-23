@@ -1,5 +1,5 @@
-import type { AgentTool } from "@pi-recon/repi-agent-core";
-import { Container, Text } from "@pi-recon/repi-tui";
+import type { AgentTool } from "@repi/agent-core";
+import { Container, Text } from "@repi/tui";
 import { mkdir as fsMkdir, stat as fsStat } from "fs/promises";
 import { dirname } from "path";
 import { type Static, Type } from "typebox";

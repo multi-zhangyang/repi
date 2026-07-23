@@ -10,8 +10,8 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentTool } from "@pi-recon/repi-agent-core";
-import { Agent } from "@pi-recon/repi-agent-core";
+import type { AgentTool } from "@repi/agent-core";
+import { Agent } from "@repi/agent-core";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -24,8 +24,8 @@ import type {
 	ThinkingContent,
 	ToolCall,
 	Usage,
-} from "@pi-recon/repi-ai";
-import { createAssistantMessageEventStream } from "@pi-recon/repi-ai";
+} from "@repi/ai";
+import { createAssistantMessageEventStream } from "@repi/ai";
 import { AgentSession, type AgentSessionEvent } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRegistry } from "../src/core/model-registry.ts";

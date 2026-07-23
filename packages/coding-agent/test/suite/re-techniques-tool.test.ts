@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxToolCall } from "@pi-recon/repi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@repi/ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createReconExtensionFactory } from "../../src/core/recon-profile.ts";
 import { REPI_TOOL_NAMES } from "../../src/core/repi/profile.ts";

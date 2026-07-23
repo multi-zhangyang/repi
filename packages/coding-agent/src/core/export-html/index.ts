@@ -1,4 +1,4 @@
-import type { AgentState } from "@pi-recon/repi-agent-core";
+import type { AgentState } from "@repi/agent-core";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import { APP_NAME, getExportTemplateDir } from "../../config.ts";

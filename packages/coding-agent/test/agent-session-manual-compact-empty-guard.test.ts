@@ -35,9 +35,9 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent } from "@pi-recon/repi-agent-core";
-import type { AssistantMessage } from "@pi-recon/repi-ai";
-import { getModel } from "@pi-recon/repi-ai";
+import { Agent } from "@repi/agent-core";
+import type { AssistantMessage } from "@repi/ai";
+import { getModel } from "@repi/ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -48,8 +48,8 @@ import { createTestResourceLoader } from "./utilities.ts";
 
 const { completeSimpleMock } = vi.hoisted(() => ({ completeSimpleMock: vi.fn() }));
 
-vi.mock("@pi-recon/repi-ai", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@pi-recon/repi-ai")>();
+vi.mock("@repi/ai", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@repi/ai")>();
 	return { ...actual, completeSimple: completeSimpleMock };
 });
 

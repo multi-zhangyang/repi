@@ -7,7 +7,7 @@ import {
 	fauxAssistantMessage,
 	fauxToolCall,
 	type Model,
-} from "@pi-recon/repi-ai";
+} from "@repi/ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createReconExtensionFactory } from "../../src/core/recon-profile.ts";

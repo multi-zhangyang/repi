@@ -19,7 +19,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@pi-recon/repi-coding-agent";
+import type { ExtensionAPI } from "@repi/coding-agent";
 
 /**
  * Recursively find all .md files in a directory

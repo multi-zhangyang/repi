@@ -1,5 +1,5 @@
-import type { AgentMessage, StreamFn } from "@pi-recon/repi-agent-core";
-import { createAssistantMessageEventStream, type Model } from "@pi-recon/repi-ai";
+import type { AgentMessage, StreamFn } from "@repi/agent-core";
+import { createAssistantMessageEventStream, type Model } from "@repi/ai";
 import { describe, expect, it } from "vitest";
 import { generateSummary } from "../src/core/compaction/index.ts";
 

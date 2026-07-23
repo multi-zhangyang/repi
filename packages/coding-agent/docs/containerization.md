@@ -102,7 +102,7 @@ ENTRYPOINT ["repi"]
 After the npm package is published, the install step can be replaced with:
 
 ```dockerfile
-RUN npm install -g @pi-recon/repi-coding-agent
+RUN npm install -g @repi/coding-agent
 ```
 
 Build and run:

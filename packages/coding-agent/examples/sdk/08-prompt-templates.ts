@@ -11,7 +11,7 @@ import {
 	getAgentDir,
 	type PromptTemplate,
 	SessionManager,
-} from "@pi-recon/repi-coding-agent";
+} from "@repi/coding-agent";
 
 // Define custom templates
 const deployTemplate: PromptTemplate = {

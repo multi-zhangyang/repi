@@ -55,7 +55,7 @@ describe("opt #271: config.ts degrades gracefully on a corrupt package.json (Syn
 		// No crash: defaults applied (APP_NAME falls back to "repi", VERSION "0.0.0").
 		expect(config.APP_NAME).toBe("repi");
 		expect(config.VERSION).toBe("0.0.0");
-		expect(config.PACKAGE_NAME).toBe("@pi-recon/repi-coding-agent");
+		expect(config.PACKAGE_NAME).toBe("@repi/coding-agent");
 
 		// The parse failure was surfaced (not silently masked).
 		expect(errorSpy).toHaveBeenCalled();

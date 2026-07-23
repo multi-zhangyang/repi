@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { type Component, truncateToWidth, visibleWidth } from "@pi-recon/repi-tui";
+import { type Component, truncateToWidth, visibleWidth } from "@repi/tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { compactionTriggerTokens, DEFAULT_COMPACTION_SETTINGS } from "../../../core/compaction/index.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";

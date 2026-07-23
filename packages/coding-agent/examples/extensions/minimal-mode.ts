@@ -16,7 +16,7 @@
  * Then use ctrl+o to toggle between minimal (collapsed) and full (expanded) views.
  */
 
-import type { ExtensionAPI } from "@pi-recon/repi-coding-agent";
+import type { ExtensionAPI } from "@repi/coding-agent";
 import {
 	createBashTool,
 	createEditTool,
@@ -25,8 +25,8 @@ import {
 	createLsTool,
 	createReadTool,
 	createWriteTool,
-} from "@pi-recon/repi-coding-agent";
-import { Text } from "@pi-recon/repi-tui";
+} from "@repi/coding-agent";
+import { Text } from "@repi/tui";
 import { homedir } from "os";
 
 /**

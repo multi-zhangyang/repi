@@ -20,7 +20,7 @@
  * throws before emitting anything. Pre-fix the error is swallowed; post-fix it
  * is surfaced as a failure assistant + state.errorMessage.
  */
-import { type AssistantMessage, type AssistantMessageEvent, EventStream } from "@pi-recon/repi-ai";
+import { type AssistantMessage, type AssistantMessageEvent, EventStream } from "@repi/ai";
 import { describe, expect, it } from "vitest";
 import { Agent } from "../src/index.ts";
 

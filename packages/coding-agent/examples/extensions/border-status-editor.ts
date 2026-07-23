@@ -1,11 +1,6 @@
-import {
-	CustomEditor,
-	type ExtensionAPI,
-	type ExtensionContext,
-	type KeybindingsManager,
-} from "@pi-recon/repi-coding-agent";
-import type { Component, EditorTheme, TUI } from "@pi-recon/repi-tui";
-import { truncateToWidth, visibleWidth } from "@pi-recon/repi-tui";
+import { CustomEditor, type ExtensionAPI, type ExtensionContext, type KeybindingsManager } from "@repi/coding-agent";
+import type { Component, EditorTheme, TUI } from "@repi/tui";
+import { truncateToWidth, visibleWidth } from "@repi/tui";
 
 function fitBorder(
 	left: string,

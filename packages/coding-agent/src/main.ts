@@ -6,8 +6,8 @@
  */
 
 import { createInterface } from "node:readline";
-import { type ImageContent, modelsAreEqual } from "@pi-recon/repi-ai";
-import { ProcessTerminal, setKeybindings, TUI } from "@pi-recon/repi-tui";
+import { type ImageContent, modelsAreEqual } from "@repi/ai";
+import { ProcessTerminal, setKeybindings, TUI } from "@repi/tui";
 import chalk from "chalk";
 import { type Args, type Mode, parseArgs, printHelp } from "./cli/args.ts";
 import { processFileArguments } from "./cli/file-processor.ts";

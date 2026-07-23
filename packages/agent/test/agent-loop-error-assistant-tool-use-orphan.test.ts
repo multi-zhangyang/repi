@@ -6,7 +6,7 @@ import {
 	type Model,
 	type ToolCall,
 	type UserMessage,
-} from "@pi-recon/repi-ai";
+} from "@repi/ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { agentLoop } from "../src/agent-loop.ts";

@@ -14,8 +14,8 @@ import {
 	registerApiProvider,
 	resetApiProviders,
 	type SimpleStreamOptions,
-} from "@pi-recon/repi-ai";
-import { registerOAuthProvider, resetOAuthProviders } from "@pi-recon/repi-ai/oauth";
+} from "@repi/ai";
+import { registerOAuthProvider, resetOAuthProviders } from "@repi/ai/oauth";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { type Static, Type } from "typebox";

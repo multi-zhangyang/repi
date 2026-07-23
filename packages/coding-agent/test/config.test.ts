@@ -152,8 +152,8 @@ describe("detectInstallMethod", () => {
 		);
 
 		expect(detectInstallMethod()).toBe("pnpm");
-		expect(getUpdateInstruction("@pi-recon/repi-coding-agent")).toBe(
-			"Run: pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @pi-recon/repi-coding-agent",
+		expect(getUpdateInstruction("@repi/coding-agent")).toBe(
+			"Run: pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @repi/coding-agent",
 		);
 	});
 
@@ -161,30 +161,22 @@ describe("detectInstallMethod", () => {
 		setExecPath("/usr/local/bin/node");
 
 		expect(detectInstallMethod()).toBe("unknown");
-		expect(getSelfUpdateCommand("@pi-recon/repi-coding-agent")).toBeUndefined();
-		expect(getUpdateInstruction("@pi-recon/repi-coding-agent")).toBe(
-			"Update @pi-recon/repi-coding-agent using the package manager, wrapper, or source checkout that provides this installation.",
+		expect(getSelfUpdateCommand("@repi/coding-agent")).toBeUndefined();
+		expect(getUpdateInstruction("@repi/coding-agent")).toBe(
+			"Update @repi/coding-agent using the package manager, wrapper, or source checkout that provides this installation.",
 		);
 	});
 
 	test("self-updates npm installs from custom prefixes", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@pi-recon/repi-coding-agent");
+		const command = getSelfUpdateCommand("@repi/coding-agent");
 
 		expect(detectInstallMethod()).toBe("npm");
 		expect(command).toEqual({
 			command: "npm",
-			args: [
-				"--prefix",
-				prefix,
-				"install",
-				"-g",
-				"--ignore-scripts",
-				"--min-release-age=0",
-				"@pi-recon/repi-coding-agent",
-			],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @pi-recon/repi-coding-agent`,
+			args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@repi/coding-agent"],
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @repi/coding-agent`,
 		});
 	});
 
@@ -215,27 +207,19 @@ describe("detectInstallMethod", () => {
 	test("self-update respects configured npmCommand", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@pi-recon/repi-coding-agent", ["npm", "--prefix", prefix]);
+		const command = getSelfUpdateCommand("@repi/coding-agent", ["npm", "--prefix", prefix]);
 
 		expect(command).toEqual({
 			command: "npm",
-			args: [
-				"--prefix",
-				prefix,
-				"install",
-				"-g",
-				"--ignore-scripts",
-				"--min-release-age=0",
-				"@pi-recon/repi-coding-agent",
-			],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @pi-recon/repi-coding-agent`,
+			args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@repi/coding-agent"],
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @repi/coding-agent`,
 		});
 	});
 
 	test("self-update treats empty npmCommand as unset", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@pi-recon/repi-coding-agent", []);
+		const command = getSelfUpdateCommand("@repi/coding-agent", []);
 
 		expect(command?.args).toEqual([
 			"--prefix",
@@ -244,17 +228,17 @@ describe("detectInstallMethod", () => {
 			"-g",
 			"--ignore-scripts",
 			"--min-release-age=0",
-			"@pi-recon/repi-coding-agent",
+			"@repi/coding-agent",
 		]);
 	});
 
 	test("quotes npm self-update display paths", () => {
 		const { prefix } = createNpmPrefixInstall("pi prefix ");
 
-		const command = getSelfUpdateCommand("@pi-recon/repi-coding-agent");
+		const command = getSelfUpdateCommand("@repi/coding-agent");
 
 		expect(command?.display).toBe(
-			`npm --prefix "${prefix}" install -g --ignore-scripts --min-release-age=0 @pi-recon/repi-coding-agent`,
+			`npm --prefix "${prefix}" install -g --ignore-scripts --min-release-age=0 @repi/coding-agent`,
 		);
 	});
 
@@ -264,21 +248,21 @@ describe("detectInstallMethod", () => {
 		setExecPath(`${packageDir}\\dist\\cli.js`);
 
 		expect(detectInstallMethod()).toBe("npm");
-		expect(getUpdateInstruction("@pi-recon/repi-coding-agent")).toBe(
-			"Run: npm install -g --ignore-scripts --min-release-age=0 @pi-recon/repi-coding-agent",
+		expect(getUpdateInstruction("@repi/coding-agent")).toBe(
+			"Run: npm install -g --ignore-scripts --min-release-age=0 @repi/coding-agent",
 		);
 	});
 
 	test("self-updates bun global installs from bun pm bin", () => {
 		createBunGlobalInstall();
 
-		const command = getSelfUpdateCommand("@pi-recon/repi-coding-agent");
+		const command = getSelfUpdateCommand("@repi/coding-agent");
 
 		expect(detectInstallMethod()).toBe("bun");
 		expect(command).toEqual({
 			command: "bun",
-			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@pi-recon/repi-coding-agent"],
-			display: "bun install -g --ignore-scripts --minimum-release-age=0 @pi-recon/repi-coding-agent",
+			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@repi/coding-agent"],
+			display: "bun install -g --ignore-scripts --minimum-release-age=0 @repi/coding-agent",
 		});
 	});
 
@@ -312,7 +296,7 @@ describe("detectInstallMethod", () => {
 		const temp = mkdtempSync(join(tmpdir(), "pi-pnpm11-"));
 		const binDir = join(temp, "bin");
 		const root = join(temp, "Library", "pnpm", "global", "v11");
-		const packageName = "@pi-recon/repi-coding-agent";
+		const packageName = "@repi/coding-agent";
 		const globalPackageDir = join(root, "11e9a", "node_modules", "@earendil-works", "repi-coding-agent");
 		const storePackageDir = join(
 			temp,
@@ -407,9 +391,7 @@ describe("detectInstallMethod", () => {
 		const { packageDir } = createNpmPrefixInstall();
 		chmodSync(packageDir, 0o500);
 
-		expect(getSelfUpdateCommand("@pi-recon/repi-coding-agent")).toBeUndefined();
-		expect(getSelfUpdateUnavailableInstruction("@pi-recon/repi-coding-agent")).toContain(
-			"the install path is not writable",
-		);
+		expect(getSelfUpdateCommand("@repi/coding-agent")).toBeUndefined();
+		expect(getSelfUpdateUnavailableInstruction("@repi/coding-agent")).toContain("the install path is not writable");
 	});
 });

@@ -167,7 +167,7 @@ If no `repi` manifest is present, repi auto-discovers resources from these direc
 
 Third party runtime dependencies belong in `dependencies` in `package.json`. Dependencies that do not register extensions, skills, prompt templates, or themes also belong in `dependencies`. When repi installs a package from npm or git, it runs `npm install`, so those dependencies are installed automatically.
 
-REPI bundles core packages for extensions and skills. If you import any of these, list them in `peerDependencies` with a `"*"` range and do not bundle them: `@pi-recon/repi-ai`, `@pi-recon/repi-agent-core`, `@pi-recon/repi-coding-agent`, `@pi-recon/repi-tui`, `typebox`.
+REPI bundles core packages for extensions and skills. If you import any of these, list them in `peerDependencies` with a `"*"` range and do not bundle them: `@repi/ai`, `@repi/agent-core`, `@repi/coding-agent`, `@repi/tui`, `typebox`.
 
 Other repi packages must be bundled in your tarball. Add them to `dependencies` and `bundledDependencies`, then reference their resources through `node_modules/` paths. REPI loads packages with separate module roots, so separate installs do not collide or share modules.
 

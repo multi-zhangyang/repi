@@ -1,4 +1,4 @@
-import type { AssistantMessage, Model } from "@pi-recon/repi-ai";
+import type { AssistantMessage, Model } from "@repi/ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { streamProxy } from "../src/proxy.ts";
 

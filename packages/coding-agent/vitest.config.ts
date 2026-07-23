@@ -42,9 +42,9 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: [
-			{ find: /^@pi-recon\/repi-ai$/, replacement: aiSrcIndex },
-			{ find: /^@pi-recon\/repi-ai\/oauth$/, replacement: aiSrcOAuth },
-			{ find: /^@pi-recon\/repi-agent-core$/, replacement: agentSrcIndex },
+			{ find: /^@repi\/ai$/, replacement: aiSrcIndex },
+			{ find: /^@repi\/ai\/oauth$/, replacement: aiSrcOAuth },
+			{ find: /^@repi\/agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@mariozechner\/repi-ai$/, replacement: aiSrcIndex },
 			{ find: /^@mariozechner\/repi-ai\/oauth$/, replacement: aiSrcOAuth },
 			{ find: /^@mariozechner\/repi-agent-core$/, replacement: agentSrcIndex },

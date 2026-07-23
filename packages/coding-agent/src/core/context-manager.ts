@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@pi-recon/repi-agent-core";
+import type { AgentMessage } from "@repi/agent-core";
 import { compactionTriggerTokens, estimateTokens } from "./compaction/compaction.ts";
 import type { Skill } from "./skills.ts";
 import { formatSkillsForPrompt } from "./skills.ts";

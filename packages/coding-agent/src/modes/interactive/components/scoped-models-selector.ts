@@ -1,4 +1,4 @@
-import type { Model } from "@pi-recon/repi-ai";
+import type { Model } from "@repi/ai";
 import {
 	Container,
 	type Focusable,
@@ -9,7 +9,7 @@ import {
 	matchesKey,
 	Spacer,
 	Text,
-} from "@pi-recon/repi-tui";
+} from "@repi/tui";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
 import { keyText } from "./keybinding-hints.ts";

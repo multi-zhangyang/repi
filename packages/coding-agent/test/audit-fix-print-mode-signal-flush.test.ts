@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@pi-recon/repi-ai";
+import type { AssistantMessage } from "@repi/ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const printIo = vi.hoisted(() => ({

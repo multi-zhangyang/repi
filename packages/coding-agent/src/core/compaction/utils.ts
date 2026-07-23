@@ -2,8 +2,8 @@
  * Shared utilities for compaction and branch summarization.
  */
 
-import type { AgentMessage } from "@pi-recon/repi-agent-core";
-import type { AssistantMessage, Message } from "@pi-recon/repi-ai";
+import type { AgentMessage } from "@repi/agent-core";
+import type { AssistantMessage, Message } from "@repi/ai";
 import { safeHeadEnd, safeTailStart } from "../tools/truncate.ts";
 
 // ============================================================================

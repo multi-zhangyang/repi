@@ -3,8 +3,8 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"paths": {
-			"@pi-recon/repi-ai": ["../ai/dist/index.d.ts"],
-			"@pi-recon/repi-ai/*": ["../ai/dist/*.d.ts", "../ai/dist/providers/*.d.ts"]
+			"@repi/ai": ["../ai/dist/index.d.ts"],
+			"@repi/ai/*": ["../ai/dist/*.d.ts", "../ai/dist/providers/*.d.ts"]
 		},
 		"rootDir": "./src"
 	},

@@ -1,18 +1,18 @@
-# @pi-recon/repi-agent-core
+# @repi/agent-core
 
-Stateful agent with tool execution and event streaming. Built on `@pi-recon/repi-ai`.
+Stateful agent with tool execution and event streaming. Built on `@repi/ai`.
 
 ## Installation
 
 ```bash
-npm install @pi-recon/repi-agent-core
+npm install @repi/agent-core
 ```
 
 ## Quick Start
 
 ```typescript
-import { Agent } from "@pi-recon/repi-agent-core";
-import { getModel } from "@pi-recon/repi-ai";
+import { Agent } from "@repi/agent-core";
+import { getModel } from "@repi/ai";
 
 const agent = new Agent({
   initialState: {
@@ -355,7 +355,7 @@ Follow-up messages are checked only when there are no more tool calls and no ste
 Extend `AgentMessage` via declaration merging:
 
 ```typescript
-declare module "@pi-recon/repi-agent-core" {
+declare module "@repi/agent-core" {
   interface CustomAgentMessages {
     notification: { role: "notification"; text: string; timestamp: number };
   }
@@ -436,7 +436,7 @@ Return `terminate: true` from `execute()` or `afterToolCall` to hint that the ag
 For browser apps that proxy through a backend:
 
 ```typescript
-import { Agent, streamProxy } from "@pi-recon/repi-agent-core";
+import { Agent, streamProxy } from "@repi/agent-core";
 
 const agent = new Agent({
   streamFn: (model, context, options) =>
@@ -453,7 +453,7 @@ const agent = new Agent({
 For direct control without the Agent class:
 
 ```typescript
-import { agentLoop, agentLoopContinue } from "@pi-recon/repi-agent-core";
+import { agentLoop, agentLoopContinue } from "@repi/agent-core";
 
 const context: AgentContext = {
   systemPrompt: "You are helpful.",

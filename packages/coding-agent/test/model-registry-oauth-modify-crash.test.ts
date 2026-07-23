@@ -23,8 +23,8 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { OAuthProviderInterface } from "@pi-recon/repi-ai/oauth";
-import { registerOAuthProvider, unregisterOAuthProvider } from "@pi-recon/repi-ai/oauth";
+import type { OAuthProviderInterface } from "@repi/ai/oauth";
+import { registerOAuthProvider, unregisterOAuthProvider } from "@repi/ai/oauth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRegistry } from "../src/core/model-registry.ts";

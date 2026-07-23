@@ -19,8 +19,8 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent } from "@pi-recon/repi-agent-core";
-import { type AssistantMessage, getModel } from "@pi-recon/repi-ai";
+import { Agent } from "@repi/agent-core";
+import { type AssistantMessage, getModel } from "@repi/ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";

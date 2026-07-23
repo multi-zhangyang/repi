@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cleanupSessionResources } from "@pi-recon/repi-ai";
+import { cleanupSessionResources } from "@repi/ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPersistedTempFile } from "../src/core/tools/output-accumulator.ts";
 

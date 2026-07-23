@@ -3,12 +3,12 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"paths": {
-			"@pi-recon/repi-agent-core": ["../agent/dist/index.d.ts"],
-			"@pi-recon/repi-agent-core/*": ["../agent/dist/*.d.ts"],
-			"@pi-recon/repi-ai": ["../ai/dist/index.d.ts"],
-			"@pi-recon/repi-ai/*": ["../ai/dist/*.d.ts", "../ai/dist/providers/*.d.ts"],
-			"@pi-recon/repi-tui": ["../tui/dist/index.d.ts"],
-			"@pi-recon/repi-tui/*": ["../tui/dist/*.d.ts", "../tui/dist/components/*.d.ts"]
+			"@repi/agent-core": ["../agent/dist/index.d.ts"],
+			"@repi/agent-core/*": ["../agent/dist/*.d.ts"],
+			"@repi/ai": ["../ai/dist/index.d.ts"],
+			"@repi/ai/*": ["../ai/dist/*.d.ts", "../ai/dist/providers/*.d.ts"],
+			"@repi/tui": ["../tui/dist/index.d.ts"],
+			"@repi/tui/*": ["../tui/dist/*.d.ts", "../tui/dist/components/*.d.ts"]
 		},
 		"rootDir": "./src"
 	},

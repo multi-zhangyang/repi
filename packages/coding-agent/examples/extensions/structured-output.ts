@@ -5,8 +5,8 @@
  * without paying for an extra follow-up LLM turn.
  */
 
-import { defineTool, type ExtensionAPI } from "@pi-recon/repi-coding-agent";
-import { Text } from "@pi-recon/repi-tui";
+import { defineTool, type ExtensionAPI } from "@repi/coding-agent";
+import { Text } from "@repi/tui";
 import { Type } from "typebox";
 
 interface StructuredOutputDetails {

@@ -1,4 +1,4 @@
-import { fauxAssistantMessage, registerFauxProvider } from "@pi-recon/repi-ai";
+import { fauxAssistantMessage, registerFauxProvider } from "@repi/ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentHarness } from "../../src/harness/agent-harness.ts";
 import { NodeExecutionEnv } from "../../src/harness/env/nodejs.ts";

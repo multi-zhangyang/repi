@@ -1,4 +1,4 @@
-import type { Message } from "@pi-recon/repi-ai";
+import type { Message } from "@repi/ai";
 import type { AgentMessage } from "../../types.ts";
 import { safeHeadEnd, safeTailStart } from "../utils/truncate.ts";
 

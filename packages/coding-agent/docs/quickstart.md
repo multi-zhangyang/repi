@@ -27,7 +27,7 @@ repi --offline --list-models
 After the package is published, REPI can also be installed as a global npm package:
 
 ```bash
-npm install -g @pi-recon/repi-coding-agent
+npm install -g @repi/coding-agent
 ```
 
 ### Uninstall
@@ -42,10 +42,10 @@ sudo rm -f /usr/local/bin/repi
 If you installed the npm package globally, use the matching package manager:
 
 ```bash
-npm uninstall -g @pi-recon/repi-coding-agent
-pnpm remove -g @pi-recon/repi-coding-agent
-yarn global remove @pi-recon/repi-coding-agent
-bun uninstall -g @pi-recon/repi-coding-agent
+npm uninstall -g @repi/coding-agent
+pnpm remove -g @repi/coding-agent
+yarn global remove @repi/coding-agent
+bun uninstall -g @repi/coding-agent
 ```
 
 Uninstalling the CLI does not automatically remove settings, credentials, sessions, and installed repi packages in `~/.repi/agent/`.

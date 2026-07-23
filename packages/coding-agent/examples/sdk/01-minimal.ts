@@ -5,7 +5,7 @@
  * from cwd and ~/.pi/agent. Model chosen from settings or first available.
  */
 
-import { createAgentSession } from "@pi-recon/repi-coding-agent";
+import { createAgentSession } from "@repi/coding-agent";
 
 const { session } = await createAgentSession();
 

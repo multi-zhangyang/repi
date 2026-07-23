@@ -1,4 +1,4 @@
-import type { Component } from "@pi-recon/repi-tui";
+import type { Component } from "@repi/tui";
 import { theme } from "../theme/theme.ts";
 
 /**

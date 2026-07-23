@@ -14,7 +14,7 @@
  * Post-fix serializeConversation returns "read()" and does not throw. Pre-fix
  * (guard removed) Object.entries(null) throws TypeError.
  */
-import type { AssistantMessage, Message } from "@pi-recon/repi-ai";
+import type { AssistantMessage, Message } from "@repi/ai";
 import { describe, expect, it } from "vitest";
 import { serializeConversation } from "../src/core/compaction/utils.ts";
 

@@ -1,4 +1,4 @@
-import type { Model } from "@pi-recon/repi-ai";
+import type { Model } from "@repi/ai";
 import { describe, expect, test } from "vitest";
 import { findInitialModel, parseModelPattern, resolveCliModel } from "../src/core/model-resolver.ts";
 

@@ -7,12 +7,12 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as _bundledPiAgentCore from "@pi-recon/repi-agent-core";
-import * as _bundledPiAgentCoreNode from "@pi-recon/repi-agent-core/node";
-import * as _bundledPiAi from "@pi-recon/repi-ai";
-import * as _bundledPiAiOauth from "@pi-recon/repi-ai/oauth";
-import type { KeyId } from "@pi-recon/repi-tui";
-import * as _bundledPiTui from "@pi-recon/repi-tui";
+import * as _bundledPiAgentCore from "@repi/agent-core";
+import * as _bundledPiAgentCoreNode from "@repi/agent-core/node";
+import * as _bundledPiAi from "@repi/ai";
+import * as _bundledPiAiOauth from "@repi/ai/oauth";
+import type { KeyId } from "@repi/tui";
+import * as _bundledPiTui from "@repi/tui";
 import { createJiti } from "jiti/static";
 // Static imports of packages that extensions may use.
 // These MUST be static so Bun bundles them into the compiled binary.
@@ -47,13 +47,13 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@sinclair/typebox": _bundledTypebox,
 	"@sinclair/typebox/compile": _bundledTypeboxCompile,
 	"@sinclair/typebox/value": _bundledTypeboxValue,
-	"@pi-recon/repi-agent-core": _bundledPiAgentCore,
-	"@pi-recon/repi-agent-core/node": _bundledPiAgentCoreNode,
-	"@pi-recon/repi-tui": _bundledPiTui,
-	"@pi-recon/repi-ai": _bundledPiAi,
-	"@pi-recon/repi-ai/compat": _bundledPiAi,
-	"@pi-recon/repi-ai/oauth": _bundledPiAiOauth,
-	"@pi-recon/repi-coding-agent": _bundledPiCodingAgentExtensionSdk,
+	"@repi/agent-core": _bundledPiAgentCore,
+	"@repi/agent-core/node": _bundledPiAgentCoreNode,
+	"@repi/tui": _bundledPiTui,
+	"@repi/ai": _bundledPiAi,
+	"@repi/ai/compat": _bundledPiAi,
+	"@repi/ai/oauth": _bundledPiAiOauth,
+	"@repi/coding-agent": _bundledPiCodingAgentExtensionSdk,
 	"@mariozechner/repi-agent-core": _bundledPiAgentCore,
 	"@mariozechner/repi-agent-core/node": _bundledPiAgentCoreNode,
 	"@mariozechner/repi-tui": _bundledPiTui,
@@ -115,33 +115,25 @@ function getAliases(): Record<string, string> {
 		: fs.existsSync(extensionSdkJs)
 			? extensionSdkJs
 			: extensionSdkTs;
-	const piAgentCoreEntry = resolveWorkspaceOrImport(
-		"agent/src/index.ts",
-		"agent/dist/index.js",
-		"@pi-recon/repi-agent-core",
-	);
+	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/src/index.ts", "agent/dist/index.js", "@repi/agent-core");
 	const piAgentCoreNodeEntry = resolveWorkspaceOrImport(
 		"agent/src/node.ts",
 		"agent/dist/node.js",
-		"@pi-recon/repi-agent-core/node",
+		"@repi/agent-core/node",
 	);
-	const piTuiEntry = resolveWorkspaceOrImport("tui/src/index.ts", "tui/dist/index.js", "@pi-recon/repi-tui");
-	const piAiEntry = resolveWorkspaceOrImport("ai/src/index.ts", "ai/dist/index.js", "@pi-recon/repi-ai");
-	const piAiCompatEntry = resolveWorkspaceOrImport(
-		"ai/src/compat.ts",
-		"ai/dist/compat.js",
-		"@pi-recon/repi-ai/compat",
-	);
-	const piAiOauthEntry = resolveWorkspaceOrImport("ai/src/oauth.ts", "ai/dist/oauth.js", "@pi-recon/repi-ai/oauth");
+	const piTuiEntry = resolveWorkspaceOrImport("tui/src/index.ts", "tui/dist/index.js", "@repi/tui");
+	const piAiEntry = resolveWorkspaceOrImport("ai/src/index.ts", "ai/dist/index.js", "@repi/ai");
+	const piAiCompatEntry = resolveWorkspaceOrImport("ai/src/compat.ts", "ai/dist/compat.js", "@repi/ai/compat");
+	const piAiOauthEntry = resolveWorkspaceOrImport("ai/src/oauth.ts", "ai/dist/oauth.js", "@repi/ai/oauth");
 
 	_aliases = {
-		"@pi-recon/repi-coding-agent": piCodingAgentEntry,
-		"@pi-recon/repi-agent-core": piAgentCoreEntry,
-		"@pi-recon/repi-agent-core/node": piAgentCoreNodeEntry,
-		"@pi-recon/repi-tui": piTuiEntry,
-		"@pi-recon/repi-ai": piAiEntry,
-		"@pi-recon/repi-ai/compat": piAiCompatEntry,
-		"@pi-recon/repi-ai/oauth": piAiOauthEntry,
+		"@repi/coding-agent": piCodingAgentEntry,
+		"@repi/agent-core": piAgentCoreEntry,
+		"@repi/agent-core/node": piAgentCoreNodeEntry,
+		"@repi/tui": piTuiEntry,
+		"@repi/ai": piAiEntry,
+		"@repi/ai/compat": piAiCompatEntry,
+		"@repi/ai/oauth": piAiOauthEntry,
 		"@mariozechner/repi-coding-agent": piCodingAgentEntry,
 		"@mariozechner/repi-agent-core": piAgentCoreEntry,
 		"@mariozechner/repi-agent-core/node": piAgentCoreNodeEntry,

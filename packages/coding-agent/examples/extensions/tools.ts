@@ -9,9 +9,9 @@
  * 2. Use /tools to open the tool selector
  */
 
-import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@pi-recon/repi-coding-agent";
-import { getSettingsListTheme } from "@pi-recon/repi-coding-agent";
-import { Container, type SettingItem, SettingsList } from "@pi-recon/repi-tui";
+import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@repi/coding-agent";
+import { getSettingsListTheme } from "@repi/coding-agent";
+import { Container, type SettingItem, SettingsList } from "@repi/tui";
 
 // State persisted to session
 interface ToolsState {

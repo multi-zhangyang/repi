@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxToolCall } from "@pi-recon/repi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@repi/ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BUILTIN_AGENT_THREAD_SPECS, createAgentThreadManager } from "../../src/core/agent-thread-manager.ts";
 import { createReconExtensionFactory } from "../../src/core/recon-profile.ts";

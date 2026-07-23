@@ -9,7 +9,7 @@
  * pre-compaction → its overflow check was silently skipped.
  */
 
-import type { AssistantMessage } from "@pi-recon/repi-ai";
+import type { AssistantMessage } from "@repi/ai";
 import { describe, expect, it } from "vitest";
 import { isAssistantFromBeforeCompaction } from "../src/core/agent-session.ts";
 import type { CompactionEntry } from "../src/core/session-manager.ts";

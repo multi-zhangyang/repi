@@ -12,8 +12,8 @@ import {
 	type OAuthCredentials,
 	type OAuthLoginCallbacks,
 	type OAuthProviderId,
-} from "@pi-recon/repi-ai";
-import { getOAuthApiKey, getOAuthProvider, getOAuthProviders } from "@pi-recon/repi-ai/oauth";
+} from "@repi/ai";
+import { getOAuthApiKey, getOAuthProvider, getOAuthProviders } from "@repi/ai/oauth";
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";

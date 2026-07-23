@@ -1,4 +1,4 @@
-import type { Usage } from "@pi-recon/repi-ai";
+import type { Usage } from "@repi/ai";
 import { describe, expect, it } from "vitest";
 import { calculateContextTokens } from "../src/core/compaction/index.ts";
 

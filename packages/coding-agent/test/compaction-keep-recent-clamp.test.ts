@@ -14,8 +14,8 @@
  * clamp keepRecentTokens to ~50% of it (clampKeepRecentTokens), so the cut
  * trims on small windows while leaving large-window behavior untouched.
  */
-import type { AgentMessage } from "@pi-recon/repi-agent-core";
-import type { AssistantMessage, Usage } from "@pi-recon/repi-ai";
+import type { AgentMessage } from "@repi/agent-core";
+import type { AssistantMessage, Usage } from "@repi/ai";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_COMPACTION_SETTINGS, findCutPoint, prepareCompaction } from "../src/core/compaction/index.ts";
 import type { SessionEntry, SessionMessageEntry } from "../src/core/session-manager.ts";

@@ -1,5 +1,5 @@
 {
-	"name": "@pi-recon/repi-agent-core",
+	"name": "@repi/agent-core",
 	"version": "0.1.3",
 	"description": "General-purpose agent with transport abstraction, state management, and attachment support",
 	"type": "module",
@@ -29,7 +29,7 @@
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"dependencies": {
-		"@pi-recon/repi-ai": "^0.1.3",
+		"@repi/ai": "^0.1.3",
 		"ignore": "7.0.5",
 		"typebox": "1.1.38",
 		"yaml": "2.9.0"

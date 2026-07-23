@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added `@pi-recon/repi-ai/compat` as an upstream-compatible subpath for pi ecosystem extensions loaded by REPI.
+- Added `@repi/ai/compat` as an upstream-compatible subpath for pi ecosystem extensions loaded by REPI.
 
 ### Fixed
 

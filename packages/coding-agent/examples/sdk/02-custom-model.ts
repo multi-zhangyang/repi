@@ -4,8 +4,8 @@
  * Shows how to select a specific model and thinking level.
  */
 
-import { getModel } from "@pi-recon/repi-ai";
-import { AuthStorage, createAgentSession, ModelRegistry } from "@pi-recon/repi-coding-agent";
+import { getModel } from "@repi/ai";
+import { AuthStorage, createAgentSession, ModelRegistry } from "@repi/coding-agent";
 
 // Set up auth storage and model registry
 const authStorage = AuthStorage.create();

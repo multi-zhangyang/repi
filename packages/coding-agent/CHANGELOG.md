@@ -160,8 +160,8 @@ operator infrastructure.
 
 ### Added — distribution
 
-- All four workspace packages (`@pi-recon/repi-agent-core`, `@pi-recon/repi-ai`,
-  `@pi-recon/repi-tui`, `@pi-recon/repi-coding-agent`) configured with
+- All four workspace packages (`@repi/agent-core`, `@repi/ai`,
+  `@repi/tui`, `@repi/coding-agent`) configured with
   `publishConfig.access: public` for public scoped npm publishing.
 - `scripts/publish.mjs` publishes the four packages in dependency order with
   `--access public --provenance`, idempotent (skips already-published), and

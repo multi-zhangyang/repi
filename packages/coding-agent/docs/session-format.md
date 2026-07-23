@@ -34,7 +34,7 @@ Source on GitHub ([repi](https://github.com/multi-zhangyang/repi)):
 - [`packages/ai/src/types.ts`](https://github.com/multi-zhangyang/repi/blob/main/packages/ai/src/types.ts) - Base message types (UserMessage, AssistantMessage, ToolResultMessage)
 - [`packages/agent/src/types.ts`](https://github.com/multi-zhangyang/repi/blob/main/packages/agent/src/types.ts) - AgentMessage union type
 
-For TypeScript definitions in your project, inspect `node_modules/@pi-recon/repi-coding-agent/dist/` and `node_modules/@pi-recon/repi-ai/dist/`.
+For TypeScript definitions in your project, inspect `node_modules/@repi/coding-agent/dist/` and `node_modules/@repi/ai/dist/`.
 
 ## Message Types
 

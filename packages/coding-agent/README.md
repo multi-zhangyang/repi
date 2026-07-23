@@ -4,7 +4,7 @@
   </a>
 </p>
 <p align="center">
-  <a href="https://www.npmjs.com/package/@pi-recon/repi-coding-agent"><img alt="npm" src="https://img.shields.io/npm/v/@pi-recon/repi-coding-agent?style=flat-square" /></a>
+  <a href="https://www.npmjs.com/package/@repi/coding-agent"><img alt="npm" src="https://img.shields.io/npm/v/@repi/coding-agent?style=flat-square" /></a>
 </p>
 
 ---
@@ -58,14 +58,14 @@ npm install --ignore-scripts
 bash install.sh
 ```
 
-Release tarball install uses the four same-version GitHub Release packages together; do not install only `@pi-recon/repi-coding-agent` unless the matching `@pi-recon/*` packages are published for that exact version.
+Release tarball install uses the four same-version GitHub Release packages together; do not install only `@repi/coding-agent` unless the matching `@repi/*` packages are published for that exact version.
 
 ```bash
 npm install -g \
-  pi-recon-repi-ai-0.1.3.tgz \
-  pi-recon-repi-agent-core-0.1.3.tgz \
-  pi-recon-repi-tui-0.1.3.tgz \
-  pi-recon-repi-coding-agent-0.1.3.tgz
+  repi-ai-0.1.3.tgz \
+  repi-agent-core-0.1.3.tgz \
+  repi-tui-0.1.3.tgz \
+  repi-coding-agent-0.1.3.tgz
 ```
 
 The source installer writes a `repi` launcher into an existing PATH directory when possible (`/usr/local/bin` / `/usr/local/sbin`, with sudo if available). If it falls back to `~/.local/bin`, it creates/updates `.bashrc`/`.profile` (or `.zshrc`/`.profile`) and prints the exact next command, for example:
@@ -432,7 +432,7 @@ See [docs/packages.md](docs/packages.md).
 ### SDK
 
 ```typescript
-import { AuthStorage, createAgentSession, ModelRegistry, SessionManager } from "@pi-recon/repi-coding-agent";
+import { AuthStorage, createAgentSession, ModelRegistry, SessionManager } from "@repi/coding-agent";
 
 const authStorage = AuthStorage.create();
 const modelRegistry = ModelRegistry.create(authStorage);
@@ -659,6 +659,6 @@ MIT
 
 ## See Also
 
-- [@pi-recon/repi-ai](https://www.npmjs.com/package/@pi-recon/repi-ai): Core LLM toolkit
-- [@pi-recon/repi-agent-core](https://www.npmjs.com/package/@pi-recon/repi-agent-core): Agent framework
-- [@pi-recon/repi-tui](https://www.npmjs.com/package/@pi-recon/repi-tui): Terminal UI components
+- [@repi/ai](https://www.npmjs.com/package/@repi/ai): Core LLM toolkit
+- [@repi/agent-core](https://www.npmjs.com/package/@repi/agent-core): Agent framework
+- [@repi/tui](https://www.npmjs.com/package/@repi/tui): Terminal UI components

@@ -1,4 +1,4 @@
-import type { AutocompleteItem } from "@pi-recon/repi-tui";
+import type { AutocompleteItem } from "@repi/tui";
 import { parseObjective, tokenize } from "./prompt.ts";
 import type { RepiGoalCommandResult } from "./types.ts";
 import { EDIT_TOKEN_COMPLETION, GOAL_ARGUMENT_COMPLETIONS } from "./types.ts";

@@ -1,4 +1,4 @@
-import type { Transport } from "@pi-recon/repi-ai";
+import type { Transport } from "@repi/ai";
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";

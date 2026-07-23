@@ -1,4 +1,4 @@
-import type { Api, Model } from "@pi-recon/repi-ai";
+import type { Api, Model } from "@repi/ai";
 import { APP_NAME, IS_REPI_PRODUCT } from "../config.ts";
 import type { SettingsManager } from "./settings-manager.ts";
 import { isInstallTelemetryEnabled } from "./telemetry.ts";

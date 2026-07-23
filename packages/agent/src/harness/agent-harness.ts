@@ -1,10 +1,4 @@
-import {
-	type AssistantMessage,
-	type ImageContent,
-	type Model,
-	streamSimple,
-	type UserMessage,
-} from "@pi-recon/repi-ai";
+import { type AssistantMessage, type ImageContent, type Model, streamSimple, type UserMessage } from "@repi/ai";
 import { runAgentLoop } from "../agent-loop.ts";
 import type {
 	AgentContext,

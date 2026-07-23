@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@pi-recon/repi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@repi/coding-agent";
 
 const COMPACT_THRESHOLD_TOKENS = 100_000;
 

@@ -12,7 +12,7 @@ import {
 	type TextContent,
 	type ToolResultMessage,
 	validateToolArguments,
-} from "@pi-recon/repi-ai";
+} from "@repi/ai";
 import { safeHeadEnd, safeTailStart } from "./harness/utils/truncate.ts";
 import type {
 	AgentContext,

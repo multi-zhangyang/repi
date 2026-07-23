@@ -104,7 +104,7 @@ async function main(): Promise<void> {
 
 	if (!command || command === "help" || command === "--help" || command === "-h") {
 		const providerList = PROVIDERS.map((p) => `  ${p.id.padEnd(20)} ${p.name}`).join("\n");
-		console.log(`Usage: npx @pi-recon/repi-ai <command> [provider]
+		console.log(`Usage: npx @repi/ai <command> [provider]
 
 Commands:
   login [provider]  Login to an OAuth provider
@@ -114,9 +114,9 @@ Providers:
 ${providerList}
 
 Examples:
-  npx @pi-recon/repi-ai login              # interactive provider selection
-  npx @pi-recon/repi-ai login anthropic    # login to specific provider
-  npx @pi-recon/repi-ai list               # list providers
+  npx @repi/ai login              # interactive provider selection
+  npx @repi/ai login anthropic    # login to specific provider
+  npx @repi/ai list               # list providers
 `);
 		return;
 	}
@@ -153,7 +153,7 @@ Examples:
 
 		if (!PROVIDERS.some((p) => p.id === provider)) {
 			console.error(`Unknown provider: ${provider}`);
-			console.error(`Use 'npx @pi-recon/repi-ai list' to see available providers`);
+			console.error(`Use 'npx @repi/ai list' to see available providers`);
 			process.exit(1);
 		}
 
@@ -163,7 +163,7 @@ Examples:
 	}
 
 	console.error(`Unknown command: ${command}`);
-	console.error(`Use 'npx @pi-recon/repi-ai --help' for usage`);
+	console.error(`Use 'npx @repi/ai --help' for usage`);
 	process.exit(1);
 }
 

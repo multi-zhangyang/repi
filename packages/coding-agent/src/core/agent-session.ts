@@ -15,8 +15,8 @@
 
 import { existsSync, mkdirSync, readFileSync, type Stats, statSync } from "node:fs";
 import { basename, dirname } from "node:path";
-import type { Agent, AgentEvent, AgentMessage, AgentState, AgentTool, ThinkingLevel } from "@pi-recon/repi-agent-core";
-import type { AssistantMessage, ImageContent, Message, Model, TextContent } from "@pi-recon/repi-ai";
+import type { Agent, AgentEvent, AgentMessage, AgentState, AgentTool, ThinkingLevel } from "@repi/agent-core";
+import type { AssistantMessage, ImageContent, Message, Model, TextContent } from "@repi/ai";
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
@@ -25,7 +25,7 @@ import {
 	modelsAreEqual,
 	resetApiProviders,
 	streamSimple,
-} from "@pi-recon/repi-ai";
+} from "@repi/ai";
 import { theme } from "../modes/interactive/theme/theme.ts";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
 import { resolvePath } from "../utils/paths.ts";

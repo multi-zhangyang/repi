@@ -22,8 +22,8 @@
  * completeSimple for the turn-prefix summary; pre-fix the result summary
  * contains "No prior history." and NOT the secret; post-fix it carries it.
  */
-import type { AgentMessage } from "@pi-recon/repi-agent-core";
-import type { AssistantMessage, Model } from "@pi-recon/repi-ai";
+import type { AgentMessage } from "@repi/agent-core";
+import type { AssistantMessage, Model } from "@repi/ai";
 import { describe, expect, it, vi } from "vitest";
 import {
 	type CompactionPreparation,
@@ -34,8 +34,8 @@ import {
 
 const { completeSimpleMock } = vi.hoisted(() => ({ completeSimpleMock: vi.fn() }));
 
-vi.mock("@pi-recon/repi-ai", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@pi-recon/repi-ai")>();
+vi.mock("@repi/ai", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@repi/ai")>();
 	return { ...actual, completeSimple: completeSimpleMock };
 });
 

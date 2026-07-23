@@ -1,4 +1,4 @@
-import { setKeybindings } from "@pi-recon/repi-tui";
+import { setKeybindings } from "@repi/tui";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type {

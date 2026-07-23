@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AssistantMessage, ImageContent } from "@pi-recon/repi-ai";
+import type { AssistantMessage, ImageContent } from "@repi/ai";
 import type { AgentSessionEvent } from "../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { agentSettledTargetFromSession, waitForAgentSettled } from "../core/agent-settled.ts";
