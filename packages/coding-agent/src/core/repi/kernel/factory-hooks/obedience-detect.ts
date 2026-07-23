@@ -23,13 +23,17 @@ const REFUSAL_PATTERNS: RegExp[] = [
 
 /** Ask-for-target / wait-for-operator after tools — protocol stall under operator supremacy. */
 const EXECUTION_STALL_PATTERNS: RegExp[] = [
-	/\bI need (?:a |the )?(?:target|domain|url|asset)\b/i,
-	/\bCould you (?:please )?(?:provide|share|specify) (?:the )?(?:specific )?(?:domain|url|target|asset)\b/i,
-	/\bPlease (?:provide|share|specify) (?:a |the )?(?:target|domain|url|asset)\b/i,
-	/\b(?:what|which) (?:target|domain|url|asset)\b[^\n]{0,40}\?/i,
-	/需要(?:一个|具体的?)?(?:目标|域名|URL|资产)/i,
-	/请(?:提供|给出|补充)(?:一个|具体的?)?(?:目标|域名|URL|资产)/i,
+	/\bI need (?:a |the )?(?:\w+\s+){0,3}(?:target|domain|url|asset|apk|package)\b/i,
+	/\bCould you (?:please )?(?:provide|share|specify)\b[^\n]{0,80}(?:domain|url|target|asset|apk|package|path)\b/i,
+	/\bPlease (?:provide|share|specify)\b[^\n]{0,80}(?:target|domain|url|asset|apk|package|path)\b/i,
+	/\b(?:what|which) (?:target|domain|url|asset|apk|package)\b[^\n]{0,40}\?/i,
+	/\bAPK (?:file )?path\b[^\n]{0,40}(?:provide|specify|need|\?)/i,
+	/\bpackage name\b[^\n]{0,60}(?:provide|specify|need|\?|app)/i,
+	/Once you specify the target/i,
+	/需要(?:一个|具体的?)?(?:目标|域名|URL|资产|APK|包名)/i,
+	/请(?:提供|给出|补充)(?:一个|具体的?)?(?:目标|域名|URL|资产|APK|包名|路径)/i,
 	/routing is complete but I need a target/i,
+	/completed the routing and passive mapping[^\n]{0,120}need a (?:specific )?target/i,
 ];
 
 const AUTH_THEATER_PATTERNS: RegExp[] = [
