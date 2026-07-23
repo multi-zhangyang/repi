@@ -29,7 +29,8 @@ export const PRE_CAPTURE_SIDE_BLOCK = new Set([
 	"re_map",
 ]);
 
-export const POST_CLOSEOUT_BLOCK = new Set(["re_domain_proof_exit", "re_operator", "re_complete", "re_js_signing"]);
+/** re_operator/re_complete keep tool-level ready-stop; thrash only stops domain-proof thrash. */
+export const POST_CLOSEOUT_BLOCK = new Set(["re_domain_proof_exit"]);
 
 export function missionCheckpoints(_d?: Record<string, any>): Array<{ name?: string; status?: string; note?: string }> {
 	try {

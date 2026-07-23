@@ -105,7 +105,7 @@ export function tryThrashStopBeforeTool(params: {
 			block: true,
 			isError: false,
 			reason:
-				"REPI completion_ready_stop: reverse completion already ready. Do not thrash re_domain_proof_exit/re_operator/re_complete. Output HARNESS_BUGS/PROOF only.",
+				"REPI completion_ready_stop: reverse completion already ready. Do not thrash re_domain_proof_exit. Call re_operator plan → re_complete once (or paste plain HARNESS_BUGS:/PROOF: lines).",
 		};
 	}
 	return undefined;
