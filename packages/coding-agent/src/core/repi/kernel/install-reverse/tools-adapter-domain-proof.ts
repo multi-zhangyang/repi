@@ -3,7 +3,9 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { softFillOptionalOrchestrationWhenReverseReady } from "../../completion-audit/soft-fill-optional.ts";
 import { auditCompletion } from "../../completion-audit.ts";
+import { buildCompleteReadySkeleton } from "../install-proof-tools/complete-ready-skeleton.ts";
 import { tryReverseReadyDomainProofStop } from "./tools-adapter-ready-stop.ts";
+import { isMissionReverseBound } from "./tools-capture-inflight.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiDomainProofExitTool(
@@ -56,10 +58,13 @@ export function registerRepiDomainProofExitTool(
 					typeof deps.formatDomainProofExitClosure === "function"
 						? deps.formatDomainProofExitClosure
 						: (r: any, p?: string) => JSON.stringify({ path: p, status: r?.status, domain: r?.domainId });
-				const nextFooter =
-					report.status === "passed"
-						? "\n\nnext_required:\n- re_operator plan <target>\n- re_operator dispatch <target> maxSteps=2\n- re_complete audit\n- then HARNESS_BUGS/PROOF only"
-						: "";
+				let nextFooter = "";
+				if (report.status === "passed") {
+					const reverseBound = isMissionReverseBound();
+					nextFooter = reverseBound
+						? `\n\nnext_required:\n- re_operator plan (auto-dispatch when reverse bound)\n- re_complete audit once\n- then copy skeleton:\n\n${buildCompleteReadySkeleton({ thrash: false })}`
+						: "\n\nnext_required:\n- re_operator plan <target>\n- re_operator dispatch <target> maxSteps=1\n- re_complete audit\n- then HARNESS_BUGS/PROOF only";
+				}
 				return {
 					content: [
 						{
