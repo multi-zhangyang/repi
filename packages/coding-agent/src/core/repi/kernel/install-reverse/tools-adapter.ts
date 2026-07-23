@@ -73,23 +73,28 @@ export function registerRepiReverseAdapterTools(
 				.trim()
 				.toLowerCase();
 			const hasTarget = Boolean(params.target && String(params.target).trim());
-			// URL/target present ⇒ run (not plan/show false success), same policy as browser/authz/native.
+			const resolvedTarget = resolveAdapterRunTarget(params.target);
+			const adapter = pickAdapterIdForRun({
+				adapter: params.adapter,
+				target: params.target,
+				resolvedTarget,
+			});
+			// URL/target present ⇒ run. Pure reverse domains (agent/crypto/cloud/stego) also run
+			// when mission lexical can pick an adapter — never default to show false-success.
 			const action =
-				raw === "run" || raw === "show" || raw === "plan" || raw === "refresh" ? raw : hasTarget ? "run" : "show";
+				raw === "run" || raw === "show" || raw === "plan" || raw === "refresh"
+					? raw
+					: hasTarget || Boolean(adapter) || Boolean(params.adapter)
+						? "run"
+						: "show";
 			if (action === "refresh") await deps.refreshToolIndex(pi);
 			if (action === "run") {
 				const readyStop = tryReverseReadyRuntimeAdapterStop({
 					action,
-					adapter: params.adapter,
+					adapter: params.adapter ?? adapter,
 					target: params.target,
 				});
 				if (readyStop) return readyStop;
-				const resolvedTarget = resolveAdapterRunTarget(params.target);
-				const adapter = pickAdapterIdForRun({
-					adapter: params.adapter,
-					target: params.target,
-					resolvedTarget,
-				});
 				if (!tryAcquireCaptureSlot("runtime_adapter")) {
 					const text = [
 						"runtime_adapter:",
@@ -109,14 +114,14 @@ export function registerRepiReverseAdapterTools(
 					};
 				}
 				// Optimistic soft-mark so concurrent thrash hits reverse_ready_stop mid-flight.
-				if (adapter) {
-					try {
-						markMissionReverseBound();
+				try {
+					markMissionReverseBound();
+					if (adapter) {
 						updateMissionCheckpoint("reverse_proof_exit_ready", "pending", `runtime_adapter ${adapter} starting`);
 						updateMissionCheckpoint("minimal_path_proven", "pending", `runtime_adapter ${adapter} starting`);
-					} catch {
-						/* optional */
 					}
+				} catch {
+					/* optional */
 				}
 				try {
 					const reused = tryReuseRecentRuntimeAdapterArtifact({
@@ -128,6 +133,7 @@ export function registerRepiReverseAdapterTools(
 						const nl = String.fromCharCode(10);
 						// Soft-mark reverse proof so thrash-stop engages even when models only hit reuse.
 						try {
+							markMissionReverseBound();
 							updateMissionCheckpoint(
 								"reverse_proof_exit_ready",
 								"pending",

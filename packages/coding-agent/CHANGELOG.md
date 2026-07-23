@@ -49,6 +49,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- re_runtime_adapter defaults to run (and soft-marks reverse) when mission lexical can pick an adapter even without an explicit target/action.
 - Obedience detects HARNESS_BUGS mislabels (missing target / non-tool narrative) after reverse bind and injects tool-failure-only correction.
 - re_exploit_lab run soft-marks reverse bound like native/browser captures so domain proof thrash does not demand a second capture.
 - Expand execution_stall detection for post-map APK/package/path target asks (mobile pure must not stop for APK letter).
