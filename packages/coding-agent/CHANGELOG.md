@@ -49,6 +49,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- re_map passive binary-candidates find: escape \( \) so bash no longer syntax-errors on prune groups.
 
 - Release tarball install after package rename (dist imports `@repi/*`).
 - Release/selfcheck doctor expectations use `memory:product-removed` instead of removed `memory:scoped-defaults`.
