@@ -49,6 +49,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- re_exploit_lab run soft-marks reverse bound like native/browser captures so domain proof thrash does not demand a second capture.
 - Expand execution_stall detection for post-map APK/package/path target asks (mobile pure must not stop for APK letter).
 - Obedience layer detects post-route ask-for-target execution_stall and injects capture-first correction (pure/local tasks must not stop for a target letter).
 - Firmware adapter proof tags require real image/rootfs/binwalk-hit CAP (no unconditional partial/strong bind on bare host or empty targets).

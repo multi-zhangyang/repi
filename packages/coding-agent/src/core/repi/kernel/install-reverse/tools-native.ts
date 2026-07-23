@@ -3,8 +3,10 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { auditCompletion } from "../../completion-audit.ts";
 import { readCurrentMission } from "../../mission.ts";
+import { isMissionReverseBound } from "./tools-capture-inflight.ts";
 import { registerRepiReverseNativeTool } from "./tools-native-core.ts";
 import { registerRepiReverseMobileTool } from "./tools-native-mobile.ts";
+import { softMarkReverseFromNative } from "./tools-native-ready.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseNativeTools(
@@ -37,13 +39,15 @@ export function registerRepiReverseNativeTools(
 			const action = params.action ?? (hasTarget ? "run" : "plan");
 			// After reverse proof is ready, further exploit-lab thrash wastes wall clock.
 			try {
-				const mission = readCurrentMission();
-				const reverseDone = Boolean(
-					mission?.checkpoints?.some(
-						(c: { name?: string; status?: string }) =>
-							(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
-					),
-				);
+				const reverseDone =
+					isMissionReverseBound() ||
+					Boolean(
+						readCurrentMission()?.checkpoints?.some(
+							(c: { name?: string; status?: string }) =>
+								(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") &&
+								c.status === "done",
+						),
+					);
 				if (reverseDone && (action === "run" || action === "plan" || action === "show")) {
 					const audit = auditCompletion();
 					if (audit?.ready) {
@@ -75,12 +79,13 @@ export function registerRepiReverseNativeTools(
 							runs: params.runs,
 							timeoutMs: params.timeoutMs,
 						});
+			const path = deps.latestExploitLabArtifactPath();
+			if (action === "run" && path) {
+				softMarkReverseFromNative(String(path));
+			}
 			return {
 				content: [{ type: "text" as const, text }],
-				details: { action, path: deps.latestExploitLabArtifactPath(), target: params.target } as Record<
-					string,
-					unknown
-				>,
+				details: { action, path, target: params.target } as Record<string, unknown>,
 			};
 		},
 	});
