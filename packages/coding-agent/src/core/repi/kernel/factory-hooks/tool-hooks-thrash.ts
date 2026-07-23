@@ -75,19 +75,19 @@ export function tryThrashStopBeforeTool(params: {
 		};
 	}
 
-	// Map done but this process has no reverse capture yet: do not let models skip to
-	// domain_proof/operator/complete and inherit shared evidence corpus as false proof.
+	// After route, until this process has reverse capture: do not let models skip map/capture
+	// to domain_proof/operator/complete and inherit shared evidence corpus as false proof.
 	if (
 		routed &&
-		mapDone &&
 		!reverseDone &&
 		(toolName === "re_domain_proof_exit" || toolName === "re_operator" || toolName === "re_complete")
 	) {
 		return {
 			block: true,
 			isError: false,
-			reason:
-				"REPI capture_first: map done — run one domain capture (re_runtime_adapter/re_native_runtime/re_live_browser/re_mobile_runtime/re_web_authz_state/re_js_signing/re_exploit_lab) before re_domain_proof_exit/re_operator/re_complete.",
+			reason: mapDone
+				? "REPI capture_first: map done — run one domain capture (re_runtime_adapter/re_native_runtime/re_live_browser/re_mobile_runtime/re_web_authz_state/re_js_signing/re_exploit_lab) before re_domain_proof_exit/re_operator/re_complete."
+				: "REPI capture_first: after re_route call re_map then one domain capture before re_domain_proof_exit/re_operator/re_complete.",
 		};
 	}
 
