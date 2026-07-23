@@ -21,11 +21,10 @@ export function reverseProofDone(): boolean {
 	}
 	const mission = readCurrentMission();
 	return Boolean(
-		mission?.checkpoints?.some((c: { name?: string; status?: string; note?: string }) => {
-			if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
-			if (c.status === "done") return true;
-			return c.status === "pending" && String(c.note ?? "").includes("runtime_adapter");
-		}),
+		mission?.checkpoints?.some(
+			(c: { name?: string; status?: string }) =>
+				(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
+		),
 	);
 }
 

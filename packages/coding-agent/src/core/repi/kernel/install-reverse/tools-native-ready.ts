@@ -3,6 +3,8 @@ import { readCurrentMission, updateMissionCheckpoint } from "../../mission.ts";
 import { isMissionReverseBound, markMissionReverseBound } from "./tools-capture-inflight.ts";
 
 export function reverseProofBound(): boolean {
+	// Soft-mark is process-local (markMissionReverseBound). Disk pending notes from a prior
+	// process must not make a fresh --no-session run look reverse-ready before first capture.
 	try {
 		if (isMissionReverseBound()) return true;
 	} catch {
@@ -12,7 +14,6 @@ export function reverseProofBound(): boolean {
 		const mission = readCurrentMission();
 		const cps = mission?.checkpoints;
 		if (!Array.isArray(cps)) return false;
-		// Capture already materialized this mission (stronger thrash signal than default pending).
 		if (
 			cps.some(
 				(c: { name?: string; status?: string }) =>
@@ -24,12 +25,10 @@ export function reverseProofBound(): boolean {
 		) {
 			return true;
 		}
-		return cps.some((c: { name?: string; status?: string; note?: string }) => {
-			if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
-			if (c.status === "done") return true;
-			// Soft-mark from successful runtime adapter/native/browser capture only.
-			return c.status === "pending" && String(c.note ?? "").includes("runtime_adapter");
-		});
+		return cps.some(
+			(c: { name?: string; status?: string }) =>
+				(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
+		);
 	} catch {
 		return false;
 	}

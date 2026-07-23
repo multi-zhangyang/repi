@@ -13,11 +13,10 @@ export function trySameTaskReverseReadyRouteStop(params: {
 		const reverseDone =
 			isMissionReverseBound() ||
 			Boolean(
-				current?.checkpoints?.some((c: { name?: string; status?: string; note?: string }) => {
-					if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
-					if (c.status === "done") return true;
-					return c.status === "pending" && String(c.note ?? "").includes("runtime_adapter");
-				}),
+				current?.checkpoints?.some(
+					(c: { name?: string; status?: string }) =>
+						(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") && c.status === "done",
+				),
 			);
 		if (!reverseDone) return undefined;
 

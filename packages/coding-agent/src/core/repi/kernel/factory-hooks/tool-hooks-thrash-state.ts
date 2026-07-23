@@ -42,6 +42,8 @@ export function missionCheckpoints(_d?: Record<string, any>): Array<{ name?: str
 }
 
 export function isReverseDone(cps?: Array<{ name?: string; status?: string; note?: string }>): boolean {
+	// Process-local session bind only for soft-mark. Disk pending+runtime_adapter soft-marks
+	// from prior print-mode processes must NOT block a fresh run's first capture.
 	try {
 		if (isMissionReverseBound()) return true;
 	} catch {
@@ -50,7 +52,6 @@ export function isReverseDone(cps?: Array<{ name?: string; status?: string; note
 	const list = cps ?? missionCheckpoints();
 	return list.some((c) => {
 		if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
-		if (c.status === "done") return true;
-		return c.status === "pending" && String(c.note ?? "").includes("runtime_adapter");
+		return c.status === "done";
 	});
 }
