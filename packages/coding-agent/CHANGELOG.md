@@ -49,6 +49,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- Runtime adapter parserRules: escape tag literals like \\[crypto-solver\\] so new RegExp no longer throws Range out of order (crypto/agent/cloud/memory).
 - re_map passive binary-candidates find: escape \( \) so bash no longer syntax-errors on prune groups.
 
 - Release tarball install after package rename (dist imports `@repi/*`).

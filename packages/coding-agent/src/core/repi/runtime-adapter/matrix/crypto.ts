@@ -18,31 +18,31 @@ export const RUNTIME_ADAPTER_CRYPTO_SPECS: RuntimeAdapterExecutionSpec[] = [
 		parserRules: [
 			{
 				id: "parser-crypto-param",
-				regex: "([crypto-param]|modulus|iv=|nonce=|base64|hex|PEM)",
+				regex: "(\\[crypto-param\\]|modulus|iv=|nonce=|base64|hex|PEM)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "parameter derivation",
 			},
 			{
 				id: "parser-crypto-transform",
-				regex: "([crypto-transform]|chain=.*->|base64|gzip|zlib)",
+				regex: "(\\[crypto-transform\\]|chain=.*->|base64|gzip|zlib)",
 				evidenceRank: "process_config",
 				proofExitSignal: "transform replay",
 			},
 			{
 				id: "parser-crypto-solver",
-				regex: "([crypto-solver]|[crypto-known-answer]|z3=|verification=pass)",
+				regex: "(\\[crypto-solver\\]|\\[crypto-known-answer\\]|z3=|verification=pass)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "solver script",
 			},
 			{
 				id: "parser-crypto-stego",
-				regex: "([crypto-stego]|stego_lsb_plane|CAP_LSB=1|shell_cap stego=1)",
+				regex: "(\\[crypto-stego\\]|stego_lsb_plane|CAP_LSB=1|shell_cap stego=1)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "stego lsb plane",
 			},
 			{
 				id: "parser-crypto-proof",
-				regex: "([crypto-proof-capture]|proof.exit=)",
+				regex: "(\\[crypto-proof-capture\\]|proof.exit=)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "proof.exit=partial_runtime_capture",
 			},

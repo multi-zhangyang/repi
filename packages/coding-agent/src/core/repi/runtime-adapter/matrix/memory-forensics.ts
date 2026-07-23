@@ -18,25 +18,25 @@ export const RUNTIME_ADAPTER_MEMORY_FORENSICS_SPECS: RuntimeAdapterExecutionSpec
 		parserRules: [
 			{
 				id: "parser-mem-image",
-				regex: "([mem-image]|sample_sha256|profile_hint)",
+				regex: "(\\[mem-image\\]|sample_sha256|profile_hint)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "image profile",
 			},
 			{
 				id: "parser-mem-process",
-				regex: "([mem-process]|[mem-vol]|[mem-pslist]|[mem-netscan])",
+				regex: "(\\[mem-process\\]|\\[mem-vol\\]|\\[mem-pslist\\]|\\[mem-netscan\\])",
 				evidenceRank: "process_config",
 				proofExitSignal: "process/network map",
 			},
 			{
 				id: "parser-mem-cred",
-				regex: "([mem-credential]|[mem-vol-credential]|AWS_ACCESS_KEY|Authorization:)",
+				regex: "(\\[mem-credential\\]|\\[mem-vol-credential\\]|AWS_ACCESS_KEY|Authorization:)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "credential/artifact proof",
 			},
 			{
 				id: "parser-mem-proof",
-				regex: "([memory-proof-capture]|proof.exit=)",
+				regex: "(\\[memory-proof-capture\\]|proof.exit=)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "proof.exit=partial_runtime_capture",
 			},

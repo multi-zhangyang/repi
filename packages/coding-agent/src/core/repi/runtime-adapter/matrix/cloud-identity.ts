@@ -18,25 +18,25 @@ export const RUNTIME_ADAPTER_CLOUD_IDENTITY_SPECS: RuntimeAdapterExecutionSpec[]
 		parserRules: [
 			{
 				id: "parser-cloud-identity",
-				regex: "([cloud-identity]|KUBECONFIG|AWS_|serviceaccount)",
+				regex: "(\\[cloud-identity\\]|KUBECONFIG|AWS_|serviceaccount)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "identity material map",
 			},
 			{
 				id: "parser-cloud-runtime",
-				regex: "([cloud-runtime-config]|[cloud-metadata]|imds)",
+				regex: "(\\[cloud-runtime-config\\]|\\[cloud-metadata\\]|imds)",
 				evidenceRank: "process_config",
 				proofExitSignal: "runtime/metadata surface",
 			},
 			{
 				id: "parser-cloud-priv",
-				regex: "([cloud-privilege-edge]|[ad-graph-edge]|RoleBinding|GenericAll)",
+				regex: "(\\[cloud-privilege-edge\\]|\\[ad-graph-edge\\]|RoleBinding|GenericAll)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "privilege edge",
 			},
 			{
 				id: "parser-cloud-proof",
-				regex: "([cloud-proof-capture]|proof.exit=)",
+				regex: "(\\[cloud-proof-capture\\]|proof.exit=)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "proof.exit=partial_runtime_capture",
 			},

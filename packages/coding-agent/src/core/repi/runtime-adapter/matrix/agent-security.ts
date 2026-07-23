@@ -18,25 +18,25 @@ export const RUNTIME_ADAPTER_AGENT_SECURITY_SPECS: RuntimeAdapterExecutionSpec[]
 		parserRules: [
 			{
 				id: "parser-agent-prompt",
-				regex: "([agent-prompt]|[agent-prompt-risk]|systemPrompt|prompt injection)",
+				regex: "(\\[agent-prompt\\]|\\[agent-prompt-risk\\]|systemPrompt|prompt injection)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "prompt surface",
 			},
 			{
 				id: "parser-agent-tool",
-				regex: "([agent-tool]|[agent-tool-risk]|registerTool|schema)",
+				regex: "(\\[agent-tool\\]|\\[agent-tool-risk\\]|registerTool|schema)",
 				evidenceRank: "process_config",
 				proofExitSignal: "tool boundary",
 			},
 			{
 				id: "parser-agent-memory-inject",
-				regex: "([agent-memory]|[agent-injection|[agent-delegation)",
+				regex: "(\\[agent-memory\\]|\\[agent-injection\\]|\\[agent-delegation\\])",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "memory/injection proof",
 			},
 			{
 				id: "parser-agent-proof",
-				regex: "([agent-security-proof-capture]|proof.exit=)",
+				regex: "(\\[agent-security-proof-capture\\]|proof.exit=)",
 				evidenceRank: "runtime_artifact",
 				proofExitSignal: "proof.exit=partial_runtime_capture",
 			},
