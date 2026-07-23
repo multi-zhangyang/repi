@@ -705,7 +705,10 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 			emitProgress(`start mode=${mode}`);
 			heartbeat = setInterval(() => {
 				const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
-				console.error(`[repi:print] +${elapsed}s still_running last=${lastProgress}`);
+				const lastSafe = String(lastProgress ?? "")
+					.replace(/tool_start name=/g, "last_tool=")
+					.replace(/tool_end name=/g, "last_tool_end=");
+				console.error(`[repi:print] +${elapsed}s still_running last=${lastSafe}`);
 			}, 15_000);
 			heartbeat.unref?.();
 		}
