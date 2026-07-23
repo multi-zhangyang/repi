@@ -1,4 +1,5 @@
 import { readCurrentMission } from "../../mission.ts";
+import { isMissionReverseBound } from "../install-reverse/tools-capture-inflight.ts";
 
 /** Sticky / long-run cold-start helpers for agent-hooks. */
 
@@ -47,19 +48,22 @@ export function buildStickyRuntimeLine(input: {
 	const failures = Number(input.stats?.failures ?? 0);
 	let reverseBound = false;
 	try {
-		const cps = readCurrentMission()?.checkpoints;
-		reverseBound = Array.isArray(cps)
-			? cps.some(
-					(c: { name?: string; status?: string; note?: string }) =>
-						((c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") &&
-							(c.status === "done" ||
-								(c.status === "pending" && String(c.note ?? "").includes("runtime_adapter")))) ||
-						((c.name === "native_runtime_ready" ||
-							c.name === "mobile_runtime_ready" ||
-							c.name === "live_browser_ready") &&
-							c.status === "done"),
-				)
-			: false;
+		if (isMissionReverseBound()) reverseBound = true;
+		else {
+			const cps = readCurrentMission()?.checkpoints;
+			reverseBound = Array.isArray(cps)
+				? cps.some(
+						(c: { name?: string; status?: string; note?: string }) =>
+							((c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven") &&
+								(c.status === "done" ||
+									(c.status === "pending" && String(c.note ?? "").includes("runtime_adapter")))) ||
+							((c.name === "native_runtime_ready" ||
+								c.name === "mobile_runtime_ready" ||
+								c.name === "live_browser_ready") &&
+								c.status === "done"),
+					)
+				: false;
+		}
 	} catch {
 		reverseBound = false;
 	}

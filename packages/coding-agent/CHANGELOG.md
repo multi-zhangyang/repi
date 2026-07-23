@@ -33,6 +33,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Operator reverseProofDone consults session reverseBound for closeout/thrash stop.
 - Domain proof pass embeds HARNESS/PROOF skeleton when reverse is session-bound.
 - Live browser session capture slot + reverseBound on acquire (kills concurrent double browser thrash).
+- Sticky runtime inject uses session reverseBound for closeout next-step guidance.
 - Operator thrash stops after reverse bound + report soft-fill (plan/show thrash blocked once queue exists; all actions stop once report done).
 - Completion-ready thrash stop blocks bash/read/write/edit/grep/find/ls after reverse proof + report ready.
 - Demote model-forced native adapters when mission lexical is a stronger domain (agent/cloud/crypto/…).
