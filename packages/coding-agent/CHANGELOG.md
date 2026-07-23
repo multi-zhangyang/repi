@@ -49,6 +49,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- Complete skeleton insists on plain HARNESS_BUGS:/PROOF: lines (no markdown bold); missing-closeout detector accepts **HARNESS_BUGS:** wrappers.
 - re_js_signing run soft-marks reverse bound (session thrash/operator closeout) like browser/native captures.
 - Thrash completion_ready_stop also blocks re_domain_proof_exit/re_operator/re_complete after reverse+audit ready; thrash state split under softband.
 - Print heartbeat: rewrite still_running last=tool_start name= to last_tool= so operators do not miscount concurrent tool starts.

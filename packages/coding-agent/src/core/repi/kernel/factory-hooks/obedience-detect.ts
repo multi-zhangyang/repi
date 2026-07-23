@@ -58,7 +58,8 @@ export function detectMissingCloseout(
 ): ObedienceViolation | undefined {
 	if (!opts.reverseBound && !opts.completeReady) return undefined;
 	const t = String(text ?? "");
-	if (/HARNESS_BUGS\s*:/i.test(t) && /PROOF\s*:/i.test(t)) return undefined;
+	// Accept plain or markdown-wrapped labels (**HARNESS_BUGS:** / **PROOF:**).
+	if (/HARNESS_BUGS\s*:/i.test(t) && /\bPROOF\s*:/i.test(t)) return undefined;
 	// Only fire when model produced a substantial narrative without skeleton
 	if (t.trim().length < 40) return undefined;
 	return {
