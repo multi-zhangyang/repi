@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { auditCompletion } from "../../completion-audit.ts";
 import { readCurrentMission } from "../../mission.ts";
+import { tryReuseRecentMobileRuntimeArtifact } from "./tools-mobile-reuse.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseMobileTool(
@@ -29,9 +30,7 @@ export function registerRepiReverseMobileTool(
 		}),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
 			const hasTarget = Boolean(String(params.target || params.url || params.packageName || "").trim());
-			// Inventory host pure / bare run defaults to run (not plan false success).
 			const action = params.action ?? (hasTarget ? "run" : "run");
-			// After reverse proof is ready for this mission, do not thrash mobile inventory.
 			try {
 				const mission = readCurrentMission();
 				const reverseDone = Boolean(
@@ -43,12 +42,13 @@ export function registerRepiReverseMobileTool(
 				if (reverseDone && action === "run") {
 					const audit = auditCompletion();
 					if (audit?.ready) {
+						const nl = String.fromCharCode(10);
 						const text = [
 							"mobile_runtime:",
 							"status: reverse_ready_stop",
 							"note: reverse_runtime_gate already satisfied for this mission; do not re-run mobile runtime without a real blocker",
 							"next: write HARNESS_BUGS/PROOF only",
-						].join("\n");
+						].join(nl);
 						return {
 							content: [{ type: "text" as const, text }],
 							details: {
@@ -63,6 +63,40 @@ export function registerRepiReverseMobileTool(
 				}
 			} catch {
 				/* optional */
+			}
+			if (action === "run") {
+				try {
+					const reused = tryReuseRecentMobileRuntimeArtifact({
+						target: params.target,
+						packageName: params.packageName,
+						latestPath: deps.latestMobileRuntimeArtifactPath?.(),
+						ttlMs: 120_000,
+					});
+					if (reused) {
+						const nl = String.fromCharCode(10);
+						const note = [
+							"mobile_runtime:",
+							"status: reuse",
+							`path: ${reused.path}`,
+							`ageMs: ${reused.ageMs}`,
+							"note: latest same-target mobile capture within 120s; do not re-run",
+							"next: re_domain_proof_exit show",
+						].join(nl);
+						return {
+							content: [{ type: "text" as const, text: `${note}${nl}${nl}${reused.body}` }],
+							details: {
+								action: "reuse",
+								reused: true,
+								path: reused.path,
+								target: params.target,
+								packageName: params.packageName,
+								ageMs: reused.ageMs,
+							} as Record<string, unknown>,
+						};
+					}
+				} catch {
+					/* optional */
+				}
 			}
 			const text =
 				action === "run"
