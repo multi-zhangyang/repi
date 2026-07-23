@@ -32,6 +32,22 @@ export const PRE_CAPTURE_SIDE_BLOCK = new Set([
 /** re_operator/re_complete keep tool-level ready-stop; thrash only stops domain-proof thrash. */
 export const POST_CLOSEOUT_BLOCK = new Set(["re_domain_proof_exit"]);
 
+/** Process-local consecutive soft thrash stops (bash/ls thrash loops). */
+let thrashSoftStopStreak = 0;
+
+export function noteThrashSoftStop(): number {
+	thrashSoftStopStreak += 1;
+	return thrashSoftStopStreak;
+}
+
+export function clearThrashSoftStopStreak(): void {
+	thrashSoftStopStreak = 0;
+}
+
+export function thrashSoftStopStreakCount(): number {
+	return thrashSoftStopStreak;
+}
+
 export function missionCheckpoints(_d?: Record<string, any>): Array<{ name?: string; status?: string; note?: string }> {
 	try {
 		const mission = readCurrentMission();
