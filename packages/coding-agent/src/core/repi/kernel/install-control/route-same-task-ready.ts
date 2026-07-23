@@ -11,7 +11,7 @@ export function trySameTaskReverseReadyRouteStop(params: {
 		if (!current) return undefined;
 
 		const reverseDone =
-			isMissionReverseBound(String(current.id ?? "")) ||
+			isMissionReverseBound() ||
 			Boolean(
 				current?.checkpoints?.some((c: { name?: string; status?: string; note?: string }) => {
 					if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
