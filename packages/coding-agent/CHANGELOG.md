@@ -36,6 +36,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Sticky runtime inject uses session reverseBound for closeout next-step guidance.
 - Operator plan soft-fills report scaffold and always embeds thrash-ready HARNESS skeleton when reverse is bound.
 - re_route same-domain reverse stop uses session reverseBound; re_mission new domain clear uses route.domain (not broken deps path).
+- Print mode tags soft thrash stops on tool_end (reverse_ready_stop/capture_first) for operator visibility.
 - Operator thrash stops after reverse bound + report soft-fill (plan/show thrash blocked once queue exists; all actions stop once report done).
 - Completion-ready thrash stop blocks bash/read/write/edit/grep/find/ls after reverse proof + report ready.
 - Demote model-forced native adapters when mission lexical is a stronger domain (agent/cloud/crypto/…).

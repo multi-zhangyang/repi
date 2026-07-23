@@ -238,8 +238,23 @@ function eventProgressLine(event: AgentSessionEvent): string | undefined {
 			return `message_end role=${event.message.role}`;
 		case "tool_execution_start":
 			return `tool_start name=${event.toolName}`;
-		case "tool_execution_end":
-			return `tool_end name=${event.toolName} error=${event.isError ? "true" : "false"}`;
+		case "tool_execution_end": {
+			const err = event.isError ? "true" : "false";
+			let tag = "";
+			try {
+				const result: any = (event as any).result;
+				const text = Array.isArray(result?.content)
+					? result.content.map((c: any) => (c?.type === "text" ? String(c.text ?? "") : "")).join("\n")
+					: String(result?.content ?? result ?? "");
+				if (/status:\s*reverse_ready_stop|reverse_ready_stop/i.test(text)) tag = " thrash=reverse_ready_stop";
+				else if (/capture_first/i.test(text)) tag = " thrash=capture_first";
+				else if (/completion_ready_stop/i.test(text)) tag = " thrash=completion_ready_stop";
+				else if (result?.details?.reason) tag = ` thrash=${String(result.details.reason).slice(0, 40)}`;
+			} catch {
+				tag = "";
+			}
+			return `tool_end name=${event.toolName} error=${err}${tag}`;
+		}
 		case "compaction_start":
 			return `compaction_start reason=${event.reason}`;
 		case "compaction_end":
