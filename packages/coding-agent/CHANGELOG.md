@@ -49,6 +49,8 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- re_js_signing run soft-marks reverse bound (session thrash/operator closeout) like browser/native captures.
+- Thrash completion_ready_stop also blocks re_domain_proof_exit/re_operator/re_complete after reverse+audit ready; thrash state split under softband.
 - Print heartbeat: rewrite still_running last=tool_start name= to last_tool= so operators do not miscount concurrent tool starts.
 - Structural obedience: agent_end detect/correct (refusal/authorization theater/missing closeout) + doctrine operator_supremacy/no_moral_judgment in prompts/sticky/cold-start; expands no_refusal_kernel theater patterns.
 - Thrash capture_first: block re_mission/re_techniques/re_map side thrash before route and after map until one reverse capture; keep re_route always allowed.

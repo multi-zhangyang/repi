@@ -1,59 +1,21 @@
 /** Reverse/completion thrash stop helpers for tool_call hooks. */
-import { readCurrentMission } from "../../mission.ts";
-import { isMissionReverseBound } from "../install-reverse/tools-capture-inflight.ts";
+import {
+	isReverseDone,
+	missionCheckpoints,
+	POST_CLOSEOUT_BLOCK,
+	POST_COMPLETE_HOST_BLOCK,
+	POST_REVERSE_CAPTURE_BLOCK,
+	PRE_CAPTURE_SIDE_BLOCK,
+} from "./tool-hooks-thrash-state.ts";
 
-export const POST_REVERSE_CAPTURE_BLOCK = new Set([
-	"re_runtime_adapter",
-	"re_native_runtime",
-	"re_mobile_runtime",
-	"re_live_browser",
-	"re_web_authz_state",
-	"re_js_signing",
-	"re_exploit_lab",
-	"re_bootstrap",
-	"re_tool_index",
-	"re_lane",
-	"re_evidence",
-	"re_mission",
-	"re_techniques",
-]);
-
-export const POST_COMPLETE_HOST_BLOCK = new Set(["bash", "read", "grep", "find", "ls", "write", "edit"]);
-
-/** Side tools that must not thrash before reverse capture after map is done (or before route). */
-export const PRE_CAPTURE_SIDE_BLOCK = new Set([
-	"re_techniques",
-	"re_mission",
-	"re_tool_index",
-	"re_lane",
-	"re_evidence",
-	"re_map",
-]);
-
-export function missionCheckpoints(_d?: Record<string, any>): Array<{ name?: string; status?: string; note?: string }> {
-	try {
-		const mission = readCurrentMission();
-		return Array.isArray(mission?.checkpoints) ? mission.checkpoints : [];
-	} catch {
-		return [];
-	}
-}
-
-export function isReverseDone(cps?: Array<{ name?: string; status?: string; note?: string }>): boolean {
-	// Process-local session bind survives mission-id churn; prefer explicit cps when provided
-	// (do not re-read disk mission and ignore the caller's checkpoint snapshot).
-	try {
-		if (isMissionReverseBound()) return true;
-	} catch {
-		/* optional */
-	}
-	const list = cps ?? missionCheckpoints();
-	return list.some((c) => {
-		if (!(c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven")) return false;
-		if (c.status === "done") return true;
-		return c.status === "pending" && String(c.note ?? "").includes("runtime_adapter");
-	});
-}
+export {
+	isReverseDone,
+	missionCheckpoints,
+	POST_CLOSEOUT_BLOCK,
+	POST_COMPLETE_HOST_BLOCK,
+	POST_REVERSE_CAPTURE_BLOCK,
+	PRE_CAPTURE_SIDE_BLOCK,
+} from "./tool-hooks-thrash-state.ts";
 
 export function tryThrashStopBeforeTool(params: {
 	toolName: string;
@@ -71,7 +33,6 @@ export function tryThrashStopBeforeTool(params: {
 	const hasReverseGate = cps.some((c) => c.name === "reverse_proof_exit_ready" || c.name === "minimal_path_proven");
 	const routed = cps.some((c) => c.name === "route_selected" && c.status === "done");
 
-	// Pre-route: host + side tools wait for re_route (models often ls/find/re_mission first).
 	if (!routed && (POST_COMPLETE_HOST_BLOCK.has(toolName) || PRE_CAPTURE_SIDE_BLOCK.has(toolName))) {
 		return {
 			block: true,
@@ -81,7 +42,6 @@ export function tryThrashStopBeforeTool(params: {
 		};
 	}
 
-	// Reverse mission before map: host thrash blocked.
 	if (routed && hasReverseGate && !reverseDone && !mapDone && POST_COMPLETE_HOST_BLOCK.has(toolName)) {
 		return {
 			block: true,
@@ -91,7 +51,6 @@ export function tryThrashStopBeforeTool(params: {
 		};
 	}
 
-	// Map done, reverse not bound: force one capture tool (no host/side/re_map loop).
 	if (
 		routed &&
 		mapDone &&
@@ -129,6 +88,14 @@ export function tryThrashStopBeforeTool(params: {
 			reason: params.completeReady
 				? "REPI completion_ready_stop: reverse completion already ready. Do not thrash bash/read/write/edit/grep/find. Output HARNESS_BUGS/PROOF only (optional re_complete once)."
 				: "REPI reverse_ready_stop: reverse capture already bound. Do not thrash bash/read/write/edit/grep/find. Call re_domain_proof_exit → re_operator → re_complete → HARNESS_BUGS/PROOF only.",
+		};
+	}
+	if (params.completeReady && reverseDone && POST_CLOSEOUT_BLOCK.has(toolName)) {
+		return {
+			block: true,
+			isError: false,
+			reason:
+				"REPI completion_ready_stop: reverse completion already ready. Do not thrash re_domain_proof_exit/re_operator/re_complete. Output HARNESS_BUGS/PROOF only.",
 		};
 	}
 	return undefined;

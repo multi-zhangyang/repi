@@ -2,6 +2,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "../../../extensions/types.ts";
 import { truncateMiddle } from "../../text.ts";
+import { softMarkReverseFromNative } from "./tools-native-ready.ts";
 import type { ReverseRuntimeToolDeps, ToolRegistrar } from "./types.ts";
 
 export function registerRepiReverseJsSigningTool(
@@ -37,11 +38,16 @@ export function registerRepiReverseJsSigningTool(
 							url: params.url,
 							timeoutMs: params.timeoutMs,
 						});
+			const path = deps.latestJsSigningArtifactPath();
+			if (action === "run" && path) {
+				// Bind reverse thrash/operator closeout the same way as browser/native captures.
+				softMarkReverseFromNative(String(path));
+			}
 			return {
 				content: [{ type: "text" as const, text: truncateMiddle(text, 20000) }],
 				details: {
 					action,
-					path: deps.latestJsSigningArtifactPath(),
+					path,
 					target: params.target,
 					url: params.url,
 				} as Record<string, unknown>,
