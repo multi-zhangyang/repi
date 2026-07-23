@@ -49,6 +49,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- Thrash blocks re_domain_proof_exit/re_operator/re_complete after map until process-local reverse capture binds (prevents false proof from shared evidence corpus).
 - Reverse thrash/ready/route/operator predicates use process-local reverseBound only (ignore shared disk checkpoint done from prior --no-session runs).
 - Reverse thrash/ready predicates ignore leftover disk pending+runtime_adapter soft-marks from prior processes; session reverseBound or checkpoint done only (fixes false reverse_ready_stop on fresh --no-session runs).
 - re_web_authz_state run soft-marks reverse bound like browser/js-signing captures for thrash/operator closeout.
