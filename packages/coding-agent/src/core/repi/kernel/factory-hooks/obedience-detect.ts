@@ -80,15 +80,11 @@ export function detectMissingCloseout(
 ): ObedienceViolation | undefined {
 	if (!opts.reverseBound && !opts.completeReady) return undefined;
 	const t = String(text ?? "");
-	// Require separate plain lines: HARNESS_BUGS: ... and PROOF: ... (not one merged line).
 	const lines = t.split(/\r?\n/);
-	const hasHarnessLine = lines.some((line) => /^\s*(\*\*)?HARNESS_BUGS(\*\*)?\s*:/i.test(line));
-	const hasProofLine = lines.some((line) => /^\s*(\*\*)?PROOF(\*\*)?\s*:/i.test(line));
-	const mergedOneLiner = lines.some(
-		(line) =>
-			/^\s*HARNESS_BUGS\s*:\s*.{0,40}\bPROOF\s*:/i.test(line) || /^\s*HARNESS_BUGS\s*:\s*与\s*PROOF\s*:/i.test(line),
-	);
-	if (hasHarnessLine && hasProofLine && !mergedOneLiner) return undefined;
+	const hasValidHarnessNone = lines.some((line) => /^\s*(\*\*)?HARNESS_BUGS(\*\*)?\s*:\s*none\b/i.test(line));
+	const hasValidProof = lines.some((line) => /^\s*(\*\*)?PROOF(\*\*)?\s*:/i.test(line));
+	// Valid two-line closeout wins even if an earlier bad merge line exists.
+	if (hasValidHarnessNone && hasValidProof) return undefined;
 	// Only fire when model produced a substantial narrative without skeleton
 	if (t.trim().length < 40) return undefined;
 	return {
@@ -107,32 +103,36 @@ export function detectHarnessMislabel(
 ): ObedienceViolation | undefined {
 	if (!opts.reverseBound && !opts.completeReady) return undefined;
 	const t = String(text ?? "");
-	const m = /HARNESS_BUGS\s*:\s*([^\n]+)/i.exec(t);
-	if (!m) return undefined;
-	const body = m[1].trim();
-	if (!body || /^none\b/i.test(body) || /^n\/?a\b/i.test(body) || body === "-" || body === "—") {
-		return undefined;
-	}
-	// Real tool failures usually mention error=true / tool_end / tool name + fail
-	if (/\berror\s*=\s*true\b/i.test(body) || /\btool_(?:end|error)\b/i.test(body)) return undefined;
-	if (/\b(?:re_\w+|bash|read|write)\b[^\n]{0,40}\b(?:failed|error|crash)\b/i.test(body)) return undefined;
-	// Mislabel: target gap / missing asset framed as harness bug while capture succeeded
-	// Also: Chinese prompt bleed "HARNESS_BUGS: 与 PROOF: ..." one-liner merge.
-	if (
-		/\bmissing (?:target|apk|path|package|binary|asset|url|file)\b/i.test(body) ||
-		/\bno (?:target|apk|path|binary|file)\b/i.test(body) ||
-		/\bbut runtime capture\b/i.test(body) ||
-		/\bbind_ready\s*=\s*true\b/i.test(body) ||
-		/\bPROOF\s*:/i.test(body) ||
-		/^与\s*PROOF\b/i.test(body) ||
-		/缺少(?:目标|路径|APK|包名|文件)/.test(body) ||
-		/目标(?:缺失|不存在|未提供)/.test(body)
-	) {
-		return { kind: "harness_mislabel", snippet: body.slice(0, 160) };
-	}
-	// Long non-none narrative without tool error markers when reverse is bound
-	if (body.length > 40 && !/\berror\b/i.test(body) && !/\bfail(?:ed|ure)?\b/i.test(body)) {
-		return { kind: "harness_mislabel", snippet: body.slice(0, 160) };
+	const lines = t.split(/\r?\n/);
+	// If final answer already has plain HARNESS_BUGS: none + PROOF, ignore earlier bleed lines.
+	const hasValidHarnessNone = lines.some((line) => /^\s*(\*\*)?HARNESS_BUGS(\*\*)?\s*:\s*none\b/i.test(line));
+	const hasValidProof = lines.some((line) => /^\s*(\*\*)?PROOF(\*\*)?\s*:/i.test(line));
+	if (hasValidHarnessNone && hasValidProof) return undefined;
+
+	for (const line of lines) {
+		const m = /^\s*(\*\*)?HARNESS_BUGS(\*\*)?\s*:\s*(.*)$/i.exec(line);
+		if (!m) continue;
+		const body = String(m[3] ?? "").trim();
+		if (!body || /^none\b/i.test(body) || /^n\/?a\b/i.test(body) || body === "-" || body === "—") {
+			continue;
+		}
+		// Real tool failures usually mention error=true / tool_end / tool name + fail
+		if (/\berror\s*=\s*true\b/i.test(body) || /\btool_(?:end|error)\b/i.test(body)) continue;
+		if (/\b(?:re_\w+|bash|read|write)\b[^\n]{0,40}\b(?:failed|error|crash)\b/i.test(body)) continue;
+		// Mislabel: target gap / merged closeout / non-tool narrative
+		if (
+			/\bmissing (?:target|apk|path|package|binary|asset|url|file)\b/i.test(body) ||
+			/\bno (?:target|apk|path|binary|file)\b/i.test(body) ||
+			/\bbut runtime capture\b/i.test(body) ||
+			/\bbind_ready\s*=\s*true\b/i.test(body) ||
+			/\bPROOF\s*:/i.test(body) ||
+			/^与\s*PROOF\b/i.test(body) ||
+			/缺少(?:目标|路径|APK|包名|文件)/.test(body) ||
+			/目标(?:缺失|不存在|未提供)/.test(body) ||
+			(body.length > 40 && !/\berror\b/i.test(body) && !/\bfail(?:ed|ure)?\b/i.test(body))
+		) {
+			return { kind: "harness_mislabel", snippet: body.slice(0, 160) };
+		}
 	}
 	return undefined;
 }

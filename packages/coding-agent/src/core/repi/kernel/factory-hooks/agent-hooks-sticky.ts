@@ -68,7 +68,7 @@ export function buildStickyRuntimeLine(input: {
 		reverseBound = false;
 	}
 	const next = reverseBound
-		? "next: reverse capture already bound — re_domain_proof_exit show → re_operator plan → re_operator dispatch maxSteps=1 → re_complete → plain HARNESS_BUGS:/PROOF: lines only (no markdown bold); do not thrash re_runtime_adapter/re_native_runtime/re_live_browser/re_bootstrap"
+		? "next: reverse capture already bound — re_domain_proof_exit show → re_operator plan → re_operator dispatch maxSteps=1 → re_complete → plain HARNESS_BUGS and PROOF lines only (no markdown bold); do not thrash re_runtime_adapter/re_native_runtime/re_live_browser/re_bootstrap"
 		: "next: continue live proof path → re_domain_proof_exit show → re_complete audit when runtime capture is partial|strong";
 	return [
 		"## REPI Runtime (sticky)",
