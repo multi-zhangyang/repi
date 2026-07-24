@@ -21,15 +21,27 @@ export function registerRepiControlCoreMissionTool(
 			"Use re_mission to keep task state explicit: route, lanes, evidence checkpoints, replay/report/memory checkpoints.",
 			"Reverse-heavy missions require reverse_proof_exit_ready before claim promotion.",
 		],
-		parameters: Type.Object({
-			action: Type.Optional(Type.Union([Type.Literal("show"), Type.Literal("new"), Type.Literal("checkpoint")])),
-			task: Type.Optional(Type.String()),
-			check: Type.Optional(Type.String()),
-			status: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("done"), Type.Literal("blocked")])),
-			note: Type.Optional(Type.String()),
-		}),
+		parameters: Type.Object(
+			{
+				// Free-string: models pass show/new/checkpoint/status/update/empty.
+				action: Type.Optional(Type.String()),
+				task: Type.Optional(Type.String()),
+				check: Type.Optional(Type.String()),
+				status: Type.Optional(Type.String()),
+				note: Type.Optional(Type.String()),
+			},
+			{ additionalProperties: true },
+		),
 		async execute(_toolCallId, params: any, _signal?: any, _onUpdate?: any, _ctx?: any) {
-			const action = params.action ?? "show";
+			const raw = String(params?.action ?? "show")
+				.toLowerCase()
+				.trim();
+			const action =
+				raw === "new" || raw === "create" || raw === "reset"
+					? "new"
+					: raw === "checkpoint" || raw === "check" || raw === "update"
+						? "checkpoint"
+						: "show";
 			if (action === "new") {
 				const task = params.task ?? "reverse/pentest task";
 				const nextRoute = deps.routeReconTask(task);
@@ -65,11 +77,11 @@ export function registerRepiControlCoreMissionTool(
 				};
 			}
 			if (action === "checkpoint") {
-				const mission = deps.updateMissionCheckpoint(
-					params.check ?? "manual_check",
-					params.status ?? "done",
-					params.note,
-				);
+				const st = String(params.status ?? "done")
+					.toLowerCase()
+					.trim();
+				const status = st === "pending" || st === "blocked" || st === "done" ? st : "done";
+				const mission = deps.updateMissionCheckpoint(params.check ?? "manual_check", status, params.note);
 				return {
 					content: [{ type: "text" as const, text: deps.formatMission(mission) }],
 					details: mission as unknown as Record<string, unknown>,
