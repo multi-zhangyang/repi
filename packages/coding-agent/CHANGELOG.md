@@ -50,6 +50,7 @@ in `CHANGELOG.upstream.md` for reference.
 
 ### Fixed
 - Escalate repeated soft thrash-stops with NEXT_ONLY after consecutive blocked side tools (bash/ls/find/re_techniques loops).
+- Print mode tags escalated thrash soft-stops as thrash=next_only when NEXT_ONLY is present in the blocked tool result.
 - Closeout detectors accept a final plain HARNESS_BUGS: none + PROOF pair even if an earlier merged bleed line appears; product wording no longer demonstrates Chinese merge form.
 - Obedience rejects merged HARNESS_BUGS/PROOF one-liners (e.g. Chinese prompt bleed HARNESS_BUGS: 与 PROOF:) and forces two plain closeout lines.
 - re_runtime_adapter defaults to run (and soft-marks reverse) when mission lexical can pick an adapter even without an explicit target/action.

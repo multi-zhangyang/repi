@@ -246,7 +246,8 @@ function eventProgressLine(event: AgentSessionEvent): string | undefined {
 				const text = Array.isArray(result?.content)
 					? result.content.map((c: any) => (c?.type === "text" ? String(c.text ?? "") : "")).join("\n")
 					: String(result?.content ?? result ?? "");
-				if (/status:\s*reverse_ready_stop|reverse_ready_stop/i.test(text)) tag = " thrash=reverse_ready_stop";
+				if (/NEXT_ONLY/i.test(text)) tag = " thrash=next_only";
+				else if (/status:\s*reverse_ready_stop|reverse_ready_stop/i.test(text)) tag = " thrash=reverse_ready_stop";
 				else if (/capture_first/i.test(text)) tag = " thrash=capture_first";
 				else if (/completion_ready_stop/i.test(text)) tag = " thrash=completion_ready_stop";
 				else if (result?.details?.reason) tag = ` thrash=${String(result.details.reason).slice(0, 40)}`;
