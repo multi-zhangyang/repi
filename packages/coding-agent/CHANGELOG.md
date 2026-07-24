@@ -49,6 +49,7 @@ in `CHANGELOG.upstream.md` for reference.
 - Auth/no-model guidance points at REPI_* env, `repi model`, and public docs.
 
 ### Fixed
+- Obedience closeout requires PROOF bind_ready=true; plain HARNESS none + bind_ready=false is treated as missing_closeout and corrected.
 - Escalate repeated soft thrash-stops with NEXT_ONLY after consecutive blocked side tools (bash/ls/find/re_techniques loops).
 - Print mode tags escalated thrash soft-stops as thrash=next_only when NEXT_ONLY is present in the blocked tool result.
 - Closeout detectors accept a final plain HARNESS_BUGS: none + PROOF pair even if an earlier merged bleed line appears; product wording no longer demonstrates Chinese merge form.
